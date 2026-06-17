@@ -1,0 +1,410 @@
+{
+  "sections": {
+    "product-template": {
+      "type": "product-template",
+      "blocks": {
+        "breadcrumbs": {
+          "type": "breadcrumbs",
+          "settings": {
+            "offset_top_desktop": 8,
+            "offset_bottom_desktop": 8,
+            "offset_top_mobile": 8,
+            "offset_bottom_mobile": 8
+          }
+        },
+        "vendor": {
+          "type": "vendor",
+          "settings": {
+            "make_vendor_link": true,
+            "offset_top_desktop": 8,
+            "offset_bottom_desktop": 8,
+            "offset_top_mobile": 8,
+            "offset_bottom_mobile": 8
+          }
+        },
+        "title": {
+          "type": "title",
+          "settings": {
+            "offset_top_desktop": 8,
+            "offset_bottom_desktop": 8,
+            "offset_top_mobile": 8,
+            "offset_bottom_mobile": 8
+          }
+        },
+        "sku": {
+          "type": "sku",
+          "settings": {
+            "sku_text": "SKU: {SKU}",
+            "offset_top_desktop": 8,
+            "offset_bottom_desktop": 8,
+            "offset_top_mobile": 8,
+            "offset_bottom_mobile": 8
+          }
+        },
+        "description": {
+          "type": "description",
+          "settings": {
+            "offset_top_desktop": 8,
+            "offset_bottom_desktop": 8,
+            "offset_top_mobile": 8,
+            "offset_bottom_mobile": 8
+          }
+        },
+        "options": {
+          "type": "options",
+          "settings": {
+            "variant_picker": "radio",
+            "offset_top_desktop": 8,
+            "offset_bottom_desktop": 8,
+            "offset_top_mobile": 8,
+            "offset_bottom_mobile": 8
+          }
+        },
+        "inventory_status": {
+          "type": "inventory_status",
+          "settings": {
+            "offset_top_desktop": 8,
+            "offset_bottom_desktop": 8,
+            "offset_top_mobile": 8,
+            "offset_bottom_mobile": 8
+          }
+        },
+        "price": {
+          "type": "price",
+          "settings": {
+            "offset_top_desktop": 8,
+            "offset_bottom_desktop": 8,
+            "offset_top_mobile": 8,
+            "offset_bottom_mobile": 8
+          }
+        },
+        "quantity": {
+          "type": "quantity",
+          "settings": {
+            "offset_top_desktop": 8,
+            "offset_bottom_desktop": 8,
+            "offset_top_mobile": 8,
+            "offset_bottom_mobile": 8
+          }
+        },
+        "add_to_cart": {
+          "type": "add_to_cart",
+          "settings": {
+            "button_type": "secondary",
+            "button_buy_it_type": "primary",
+            "show_additional_buttons": true,
+            "show_gift_card_recipient": true,
+            "offset_top_desktop": 8,
+            "offset_bottom_desktop": 8,
+            "offset_top_mobile": 8,
+            "offset_bottom_mobile": 8
+          }
+        },
+        "pickup_availability": {
+          "type": "pickup_availability",
+          "disabled": true,
+          "settings": {
+            "offset_top_desktop": 8,
+            "offset_bottom_desktop": 8,
+            "offset_top_mobile": 8,
+            "offset_bottom_mobile": 8
+          }
+        },
+        "drawers": {
+          "type": "drawers",
+          "settings": {
+            "show_description": false,
+            "description_toggle_text": "Description",
+            "description_drawer_title": "Description",
+            "drawer_page_1": "",
+            "drawer_toggle_text_1": "Size Guide",
+            "drawer_title_1": "Size Guide",
+            "drawer_page_2": "",
+            "drawer_toggle_text_2": "Shipping",
+            "drawer_title_2": "Shipping",
+            "drawer_page_3": "",
+            "drawer_toggle_text_3": "Drawer 3",
+            "drawer_title_3": "Drawer 3",
+            "offset_top_desktop": 8,
+            "offset_bottom_desktop": 8,
+            "offset_top_mobile": 8,
+            "offset_bottom_mobile": 8
+          }
+        },
+        "sales_point_cDLqCC": {
+          "type": "sales_point",
+          "disabled": true,
+          "settings": {
+            "sales_point_text": "PICKUP AVAILABLE AT THIRD LOCATION STOREUSUALLY READY IN 2-4 DAYS",
+            "offset_top_desktop": 8,
+            "offset_bottom_desktop": 8,
+            "offset_top_mobile": 8,
+            "offset_bottom_mobile": 8
+          }
+        },
+        "sales_point_zx6rLq": {
+          "type": "sales_point",
+          "disabled": true,
+          "settings": {
+            "sales_point_text": "BECOME CLUB MEMBER AND GET SPECIAL OFFERS",
+            "offset_top_desktop": 8,
+            "offset_bottom_desktop": 8,
+            "offset_top_mobile": 8,
+            "offset_bottom_mobile": 8
+          }
+        },
+        "sales_point_qQppAg": {
+          "type": "sales_point",
+          "disabled": true,
+          "settings": {
+            "sales_point_text": "FREE SHIPPING OVER $100",
+            "offset_top_desktop": 8,
+            "offset_bottom_desktop": 8,
+            "offset_top_mobile": 8,
+            "offset_bottom_mobile": 8
+          }
+        },
+        "socials": {
+          "type": "socials",
+          "disabled": true,
+          "settings": {
+            "show_facebook": true,
+            "show_twitter": true,
+            "show_pinterest": true,
+            "offset_top_desktop": 8,
+            "offset_bottom_desktop": 8,
+            "offset_top_mobile": 8,
+            "offset_bottom_mobile": 8
+          }
+        },
+        "complementary": {
+          "type": "complementary",
+          "disabled": true,
+          "settings": {
+            "heading": "You May Also Like",
+            "offset_top_desktop": 8,
+            "offset_bottom_desktop": 8,
+            "offset_top_mobile": 8,
+            "offset_bottom_mobile": 8
+          }
+        }
+      },
+      "block_order": [
+        "breadcrumbs",
+        "vendor",
+        "title",
+        "sku",
+        "description",
+        "options",
+        "inventory_status",
+        "price",
+        "quantity",
+        "add_to_cart",
+        "pickup_availability",
+        "drawers",
+        "sales_point_cDLqCC",
+        "sales_point_zx6rLq",
+        "sales_point_qQppAg",
+        "socials",
+        "complementary"
+      ],
+      "settings": {
+        "enable_color_scheme_inheritance": true,
+        "color_scheme": "",
+        "enable_video_play_on_autoplay": false,
+        "is_zoom_enabled": true,
+        "media_layout": "stacked_2_col",
+        "thumbnails_position": "bottom",
+        "show_thumbnails_mobile": false,
+        "media_height": "full_size",
+        "image_object_fit": "cover",
+        "show_taxes_included": true,
+        "show_pay_installments": true,
+        "show_sticky_add_to_cart": false,
+        "show_size_guide": true,
+        "size_guide_button_placement": "under-options",
+        "size_guide_page": "",
+        "size_guide_button_text": "Size guide",
+        "size_guide_drawer_title": "Size guide",
+        "container_width": "inherit",
+        "offset_top_desktop": 0,
+        "offset_bottom_desktop": 0,
+        "offset_top_mobile": 0,
+        "offset_bottom_mobile": 0,
+        "inner_offset_top": 64,
+        "inner_offset_bottom": 0,
+        "inner_offset_top_mobile": 32,
+        "inner_offset_bottom_mobile": 24
+      }
+    },
+    "shipping_note": {
+      "type": "shipping-note",
+      "settings": {}
+    },
+    "richtext": {
+      "type": "richtext",
+      "disabled": true,
+      "settings": {
+        "enable_color_scheme_inheritance": true,
+        "color_scheme": "",
+        "heading": "Elegance <em>Redefined</em>",
+        "label": "Pollheim",
+        "text_content": "<p>Pollheim brand is a beacon of sophistication, offering meticulously crafted clothing that epitomizes timeless elegance. Our exquisite designs are tailored to accentuate individual style, empowering fashion enthusiasts to make a statement with confidence.</p><p>From luxurious fabrics to impeccable attention to detail, each piece from Pollheim brand tells a story of unparalleled quality and exquisite craftsmanship. Embrace the artistry of fashion and experience a world where elegance is redefined. Elevate your wardrobe with Pollheim brand and indulge in the epitome of refined fashion.</p>",
+        "text_alignment": "center",
+        "enable_read_more": false,
+        "read_more_text": "Show more",
+        "show_less_text": "Show less",
+        "link_text": "Link name",
+        "link": "",
+        "container_width": "inherit",
+        "offset_top_desktop": 0,
+        "offset_bottom_desktop": 0,
+        "offset_top_mobile": 0,
+        "offset_bottom_mobile": 0,
+        "inner_offset_top": 64,
+        "inner_offset_bottom": 64,
+        "inner_offset_top_mobile": 32,
+        "inner_offset_bottom_mobile": 32
+      }
+    },
+    "image_with_text": {
+      "type": "image-with-text",
+      "disabled": true,
+      "settings": {
+        "enable_color_scheme_inheritance": true,
+        "color_scheme": "",
+        "images_layout": "one_image",
+        "enable_images_animation": true,
+        "scroll_images_direction": "top",
+        "image_position": "left",
+        "text_alignment": "center",
+        "label": "POLLHEIM",
+        "heading": "Ensure a high level of comfort",
+        "text_content": "<p>THE LACE brand is a beacon of sophistication, offering meticulously crafted clothing that epitomizes timeless elegance. Our exquisite designs are tailored to accentuate individual style, empowering fashion enthusiasts to make a statement with confidence.</p>",
+        "button_label": "Show All",
+        "button_aria_label": "Link to All collection",
+        "button_url": "/",
+        "button_style": "primary",
+        "fist_col_movement_speed": 20,
+        "second_col_movement_speed": 20,
+        "container_width": "inherit",
+        "offset_top_desktop": 50,
+        "offset_bottom_desktop": 50,
+        "offset_top_mobile": 25,
+        "offset_bottom_mobile": 25,
+        "inner_offset_top": 30,
+        "inner_offset_bottom": 30,
+        "inner_offset_top_mobile": 30,
+        "inner_offset_bottom_mobile": 30
+      }
+    },
+    "product_features": {
+      "type": "product-features",
+      "blocks": {
+        "product_feature_DKMakk": {
+          "type": "product_feature",
+          "disabled": true,
+          "settings": {
+            "heading": "Features",
+            "description": "Introducing our signature MatchlessMerino, made of Merino wool, this crewneck is thinner, softer and finer than regular wool, allowing breathability, comfort and warmth all in one. Dismissing the classic rough and itchy characteristics of wool, premium Merino wool offers an undeniable luxe feeling and classic look, with all-season versatility.",
+            "hotspot_vertical_position": 51,
+            "hotspot_horizontal_position": 51,
+            "feature_text_1": "Natural fiber PROVEN to draw moisture away from you - fast.",
+            "feature_text_2": "All season versatility that keeps you warm when it's cold and cool when it's hot.",
+            "feature_text_3": "Eco-friendly natural fiber.",
+            "feature_text_4": "Feature text 4"
+          }
+        },
+        "product_feature_N8e3my": {
+          "type": "product_feature",
+          "disabled": true,
+          "settings": {
+            "heading": "Benefits",
+            "description": "Introducing our signature MatchlessMerino",
+            "hotspot_vertical_position": 65,
+            "hotspot_horizontal_position": 68,
+            "feature_text_1": "All season versatility that keeps you warm when it's cold and cool when it's hot.",
+            "feature_text_2": "Eco-friendly natural fiber.",
+            "feature_text_3": "Natural fiber PROVEN to draw moisture away from you - fast.",
+            "feature_text_4": "Feature text 4"
+          }
+        }
+      },
+      "block_order": [
+        "product_feature_DKMakk",
+        "product_feature_N8e3my"
+      ],
+      "settings": {
+        "enable_color_scheme_inheritance": true,
+        "color_scheme": "",
+        "is_hotspot_animated": true,
+        "hotspot_color": "#000000",
+        "hotspot_border_color": "#000000",
+        "hotspot_background": "rgba(255, 255, 255, 0.90)",
+        "hotspot_active_color": "#ffffff",
+        "hotspot_active_border_color": "#ffffff",
+        "hotspot_active_background": "rgba(0, 0, 0, 0.72)",
+        "heading": "Pollheim features",
+        "description": "<p>Introducing our signature MatchlessMerino, made of Merino wool, this crewneck is thinner, softer and finer than regular wool, allowing breathability, comfort and warmth all in one. Dismissing the classic rough and itchy characteristics of wool, premium Merino wool offers an undeniable luxe feeling and classic look, with all-season versatility.</p>",
+        "container_width": "inherit",
+        "offset_top_desktop": 0,
+        "offset_bottom_desktop": 0,
+        "offset_top_mobile": 0,
+        "offset_bottom_mobile": 0,
+        "inner_offset_top": 0,
+        "inner_offset_bottom": 0,
+        "inner_offset_top_mobile": 0,
+        "inner_offset_bottom_mobile": 0
+      }
+    },
+    "product-recommendations": {
+      "type": "product-recommendations",
+      "settings": {
+        "enable_color_scheme_inheritance": true,
+        "color_scheme": "",
+        "heading": "Recommendations",
+        "products_to_show": 4,
+        "enable_shopify_recommendations": true,
+        "collection": "all-products",
+        "container_width": "inherit",
+        "offset_top_desktop": 50,
+        "offset_bottom_desktop": 50,
+        "offset_top_mobile": 25,
+        "offset_bottom_mobile": 25,
+        "inner_offset_top": 25,
+        "inner_offset_bottom": 25,
+        "inner_offset_top_mobile": 25,
+        "inner_offset_bottom_mobile": 25
+      }
+    },
+    "recently-viewed": {
+      "type": "recently-viewed",
+      "settings": {
+        "heading": "Recently viewed",
+        "products_to_show": 4,
+        "layout": "4",
+        "show_arrows": true,
+        "enable_color_scheme_inheritance": true,
+        "color_scheme": "",
+        "container_width": "inherit",
+        "offset_top_desktop": 25,
+        "offset_bottom_desktop": 25,
+        "offset_top_mobile": 25,
+        "offset_bottom_mobile": 25,
+        "inner_offset_top": 30,
+        "inner_offset_bottom": 30,
+        "inner_offset_top_mobile": 30,
+        "inner_offset_bottom_mobile": 30
+      }
+    }
+  },
+  "order": [
+    "product-template",
+    "shipping_note",
+    "richtext",
+    "image_with_text",
+    "product_features",
+    "product-recommendations",
+    "recently-viewed"
+  ]
+}
