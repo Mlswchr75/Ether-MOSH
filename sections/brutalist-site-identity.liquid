@@ -1,0 +1,54 @@
+<style>
+  .br-identity-banner {
+    background: #000;
+    /* push entire section below the transparent fixed header + announcement bar */
+    padding-top: calc(var(--header-height, 110px) + 1.5rem);
+    padding-bottom: 1.5rem;
+    padding-left: clamp(1rem, 4vw, 4rem);
+    padding-right: clamp(1rem, 4vw, 4rem);
+    border-bottom: 5px solid #FF2BD6;
+    position: relative;
+    overflow: visible;
+  }
+  .br-identity-banner__inner {
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+  }
+  .br-identity-banner__slash {
+    font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    font-size: clamp(0.85rem, 1.5vw, 1.1rem);
+    color: #FF2BD6;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    flex-shrink: 0;
+    line-height: 1;
+    user-select: none;
+  }
+  .br-identity-banner__name {
+    font-family: "Arial Black", Impact, "Helvetica Neue", system-ui, sans-serif;
+    font-weight: 900;
+    font-size: clamp(1.4rem, 5vw, 3.5rem);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #fff;
+    margin: 0;
+    line-height: 1;
+    word-break: break-word;
+  }
+</style>
+
+<div class="br-identity-banner">
+  <div class="br-identity-banner__inner">
+    <span class="br-identity-banner__slash" aria-hidden="true">//</span>
+    <h1 class="br-identity-banner__name">AESTHETIC REBELLION</h1>
+  </div>
+</div>
+
+{% schema %}
+{
+  "name": "Brutalist Site Identity",
+  "tag": "section",
+  "class": "section-br-site-identity"
+}
+{% endschema %}
