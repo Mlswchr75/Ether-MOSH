@@ -1,0 +1,38 @@
+{
+  "batch": 10,
+  "cursor_used": "eyJsYXN0X2lkIjo5Mjk5NjM4NjQ5MDU5LCJsYXN0X3ZhbHVlIjoiOTI5OTYzODY0OTA1OSJ9",
+  "next_cursor": null,
+  "has_next_page": false,
+  "products_451_472": [
+    {"title": "Chaos Crew Tank (Graffiti Y-Back Muscle Tee)", "sku": "ADS-3MBXXF15-NRX7G-FFFFFF-S", "provider": "Yoycol"},
+    {"title": "Nimbus Drift 5000 Premium AOP Performance Tee (Abstract Smoke Marble)", "sku": "ADS-3MTXGT80-NS1U3-FFFFFF-S", "provider": "Yoycol"},
+    {"title": "Psychedelic Mood-Shift Bucket Hat (Reversible Trippy)", "sku": "ADS-2AAOYF04-NS249-FFFFFF-M", "provider": "Yoycol"},
+    {"title": "Scuba Irregular Hem Jacket (Deep Teal Bioluminescent Scale)", "sku": "ADS-3WOSCX10-NS2SN-FFFFFF-S", "provider": "Yoycol"},
+    {"title": "Festival & Rave Bucket Hat (Reversible Aura Print)", "sku": "ADS-2AAOYF04-NS2UF-FFFFFF-M", "provider": "Yoycol"},
+    {"title": "Loud Festival Cargo Pants for Ravers (Maximalist Utility)", "sku": "ADS-3MPXGZ91-NS7LE-FFFFFF-2XS", "provider": "Yoycol"},
+    {"title": "Maximalist Statement Shirt for Polished Rebel (Cotton Poplin)", "sku": "ADS-3MCSFM89-NS7LG-FFFFFF-S", "provider": "Yoycol"},
+    {"title": "Melted Rainbow Longline Hoodie (Liquid Swirl AOP Heavy Fleece)", "sku": "ADS-BDRCWY-NS7M4-FFFFFF-S", "provider": "Yoycol"},
+    {"title": "Golden Current Liquid Marble Hooded Bodysuit (Navy & Amber Swirl)", "sku": "ADS-3WJMCS22-NS7MH-FFFFFF-XS", "provider": "Yoycol"},
+    {"title": "Maximalist Festival Coat for Burners (Long Fleece Windbreaker)", "sku": "ADS-3MOWJR05-NS7N6-FFFFFF-S", "provider": "Yoycol"},
+    {"title": "Kaleido Bloom Martin Boots (Rainbow Mandala Floral AOP)", "sku": "ADS-3SMXMD01-NST3S-FFFFFF-US6(EUR39)", "provider": "Yoycol"},
+    {"title": "Indigo Garden Martin Boots (Blue & Violet Folk Floral AOP)", "sku": "ADS-3SMXMD01-NST3T-FFFFFF-US6(EUR39)", "provider": "Yoycol"},
+    {"title": "Graffiti Tag High-Top Plush Boots (White Street Art Fleece-Lined)", "sku": "ADS-3SMSMX04-NST3W-FFFFFF-US3(EUR35)", "provider": "Yoycol"},
+    {"title": "Abstract Colorful Faces Hardcover Journal (Artistic Notebook)", "sku": "23909293607767035248", "provider": "Printify"},
+    {"title": "Banana Vector Waves Hoodie (Squiggly Yellow & Cobalt AOP)", "sku": "ADS-3MHPZP22-NUE1P-FFFFFF-XS", "provider": "Yoycol"},
+    {"title": "Pirates Primary Splash Briefs (Navy & Gold AOP 180gsm Cotton)", "sku": "ADS-3MUSSJ24-NUE2N-FFFFFF-S", "provider": "Yoycol"},
+    {"title": "High on Potenuse Heavyweight Washed T-Shirt (Neon Graffiti, 250gsm USA)", "sku": "ADS-2MTXMD20-NUE58-000000-XS", "provider": "Yoycol"},
+    {"title": "High on Potenuse Washed Tee Double-Sided (250gsm Made in USA)", "sku": "ADS-2MTXMD20-NUEDP-000000-XS", "provider": "Yoycol"},
+    {"title": "Tina's Hoodie (Shattered Glass Print Streetwear)", "sku": "26506322737432461842", "provider": "Printify"},
+    {"title": "Graffiti Collage AOP Body Pillow (Street Art Comic Print)", "sku": "23757768605906380944", "provider": "Printify"},
+    {"title": "Urban Cipher Children's Hoodie (Abstract Graffiti AOP by Dylesmavis)", "sku": "17855588561291006995", "provider": "Printify"},
+    {"title": "All-Over Print Women's Loose Fit T-Shirt", "sku": "ADS-3WTXOC63-NXA2T-FFFFFF-XS", "provider": "Yoycol"}
+  ],
+  "batch_summary": {
+    "Yoycol": 18,
+    "Printify": 4,
+    "Contrado": 0,
+    "Peaprint": 0,
+    "Digital": 0,
+    "Unknown": 0
+  }
+}
