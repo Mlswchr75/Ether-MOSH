@@ -1,16 +1,18 @@
-import praw
+"""
+Reddit trend scouting via Reddit's public JSON API.
+No credentials required — uses public hot/rising/top endpoints.
+"""
+import requests
 import json
 import os
+import time
 from datetime import datetime
-from config import REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET, REDDIT_USER_AGENT, REDDIT_SUBS, VIRAL_SIGNALS, RAW_DIR
+from config import REDDIT_SUBS, VIRAL_SIGNALS, RAW_DIR
 
-
-def get_client():
-    return praw.Reddit(
-        client_id=REDDIT_CLIENT_ID,
-        client_secret=REDDIT_CLIENT_SECRET,
-        user_agent=REDDIT_USER_AGENT,
-    )
+HEADERS = {
+    "User-Agent": "TrendScout/1.0 (trend research bot; non-commercial)",
+    "Accept": "application/json",
+}
 
 
 def is_viral(text: str) -> bool:
@@ -18,40 +20,54 @@ def is_viral(text: str) -> bool:
     return any(sig in text_lower for sig in VIRAL_SIGNALS)
 
 
-def scrape_subreddit(reddit, sub_name: str, limit: int = 25) -> list[dict]:
-    results = []
+def fetch_subreddit(sub: str, sort: str = "hot", limit: int = 25) -> list[dict]:
+    url = f"https://www.reddit.com/r/{sub}/{sort}.json?limit={limit}&t=day"
     try:
-        sub = reddit.subreddit(sub_name)
-        for post in sub.hot(limit=limit):
-            if post.score < 50:
+        r = requests.get(url, headers=HEADERS, timeout=10)
+        if r.status_code == 429:
+            print(f"  [rate limit] r/{sub} — waiting 5s")
+            time.sleep(5)
+            r = requests.get(url, headers=HEADERS, timeout=10)
+        if r.status_code != 200:
+            print(f"  [!] r/{sub} {sort}: HTTP {r.status_code}")
+            return []
+        posts = r.json().get("data", {}).get("children", [])
+        results = []
+        for p in posts:
+            d = p.get("data", {})
+            score = d.get("score", 0)
+            if score < 20:
                 continue
-            entry = {
-                "source": f"r/{sub_name}",
-                "title": post.title,
-                "score": post.score,
-                "comments": post.num_comments,
-                "url": f"https://reddit.com{post.permalink}",
-                "flair": post.link_flair_text,
-                "viral_signals": is_viral(post.title),
-                "created_utc": post.created_utc,
-            }
-            results.append(entry)
+            results.append({
+                "source": f"r/{sub}",
+                "sort": sort,
+                "title": d.get("title", ""),
+                "score": score,
+                "comments": d.get("num_comments", 0),
+                "url": f"https://reddit.com{d.get('permalink', '')}",
+                "flair": d.get("link_flair_text"),
+                "viral_signals": is_viral(d.get("title", "")),
+                "created_utc": d.get("created_utc", 0),
+            })
+        return results
     except Exception as e:
-        print(f"  [!] r/{sub_name}: {e}")
-    return results
+        print(f"  [!] r/{sub} {sort}: {e}")
+        return []
 
 
 def run(save_path: str = None) -> list[dict]:
-    print("[Reddit] Starting scan...")
-    reddit = get_client()
+    print("[Reddit] Scanning via public JSON API (no credentials needed)...")
     all_posts = []
 
     for sub in REDDIT_SUBS:
-        posts = scrape_subreddit(reddit, sub)
-        all_posts.extend(posts)
-        print(f"  r/{sub}: {len(posts)} posts")
+        # hot gives volume; rising gives early-signal trend detection
+        posts = fetch_subreddit(sub, sort="hot")
+        rising = fetch_subreddit(sub, sort="rising", limit=10)
+        combined = posts + rising
+        all_posts.extend(combined)
+        print(f"  r/{sub}: {len(combined)} posts")
+        time.sleep(0.75)  # gentle rate limiting — Reddit allows ~1 req/sec unauthenticated
 
-    # Save raw data
     if save_path is None:
         ts = datetime.now().strftime("%Y%m%d_%H%M")
         save_path = os.path.join(RAW_DIR, f"reddit_{ts}.json")

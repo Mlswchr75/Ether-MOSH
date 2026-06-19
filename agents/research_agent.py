@@ -95,17 +95,13 @@ def run_full(skip_reddit: bool = False, skip_web: bool = False, skip_discord: bo
     console.print("[bold cyan]Starting full trend research run...[/bold cyan]")
     ts = datetime.now().strftime("%Y%m%d_%H%M")
 
-    from config import REDDIT_CLIENT_ID
     reddit_data = []
     web_data = {}
     discord_data = {}
 
-    reddit_available = bool(REDDIT_CLIENT_ID)
-    if not skip_reddit and reddit_available:
+    if not skip_reddit:
         console.print("\n[yellow]▶ Reddit Scout[/yellow]")
         reddit_data = reddit_scout.run(save_path=os.path.join(RAW_DIR, f"reddit_{ts}.json"))
-    elif not skip_reddit:
-        console.print("\n[dim]▶ Reddit Scout skipped (no credentials — add REDDIT_CLIENT_ID to .env to enable)[/dim]")
 
     if not skip_web:
         console.print("\n[yellow]▶ Web Scout (Pinterest / Google / TikTok / Etsy)[/yellow]")
