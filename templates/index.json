@@ -1,9 +1,609 @@
+/*
+ * ------------------------------------------------------------
+ * IMPORTANT: The contents of this file are auto-generated.
+ *
+ * This file may be updated by the Shopify admin theme editor
+ * or related systems. Please exercise caution as any changes
+ * made to this file may be overwritten.
+ * ------------------------------------------------------------
+ */
 {
-  "_note": "Full content tracked in Shopify theme gid://shopify/OnlineStoreTheme/158227464419",
-  "sections_order": [
-    "br_site_identity (NEW - brutalist-site-identity)",
-    "177764125793d0c3a5 (disabled _blocks)",
+  "sections": {
+    "br_site_identity": {
+      "type": "brutalist-site-identity",
+      "settings": {}
+    },
+    "177764125793d0c3a5": {
+      "type": "_blocks",
+      "blocks": {
+        "ai_gen_block_d2d4f01_J9dJgQ": {
+          "type": "ai_gen_block_d2d4f01",
+          "disabled": true,
+          "settings": {
+            "max_collections": 20,
+            "scroll_speed": 10,
+            "pause_on_hover": true,
+            "card_gap": 10,
+            "card_width": 300,
+            "card_height": 400,
+            "card_border_radius": 12,
+            "title_font_size": 46,
+            "title_color": "#ffffff"
+          },
+          "blocks": {}
+        }
+      },
+      "block_order": [
+        "ai_gen_block_d2d4f01_J9dJgQ"
+      ],
+      "settings": {}
+    },
+    "brutalist_random_products_bxjR9M": {
+      "type": "brutalist-random-products",
+      "name": "Brutalist Random Products",
+      "settings": {
+        "heading": "",
+        "subheading": "",
+        "bg_color": "#000000",
+        "fg_color": "#ffffff",
+        "accent_color": "#ff2bd6",
+        "cols_desktop": 3,
+        "cols_mobile": 2,
+        "gap": 32,
+        "card_aspect": "4 / 5",
+        "source_collection": "",
+        "max_total": 450,
+        "initial_count": 12,
+        "shuffle": true,
+        "cycle_speed": 700
+      }
+    },
+    "video": {
+      "type": "video",
+      "blocks": {
+        "ticker_content_jVk8PL": {
+          "type": "ticker_content",
+          "disabled": true,
+          "settings": {
+            "block_text": "Ticker text"
+          }
+        },
+        "ticker_content_Mc3hjb": {
+          "type": "ticker_content",
+          "disabled": true,
+          "settings": {
+            "block_text": "Ticker text"
+          }
+        },
+        "ticker_content_TWEiBz": {
+          "type": "ticker_content",
+          "disabled": true,
+          "settings": {
+            "block_text": "<em>Get free</em> shipping on purchases over $100"
+          }
+        }
+      },
+      "block_order": [
+        "ticker_content_jVk8PL",
+        "ticker_content_Mc3hjb",
+        "ticker_content_TWEiBz"
+      ],
+      "disabled": true,
+      "settings": {
+        "video_type": "html",
+        "external_video_url_desktop": "https://www.youtube.com/watch?v=_9VUPq3SxOc",
+        "external_video_url_mobile": "https://www.youtube.com/watch?v=_9VUPq3SxOc",
+        "text_color": "#ffffff",
+        "movement_speed_desktop": 30,
+        "movement_speed_mobile": 27,
+        "container_width": "inherit",
+        "offset_top_desktop": 32,
+        "offset_bottom_desktop": 32,
+        "offset_top_mobile": 32,
+        "offset_bottom_mobile": 32
+      }
+    },
+    "featured_product": {
+      "type": "featured-product",
+      "blocks": {
+        "vendor": {
+          "type": "vendor",
+          "settings": {
+            "make_vendor_link": true,
+            "offset_top_desktop": 8,
+            "offset_bottom_desktop": 8,
+            "offset_top_mobile": 8,
+            "offset_bottom_mobile": 8
+          }
+        },
+        "title": {
+          "type": "title",
+          "settings": {
+            "offset_top_desktop": 8,
+            "offset_bottom_desktop": 8,
+            "offset_top_mobile": 8,
+            "offset_bottom_mobile": 8
+          }
+        },
+        "sku": {
+          "type": "sku",
+          "settings": {
+            "sku_text": "SKU: {SKU}",
+            "offset_top_desktop": 8,
+            "offset_bottom_desktop": 8,
+            "offset_top_mobile": 8,
+            "offset_bottom_mobile": 8
+          }
+        },
+        "description": {
+          "type": "description",
+          "settings": {
+            "offset_top_desktop": 8,
+            "offset_bottom_desktop": 8,
+            "offset_top_mobile": 8,
+            "offset_bottom_mobile": 8
+          }
+        },
+        "options": {
+          "type": "options",
+          "settings": {
+            "variant_picker": "radio",
+            "offset_top_desktop": 8,
+            "offset_bottom_desktop": 8,
+            "offset_top_mobile": 8,
+            "offset_bottom_mobile": 8
+          }
+        },
+        "price": {
+          "type": "price",
+          "settings": {
+            "offset_top_desktop": 8,
+            "offset_bottom_desktop": 8,
+            "offset_top_mobile": 8,
+            "offset_bottom_mobile": 8
+          }
+        },
+        "quantity": {
+          "type": "quantity",
+          "settings": {
+            "offset_top_desktop": 8,
+            "offset_bottom_desktop": 8,
+            "offset_top_mobile": 8,
+            "offset_bottom_mobile": 8
+          }
+        },
+        "add_to_cart": {
+          "type": "add_to_cart",
+          "settings": {
+            "button_type": "secondary",
+            "button_buy_it_type": "primary",
+            "show_additional_buttons": true,
+            "show_gift_card_recipient": true,
+            "offset_top_desktop": 8,
+            "offset_bottom_desktop": 8,
+            "offset_top_mobile": 8,
+            "offset_bottom_mobile": 8
+          }
+        },
+        "pickup_availability": {
+          "type": "pickup_availability",
+          "disabled": true,
+          "settings": {
+            "offset_top_desktop": 8,
+            "offset_bottom_desktop": 8,
+            "offset_top_mobile": 8,
+            "offset_bottom_mobile": 8
+          }
+        },
+        "drawers": {
+          "type": "drawers",
+          "settings": {
+            "show_description": false,
+            "description_toggle_text": "Description",
+            "description_drawer_title": "Description",
+            "drawer_page_1": "",
+            "drawer_toggle_text_1": "Drawer 1",
+            "drawer_title_1": "Drawer 1",
+            "drawer_page_2": "",
+            "drawer_toggle_text_2": "Drawer 2",
+            "drawer_title_2": "Drawer 2",
+            "drawer_page_3": "",
+            "drawer_toggle_text_3": "Drawer 3",
+            "drawer_title_3": "Drawer 3",
+            "offset_top_desktop": 8,
+            "offset_bottom_desktop": 8,
+            "offset_top_mobile": 8,
+            "offset_bottom_mobile": 8
+          }
+        },
+        "complementary": {
+          "type": "complementary",
+          "settings": {
+            "heading": "You May Also Like",
+            "offset_top_desktop": 8,
+            "offset_bottom_desktop": 8,
+            "offset_top_mobile": 8,
+            "offset_bottom_mobile": 8
+          }
+        }
+      },
+      "block_order": [
+        "vendor",
+        "title",
+        "sku",
+        "description",
+        "options",
+        "price",
+        "quantity",
+        "add_to_cart",
+        "pickup_availability",
+        "drawers",
+        "complementary"
+      ],
+      "disabled": true,
+      "settings": {
+        "enable_color_scheme_inheritance": true,
+        "color_scheme": "",
+        "product": "",
+        "media_layout": "stacked_2_col",
+        "thumbnails_position": "bottom",
+        "show_thumbnails_mobile": false,
+        "media_height": "full_size",
+        "image_object_fit": "cover",
+        "show_taxes_included": true,
+        "show_pay_installments": true,
+        "show_size_guide": true,
+        "size_guide_button_placement": "under-options",
+        "size_guide_page": "",
+        "size_guide_button_text": "Size guide",
+        "size_guide_drawer_title": "Size guide",
+        "container_width": "inherit",
+        "offset_top_desktop": 32,
+        "offset_bottom_desktop": 32,
+        "offset_top_mobile": 16,
+        "offset_bottom_mobile": 16,
+        "inner_offset_top": 32,
+        "inner_offset_bottom": 32,
+        "inner_offset_top_mobile": 16,
+        "inner_offset_bottom_mobile": 16
+      }
+    },
+    "product_features": {
+      "type": "product-features",
+      "blocks": {
+        "product_feature_ynTYHf": {
+          "type": "product_feature",
+          "disabled": true,
+          "settings": {
+            "heading": "Features",
+            "description": "Introducing our signature MatchlessMerino, made of Merino wool, this crewneck is thinner, softer and finer than regular wool, allowing breathability, comfort and warmth all in one. Dismissing the classic rough and itchy characteristics of wool, premium Merino wool offers an undeniable luxe feeling and classic look, with all-season versatility.",
+            "hotspot_vertical_position": 42,
+            "hotspot_horizontal_position": 54,
+            "feature_text_1": "Natural fiber PROVEN to draw moisture away from you - fast.",
+            "feature_text_2": "All season versatility that keeps you warm when it's cold and cool when it's hot.",
+            "feature_text_3": "Eco-friendly natural fiber.",
+            "feature_text_4": "Feature text 4"
+          }
+        },
+        "product_feature_zFPMYe": {
+          "type": "product_feature",
+          "disabled": true,
+          "settings": {
+            "heading": "Benefits",
+            "description": "Introducing our signature MatchlessMerino",
+            "hotspot_vertical_position": 62,
+            "hotspot_horizontal_position": 45,
+            "feature_text_1": "All season versatility that keeps you warm when it's cold and cool when it's hot.",
+            "feature_text_2": "Eco-friendly natural fiber.",
+            "feature_text_3": "Natural fiber PROVEN to draw moisture away from you - fast.",
+            "feature_text_4": "Feature text 4"
+          }
+        },
+        "product_feature_RLDMRj": {
+          "type": "product_feature",
+          "disabled": true,
+          "settings": {
+            "heading": "Sustainability",
+            "description": "Ethically sourced materials with a commitment to eco-friendly production. Designed to minimize environmental impact without compromising on quality or style.",
+            "hotspot_vertical_position": 81,
+            "hotspot_horizontal_position": 58,
+            "feature_text_1": "Eco-friendly natural fiber.",
+            "feature_text_2": "Natural fiber PROVEN to draw moisture away from you - fast.",
+            "feature_text_3": "All season versatility that keeps you warm when it's cold and cool when it's hot.",
+            "feature_text_4": "Feature text 4"
+          }
+        }
+      },
+      "block_order": [
+        "product_feature_ynTYHf",
+        "product_feature_zFPMYe",
+        "product_feature_RLDMRj"
+      ],
+      "disabled": true,
+      "settings": {
+        "enable_color_scheme_inheritance": true,
+        "color_scheme": "",
+        "is_hotspot_animated": true,
+        "hotspot_color": "#000000",
+        "hotspot_border_color": "#000000",
+        "hotspot_background": "rgba(255, 255, 255, 0.90)",
+        "hotspot_active_color": "#ffffff",
+        "hotspot_active_border_color": "#ffffff",
+        "hotspot_active_background": "rgba(0, 0, 0, 0.72)",
+        "heading": "POLLHEIM features",
+        "description": "<p>Crafted from high-quality wool and cotton blends, ensuring durability, breathability, and all-day comfort. Designed for a luxurious feel with a refined finish.</p>",
+        "container_width": "inherit",
+        "offset_top_desktop": 0,
+        "offset_bottom_desktop": 0,
+        "offset_top_mobile": 0,
+        "offset_bottom_mobile": 0,
+        "inner_offset_top": 0,
+        "inner_offset_bottom": 0,
+        "inner_offset_top_mobile": 0,
+        "inner_offset_bottom_mobile": 0
+      }
+    },
+    "ticker": {
+      "type": "ticker",
+      "disabled": true,
+      "settings": {
+        "hide_divider": false,
+        "text": "<p>New Spring <em>Collections</em></p>",
+        "desktop_movement_speed": 20,
+        "mobile_movement_speed": 35,
+        "text_color": "#ffffff",
+        "container_width": "inherit",
+        "offset_top_desktop_external": 70,
+        "offset_bottom_desktop_external": 0,
+        "offset_top_mobile_external": 0,
+        "offset_bottom_mobile_external": 0
+      }
+    },
+    "our_story": {
+      "type": "our-story",
+      "blocks": {
+        "image_JFcCPh": { "type": "image", "disabled": true, "settings": {} },
+        "image_VqJFLq": { "type": "image", "settings": {} },
+        "image_VN9dpV": { "type": "image", "settings": {} },
+        "image_VRmw98": { "type": "image", "settings": {} },
+        "image_KdBE8a": { "type": "image", "disabled": true, "settings": {} },
+        "image_g4aKPB": { "type": "image", "disabled": true, "settings": {} },
+        "image_EKikt6": { "type": "image", "disabled": true, "settings": {} },
+        "image_7wrHH9": { "type": "image", "disabled": true, "settings": {} }
+      },
+      "block_order": ["image_JFcCPh","image_VqJFLq","image_VN9dpV","image_VRmw98","image_KdBE8a","image_g4aKPB","image_EKikt6","image_7wrHH9"],
+      "disabled": true,
+      "settings": {
+        "enable_color_scheme_inheritance": false,
+        "color_scheme": "scheme-5",
+        "heading": "",
+        "subheading": "",
+        "text": "",
+        "button_label": "Button label",
+        "button_aria_label": "",
+        "button_url": "",
+        "button_style": "primary",
+        "text_alignment": "center",
+        "container_width": "inherit",
+        "offset_top_desktop": 0,
+        "offset_bottom_desktop": 0,
+        "offset_top_mobile": 0,
+        "offset_bottom_mobile": 0,
+        "inner_offset_top": 64,
+        "inner_offset_bottom": 64,
+        "inner_offset_top_mobile": 32,
+        "inner_offset_bottom_mobile": 32
+      }
+    },
+    "image_with_text": {
+      "type": "image-with-text",
+      "disabled": true,
+      "settings": {
+        "enable_color_scheme_inheritance": true,
+        "color_scheme": "",
+        "images_layout": "multiply_images",
+        "enable_images_animation": true,
+        "scroll_images_direction": "top",
+        "image_position": "right",
+        "text_alignment": "center",
+        "label": "Pollheim suits",
+        "heading": "For Mens and Womens",
+        "text_content": "<p>Welcome to our distinguished Men's and Woman's Wear Collection at Pollheim, where craftsmanship meets contemporary style.</p>",
+        "button_label": "Button label",
+        "button_aria_label": "",
+        "button_url": "",
+        "button_style": "primary",
+        "fist_col_movement_speed": 20,
+        "second_col_movement_speed": 20,
+        "container_width": "inherit",
+        "offset_top_desktop": 50,
+        "offset_bottom_desktop": 50,
+        "offset_top_mobile": 25,
+        "offset_bottom_mobile": 25,
+        "inner_offset_top": 30,
+        "inner_offset_bottom": 30,
+        "inner_offset_top_mobile": 30,
+        "inner_offset_bottom_mobile": 30
+      }
+    },
+    "banner": {
+      "type": "banner",
+      "disabled": true,
+      "settings": {
+        "desktop_image_height": "600px",
+        "mobile_image_height": "350px",
+        "media_type": "image",
+        "title": "New Spring Collections",
+        "text": "<p>Ready-to-wear bespoke items</p>",
+        "button_label_1": "Shop New",
+        "button_link_1": "/",
+        "button_aria_label_1": "",
+        "button_label_2": "Shop All",
+        "button_link_2": "/",
+        "button_aria_label_2": "",
+        "show_breadcrumbs": false,
+        "enable_timer": false,
+        "timer_month": "0",
+        "timer_day": "1",
+        "timer_hour": "0",
+        "timer_timezone": "+0",
+        "timer_background": "rgba(255,255,255, 0.12)",
+        "timer_color": "#ffffff",
+        "external_video_url_desktop": "",
+        "external_video_url_mobile": "",
+        "content_alignment": "center",
+        "content_alignment_mobile": "center",
+        "block_alignment": "center",
+        "block_alignment_vertical": "center",
+        "block_alignment_vertical_mob": "center",
+        "section_background": "#e7e7e7",
+        "overlay": "rgba(0,0,0, 0.1)",
+        "text_color": "#ffffff",
+        "button_background_1": "#ffffff",
+        "button_color_1": "#000000",
+        "button_border_1": "#ffffff",
+        "button_background_hover_1": "#000000",
+        "button_color_hover_1": "#ffffff",
+        "button_border_hover_1": "#ffffff",
+        "button_background_2": "#ffffff",
+        "button_color_2": "#000000",
+        "button_border_2": "#ffffff",
+        "button_background_hover_2": "#000000",
+        "button_color_hover_2": "#ffffff",
+        "button_border_hover_2": "#ffffff",
+        "container_width": "100%",
+        "offset_top_desktop": 80,
+        "offset_bottom_desktop": 25,
+        "offset_top_mobile": 25,
+        "offset_bottom_mobile": 25
+      }
+    },
+    "1777598346c8b4c794": {
+      "type": "_blocks",
+      "disabled": true,
+      "settings": {}
+    },
+    "featured_blog": {
+      "type": "featured-blog",
+      "disabled": true,
+      "settings": {
+        "enable_color_scheme_inheritance": true,
+        "color_scheme": "scheme-2",
+        "heading": "All The Latest - Brought To You By Fash Leport & Nooze Angor!",
+        "blog": "news",
+        "link_text": "In Other News",
+        "link_aria_label_text": "Link to blog",
+        "button_style": "primary",
+        "container_width": "inherit",
+        "offset_top_desktop": 0,
+        "offset_bottom_desktop": 0,
+        "offset_top_mobile": 0,
+        "offset_bottom_mobile": 0,
+        "inner_offset_top": 0,
+        "inner_offset_bottom": 0,
+        "inner_offset_top_mobile": 0,
+        "inner_offset_bottom_mobile": 0
+      }
+    },
+    "social_gallery": {
+      "type": "social-gallery",
+      "blocks": {
+        "image_R4BN4q": { "type": "image", "settings": { "image": "shopify://shop_images/neon-cellular-activity-mens-hoodie-bold-vibrant-swirls-flowing-cells-stylish-sweatshirt-colorful-outerwear-artistic-pullover-jacket-8001854.jpg", "image_link": "", "open_link_in_new_tab": false } },
+        "image_GRA6hE": { "type": "image", "settings": { "image": "shopify://shop_images/ifckeddyles.jpg", "image_link": "", "open_link_in_new_tab": false } },
+        "image_TWhmkQ": { "type": "image", "settings": { "image": "shopify://shop_images/0a87d4bc5d5b8f114e6e5037a4a39211.png", "image_link": "", "open_link_in_new_tab": false } },
+        "image_Lm43CD": { "type": "image", "settings": { "image": "shopify://shop_images/wall-of-graft-titti-splatter-art-digital-graphic-hoodie-2077120.jpg", "image_link": "", "open_link_in_new_tab": false } },
+        "image_YLrNQe": { "type": "image", "settings": { "image": "shopify://shop_images/all-over-print-womens-maxi-dressplus-size-9988784.jpg", "image_link": "", "open_link_in_new_tab": false } },
+        "image_RKFw8w": { "type": "image", "settings": { "image": "shopify://shop_images/rn-image_picker_lib_temp_8552fa6c-5d8f-4eed-b221-600e32bd0fbf.png", "image_link": "", "open_link_in_new_tab": false } },
+        "image_AKtAfW": { "type": "image", "settings": { "image": "shopify://shop_images/melted-candy-all-over-print-unisex-sweatshirt-100-cotton-310gsm-5459998.png", "image_link": "", "open_link_in_new_tab": false } },
+        "image_bkzpn7": { "type": "image", "settings": { "image": "shopify://shop_images/1fc7015f-il_fullxfull.7676320764_4uif.jpg", "image_link": "", "open_link_in_new_tab": false } },
+        "image_TU37a6": { "type": "image", "settings": { "image": "shopify://shop_images/gemini-image-2-UGC_Plus-Size_Model_Accuracy_Prompt_Short_Create_a_hyper-realistic_professional_-0_4.jpg", "image_link": "", "open_link_in_new_tab": false } },
+        "image_bR4Yrp": { "type": "image", "settings": { "image": "shopify://shop_images/1660187327293.jpg", "image_link": "", "open_link_in_new_tab": false } },
+        "image_iAq4ga": { "type": "image", "settings": { "image": "shopify://shop_images/gemini-image-2_accurately_put_this_hoodie_on_the_woman_in_the_yellow._dont_change_anything_else-0.jpg", "image_link": "", "open_link_in_new_tab": false } },
+        "image_87xRz8": { "type": "image", "settings": { "image": "shopify://shop_images/Two_models_streetstyle_fashion_e__202605010604.jpg", "image_link": "", "open_link_in_new_tab": false } }
+      },
+      "block_order": ["image_R4BN4q","image_GRA6hE","image_TWhmkQ","image_Lm43CD","image_YLrNQe","image_RKFw8w","image_AKtAfW","image_bkzpn7","image_TU37a6","image_bR4Yrp","image_iAq4ga","image_87xRz8"],
+      "disabled": true,
+      "settings": {
+        "enable_color_scheme_inheritance": true,
+        "color_scheme": "scheme-2",
+        "title": "make the concrete your next runway!",
+        "link_label": "@DYLESMAVIS",
+        "link_url": "/",
+        "animation_movement_speed": 45,
+        "container_width": "inherit",
+        "offset_top_desktop": 10,
+        "offset_bottom_desktop": 10,
+        "offset_top_mobile": 0,
+        "offset_bottom_mobile": 10,
+        "inner_offset_top": 0,
+        "inner_offset_bottom": 10,
+        "inner_offset_top_mobile": 0,
+        "inner_offset_bottom_mobile": 10
+      }
+    },
+    "1781104294861b9ced": {
+      "type": "_blocks",
+      "blocks": {
+        "ai_gen_block_b52b797_M4WfTR": {
+          "type": "ai_gen_block_b52b797",
+          "settings": {
+            "section_title": "M O S H F I T",
+            "iframe_url": "https://ether-mosh.lovable.app/",
+            "iframe_title": "ether-mosh demo",
+            "title_font": "garamond_n4",
+            "title_size": 32,
+            "title_color": "#ffffff",
+            "title_alignment": "center",
+            "title_spacing": 32,
+            "iframe_height": 60,
+            "iframe_height_mobile": 50,
+            "border_color": "#444444",
+            "border_width": 2,
+            "border_radius": 12,
+            "frame_background": "#1c1c1c",
+            "iframe_background": "#000000",
+            "shadow_horizontal": 0,
+            "shadow_vertical": 8,
+            "shadow_blur": 24,
+            "shadow_spread": 0,
+            "shadow_color": "#000000",
+            "inset_glow": 8,
+            "inset_glow_color": "#444444",
+            "section_background": "#1c1c1c",
+            "section_padding_top": 60,
+            "section_padding_bottom": 60,
+            "section_padding_horizontal": 20,
+            "section_padding_top_mobile": 40,
+            "section_padding_bottom_mobile": 40,
+            "section_padding_horizontal_mobile": 16
+          },
+          "blocks": {}
+        }
+      },
+      "block_order": ["ai_gen_block_b52b797_M4WfTR"],
+      "disabled": true,
+      "settings": {}
+    },
+    "1781105990cf5ecb20": {
+      "type": "_blocks",
+      "settings": {}
+    }
+  },
+  "order": [
+    "br_site_identity",
+    "177764125793d0c3a5",
     "brutalist_random_products_bxjR9M",
-    "...other disabled sections..."
+    "video",
+    "featured_product",
+    "product_features",
+    "ticker",
+    "our_story",
+    "image_with_text",
+    "banner",
+    "1777598346c8b4c794",
+    "featured_blog",
+    "social_gallery",
+    "1781104294861b9ced",
+    "1781105990cf5ecb20"
   ]
 }
