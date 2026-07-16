@@ -1,0 +1,163 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 266 24% 5%;
+    --foreground: 280 20% 92%;
+
+    --card: 266 22% 8%;
+    --card-foreground: 280 20% 92%;
+
+    --primary: 322 92% 60%;
+    --primary-foreground: 266 24% 5%;
+
+    --secondary: 266 16% 14%;
+    --secondary-foreground: 280 20% 92%;
+
+    --muted: 266 14% 12%;
+    --muted-foreground: 275 10% 62%;
+
+    /* biome accent — imagePalette repaints --synth-accent at runtime */
+    --accent: 160 95% 55%;
+    --accent-foreground: 266 24% 5%;
+
+    --border: 268 14% 22%;
+    --input: 268 14% 22%;
+    --ring: 322 92% 60%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html, body, #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    overscroll-behavior: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+@layer utilities {
+  /* CRT scanline sheet */
+  .scanline {
+    background: repeating-linear-gradient(
+      to bottom,
+      transparent 0px,
+      transparent 2px,
+      hsl(var(--background) / 0.45) 3px,
+      transparent 4px
+    );
+  }
+
+  .bg-gradient-radial-darken {
+    background: radial-gradient(
+      ellipse at center,
+      transparent 30%,
+      hsl(var(--background) / 0.55) 78%,
+      hsl(var(--background) / 0.85) 100%
+    );
+  }
+
+  .animate-pulse-soft {
+    animation: pulse-soft 2.8s ease-in-out infinite;
+  }
+
+  .mosh-icon {
+    animation: glitch-skew 3.2s steps(1) infinite;
+  }
+
+  .mosh-glitch {
+    filter: drop-shadow(1px 0 0 hsl(var(--primary) / 0.8)) drop-shadow(-1px 0 0 hsl(var(--accent) / 0.8));
+  }
+
+  /* Glitch headline — RGB-split clones driven by data-text */
+  .mosh-text {
+    position: relative;
+    color: hsl(var(--foreground));
+    text-shadow: 0 0 24px hsl(var(--primary) / 0.35);
+  }
+  .mosh-text::before,
+  .mosh-text::after {
+    content: attr(data-text);
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+  }
+  .mosh-text::before {
+    color: hsl(var(--primary));
+    animation: mosh-split-a 2.4s steps(1) infinite;
+    mix-blend-mode: screen;
+  }
+  .mosh-text::after {
+    color: hsl(var(--accent));
+    animation: mosh-split-b 3.1s steps(1) infinite;
+    mix-blend-mode: screen;
+  }
+
+  /* Vertical range styling for touch-friendly sliders */
+  .mosh-range {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 4px;
+    border-radius: 9999px;
+    background: hsl(var(--muted));
+    outline: none;
+  }
+  .mosh-range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 22px;
+    height: 22px;
+    border-radius: 9999px;
+    background: hsl(var(--primary));
+    border: 2px solid hsl(var(--background));
+    box-shadow: 0 0 10px hsl(var(--primary) / 0.6);
+    cursor: pointer;
+  }
+  .mosh-range::-moz-range-thumb {
+    width: 22px;
+    height: 22px;
+    border-radius: 9999px;
+    background: hsl(var(--primary));
+    border: 2px solid hsl(var(--background));
+    box-shadow: 0 0 10px hsl(var(--primary) / 0.6);
+    cursor: pointer;
+  }
+}
+
+@keyframes mosh-split-a {
+  0%, 86%, 100% { transform: translate(0, 0); clip-path: inset(0 0 0 0); opacity: 0; }
+  88% { transform: translate(3px, -2px); clip-path: inset(10% 0 55% 0); opacity: 0.9; }
+  92% { transform: translate(-4px, 1px); clip-path: inset(50% 0 20% 0); opacity: 0.9; }
+  96% { transform: translate(2px, 0); clip-path: inset(75% 0 5% 0); opacity: 0.8; }
+}
+
+@keyframes mosh-split-b {
+  0%, 80%, 100% { transform: translate(0, 0); clip-path: inset(0 0 0 0); opacity: 0; }
+  83% { transform: translate(-3px, 2px); clip-path: inset(35% 0 40% 0); opacity: 0.85; }
+  89% { transform: translate(4px, -1px); clip-path: inset(5% 0 80% 0); opacity: 0.85; }
+  95% { transform: translate(-2px, 0); clip-path: inset(60% 0 15% 0); opacity: 0.75; }
+}
+
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.8; transform: scale(1.04); }
+}
+
+@keyframes glitch-skew {
+  0%, 88%, 100% { transform: skewX(0deg) translateX(0); }
+  90% { transform: skewX(4deg) translateX(2px); }
+  94% { transform: skewX(-3deg) translateX(-3px); }
+  97% { transform: skewX(1deg) translateX(1px); }
+}
+
+/* Safe-area padding for notched phones — used by the editor chrome */
+.pt-safe { padding-top: max(env(safe-area-inset-top), 0.75rem); }
+.pb-safe { padding-bottom: max(env(safe-area-inset-bottom), 0.75rem); }
