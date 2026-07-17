@@ -43,7 +43,7 @@ const Index = () => {
       const file = new File([blob], name, { type: blob.type || "image/jpeg" });
       toast.success("Loading demo — moshing…");
       await loadFile(file);
-      if (productUrl) window.open(productUrl, "_blank", "noopener,noreferrer");
+      window.open(productUrl, "_blank", "noopener,noreferrer");
     } catch {
       toast.error("Couldn't load that demo image");
     }
@@ -74,10 +74,10 @@ const Index = () => {
     <main className="relative h-screen w-screen overflow-hidden bg-background text-foreground">
       <Helmet>
         <title>MOSH — Audio-Reactive Visual Instrument</title>
-        <meta name="description" content="Drop an image and warp it in real time. MOSH is a browser-based audio-reactive visual instrument with 58 GPU effects." />
+        <meta name="description" content="Drop an image and warp it in real time. MOSH is a browser-based audio-reactive visual instrument with 59 GPU effects." />
         <link rel="canonical" href="https://ether-mosh.lovable.app/" />
         <meta property="og:title" content="MOSH — Audio-Reactive Visual Instrument" />
-        <meta property="og:description" content="Drop an image and warp it in real time. 58 GPU effects, beat-synced chaos, in your browser." />
+        <meta property="og:description" content="Drop an image and warp it in real time. 59 GPU effects, beat-synced chaos, in your browser." />
         <meta property="og:url" content="https://ether-mosh.lovable.app/" />
       </Helmet>
       <h1 className="sr-only">MOSH — Real-time audio-reactive image and video glitch instrument</h1>
@@ -131,7 +131,7 @@ const Index = () => {
               DROP AN IMAGE
             </div>
             <p className="max-w-xl font-mono text-xs uppercase tracking-[0.25em] text-foreground/70">
-              MOSH is a real-time, audio-reactive visual instrument. Load any image, stack 58 GPU effects, sync to your music, and export stills or video — all in your browser.
+              MOSH is a real-time, audio-reactive visual instrument. Load any image, stack 59 GPU effects, sync to your music, and export stills or video — all in your browser.
             </p>
             <div className="font-mono text-xs uppercase tracking-[0.35em] text-foreground/80">
               click anywhere · drag · paste · jpg · png · svg
@@ -178,14 +178,32 @@ const Index = () => {
             >
               go live →
             </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); navigate("/forge"); }}
+              className="font-mono text-xs uppercase tracking-[0.2em] text-foreground/70 hover:text-primary transition"
+            >
+              forge →
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); navigate("/install"); }}
+              className="font-mono text-xs uppercase tracking-[0.2em] text-foreground/70 hover:text-accent transition"
+            >
+              install →
+            </button>
           </div>
         </div>
 
         {/* Bottom credit */}
-        <div className="pointer-events-none absolute bottom-6 left-0 right-0 z-20 flex flex-col items-center gap-3">
-          <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/50">
-            runs entirely in your browser · nothing uploaded
-          </div>
+        <div className="pointer-events-auto absolute bottom-6 left-0 right-0 z-20 flex flex-col items-center gap-3">
+          <nav aria-label="Footer" className="flex flex-wrap items-center justify-center gap-4 font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/60">
+            <button type="button" onClick={(e) => { e.stopPropagation(); navigate("/pricing"); }} className="hover:text-accent transition">pricing</button>
+            <span aria-hidden className="text-foreground/30">·</span>
+            <button type="button" onClick={(e) => { e.stopPropagation(); navigate("/refund"); }} className="hover:text-accent transition">refunds</button>
+            <span aria-hidden className="text-foreground/30">·</span>
+            <button type="button" onClick={(e) => { e.stopPropagation(); navigate("/terms"); }} className="hover:text-accent transition">terms</button>
+            <span aria-hidden className="text-foreground/30">·</span>
+            <button type="button" onClick={(e) => { e.stopPropagation(); navigate("/privacy"); }} className="hover:text-accent transition">privacy</button>
+          </nav>
         </div>
         <RebellionNudge />
         <AboutTrigger />

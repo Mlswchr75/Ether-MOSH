@@ -1,0 +1,118 @@
+/** Export the current canvas as PNG/JPG/WEBP. Caller calls renderer.render() right before. */
+export async function exportCanvas(
+  canvas: HTMLCanvasElement,
+  opts: { format: "png" | "jpg" | "webp"; scale?: number; quality?: number; aspect?: number | null; transparent?: boolean },
+): Promise<Blob> {
+  const scale = opts.scale ?? 1;
+  const w = canvas.width * scale;
+  const h = canvas.height * scale;
+  const transparent = !!opts.transparent && opts.format === "png";
+
+  const out = document.createElement("canvas");
+  if (opts.aspect != null) {
+    const targetH = Math.round(Math.max(w / opts.aspect, h));
+    const targetW = Math.round(targetH * opts.aspect);
+    out.width = targetW;
+    out.height = targetH;
+    const ctx = out.getContext("2d")!;
+    if (!transparent) {
+      ctx.fillStyle = opts.format === "jpg" ? "#08080B" : "#08080B";
+      ctx.fillRect(0, 0, targetW, targetH);
+    }
+    const srcAspect = w / h;
+    let dw = targetW, dh = targetW / srcAspect;
+    if (dh > targetH) { dh = targetH; dw = targetH * srcAspect; }
+    const dx = (targetW - dw) / 2, dy = (targetH - dh) / 2;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(canvas, dx, dy, dw, dh);
+  } else {
+    out.width = w; out.height = h;
+    const ctx = out.getContext("2d")!;
+    if (!transparent && opts.format !== "png") { ctx.fillStyle = "#08080B"; ctx.fillRect(0, 0, w, h); }
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(canvas, 0, 0, w, h);
+  }
+
+  const mime =
+    opts.format === "jpg" ? "image/jpeg" :
+    opts.format === "webp" ? "image/webp" : "image/png";
+
+  return await new Promise<Blob>((resolve, reject) => {
+    out.toBlob(
+      (b) => b ? resolve(b) : reject(new Error("toBlob failed")),
+      mime,
+      opts.format === "png" ? undefined : (opts.quality ?? 0.92),
+    );
+  });
+}
+
+export async function remasterCanvas(canvas: HTMLCanvasElement, scale = 2): Promise<HTMLCanvasElement> {
+  const maxLongEdge = 4096;
+  const requestedScale = Math.max(1, Math.min(4, scale));
+  const longEdge = Math.max(canvas.width, canvas.height);
+  const targetScale = Math.min(requestedScale, maxLongEdge / Math.max(1, longEdge));
+  const out = document.createElement("canvas");
+  out.width = Math.max(1, Math.round(canvas.width * targetScale));
+  out.height = Math.max(1, Math.round(canvas.height * targetScale));
+  const ctx = out.getContext("2d")!;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(canvas, 0, 0, out.width, out.height);
+
+  // Gentle clarity pass after upscale: boosts local contrast without changing the artwork.
+  try {
+    const image = ctx.getImageData(0, 0, out.width, out.height);
+    const src = new Uint8ClampedArray(image.data);
+    const d = image.data;
+    const w = out.width;
+    const h = out.height;
+    const amount = 0.18;
+    for (let y = 1; y < h - 1; y++) {
+      for (let x = 1; x < w - 1; x++) {
+        const i = (y * w + x) * 4;
+        for (let c = 0; c < 3; c++) {
+          const blur = (
+            src[i + c - 4] + src[i + c + 4] + src[i + c - w * 4] + src[i + c + w * 4]
+          ) * 0.25;
+          d[i + c] = Math.max(0, Math.min(255, src[i + c] + (src[i + c] - blur) * amount));
+        }
+      }
+    }
+    ctx.putImageData(image, 0, 0);
+  } catch {
+    // If readback is unavailable, keep the high-quality upscaled render.
+  }
+
+  return out;
+}
+
+export function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
+export async function copyBlobToClipboard(blob: Blob): Promise<boolean> {
+  try {
+    const item = new (window as any).ClipboardItem({ [blob.type]: blob });
+    await (navigator.clipboard as any).write([item]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export const ASPECT_PRESETS: { label: string; aspect: number | null }[] = [
+  { label: "Original",     aspect: null },
+  { label: "Square 1:1",   aspect: 1 },
+  { label: "Story 9:16",   aspect: 9 / 16 },
+  { label: "Reels 9:16",   aspect: 9 / 16 },
+  { label: "Portrait 4:5", aspect: 4 / 5 },
+  { label: "Landscape 16:9", aspect: 16 / 9 },
+  { label: "Cinema 21:9",  aspect: 21 / 9 },
+  { label: "Twitter 3:1",  aspect: 3 },
+  { label: "Wallpaper",    aspect: 9 / 19.5 },
+  { label: "4K UHD 16:9",  aspect: 16 / 9 },
+];

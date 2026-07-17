@@ -1,104 +1,143 @@
 /**
- * Palette / biome extraction. Downsamples the loaded image, pulls the
- * dominant hues, and classifies the vibe into a "biome" that tints the UI
- * accent color. Pure Canvas2D — runs async, never blocks the render loop.
+ * Image palette extraction — Part 1 of v0.2.
+ *
+ * Public API: `extractPalette(image)` → returns a `PaletteProfile` describing
+ * the dominant colors and a "biome" character mapping derived from the image.
+ *
+ * Heavy lifting (k-means in LAB + edge density) runs in a Web Worker so the
+ * UI never stalls. If workers/OffscreenCanvas aren't available we fall back
+ * to a synchronous main-thread path with the same algorithm.
  */
-export type BiomeId = "ember" | "neon" | "glacier" | "verdant" | "dusk" | "chrome";
+
+export type BiomeId =
+  | "analog-warmth"
+  | "cyber-fm"
+  | "acid-reactor"
+  | "dreamwave"
+  | "modular-chaos"
+  | "industrial-pressure"
+  | "celestial-ambient"
+  | "arcade-memory";
 
 export type PaletteProfile = {
-  biome: BiomeId;
-  /** dominant swatches, hex strings, most-common first */
-  swatches: string[];
-  /** average hue 0..360, saturation 0..1, lightness 0..1 */
-  hue: number;
+  dominantColors: Array<[number, number, number]>;
+  hexes: string[];
+  warmth: number;
   saturation: number;
-  lightness: number;
+  brightness: number;
+  contrast: number;
+  density: number;
+  hueSpread: number;
+  biome: BiomeId;
+  biomeConfidence: number;
 };
 
 export const BIOME_LABELS: Record<BiomeId, string> = {
-  ember: "EMBER — heat + rust",
-  neon: "NEON — synthetic bloom",
-  glacier: "GLACIER — cold static",
-  verdant: "VERDANT — organic drift",
-  dusk: "DUSK — violet haze",
-  chrome: "CHROME — desaturated steel",
+  "analog-warmth":       "ANALOG WARMTH",
+  "cyber-fm":            "CYBER FM",
+  "acid-reactor":        "ACID REACTOR",
+  "dreamwave":           "DREAMWAVE",
+  "modular-chaos":       "MODULAR CHAOS",
+  "industrial-pressure": "INDUSTRIAL PRESSURE",
+  "celestial-ambient":   "CELESTIAL AMBIENT",
+  "arcade-memory":       "ARCADE MEMORY",
 };
 
-const BIOME_ACCENTS: Record<BiomeId, string> = {
-  ember: "#ff5c33",
-  neon: "#ff2ea6",
-  glacier: "#4fd8ff",
-  verdant: "#3dff9e",
-  dusk: "#b06bff",
-  chrome: "#c9ced6",
+export const BIOME_PROFILES: Record<BiomeId, {
+  warmth: number; saturation: number; brightness: number;
+  contrast: number; density: number; hueSpread: number;
+}> = {
+  "analog-warmth":       { warmth: 0.85, saturation: 0.45, brightness: 0.55, contrast: 0.35, density: 0.30, hueSpread: 0.20 },
+  "cyber-fm":            { warmth: 0.20, saturation: 0.65, brightness: 0.50, contrast: 0.65, density: 0.55, hueSpread: 0.45 },
+  "acid-reactor":        { warmth: 0.55, saturation: 0.95, brightness: 0.60, contrast: 0.75, density: 0.80, hueSpread: 0.75 },
+  "dreamwave":           { warmth: 0.65, saturation: 0.55, brightness: 0.45, contrast: 0.30, density: 0.25, hueSpread: 0.50 },
+  "modular-chaos":       { warmth: 0.50, saturation: 0.80, brightness: 0.55, contrast: 0.85, density: 0.90, hueSpread: 0.95 },
+  "industrial-pressure": { warmth: 0.40, saturation: 0.30, brightness: 0.25, contrast: 0.70, density: 0.55, hueSpread: 0.20 },
+  "celestial-ambient":   { warmth: 0.45, saturation: 0.20, brightness: 0.75, contrast: 0.20, density: 0.15, hueSpread: 0.35 },
+  "arcade-memory":       { warmth: 0.55, saturation: 0.85, brightness: 0.60, contrast: 0.80, density: 0.60, hueSpread: 0.80 },
 };
 
+/** Picks the dominant biome color most useful as a UI accent. */
 export function biomeAccentHex(profile: PaletteProfile): string {
-  return BIOME_ACCENTS[profile.biome];
+  return profile.hexes[0] ?? "#FF1F8F";
 }
 
-function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
-  r /= 255; g /= 255; b /= 255;
-  const max = Math.max(r, g, b), min = Math.min(r, g, b);
-  const l = (max + min) / 2;
-  if (max === min) return [0, 0, l];
-  const d = max - min;
-  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-  let h: number;
-  if (max === r) h = ((g - b) / d + (g < b ? 6 : 0));
-  else if (max === g) h = (b - r) / d + 2;
-  else h = (r - g) / d + 4;
-  return [h * 60, s, l];
-}
+let workerInstance: Worker | null = null;
+let nextRequestId = 1;
+const pending = new Map<number, (p: PaletteProfile) => void>();
 
-function classify(hue: number, sat: number, light: number): BiomeId {
-  if (sat < 0.12) return "chrome";
-  if (sat > 0.55 && light > 0.35 && (hue >= 280 || hue < 20)) return "neon";
-  if (hue >= 20 && hue < 70) return "ember";
-  if (hue >= 70 && hue < 170) return "verdant";
-  if (hue >= 170 && hue < 250) return "glacier";
-  return "dusk";
-}
-
-export async function extractPalette(image: HTMLImageElement): Promise<PaletteProfile> {
-  const SIZE = 48;
-  const canvas = document.createElement("canvas");
-  canvas.width = SIZE;
-  canvas.height = SIZE;
-  const ctx = canvas.getContext("2d", { willReadFrequently: true });
-  if (!ctx) throw new Error("no 2d context");
-  ctx.drawImage(image, 0, 0, SIZE, SIZE);
-  const { data } = ctx.getImageData(0, 0, SIZE, SIZE);
-
-  // 4-bit-per-channel histogram of sufficiently opaque pixels.
-  const bins = new Map<number, { count: number; r: number; g: number; b: number }>();
-  let hx = 0, hy = 0, satSum = 0, lightSum = 0, n = 0;
-  for (let i = 0; i < data.length; i += 4) {
-    if (data[i + 3] < 128) continue;
-    const r = data[i], g = data[i + 1], b = data[i + 2];
-    const key = ((r >> 4) << 8) | ((g >> 4) << 4) | (b >> 4);
-    const bin = bins.get(key) ?? { count: 0, r: 0, g: 0, b: 0 };
-    bin.count++; bin.r += r; bin.g += g; bin.b += b;
-    bins.set(key, bin);
-    const [h, s, l] = rgbToHsl(r, g, b);
-    // average hue on the circle, weighted by saturation so grays don't drag it
-    hx += Math.cos((h * Math.PI) / 180) * s;
-    hy += Math.sin((h * Math.PI) / 180) * s;
-    satSum += s; lightSum += l; n++;
-  }
-  if (!n) throw new Error("empty image");
-
-  const swatches = [...bins.values()]
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 5)
-    .map(({ count, r, g, b }) => {
-      const hex = (v: number) => Math.round(v / count).toString(16).padStart(2, "0");
-      return `#${hex(r)}${hex(g)}${hex(b)}`;
+function getWorker(): Worker | null {
+  if (workerInstance) return workerInstance;
+  if (typeof Worker === "undefined") return null;
+  try {
+    workerInstance = new Worker(
+      new URL("./imagePalette.worker.ts", import.meta.url),
+      { type: "module" },
+    );
+    workerInstance.addEventListener("message", (e: MessageEvent) => {
+      const { id, profile } = e.data as { id: number; profile: PaletteProfile };
+      const cb = pending.get(id);
+      if (cb) { pending.delete(id); cb(profile); }
     });
+    workerInstance.addEventListener("error", () => {
+      // worker dead — clear pending so callers fall back next time
+      workerInstance?.terminate();
+      workerInstance = null;
+    });
+    return workerInstance;
+  } catch {
+    return null;
+  }
+}
 
-  const hue = ((Math.atan2(hy, hx) * 180) / Math.PI + 360) % 360;
-  const saturation = satSum / n;
-  const lightness = lightSum / n;
+const WORK_SIZE = 64;
 
-  return { biome: classify(hue, saturation, lightness), swatches, hue, saturation, lightness };
+async function bitmapFromSource(image: HTMLImageElement | HTMLCanvasElement): Promise<ImageData | null> {
+  // We always normalize to a 64×64 RGBA buffer on the main thread, then ship
+  // the buffer to the worker. This sidesteps cross-origin / OffscreenCanvas
+  // quirks where the worker can't read pixels back from an ImageBitmap.
+  try {
+    const c = document.createElement("canvas");
+    c.width = WORK_SIZE; c.height = WORK_SIZE;
+    const ctx = c.getContext("2d", { willReadFrequently: true });
+    if (!ctx) return null;
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(image, 0, 0, WORK_SIZE, WORK_SIZE);
+    return ctx.getImageData(0, 0, WORK_SIZE, WORK_SIZE);
+  } catch {
+    return null;
+  }
+}
+
+export async function extractPalette(
+  image: HTMLImageElement | HTMLCanvasElement,
+): Promise<PaletteProfile> {
+  const data = await bitmapFromSource(image);
+  if (!data) {
+    return fallbackProfile();
+  }
+  const w = getWorker();
+  if (w) {
+    return new Promise((resolve) => {
+      const id = nextRequestId++;
+      pending.set(id, resolve);
+      // Transfer the underlying buffer to avoid a copy.
+      w.postMessage(
+        { id, width: data.width, height: data.height, pixels: data.data.buffer },
+        [data.data.buffer],
+      );
+    });
+  }
+  // Fallback: run synchronously in this thread (still fast at 64×64).
+  const { computeProfile } = await import("./imagePalette.worker");
+  return computeProfile(new Uint8ClampedArray(data.data), data.width, data.height);
+}
+
+function fallbackProfile(): PaletteProfile {
+  return {
+    dominantColors: [[255, 31, 143], [60, 60, 80], [200, 200, 220], [120, 80, 160], [40, 30, 50]],
+    hexes: ["#FF1F8F", "#3C3C50", "#C8C8DC", "#7850A0", "#281E32"],
+    warmth: 0.5, saturation: 0.6, brightness: 0.5, contrast: 0.5, density: 0.5, hueSpread: 0.5,
+    biome: "cyber-fm", biomeConfidence: 0.5,
+  };
 }
