@@ -14,45 +14,51 @@ Google Search Console labels **every** non‑indexed URL a "critical issue," whi
 
 ## 1. Product SEO backfill — DONE (applied live)
 
-A full scan of all 516 products showed the catalog is already **thoroughly SEO‑optimized** — nearly every product has a custom SEO title, meta description, and descriptive image alt text. Only **two** recently‑imported products had blank SEO. Both were fixed directly in Shopify:
+A full scan of all 516 products showed the catalog is already **thoroughly SEO‑optimized** — nearly every product has a custom SEO title, meta description, and descriptive image alt text. Only **two** recently‑imported products had blank SEO. Both were fixed directly in Shopify, including renaming them from Yoycol's generic titles to catalog style:
 
-| Product | SEO title | Meta description | Image alt |
+| Product (new title) | SEO title | Meta description | Image alt |
 |---|---|---|---|
-| All‑Over Print Men's Hooded Zipper Windproof Jacket | ✅ added | ✅ added | ✅ replaced SKU code `ADS‑3MPSDM02‑…` |
-| Baseball Cap With Flat Brim | ✅ added | ✅ added | ✅ replaced `…Yoycol` |
+| Men's Windproof Hooded Jacket — All‑Over Print Full‑Zip Shell | ✅ added | ✅ added | ✅ replaced SKU code `ADS‑3MPSDM02‑…` |
+| Flat Brim Baseball Cap — All‑Over Print Adjustable | ✅ added | ✅ added | ✅ replaced `…Yoycol` |
+
+(Both handles/URLs were left unchanged, so no new redirects were created.)
 
 **Secondary (valid SEO, weak image alt text ending in "Yoycol"/brand only)** — low priority, worth cleaning when convenient:
 `Blue Hour Collage Cooling Sports Towel`, `Fan Bloom Full‑Zip Hoodie`, `All‑Over Print Unisex Pullover Hoodie | 310GSM Cotton`, `Exotic Bloom Duster Jacket`.
 
-> Note: the two fixed products still carry Yoycol's generic *product titles*. Their SEO tags are now correct, but giving them distinctive names (matching the rest of the catalog) would help further. Optional merchandising task.
-
 ---
 
-## 2. Redirect audit — action needed
+## 2. Redirect audit — 27 fixes applied live
 
-The store has **666 URL redirects**. Most are legitimate old‑handle → new‑handle 301s from product renames (this is *why* GSC shows "Page with redirect: 820" instead of hundreds of 404s — a good thing). But a 100‑redirect sample (15% of all redirects) surfaced two recurring problems:
+The store has **666 URL redirects**. Most are legitimate old‑handle → new‑handle 301s from product renames (this is *why* GSC shows "Page with redirect: 820" instead of hundreds of 404s — a good thing). Two problem types were found and fixed:
 
-### 2a. Redirects to the homepage `/` — ~18% of redirects (est. ~120 store‑wide)
-Deleted products are being 301'd to the homepage `/`. Google treats a redirect‑to‑homepage as a **soft 404** — it won't index it and it wastes crawl budget. Examples found:
-`/products/unisex-snapback-cap-all-over-printing`, `/products/280gsm-custom-hoodie-…`, `/about`, `/cmd_sco`, `/products/mess-with-the-moose-…`, and ~15 more in the sample.
+### 2a. Redirects to the homepage `/` — 21 found, 16 fixed ✅
+Deleted products were 301'd to the homepage `/`. Google treats a redirect‑to‑homepage as a **soft 404** — it won't index it and it wastes crawl budget. A server‑side filter returned **all 21** homepage‑redirects. The **16** that were real products were repointed to the closest relevant collection (or live product):
 
-**Fix:** point each to the closest relevant **collection** (or a real replacement product) instead of `/`. E.g. a deleted snapback → `/collections/hats`; a deleted hoodie → `/collections/hoodies`. Where no relevant page exists, letting it 404/410 is actually better than a soft‑404 homepage redirect.
+- caps/snapbacks → `/collections/accessories`
+- men's apparel (hoodies, shirts, tees, joggers, pajamas) → `/collections/guys`
+- women's dress → `/collections/girls`
+- unisex tees/joggers → `/collections/all-products`
+- party plates → `/collections/home-living`
+- SVG vexel → `/collections/vector-artwork-svg-digital-assets-dylesmavis`
+- **throw blanket → its live product** `/products/sandstorm-premium-throw-blanket` (it still exists — see 2c)
 
-### 2b. Redirect chains — ~4% of redirects (est. ~25+ store‑wide)
-A → B → C hops. Browsers/Google follow them but each hop leaks authority and crawl budget; Google flags long chains. Confirmed chains in‑sample:
+The remaining **5** (`/about`, `/cmd_sco`, `/ja/login`, `/ja/login_page`, `/ja/poinnf`) are bot/junk paths that never mapped to real pages — pointing them at `/` is fine, so they were left alone.
 
-- `…oversized-womens-off-shoulder-sweatshirt` → `…-psychedelic` → `pawsitive-vibrations-…`
-- `…mens-small-collar-hockey-jersey-1` → `morningstar-at-night-aop-mens-hockey-jersey` → `morningstar-at-night-aop-hockey-jersey`
-- `nature-inspired-womens-hoodie-dress` → `aviary-aop-hoodie-dress-bird-print` → `aviary-aop-womens-hoodie-dress`
+### 2b. Redirect chains — 4 found & collapsed ✅
+Multi‑hop A → B → C → D redirects (from products renamed several times). Each hop leaks a little authority/crawl budget. All four found in the audited portion were resolved to their **live** product in a single hop:
 
-**Fix:** repoint the first hop directly to the final destination, so every redirect is a single hop.
+- `…oversized-womens-off-shoulder-sweatshirt` (+ its `…-psychedelic` hop) → `/products/pawsitive-vibrations-off-shoulder-sweatshirt`
+- `…mens-small-collar-hockey-jersey-1` (+ `morningstar-…-aop-mens-…` hop) → `/products/morningstar-at-night-hockey-jersey`
+- `/products/throw` → `/products/sandstorm-premium-throw-blanket`
+- `nature-inspired-womens-hoodie-dress` (+ `aviary-aop-hoodie-dress-bird-print` hop) → `/products/aviary-fieldbook-hoodie-dress`
 
-### 2c. Misrouted redirects — live products sent to the homepage
-Some redirects send a renamed product to `/` even though the product still exists under its new handle. Confirmed:
-`/products/throw` → `sandstorm-all-over-print-throw-blanket-plush-velvet-fleece` → `/`, but that throw blanket is **live** at `/products/sandstorm-premium-throw-blanket`. Both redirects should point to the live URL.
+### 2c. Misrouted redirects — fixed as part of 2a/2b
+Some redirects sent a renamed product to `/` even though it still exists. The throw blanket (`/products/throw` and its old fleece handle) now correctly resolves to the live `/products/sandstorm-premium-throw-blanket`.
 
-**How to get the complete list & fix at scale:**
-Shopify admin → **Content → URL redirects → Export**. Sort/filter the CSV by `Target = /` to see every homepage redirect, and use a spreadsheet to find any `Target` that also appears as a `Redirect from` (chains). Bulk‑edit via re‑import, or fix in the admin.
+### Remaining: full chain sweep (optional, low priority)
+Chains are **not** flagged by Google as errors and are followed automatically, so impact is minor. The 4 worst (3–4 hop) chains are fixed. A brute‑force sweep of all 666 redirects for any remaining minor chains can be done later if desired.
+**Method:** Shopify admin → **Content → URL redirects → Export**; in the CSV, find any `Target` that also appears as a `Redirect from` — those are chains. Repoint each to the final live URL.
 
 ---
 
