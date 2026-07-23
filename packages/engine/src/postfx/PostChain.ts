@@ -33,13 +33,16 @@ export interface PostChainParams {
 
 export const DEFAULT_POST_PARAMS: PostChainParams = {
   bloomThreshold: 0.75,
-  bloomStrength: 0.12,
+  bloomStrength: 0.1,
   sharpness: 0.55,
   saturation: 1.3,
   vibrance: 0.35,
   contrast: 1.03,
   aberration: 0.0025,
-  vignette: 0.12,
+  // Off by default — a non-zero vignette darkens the frame and was a repeated
+  // source of the "too much black" regression. Opt in explicitly.
+  vignette: 0,
+  // Neutral by default (no filmic curve) to keep color accurate.
   toneMap: 0,
   grain: 0.022,
   mix: 0.5,
