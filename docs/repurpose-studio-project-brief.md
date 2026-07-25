@@ -2,10 +2,28 @@
 
 A mobile-first material-repurposing app, built in Lovable.
 
+- **Public app URL:** https://reforge-creative-studio.lovable.app (published, no login needed)
 - **Lovable editor:** https://lovable.dev/projects/d1d9a2a7-6781-47f8-a28c-4718b0af1a72
 - **Live preview:** https://id-preview--d1d9a2a7-6781-47f8-a28c-4718b0af1a72.lovable.app
-- **Workspace:** Aesthetic Rebellion's Workspace
 - **Created:** 2026-07-24
+
+## Where to find it
+
+Naming and account details, recorded because the project was initially hard to locate:
+
+| | |
+|---|---|
+| Lovable account that owns it | `m.whitcher@yahoo.com` (profile name "dm") |
+| Workspace | Aesthetic Rebellion's Workspace |
+| Name in the Lovable dashboard | **RePurpose Studio** |
+| Branding inside the app | **ReForge Studio** |
+| Project slug | `reforge-creative-studio` |
+| Project id | `d1d9a2a7-6781-47f8-a28c-4718b0af1a72` |
+
+Searching the dashboard for "ReForge" finds nothing — the dashboard card is named
+"RePurpose Studio". The workspace is shared between two Lovable accounts, so the
+workspace switcher must be set to Aesthetic Rebellion's Workspace for the project
+to appear.
 
 ## Concept
 
