@@ -1,12 +1,21 @@
 {
   "generated": "2026-07-25",
   "store": "aestheticrebellion.store",
-  "purpose": "Products that entered the catalog raw and never received brand treatment. Each fails BRAND_VOICE.md 'Never ship'. These are the newest products in the catalog, which is why this is an intake leak rather than a one-time cleanup.",
+  "purpose": "Products that entered the catalog raw and never received brand treatment. Each fails BRAND_VOICE.md 'Never ship'. These are the newest products in the catalog, which makes this an intake leak rather than a one-time cleanup.",
   "detection": {
     "primary": "product has zero tags, or only 'shoptok'",
     "secondary": "description contains any of: 'mockup generator', 'Thread Color: black or white', 'Non-custom fabrics are made of polyester', 'EU representative'",
     "tertiary": "product belongs to no collection other than 'All Products'",
     "provider_fingerprint": "Yoycol SKUs carry an 'ADS-' prefix (see provider-audit/MASTER_SUMMARY.json)"
+  },
+  "CORRECTION_2026_07_25": {
+    "what_was_wrong": "An earlier version of this file claimed two 'duplicate_clusters' — three near-identical Lantern Pants and two windproof jackets — and recommended archiving three of them. That was WRONG and would have destroyed four real designs.",
+    "why_it_was_wrong": "The conclusion was drawn from identical product titles. The titles are identical only because all five still carry the raw supplier title that was never rewritten. The products themselves are distinct designs.",
+    "the_evidence": "Yoycol SKU format is ADS-[GARMENT]-[DESIGN]-[HEX]-[SIZE]. Within each cluster the GARMENT code matches but the DESIGN code differs, and each product has a different featured image.",
+    "lantern_pants_design_codes": ["P68KT", "P68L5", "P68LB"],
+    "jacket_design_codes": ["P5VFJ (price 50.00)", "P64WH (price 57.10)"],
+    "correct_remedy": "Do NOT archive or merge any of them. Give each a distinct brand-voice title per BRAND_VOICE.md, then tag and assign collections. Identical titles are the defect; the products are fine.",
+    "lesson": "Never infer duplication from title alone on a POD catalog. Compare SKU design codes and featured images first."
   },
   "false_positives_do_not_touch": {
     "reason": "Free-text search for 'Yoycol' returns 36 products, but the well-tagged ones are clean brand copy. Search matches something not customer-visible. Verify the description body before editing.",
@@ -17,6 +26,15 @@
     ],
     "intentional_supplier_tags": "Vibe-Checked Vectors SVG downloads tag 'printify svg' / 'printful design' on purpose — their buyers are POD sellers. 11 products. Leave alone."
   },
+  "resolved": [
+    {
+      "product": "all-over-print-unisex-lantern-pants-2",
+      "issue": "purchasable phantom variant: title 'default / default', sku null, price 0.00, availableForSale true, and it was the FIRST variant so it was the likely default selection on the product page",
+      "impact": "a customer could have checked out $65.72 pants for $0.00, on a variant with no SKU that could never be fulfilled",
+      "fixed": "variant 49440334708963 deleted 2026-07-25; product went from 9 variants to 8, all real",
+      "sweep": "a store-wide query for products with any $0.00 variant returned this product only — no other instances"
+    }
+  ],
   "queue": [
     {
       "id": "gid://shopify/Product/9528488984803",
@@ -34,52 +52,44 @@
       "id": "gid://shopify/Product/9572769497315",
       "handle": "all-over-print-mens-hooded-zipper-windproof-jacket",
       "title": "Men's Windproof Hooded Jacket — All-Over Print Full-Zip Shell",
-      "defects": ["yoycol_mockup_generator", "no_tags", "no_collection"],
-      "duplicate_of": "gid://shopify/Product/9574164168931"
+      "design_code": "P5VFJ",
+      "price": "50.00",
+      "defects": ["yoycol_mockup_generator", "no_tags", "no_collection"]
     },
     {
       "id": "gid://shopify/Product/9574164168931",
       "handle": "all-over-print-mens-hooded-zipper-windproof-jacket-1",
       "title": "All-Over Print Men's Hooded Zipper Windproof Jacket",
-      "defects": ["yoycol_mockup_generator", "no_tags", "no_collection", "duplicate"],
-      "resolution": "merge_or_archive"
+      "design_code": "P64WH",
+      "price": "57.10",
+      "defects": ["yoycol_mockup_generator", "no_tags", "no_collection", "generic_title_collides_with_P5VFJ"]
     },
     {
       "id": "gid://shopify/Product/9574842368227",
       "handle": "all-over-print-unisex-lantern-pants",
       "title": "All-Over Print Unisex Lantern Pants",
-      "defects": ["yoycol_mockup_generator", "no_tags", "no_collection", "generic_title"]
+      "design_code": "P68KT",
+      "defects": ["yoycol_mockup_generator", "no_tags", "no_collection", "generic_title_collides_with_P68L5_and_P68LB"]
     },
     {
       "id": "gid://shopify/Product/9574844924131",
       "handle": "all-over-print-unisex-lantern-pants-1",
       "title": "All-Over Print Unisex Lantern Pants",
-      "defects": ["yoycol_mockup_generator", "no_tags", "no_collection", "duplicate"],
-      "resolution": "merge_or_archive"
+      "design_code": "P68L5",
+      "defects": ["yoycol_mockup_generator", "no_tags", "no_collection", "generic_title_collides_with_P68KT_and_P68LB"]
     },
     {
       "id": "gid://shopify/Product/9574845513955",
       "handle": "all-over-print-unisex-lantern-pants-2",
       "title": "All-Over Print Unisex Lantern Pants",
-      "defects": ["yoycol_mockup_generator", "no_tags", "no_collection", "duplicate"],
-      "resolution": "merge_or_archive"
+      "design_code": "P68LB",
+      "defects": ["yoycol_mockup_generator", "no_tags", "no_collection", "generic_title_collides_with_P68KT_and_P68L5"]
     },
     {
       "id": "gid://shopify/Product/9575026950371",
       "handle": "mens-black-sole-canvas-shoes",
       "title": "Men's Black Sole Canvas Shoes",
       "defects": ["yoycol_mockup_generator", "raw_size_table", "no_tags", "no_collection", "generic_title"]
-    }
-  ],
-  "duplicate_clusters": [
-    {
-      "keep": "all-over-print-unisex-lantern-pants",
-      "archive": ["all-over-print-unisex-lantern-pants-1", "all-over-print-unisex-lantern-pants-2"],
-      "note": "three near-identical listings split SEO signal and confuse shoppers"
-    },
-    {
-      "keep": "all-over-print-mens-hooded-zipper-windproof-jacket",
-      "archive": ["all-over-print-mens-hooded-zipper-windproof-jacket-1"]
     }
   ]
 }
