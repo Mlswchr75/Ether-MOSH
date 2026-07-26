@@ -3,10 +3,29 @@
   "store": "aestheticrebellion.store",
   "purpose": "Products that entered the catalog raw and never received brand treatment. Each fails BRAND_VOICE.md 'Never ship'. These are the newest products in the catalog, which makes this an intake leak rather than a one-time cleanup.",
   "detection": {
+    "BEST_DETECTOR": "variant weight == 0 while requiresShipping == true, OR productType is empty. This is far more sensitive than the copy-based checks below and should be run first.",
     "primary": "product has zero tags, or only 'shoptok'",
     "secondary": "description contains any of: 'mockup generator', 'Thread Color: black or white', 'Non-custom fabrics are made of polyester', 'EU representative'",
     "tertiary": "product belongs to no collection other than 'All Products'",
     "provider_fingerprint": "Yoycol SKUs carry an 'ADS-' prefix (see provider-audit/MASTER_SUMMARY.json)"
+  },
+  "SCOPE_CORRECTION_2026_07_25": {
+    "what_was_understated": "The eight products in `queue` below were found using the copy-based criteria (no tags, supplier boilerplate, no collection). A later sweep across all 521 products using weight==0 found 41 affected products, not 8 — roughly five times the recorded scope.",
+    "why_the_first_pass_missed_them": "33 of the 41 had full brand-voice copy and complete tag sets, so they never tripped the copy-based filters. They were still shipped with weight 0 and no productType. Examples: dockyard-dusk-borg-fleece-coat, channel-static-hoodie, sherbet-spiral-fleece-coat, exotic-bloom-boho-duster-jacket.",
+    "consequences_found": [
+      "weight 0 sent malformed input to carrier-calculated DHL/FedEx rates for the International market — not merely inaccurate rates, an invalid rate request",
+      "empty productType blocks smart-collection membership entirely: Accessories, Home & Living, Guys, Girls and Youth all match on TYPE, so untyped products could only ever appear in 'All Products'"
+    ],
+    "remediation_applied_2026_07_25": {
+      "weights": "presumed weights set on all 41 products (178 variants) derived from stated fabric specs — 310gsm cotton 1.5lb, 300gsm poly waffle 0.95lb, 140gsm shell 0.7lb, 210gsm polo 0.55lb, bucket hats 0.25lb, fleece coats 2.0-2.2lb, canvas sneakers 2.0lb, framed canvas 2.5lb. THESE ARE ESTIMATES, not Yoycol measured figures. Overwrite with real values when available.",
+      "product_types": "productType set on all 41, chosen to match existing smart-collection rules rather than invented. Verified immediate joins: Canvas Wall Art -> Home & Living, Skirt -> Girls, Neck Gaiter -> Accessories, Beach Towel -> Home & Living.",
+      "judgement_calls_to_review": [
+        "blue-hour-collage-cooling-sports-towel typed 'Beach Towel' — it is a cooling sports towel; 'Beach Towel' was the closest existing type that reaches a browsable collection",
+        "night-circuit-balaclava typed 'Neck Gaiter' — balaclava is not in the Accessories rule list; Neck Gaiter is the nearest match",
+        "pirates-primary-splash-briefs typed 'Boxer Shorts' to match the Guys collection rule"
+      ]
+    },
+    "lesson": "Copy quality and data completeness are independent failure modes. A product can have excellent brand-voice copy and still be structurally broken. Sweep on structured fields (weight, productType, requiresShipping), not on prose."
   },
   "CORRECTION_2026_07_25": {
     "what_was_wrong": "An earlier version of this file claimed two 'duplicate_clusters' — three near-identical Lantern Pants and two windproof jackets — and recommended archiving three of them. That was WRONG and would have destroyed four real designs.",
