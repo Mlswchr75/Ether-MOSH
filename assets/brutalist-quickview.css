@@ -191,13 +191,15 @@
   padding: clamp(12px, 3vw, 40px);
   opacity: 0;
   visibility: hidden;
-  transition: opacity 0.18s ease, visibility 0s linear 0.18s;
+  /* Base state == the closing transition. Leaving is quicker than
+     arriving, which is what makes a dismiss feel snappy rather than slow. */
+  transition: opacity 0.13s ease-in, visibility 0s linear 0.13s;
 }
 
 .br-qv.is-open {
   opacity: 1;
   visibility: visible;
-  transition: opacity 0.18s ease, visibility 0s linear 0s;
+  transition: opacity 0.2s ease-out, visibility 0s linear 0s;
 }
 
 .br-qv__backdrop {
@@ -219,12 +221,13 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  transform: translateY(14px) scale(0.985);
-  transition: transform 0.2s cubic-bezier(0.2, 0.9, 0.3, 1);
+  transform: translateY(8px) scale(0.992);
+  transition: transform 0.13s ease-in;
 }
 
 .br-qv.is-open .br-qv__dialog {
   transform: translateY(0) scale(1);
+  transition: transform 0.24s cubic-bezier(0.18, 0.9, 0.28, 1);
 }
 
 .br-qv__close {
@@ -481,9 +484,33 @@
 
 @keyframes br-qv-spin { to { transform: rotate(360deg); } }
 
+/* Content settles in rather than snapping. These elements are rebuilt on
+   every open, so the animation fires on its own with no JS bookkeeping. */
+.br-qv__gallery,
+.br-qv__info,
+.br-qv__loading,
+.br-qv__error {
+  animation: br-qv-content-in 0.22s cubic-bezier(0.2, 0.9, 0.3, 1) both;
+}
+
+.br-qv__info { animation-delay: 0.04s; }
+
+@keyframes br-qv-content-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* The spinner only earns its keep if the fetch is actually slow — fading it
+   in late stops a cached/prefetched product from flashing a loader. */
+.br-qv__loading { animation-delay: 0.18s; }
+
 @media (prefers-reduced-motion: reduce) {
   .br-qv,
   .br-qv__dialog { transition: none !important; }
+  .br-qv__gallery,
+  .br-qv__info,
+  .br-qv__loading,
+  .br-qv__error { animation: none !important; }
   .br-qv__loading::after { animation-duration: 2s; }
 }
 
@@ -492,4 +519,32 @@ html.br-qv-locked,
 body.br-qv-locked {
   overflow: hidden !important;
   touch-action: none;
+}
+
+/* ============================================================
+   3. CARD MOTION POLISH
+   Overrides brutalist-showcase.css (this file loads after it).
+   Kept here so the whole enhancement stays removable as one unit.
+   ============================================================ */
+
+/* `will-change: transform` was set on every card. With 100+ cards that
+   forces 100+ permanent compositor layers, which costs GPU memory and
+   causes jank on mobile — the opposite of what it's for. Promote a card
+   only while it's actually animating. */
+.br-card {
+  will-change: auto;
+  transition: transform 0.28s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+
+.br-card:hover,
+.br-card:focus-within {
+  will-change: transform;
+}
+
+/* Deliberately NOT using content-visibility here: it implies paint
+   containment, which would clip the rotated cards' corners — the exact
+   cropping bug fixed earlier in this section. */
+
+@media (prefers-reduced-motion: reduce) {
+  .br-card { transition: none !important; }
 }

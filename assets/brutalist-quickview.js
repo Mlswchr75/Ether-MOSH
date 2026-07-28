@@ -134,10 +134,15 @@
 
     if (!state.open) {
       state.open = true;
-      state.root.classList.add("is-open");
       state.root.setAttribute("aria-hidden", "false");
       lockScroll(true);
       document.addEventListener("keydown", onKeydown, true);
+      // Force the closed state to be resolved before flipping to open.
+      // Without this the element is inserted and revealed in the same
+      // frame, so the browser has no "from" value and skips the
+      // transition entirely — the modal snaps in on its first open.
+      void state.root.offsetWidth;
+      state.root.classList.add("is-open");
     }
 
     var token = ++state.reqToken;
@@ -631,6 +636,58 @@
     var m = String(href).match(/\/products\/([^/?#]+)/);
     return m ? m[1] : "";
   }
+
+  /* ---------------- prefetch ----------------
+     Warm the product JSON as soon as a card is hovered/touched. By the
+     time the tap lands the modal usually opens straight into content
+     instead of a spinner. Best-effort only: failures are swallowed and
+     a cold open still works exactly as before. */
+
+  var warming = Object.create(null);
+  var warmCount = 0;
+
+  function shouldPrefetch() {
+    var c = navigator.connection;
+    if (!c) return true;
+    if (c.saveData) return false;
+    if (/(^|-)2g$/.test(c.effectiveType || "")) return false;
+    return true;
+  }
+
+  function warm(handle) {
+    if (!handle || cache[handle] || warming[handle]) return;
+    if (warmCount > 4 || !shouldPrefetch()) return;
+
+    warming[handle] = true;
+    warmCount++;
+
+    fetch(routeRoot() + "products/" + encodeURIComponent(handle) + ".js", {
+      credentials: "same-origin",
+      headers: { Accept: "application/json" },
+    })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (p) { if (p) cache[handle] = p; })
+      .catch(function () {})
+      .then(function () {
+        delete warming[handle];
+        warmCount--;
+      });
+  }
+
+  function warmFromEvent(e) {
+    var zone = e.target.closest && e.target.closest("[data-br-qv]");
+    if (!zone) return;
+    var card = zone.closest(".br-card");
+    var link = card && card.querySelector(".br-card__link");
+    warm(
+      zone.getAttribute("data-product-handle") ||
+        (card && card.getAttribute("data-product-handle")) ||
+        handleFromHref(link && link.getAttribute("href"))
+    );
+  }
+
+  document.addEventListener("pointerover", warmFromEvent, { capture: true, passive: true });
+  document.addEventListener("touchstart", warmFromEvent, { capture: true, passive: true });
 
   // Expose a tiny API for debugging / other sections.
   window.BrutalistQuickView = { open: open, close: close };
