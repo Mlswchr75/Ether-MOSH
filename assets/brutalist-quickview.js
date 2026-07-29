@@ -291,9 +291,13 @@
 
     imgs.forEach(function (src, idx) {
       var im = el("img", "br-qv__img");
-      im.src = sizeImage(src, 900);
+      // Two photos per row, so a slot is ~266px on desktop and ~190px on a
+      // phone; at 2-3x that needs ~560px. The old 900 was sized for the
+      // single-column gallery and fetched roughly 2.5x the pixels a slot can
+      // show — real money on mobile data across a 12-photo product.
+      im.src = sizeImage(src, 560);
       im.alt = (product.title || "") + " — image " + (idx + 1);
-      im.loading = idx < 2 ? "eager" : "lazy";
+      im.loading = idx < 4 ? "eager" : "lazy";
       im.decoding = "async";
       im.setAttribute("data-src-key", String(src).split("?")[0]);
       gallery.appendChild(im);
