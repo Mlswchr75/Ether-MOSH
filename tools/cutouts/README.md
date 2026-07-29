@@ -11,25 +11,48 @@ agent sandbox, so the images can't be downloaded there.
 ```bash
 cd tools/cutouts
 python3 -m venv .venv && source .venv/bin/activate
-pip install "rembg[cpu]" pillow requests
+pip install "rembg[cpu]" pillow requests numpy
 
-python3 make_cutouts.py --limit 10      # sanity-check 10 first
-open review.html                        # eyeball them
-python3 make_cutouts.py                 # then the full 524
+python3 make_cutouts.py --select        # phase 1: choose the right photo
+open choices.html                       # check the picks, fix any you disagree with
+python3 make_cutouts.py --cut           # phase 2: cut the backgrounds
 ```
 
-- Resumable — finished files are skipped, so Ctrl-C and restart freely.
-- First run downloads the matting model (~180MB) once.
+Phase 1 scores all 3,290 candidate photos on 512px thumbnails and writes
+`selected.csv` plus `choices.html`. Phase 2 mattes only the 524 winners at
+full resolution, so the slow model runs once per product, not once per photo.
+
+- Both phases are resumable — Ctrl-C and restart freely.
+- Phase 2's first run downloads the matting model (~180MB) once.
 - Output lands in `tools/cutouts/cutouts/`, one PNG per product.
 
-Expect roughly 15–40 minutes for all 524 on Apple Silicon.
+Expect a few minutes for phase 1 and roughly 15–40 minutes for phase 2.
 
-## 2. Check the results
+## 2. Check the picks
 
-`review.html` shows every cutout on a checkerboard, so anything that kept a
-white box or lost part of the garment stands out immediately.
+`choices.html` lists every product with the chosen photo and its runners-up,
+**worst scores first**, so anything doubtful is at the top. Items marked
+`REVIEW` are ones where even the best photo looked cropped or ambiguous.
 
-Delete the bad PNGs and re-run — only the missing ones get redone.
+Disagree with a pick? Paste a better URL into `chosen_url` in `selected.csv`
+and re-run `--cut`. Delete a PNG to have it redone.
+
+## How a photo gets picked
+
+Scored from the product's own silhouette against the backdrop:
+
+| Signal | Weight | Why |
+|---|---|---|
+| Silhouette touches an edge | −45 | Your rule: nothing cut off |
+| Clear margin around product | 15 | Full shot, room to breathe |
+| Frame coverage | 20 | Rejects specks and macro crops; tight-but-complete is fine |
+| Solidity | 12, ×0.45 if very low | Garments are solid; size charts and text aren't |
+| Centred | 8 | Front-on rather than a corner composition |
+| Is the main photo | +8 | It's already right 75–90% of the time |
+
+The main photo wins unless something is clearly better — but the edge-crop
+penalty is far larger than its bonus, so a cut-off main photo still loses to
+a clean alternate.
 
 ## Options
 
