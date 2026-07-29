@@ -31,6 +31,17 @@
   <div class="cl-sticky-search__wrap">
     <div class="cl-sticky-search__inner">
       <div class="cl-sticky-search__input-wrap">
+        {%- comment -%}
+          The two light trails. pathLength="100" normalises the perimeter, so
+          the dash pattern is a percentage of the outline and looks identical
+          whether the bar is 320px or 1200px wide. Geometry comes from CSS
+          percentages rather than a stretched viewBox, which would squash the
+          stroke on the short edges.
+        {%- endcomment -%}
+        <svg class="cl-trace" aria-hidden="true" focusable="false">
+          <rect class="cl-trace__line cl-trace__line--cyan" pathLength="100" />
+          <rect class="cl-trace__line cl-trace__line--pink" pathLength="100" />
+        </svg>
         <span class="cl-sticky-search__icon" aria-hidden="true">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
             <circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.5"/>

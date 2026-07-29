@@ -23,7 +23,7 @@
   backdrop-filter: blur(14px) saturate(1.4);
   border-top: 1px solid rgba(255, 255, 255, 0.06);
   border-bottom: 2px solid rgba(255, 43, 214, 0.22);
-  padding: 9px 20px;
+  padding: 11px 20px;
   width: 100%;
   box-sizing: border-box;
 }
@@ -50,7 +50,9 @@
   background: rgba(255, 255, 255, 0.045);
   border: 2px solid rgba(255, 255, 255, 0.14);
   border-radius: 0;
-  padding: 0 12px;
+  padding: 0 14px;
+  /* The trails glow outwards, so the wrap must not clip them. */
+  overflow: visible;
   transition: border-color 0.16s ease, box-shadow 0.16s ease,
               background 0.16s ease, transform 0.16s ease;
 }
@@ -60,6 +62,103 @@
   border-color: var(--cls-pink);
   box-shadow: 4px 4px 0 rgba(255, 43, 214, 0.55);
   transform: translate(-2px, -2px);
+}
+
+/* --- light trails ------------------------------------------------------
+   Two thin streams run the outline continuously. Their periods (6.1s and
+   9.3s, opposite directions) share no short common multiple, so the pair
+   never lands in the same relative position twice within a browsing
+   session — the loop reads as irregular without a rAF loop burning CPU on
+   a header that is on screen the whole time. */
+
+.cl-trace {
+  position: absolute;
+  inset: -2px;
+  width: calc(100% + 4px);
+  height: calc(100% + 4px);
+  overflow: visible;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.cl-trace__line {
+  /* SVG2 geometry properties: percentages here mean the outline tracks the
+     bar's real size, so no viewBox scaling and no distorted stroke. */
+  x: 1px;
+  y: 1px;
+  width: calc(100% - 2px);
+  height: calc(100% - 2px);
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 4px currentColor);
+}
+
+.cl-trace__line--cyan {
+  color: var(--cls-cyan);
+  stroke-dasharray: 11 89;
+  animation: cl-trace-run 6.1s linear infinite;
+}
+
+.cl-trace__line--pink {
+  color: var(--cls-pink);
+  stroke-dasharray: 6 94;
+  animation: cl-trace-run 9.3s linear infinite reverse;
+}
+
+@keyframes cl-trace-run {
+  from { stroke-dashoffset: 0; }
+  to   { stroke-dashoffset: -100; }
+}
+
+/* --- the mosh ---------------------------------------------------------
+   Fired from JS on an irregular schedule (never closer than 7s, never more
+   than 3 a minute). steps() keeps it snapping between states rather than
+   easing, which is what makes it read as a signal glitch and not a fade. */
+
+.cl-sticky-search.is-moshing .cl-trace__line--cyan {
+  animation: cl-trace-run 6.1s linear infinite,
+             cl-mosh-a 0.42s steps(1, end) 1;
+}
+
+.cl-sticky-search.is-moshing .cl-trace__line--pink {
+  animation: cl-trace-run 9.3s linear infinite reverse,
+             cl-mosh-b 0.42s steps(1, end) 1;
+}
+
+@keyframes cl-mosh-a {
+  0%   { transform: translate(-5px, 1px); stroke-dasharray: 30 12 4 54; opacity: 0.9; }
+  22%  { transform: translate(3px, -2px); stroke-dasharray: 3 8 22 67; }
+  48%  { transform: translate(-2px, 0);   stroke-dasharray: 46 6 2 46; opacity: 0.55; }
+  71%  { transform: translate(4px, 1px);  stroke-dasharray: 9 3 14 74; }
+  100% { transform: none;                 stroke-dasharray: 11 89; opacity: 1; }
+}
+
+@keyframes cl-mosh-b {
+  0%   { transform: translate(6px, -1px); stroke-dasharray: 2 9 18 71; opacity: 0.85; }
+  26%  { transform: translate(-4px, 2px); stroke-dasharray: 38 4 7 51; }
+  55%  { transform: translate(2px, 0);    stroke-dasharray: 5 14 3 78; opacity: 1; }
+  78%  { transform: translate(-3px, -1px); stroke-dasharray: 24 2 11 63; }
+  100% { transform: none;                 stroke-dasharray: 6 94; }
+}
+
+/* The frame gets a small sympathetic jitter so the streams don't look like
+   they're glitching in front of a static object. Deliberately no clip-path
+   here: banding the wrap blanked the query text for whole frames, and this
+   bar is on screen the entire visit — the streams carry the glitch, the
+   thing you're reading stays readable. */
+.cl-sticky-search.is-moshing .cl-sticky-search__input-wrap {
+  animation: cl-mosh-frame 0.42s steps(1, end) 1;
+}
+
+@keyframes cl-mosh-frame {
+  0%   { transform: translate(-1px, 0); border-color: var(--cls-cyan); }
+  18%  { transform: translate(2px, 0);  border-color: rgba(255, 255, 255, 0.14); }
+  40%  { transform: translate(-1px, 1px); border-color: var(--cls-pink); }
+  62%  { transform: none;               border-color: rgba(255, 255, 255, 0.14); }
+  78%  { transform: translate(1px, 0);  border-color: var(--cls-cyan); }
+  100% { transform: none;               border-color: rgba(255, 255, 255, 0.14); }
 }
 
 /* Chromatic split — one pass when the field is focused, then it settles.
@@ -115,7 +214,7 @@
   position: relative;
   flex: 1;
   min-width: 0;
-  padding: 9px 0;
+  padding: 12px 0;
 }
 
 /* The brutalist skin styles every text input with a 2px border, monospace font
@@ -128,10 +227,12 @@
   outline: none !important;
   border-radius: 0 !important;
   color: #fff !important;
-  font-size: 14px;
-  font-family: inherit !important;
-  line-height: 1.4;
-  letter-spacing: normal;
+  /* Monospace is the brutalist note that already runs through the chips and
+     labels; at 17/700 it carries the bar instead of apologising for it.
+     Typed text stays sentence-case — uppercasing a customer's own query
+     makes it harder to proofread. */
+  font: 700 17px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important;
+  letter-spacing: 0.01em;
   text-transform: none;
   padding: 0 !important;
   caret-color: var(--cls-pink);
@@ -150,10 +251,10 @@
   left: 0;
   transform: translateY(-50%);
   pointer-events: none;
-  color: rgba(255, 255, 255, 0.32);
-  font-size: 14px;
-  font-family: inherit;
-  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.38);
+  font: 700 15px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
   white-space: nowrap;
   overflow: hidden;
   max-width: 100%;
@@ -444,7 +545,9 @@
 }
 
 @media (max-width: 768px) {
-  .cl-sticky-search { padding: 7px 14px; }
+  .cl-sticky-search { padding: 8px 14px; }
+  .cl-sticky-search .cl-sticky-search__input { font-size: 15px !important; }
+  .cl-sticky-search__placeholder { font-size: 13px; letter-spacing: 0.04em; }
   .cl-search-dropdown { max-height: 58vh; box-shadow: 5px 5px 0 rgba(255, 43, 214, 0.28); }
   .cl-search-result-img,
   .cl-search-result-img-placeholder { width: 38px; height: 38px; }

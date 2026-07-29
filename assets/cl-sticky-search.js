@@ -11,7 +11,24 @@
      they're plain links with real counts), the customer's own recent searches,
      and Shopify's query completions for what they're typing. */
 
+  /* These are drawn from the tag vocabulary actually written onto the
+     products, not invented copy — so a customer who types one back gets
+     results instead of an empty page. Keep it that way when editing: if a
+     phrase isn't a term the catalogue uses, it doesn't belong here. */
   var PHRASES = [
+    'Search dopamine dressing...',
+    'Try eclectic maximalism...',
+    'Find wearable art...',
+    'Search weird girl aesthetic...',
+    'Explore art kid fashion...',
+    'Find festival core...',
+    'Try chromatic therapy...',
+    'Search hyperpop streetwear...',
+    'Find main character energy...',
+    'Try quiet chaos...',
+    'Search serotonin boost...',
+    'Explore post-internet fashion...',
+    'Find vivid aura...',
     'Search graphic tees...',
     'Try acid wash denim...',
     'Find oversized fits...',
@@ -21,10 +38,7 @@
     'Search Y2K fits...',
     'Try grunge aesthetic...',
     'Find psychedelic prints...',
-    'Search retro colorblocks...',
-    'Find festival looks...',
-    'Explore neon accents...',
-    'Search 90s revival fits...',
+    'Search all-over print...',
     'Find abstract art shirts...',
     'Try heavyweight cotton...',
     'Search zip-up hoodies...',
@@ -278,6 +292,46 @@
     if (phEl) phEl.style.opacity = '';
     if (!reduceMotion && !cycleTimer) cycleTimer = setInterval(tick, CYCLE_MS);
   }
+
+  // --- The mosh ------------------------------------------------------
+  // Two constraints that read as contradictory but aren't: gaps are never
+  // shorter than 7s, and no more than 3 fire in any rolling minute. The gap
+  // is randomised well above the floor so the rhythm is unpredictable; the
+  // rolling-window count is the hard ceiling that catches an unlucky run of
+  // short gaps. Both are enforced, so neither can be violated by chance.
+
+  var MOSH_MIN_GAP  = 7000;
+  var MOSH_MAX_GAP  = 26000;
+  var MOSH_PER_MIN  = 3;
+  var MOSH_MS       = 420;
+  var moshFires     = [];
+  var moshTimer     = null;
+
+  function scheduleMosh() {
+    if (reduceMotion) return;
+    clearTimeout(moshTimer);
+    moshTimer = setTimeout(
+      fireMosh,
+      MOSH_MIN_GAP + Math.random() * (MOSH_MAX_GAP - MOSH_MIN_GAP)
+    );
+  }
+
+  function fireMosh() {
+    var now = now_();
+    moshFires = moshFires.filter(function (t) { return now - t < 60000; });
+
+    // Skipping while hidden also stops a backlog building up in a tab
+    // nobody is looking at, which would all fire at once on return.
+    if (!document.hidden && moshFires.length < MOSH_PER_MIN) {
+      moshFires.push(now);
+      bar.classList.add('is-moshing');
+      setTimeout(function () { bar.classList.remove('is-moshing'); }, MOSH_MS);
+    }
+    scheduleMosh();
+  }
+
+  // Date.now via a wrapper so the scheduler stays testable.
+  function now_() { return Date.now(); }
 
   // A background tab that keeps swapping text still costs a paint per second.
   document.addEventListener('visibilitychange', function () {
@@ -620,4 +674,11 @@
   });
 
   startCycle();
+  scheduleMosh();
+
+  // Exposed for the test harness to drive the schedule deterministically.
+  window.__clSearch = {
+    mosh: fireMosh,
+    moshFires: function () { return moshFires.slice(); },
+  };
 })();
