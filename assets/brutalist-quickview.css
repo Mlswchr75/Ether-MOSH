@@ -265,7 +265,7 @@
   .br-qv__body { grid-template-columns: 1fr; }
 }
 
-/* --- gallery (scrollable) --- */
+/* --- gallery (scrollable, two photos per row) --- */
 
 .br-qv__gallery {
   min-height: 0;
@@ -274,12 +274,18 @@
   -webkit-overflow-scrolling: touch;
   background: #0b0b0b;
   border-right: 3px solid #fff;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  align-content: start;
   gap: 6px;
   padding: 6px;
   scrollbar-width: thin;
   scrollbar-color: var(--br-qv-accent, #ff2bd6) #0b0b0b;
+}
+
+/* A product with a single photo shouldn't leave half the column empty. */
+.br-qv__gallery > .br-qv__img:only-child {
+  grid-column: 1 / -1;
 }
 
 @media (max-width: 860px) {
