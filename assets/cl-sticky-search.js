@@ -143,6 +143,58 @@
     return '/search?q=' + encodeURIComponent(q) + '&type=product';
   }
 
+  // "/collections/x/products/the-handle?variant=1" -> "the-handle"
+  function handleFromUrl(url) {
+    var m = /\/products\/([^/?#]+)/.exec(String(url || ''));
+    return m ? decodeURIComponent(m[1]) : '';
+  }
+
+  // --- Quick view --------------------------------------------------
+  // The quick view's assets are loaded by the homepage's product-grid
+  // section, so on every other page they are absent. Injecting them here on
+  // first use (rather than from the snippet) appends the stylesheet AFTER
+  // brutalist-showcase.css, which is the order its card overrides depend on —
+  // loading it from the header would invert that and break the homepage cards.
+
+  var qvPending = null;
+
+  function ensureQuickView() {
+    if (window.BrutalistQuickView) return Promise.resolve(window.BrutalistQuickView);
+    if (qvPending) return qvPending;
+
+    var css = bar.getAttribute('data-qv-css');
+    var js  = bar.getAttribute('data-qv-js');
+    if (!js) return Promise.reject(new Error('no quick view asset'));
+
+    if (css && !document.querySelector('link[href="' + css + '"]')) {
+      var link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = css;
+      document.head.appendChild(link);
+    }
+
+    qvPending = new Promise(function (resolve, reject) {
+      var existing = document.querySelector('script[src="' + js + '"]');
+      if (existing) {
+        existing.addEventListener('load', function () { resolve(window.BrutalistQuickView); });
+        existing.addEventListener('error', reject);
+        return;
+      }
+      var s = document.createElement('script');
+      s.src = js;
+      s.onload = function () {
+        window.BrutalistQuickView ? resolve(window.BrutalistQuickView)
+                                  : reject(new Error('quick view did not boot'));
+      };
+      s.onerror = reject;
+      document.head.appendChild(s);
+    });
+
+    // A failed load must not poison every later click.
+    qvPending.catch(function () { qvPending = null; });
+    return qvPending;
+  }
+
   // --- Recent searches -----------------------------------------------
 
   function readRecent() {
@@ -374,7 +426,7 @@
       : '<div class="cl-search-result-img-placeholder">&#128085;</div>';
 
     return '<a class="cl-search-result-item" data-nav role="option" href="' +
-      esc(p.url) + '">' + img +
+      esc(p.url) + '" data-product-handle="' + esc(handleFromUrl(p.url)) + '">' + img +
       '<div class="cl-search-result-info">' +
         '<div class="cl-search-result-title">' + highlight(p.title, q) + '</div>' +
         (price ? '<div class="cl-search-result-price">' + price + '</div>' : '') +
@@ -509,9 +561,27 @@
   // Anything the customer actually clicks is worth remembering, so the next
   // visit opens with their own words rather than ours.
   dropdown.addEventListener('click', function (e) {
-    if (e.target.closest && e.target.closest('[data-nav]')) {
-      rememberSearch(input.value.trim());
-    }
+    if (!e.target.closest || !e.target.closest('[data-nav]')) return;
+    rememberSearch(input.value.trim());
+
+    // A product result opens the quick view instead of navigating, so the
+    // customer can add to cart and keep typing. Ctrl/cmd/middle-click and the
+    // "Full details" button inside the modal still open the real page.
+    var row = e.target.closest('.cl-search-result-item');
+    if (!row || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button > 0) return;
+
+    var handle = row.getAttribute('data-product-handle');
+    if (!handle) return;
+
+    e.preventDefault();
+    ensureQuickView().then(function (qv) {
+      closeDropdown();
+      input.blur();
+      qv.open(handle, row.getAttribute('href'), null, row);
+    }).catch(function () {
+      // Quick view unavailable — fall back to the page it was already pointing at.
+      window.location.href = row.getAttribute('href');
+    });
   });
 
   // Keep the click alive through the input's blur: suppressing mousedown's

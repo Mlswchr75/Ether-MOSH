@@ -25,7 +25,9 @@
   assign ranked = collections | sort: 'all_products_count' | reverse
 -%}
 
-<div class="cl-sticky-search" id="cl-sticky-search">
+<div class="cl-sticky-search" id="cl-sticky-search"
+     data-qv-css="{{ 'brutalist-quickview.css' | asset_url }}"
+     data-qv-js="{{ 'brutalist-quickview.js' | asset_url }}">
   <div class="cl-sticky-search__wrap">
     <div class="cl-sticky-search__inner">
       <div class="cl-sticky-search__input-wrap">
