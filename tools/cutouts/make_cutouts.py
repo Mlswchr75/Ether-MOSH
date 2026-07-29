@@ -37,6 +37,7 @@ from PIL import Image
 HERE = pathlib.Path(__file__).parent
 CANDIDATES = HERE / "candidates.csv"
 SELECTED = HERE / "selected.csv"
+OVERRIDES = HERE / "overrides.csv"   # optional, exported from choices.html
 OUT_DIR = HERE / "cutouts"
 THUMBS = HERE / ".thumbs"
 
@@ -224,7 +225,12 @@ def phase_select(rows, workers):
             "score": best["score"],
             "full_shots_found": len(clean),
             "needs_review": int(best.get("touches_edge", True) or best["score"] < 45),
-            "alternates": json.dumps([g["image_url"] for g in group[1:6]]),
+            # Every candidate, so the review page can offer the full set.
+            "alternates": json.dumps([
+                {"url": g["image_url"], "score": g["score"],
+                 "cut": int(bool(g.get("touches_edge", False)))}
+                for g in group
+            ]),
         })
 
     winners.sort(key=lambda r: r["handle"])
@@ -240,39 +246,136 @@ def phase_select(rows, workers):
     log(f"  {none_clean} products where every photo was cropped at an edge")
 
     build_choice_sheet(winners, HERE / "choices.html")
-    log(f"\nreview: {HERE / 'choices.html'}")
-    log("Wrong pick? Paste a better URL into chosen_url in selected.csv, then run --cut.")
+    log(f"\nreview: open {HERE / 'choices.html'}")
+    log(f"  {flagged} flagged — click a thumbnail to swap, then Download overrides.csv")
+    log("  save it next to this script and run --cut; the rest need no attention")
     return winners
 
 
 def build_choice_sheet(winners, path):
-    """Chosen photo next to the runners-up, worst scores first."""
-    cards = []
-    for r in sorted(winners, key=lambda r: (-r["needs_review"], r["score"])):
-        alts = "".join(
-            f'<img src="{u}&width=150" loading="lazy" alt="">'
-            for u in json.loads(r["alternates"])
-        )
-        flag = ' <b class="flag">REVIEW</b>' if r["needs_review"] else ""
-        cards.append(
-            f'<figure><img class="pick" loading="lazy" src="{r["chosen_url"]}&width=320" alt="">'
-            f'<figcaption>{r["handle"]}{flag}<br><small>score {r["score"]} · '
-            f'{r["full_shots_found"]} uncropped</small><div class="alts">{alts}</div>'
-            f"</figcaption></figure>"
-        )
-    path.write_text(
-        "<!doctype html><meta charset=utf-8><title>Chosen photos</title><style>"
-        "body{background:#111;color:#eee;font:13px system-ui;margin:20px}"
-        "main{display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}"
-        "figure{margin:0;background:#1c1c1c;padding:10px;border-radius:8px}"
-        ".pick{width:100%;height:240px;object-fit:contain;background:#fff;border-radius:4px}"
-        "figcaption{font-size:11px;margin-top:8px;word-break:break-word}"
-        ".flag{color:#ff5c5c}.alts{display:flex;gap:4px;margin-top:6px;flex-wrap:wrap}"
-        ".alts img{width:44px;height:44px;object-fit:cover;background:#fff;border-radius:3px;opacity:.65}"
-        "</style><h1>Chosen photo per product — flagged items first</h1><main>"
-        + "".join(cards) + "</main>",
-        encoding="utf-8",
-    )
+    """An interactive picker, not just a contact sheet.
+
+    Click any thumbnail to override the chosen photo, then export
+    overrides.csv — no hand-editing URLs. Choices survive a page reload via
+    localStorage, so a long review can be done in several sittings.
+    """
+    data = [
+        {
+            "handle": r["handle"],
+            "chosen": r["chosen_url"],
+            "score": r["score"],
+            "review": r["needs_review"],
+            "clean": r["full_shots_found"],
+            "alts": json.loads(r["alternates"]),
+        }
+        for r in sorted(winners, key=lambda r: (-r["needs_review"], r["score"]))
+    ]
+    flagged = sum(d["review"] for d in data)
+
+    path.write_text("""<!doctype html><meta charset=utf-8><title>Choose product photos</title>
+<style>
+:root{color-scheme:dark}
+body{background:#111;color:#eee;font:13px/1.4 system-ui;margin:0;padding:16px 20px 90px}
+h1{font-size:17px;margin:0 0 4px}
+.sub{color:#999;margin-bottom:14px}
+.bar{position:fixed;left:0;right:0;bottom:0;background:#000;border-top:2px solid #333;
+     padding:12px 20px;display:flex;gap:12px;align-items:center;z-index:9}
+button{background:#ff2bd6;color:#000;border:0;padding:10px 16px;font:700 12px system-ui;
+       text-transform:uppercase;letter-spacing:.06em;cursor:pointer;border-radius:4px}
+button.ghost{background:#222;color:#eee;border:1px solid #444}
+label{display:flex;gap:6px;align-items:center;color:#bbb;cursor:pointer}
+main{display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(270px,1fr))}
+figure{margin:0;background:#1a1a1a;padding:10px;border-radius:8px;border:2px solid transparent}
+figure.changed{border-color:#4dff9f}
+figure[data-review="1"]{border-color:#ff5c5c}
+figure.changed[data-review="1"]{border-color:#4dff9f}
+.pick{width:100%;height:230px;object-fit:contain;background:#fff;border-radius:4px}
+.meta{font-size:11px;margin:8px 0 6px;word-break:break-word;color:#ddd}
+.flag{color:#ff5c5c;font-weight:700}
+.ok{color:#4dff9f;font-weight:700}
+.alts{display:flex;gap:5px;flex-wrap:wrap}
+.alts img{width:50px;height:50px;object-fit:cover;background:#fff;border-radius:3px;
+          opacity:.55;cursor:pointer;border:2px solid transparent}
+.alts img:hover{opacity:1}
+.alts img.sel{opacity:1;border-color:#4dff9f}
+.alts img.cut{outline:2px solid #ff5c5c;outline-offset:-2px}
+.hide{display:none}
+</style>
+<h1>Choose the photo to cut out</h1>
+<div class="sub">Click a thumbnail to swap the big picture. Red border = flagged.
+Red outline on a thumb = product runs off the edge in that shot.</div>
+<main id="grid"></main>
+<div class="bar">
+  <label><input type="checkbox" id="only" checked> Flagged only (<span id=nflag></span>)</label>
+  <span id="count" style="color:#999"></span>
+  <button id="save">Download overrides.csv</button>
+  <button class="ghost" id="reset">Reset</button>
+</div>
+<script>
+const DATA = __DATA__;
+const KEY = 'ar-cutout-overrides';
+let picks = JSON.parse(localStorage.getItem(KEY) || '{}');
+const wide = u => u + (u.includes('?') ? '&' : '?') + 'width=';
+
+document.getElementById('nflag').textContent = DATA.filter(d => d.review).length;
+
+const grid = document.getElementById('grid');
+grid.innerHTML = DATA.map((d, i) => `
+  <figure data-i="${i}" data-review="${d.review}" class="${picks[d.handle] ? 'changed' : ''}">
+    <img class="pick" loading="lazy" src="${wide(picks[d.handle] || d.chosen)}400">
+    <div class="meta">${d.handle}<br>
+      ${d.review ? '<span class=flag>NEEDS REVIEW</span>' : '<span class=ok>ok</span>'}
+      · score ${d.score} · ${d.clean} uncropped</div>
+    <div class="alts">${d.alts.map(a => `
+      <img loading="lazy" src="${wide(a.url)}110" data-url="${a.url}"
+           class="${(picks[d.handle] || d.chosen) === a.url ? 'sel' : ''}${a.cut ? ' cut' : ''}"
+           title="score ${a.score}${a.cut ? ' — cut off at edge' : ''}">`).join('')}</div>
+  </figure>`).join('');
+
+grid.addEventListener('click', e => {
+  const thumb = e.target.closest('.alts img');
+  if (!thumb) return;
+  const fig = thumb.closest('figure');
+  const d = DATA[+fig.dataset.i];
+  const url = thumb.dataset.url;
+
+  if (url === d.chosen) delete picks[d.handle];   // back to the automatic pick
+  else picks[d.handle] = url;
+
+  localStorage.setItem(KEY, JSON.stringify(picks));
+  fig.querySelector('.pick').src = wide(url) + '400';
+  fig.classList.toggle('changed', !!picks[d.handle]);
+  fig.querySelectorAll('.alts img').forEach(t => t.classList.toggle('sel', t.dataset.url === url));
+  refresh();
+});
+
+function refresh() {
+  const only = document.getElementById('only').checked;
+  DATA.forEach((d, i) => {
+    const fig = grid.querySelector(`figure[data-i="${i}"]`);
+    fig.classList.toggle('hide', only && !d.review && !picks[d.handle]);
+  });
+  document.getElementById('count').textContent = Object.keys(picks).length + ' overridden';
+}
+document.getElementById('only').addEventListener('change', refresh);
+
+document.getElementById('save').addEventListener('click', () => {
+  const rows = [['handle', 'chosen_url'], ...Object.entries(picks)];
+  const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], {type: 'text/csv'}));
+  a.download = 'overrides.csv';
+  a.click();
+});
+
+document.getElementById('reset').addEventListener('click', () => {
+  if (!confirm('Discard all your manual picks?')) return;
+  picks = {}; localStorage.removeItem(KEY); location.reload();
+});
+
+refresh();
+</script>""".replace("__DATA__", json.dumps(data)), encoding="utf-8")
+    return flagged
 
 
 # ----------------------------------------------------------------------
@@ -315,10 +418,37 @@ def cut_one(row, model, trim, overwrite):
         return handle, "failed", f"{type(exc).__name__}: {exc}"
 
 
+def apply_overrides(rows, path=None):
+    """Manual picks exported from choices.html win over the automatic choice."""
+    path = path or OVERRIDES
+    if not path.exists():
+        return 0
+    with path.open() as f:
+        picks = {
+            r["handle"]: r["chosen_url"]
+            for r in csv.DictReader(f)
+            if r.get("handle") and r.get("chosen_url")
+        }
+    applied = 0
+    for r in rows:
+        new = picks.get(r["handle"])
+        if new and new != r["chosen_url"]:
+            r["chosen_url"] = new
+            applied += 1
+    return applied
+
+
 def phase_cut(model, workers, trim, overwrite, limit):
     if not SELECTED.exists():
         sys.exit("selected.csv missing — run with --select first")
     rows = list(csv.DictReader(SELECTED.open()))
+
+    if OVERRIDES.exists():
+        applied = apply_overrides(rows)
+        log(f"applied {applied} manual override(s) from {OVERRIDES.name}")
+        if applied:
+            log("(delete those PNGs if they already exist, or pass --overwrite)")
+
     if limit:
         rows = rows[:limit]
     OUT_DIR.mkdir(parents=True, exist_ok=True)

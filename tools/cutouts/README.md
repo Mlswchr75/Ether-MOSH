@@ -14,7 +14,7 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install "rembg[cpu]" pillow requests numpy
 
 python3 make_cutouts.py --select        # phase 1: choose the right photo
-open choices.html                       # check the picks, fix any you disagree with
+open choices.html                       # review the flagged ones, click to fix
 python3 make_cutouts.py --cut           # phase 2: cut the backgrounds
 ```
 
@@ -28,14 +28,25 @@ full resolution, so the slow model runs once per product, not once per photo.
 
 Expect a few minutes for phase 1 and roughly 15–40 minutes for phase 2.
 
-## 2. Check the picks
+## 2. Check the picks — only the ones worth your time
 
-`choices.html` lists every product with the chosen photo and its runners-up,
-**worst scores first**, so anything doubtful is at the top. Items marked
-`REVIEW` are ones where even the best photo looked cropped or ambiguous.
+`choices.html` is a picker, not a report. It opens filtered to just the
+**flagged** products — the ones where even the best photo looked cropped or
+ambiguous — so you review the handful in question, not all 524.
 
-Disagree with a pick? Paste a better URL into `chosen_url` in `selected.csv`
-and re-run `--cut`. Delete a PNG to have it redone.
+- Big picture = the photo that will be cut out.
+- Strip underneath = every other photo on that listing. **Click one to swap.**
+- Red outline on a thumbnail = the product runs off the edge in that shot.
+- Green border = you overrode it. Red = still flagged.
+- Untick "Flagged only" to browse everything.
+
+Your picks are saved in the browser as you go, so you can close the tab and
+come back. When you're done, hit **Download overrides.csv**, drop it next to
+`make_cutouts.py`, and run `--cut` — manual picks beat the automatic ones.
+
+Since the photos come straight off your listings, this is the same review you'd
+do in Canva, minus the exporting and re-uploading. Delete a PNG to have it
+redone (or pass `--overwrite`).
 
 ## How a photo gets picked
 
@@ -90,8 +101,11 @@ guess at later.
 
 ## Files
 
-- `manifest.csv` — 524 products: handle, title, featured image URL, target filename
+- `candidates.csv` — 3,290 photos across 524 products (what phase 1 scores)
+- `manifest.csv` — featured image per product, kept for reference
 - `make_cutouts.py` — the batch job
+- `selected.csv` — phase 1's pick per product (generated)
+- `choices.html` — the interactive picker (generated)
+- `overrides.csv` — your manual picks, downloaded from the picker
 - `cutouts/` — output PNGs (generated, git-ignored)
-- `review.html` — QA contact sheet (generated)
-- `failures.csv` — written only if something fails
+- `problems.csv` — written only if something fails
