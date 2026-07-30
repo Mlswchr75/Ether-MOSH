@@ -1,3 +1,4 @@
+import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useState } from "react";
 
 const FRAGMENTS = [
@@ -34,11 +35,20 @@ export const BioFlicker = () => {
 
   return (
     <div className="pointer-events-none absolute inset-0 z-10" aria-hidden="true">
-      <span
-        className={`absolute left-[8%] top-[62%] font-mono text-[10px] uppercase tracking-[0.35em] text-accent/70 transition-opacity duration-500 ${visible ? "opacity-100" : "opacity-0"}`}
-      >
-        {FRAGMENTS[idx]}
-      </span>
+      <AnimatePresence mode="wait">
+        {visible && (
+          <motion.span
+            key={idx}
+            initial={{ opacity: 0, x: -10, skewX: -8 }}
+            animate={{ opacity: 1, x: 0, skewX: 0 }}
+            exit={{ opacity: 0, x: 10, skewX: 8 }}
+            transition={{ duration: 0.15, ease: "easeOut" }}
+            className="absolute left-[8%] top-[62%] font-mono text-[10px] uppercase tracking-[0.35em] text-accent/70"
+          >
+            {FRAGMENTS[idx]}
+          </motion.span>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
