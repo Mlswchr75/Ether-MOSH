@@ -25,7 +25,6 @@ const Index = () => {
   const loadFile = useCallback(async (file: File) => {
     const url = URL.createObjectURL(file);
     const img = new Image();
-    img.crossOrigin = "anonymous";
     img.onload = () => {
       setImage(url, img);
       useStore.getState().setSourceName(file.name);

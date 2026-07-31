@@ -31,7 +31,6 @@ export async function upscaleImage(image: HTMLImageElement): Promise<HTMLImageEl
   const url = URL.createObjectURL(blob);
   try {
     const hi = new Image();
-    hi.crossOrigin = "anonymous";
     await new Promise<void>((resolve, reject) => {
       hi.onload = () => resolve();
       hi.onerror = () => reject(new Error("upscale decode failed"));
