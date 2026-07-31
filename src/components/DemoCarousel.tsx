@@ -1,16 +1,19 @@
 /**
- * Bottom strip of bundled demo sources. Selecting one hands its URL back to
- * the page, which fetches it and drops it into the instrument.
+ * Bottom strip of demo sources drawn from the Aesthetic Rebellion product
+ * catalogue. Selecting one fetches the image and drops it into the instrument,
+ * then opens the store page in a new tab.
  */
+import { CAROUSEL_IMAGES } from "@/data/carouselImages";
+
 type Props = {
   onSelect: (src: string, productUrl: string) => void;
   isIdle: boolean;
 };
 
-const DEMOS = [
-  { src: "/demo/prism.svg", label: "prism" },
-  { src: "/demo/meridian.svg", label: "meridian" },
-  { src: "/demo/relic.svg", label: "relic" },
+const PICKS = [
+  CAROUSEL_IMAGES.find(i => i.id === "a16")!,
+  CAROUSEL_IMAGES.find(i => i.id === "b14")!,
+  CAROUSEL_IMAGES.find(i => i.id === "b08")!,
 ];
 
 const DemoCarousel = ({ onSelect }: Props) => (
@@ -19,11 +22,11 @@ const DemoCarousel = ({ onSelect }: Props) => (
       <span className="hidden font-mono text-[9px] uppercase tracking-[0.3em] text-foreground/40 sm:block">
         or mosh a demo →
       </span>
-      {DEMOS.map((d) => (
+      {PICKS.map((d) => (
         <button
-          key={d.src}
+          key={d.id}
           type="button"
-          onClick={(e) => { e.stopPropagation(); onSelect(d.src, ""); }}
+          onClick={(e) => { e.stopPropagation(); onSelect(d.src, d.productUrl); }}
           className="group/demo h-12 w-16 overflow-hidden border border-border/60 transition hover:border-accent"
           aria-label={`Load demo: ${d.label}`}
         >
