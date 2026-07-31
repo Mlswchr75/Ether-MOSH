@@ -12,6 +12,7 @@ import { ParamDock } from "@/components/editor/ParamDock";
 import { BeatPanel } from "@/components/editor/BeatPanel";
 import { exportCanvas, downloadBlob, remasterCanvas } from "@/engine/export";
 import { captureBestFrame } from "@/engine/bestFrame";
+import { captureLoopingGif } from "@/engine/gifCapture";
 import { CanvasRecorder } from "@/engine/recorder";
 import { timeController } from "@/engine/timefx";
 import { PerformanceOverlay, PerformanceTooltip } from "@/components/editor/PerformanceMode";
@@ -25,14 +26,25 @@ import { SourceTransition } from "@/components/editor/SourceTransition";
 import { RippleLayer } from "@/components/editor/Ripple";
 import { enterFullscreen, exitFullscreen, hasSeenPerfMode, markPerfModeSeen, useFullscreenSync } from "@/hooks/usePerformanceMode";
 import { toast } from "sonner";
+import { shareApp, shareBlob, shareOrDownload, canNativeShare } from "@/lib/share";
 import { KaossSurface } from "@/components/editor/KaossSurface";
 import { MobileGestures } from "@/components/editor/MobileGestures";
 import { TrackpadGestures } from "@/components/editor/TrackpadGestures";
 import { toggleSystemAudio } from "@/engine/systemAudio";
 import { SystemAudioHud } from "@/components/editor/SystemAudioHud";
 
-import { TapToBegin } from "@/components/editor/TapToBegin";
+
 import { AboutTrigger } from "@/components/AboutOverlay";
+import { CameraMenu } from "@/components/editor/CameraMenu";
+
+import { StartCameraOverlay } from "@/components/editor/StartCameraOverlay";
+import { HotTriggers } from "@/components/editor/HotTriggers";
+import { AccountChip } from "@/components/AccountChip";
+import { usePaywall } from "@/hooks/usePaywall";
+import { useCloudFavorites } from "@/hooks/useCloudFavorites";
+import { SmartDirector } from "@/engine/smartDirector";
+import { StormDirector } from "@/engine/stormDirector";
+import { useIdleHide } from "@/hooks/useIdleHide";
 
 // Unified one-screen control rack — no tabs.
 
@@ -48,6 +60,8 @@ export default function Editor() {
   const setBeforeAfterSplit = useStore(s => s.setBeforeAfterSplit);
   const undo = useStore(s => s.undo);
   const redo = useStore(s => s.redo);
+  const canUndo = useStore(s => s.past.length > 0);
+  const canRedo = useStore(s => s.future.length > 0);
   const mosh = useStore(s => s.mosh);
   const micEnabled = useStore(s => s.micEnabled);
   const setMicEnabled = useStore(s => s.setMicEnabled);
@@ -62,8 +76,10 @@ export default function Editor() {
   const sourceName = useStore(s => s.sourceName);
   const flashSlot = useStore(s => s.flashSlot);
   const tileMode = useStore(s => s.tileMode);
+  const videoStream = useStore(s => s.videoStream);
+  const isCameraLive = !!videoStream;
 
-
+  
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [hideUI, setHideUI] = useState(true);
@@ -82,7 +98,12 @@ export default function Editor() {
   const [loopSec, setLoopSec] = useState(0);
   const [freezeOn, setFreezeOn] = useState(false);
   const recorderRef = useRef<CanvasRecorder | null>(null);
+  const recCapRef = useRef<number | null>(null);
+  const paywall = usePaywall();
+  useCloudFavorites();
   const recStartRef = useRef(0);
+  const [gifBusy, setGifBusy] = useState(false);
+  const [gifProgress, setGifProgress] = useState(0);
   const shellRef = useRef<HTMLElement>(null);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const [showFirstTip, setShowFirstTip] = useState(false);
@@ -93,6 +114,31 @@ export default function Editor() {
   const prevImageRef = useRef<HTMLImageElement | null>(null);
 
   useFullscreenSync();
+
+  const idleHidden = useIdleHide(5000);
+
+  // Plain browser fullscreen (kills the Chrome chrome) — independent of
+  // Performance Mode so the mosh icons stay visible.
+  const [isBrowserFs, setIsBrowserFs] = useState<boolean>(
+    typeof document !== "undefined" && !!(document.fullscreenElement || (document as any).webkitFullscreenElement)
+  );
+  useEffect(() => {
+    const on = () => setIsBrowserFs(!!(document.fullscreenElement || (document as any).webkitFullscreenElement));
+    document.addEventListener("fullscreenchange", on);
+    document.addEventListener("webkitfullscreenchange", on as any);
+    return () => {
+      document.removeEventListener("fullscreenchange", on);
+      document.removeEventListener("webkitfullscreenchange", on as any);
+    };
+  }, []);
+  const toggleFullscreen = useCallback(async () => {
+    const fsEl = document.fullscreenElement || (document as any).webkitFullscreenElement;
+    try {
+      if (fsEl) await exitFullscreen();
+      else await enterFullscreen(document.documentElement);
+    } catch {}
+  }, []);
+
 
   const getCanvas = () =>
     (canvasContainerRef.current?.querySelector("canvas") ?? null) as HTMLCanvasElement | null;
@@ -114,8 +160,11 @@ export default function Editor() {
       setExportProgress(1);
       const remastered = await remasterCanvas(best, tileMode === "none" ? 2 : 3);
       const blob = await exportCanvas(remastered, { format: "png", scale: 1, aspect: null });
-      downloadBlob(blob, `mosh-${Date.now()}_${tileMode === "none" ? "still" : "tileable-remaster"}.png`);
-      toast.success(tileMode === "none" ? "Still saved" : "Best seamless frame saved");
+      const filename = `mosh-${Date.now()}_${tileMode === "none" ? "still" : "tileable-remaster"}.png`;
+      shareOrDownload(blob, filename);
+      toast.success(tileMode === "none" ? "Still ready" : "Best seamless frame ready", {
+        description: canNativeShare() ? "Share sheet opening…" : "Saved to downloads",
+      });
     } catch {
       toast.error("Export failed");
     } finally {
@@ -163,7 +212,7 @@ export default function Editor() {
 
   // Page title
   useEffect(() => {
-    const base = "MOSH";
+    const base = "Cathedral // Mosh";
     document.title = isPerformanceMode
       ? "●"
       : sourceName ? `${sourceName} – ${base}` : base;
@@ -212,17 +261,222 @@ export default function Editor() {
     return () => window.clearInterval(id);
   }, [isRecording]);
 
+  // Auto-shuffle driver — beat-locked when audio is active, timed otherwise.
+  // Always mounted so the HotTriggers shuffle toggle keeps firing even when
+  // the menu rack (and ShufflePanel) is hidden.
+  const shuffleSec = useStore(s => s.shuffleSec);
+  useEffect(() => {
+    if (shuffleSec == null) return;
+
+    let cancelled = false;
+    let timeoutId: number | null = null;
+    let beatsSinceMosh = 0;
+    let targetBeats = 0;
+    let lastMoshAt = performance.now();
+
+    // Recompute target beats from the current tempo so shuffleSec maps to a
+    // musically meaningful number of beats (min 1).
+    const recomputeTargetBeats = () => {
+      const bpm = useStore.getState().bpm || 120;
+      targetBeats = Math.max(1, Math.round((shuffleSec * bpm) / 60));
+    };
+    recomputeTargetBeats();
+
+    const isAudioActive = () => {
+      const s = useStore.getState();
+      return s.micEnabled || s.systemAudioEnabled;
+    };
+
+    const fire = () => {
+      if (cancelled) return;
+      useStore.getState().mosh();
+      beatsSinceMosh = 0;
+      lastMoshAt = performance.now();
+      recomputeTargetBeats();
+      scheduleFallback();
+    };
+
+    // Fallback so shuffle still fires when audio is silent, disabled, or
+    // beats aren't landing. Uses 1.6× shuffleSec as a soft ceiling when
+    // audio is present, or exactly shuffleSec when it isn't.
+    const scheduleFallback = () => {
+      if (timeoutId) window.clearTimeout(timeoutId);
+      const factor = isAudioActive() ? 1.6 : 1.0;
+      timeoutId = window.setTimeout(fire, shuffleSec * 1000 * factor);
+    };
+
+    const onBeat = () => {
+      if (cancelled) return;
+      if (!isAudioActive()) return; // let the fallback timer own timing
+      // Ignore beats that fire suspiciously fast after a mosh (protects
+      // against transient onset bursts right after a scene change).
+      if (performance.now() - lastMoshAt < 120) return;
+      beatsSinceMosh += 1;
+      if (beatsSinceMosh >= targetBeats) fire();
+    };
+
+    window.addEventListener("aegis:beat", onBeat);
+    scheduleFallback();
+    return () => {
+      cancelled = true;
+      window.removeEventListener("aegis:beat", onBeat);
+      if (timeoutId) window.clearTimeout(timeoutId);
+    };
+  }, [shuffleSec]);
+
+  // ── Smart AI director (supporter feature) ─────────────────────────────
+  // Offline, no network. Reads camera motion + audio bands and picks
+  // moshes that fit the current vibe. Turns off auto-shuffle while active.
+  const [smartOn, setSmartOn] = useState(false);
+  const [smartFlashKey, setSmartFlashKey] = useState(0);
+  const smartRef = useRef<SmartDirector | null>(null);
+  const smartPrevShuffleRef = useRef<number | null>(null);
+
+  const toggleSmart = useCallback(() => {
+    if (!paywall.isSupporter) {
+      paywall.require("Smart AI director");
+      return;
+    }
+    setSmartOn(v => !v);
+  }, [paywall]);
+
+  useEffect(() => {
+    if (!smartOn) return;
+    // Suspend auto-shuffle for the duration; restore on exit.
+    smartPrevShuffleRef.current = useStore.getState().shuffleSec;
+    if (smartPrevShuffleRef.current != null) useStore.getState().setShuffleSec(null);
+
+    const director = new SmartDirector({
+      getVideo: () => useStore.getState().videoElement,
+      onMosh: (ids) => {
+        useStore.getState().moshDirected(ids);
+        setSmartFlashKey(performance.now());
+      },
+    });
+    smartRef.current = director;
+    director.start();
+
+    return () => {
+      director.stop();
+      smartRef.current = null;
+      // Restore prior auto-shuffle if it wasn't touched while smart mode ran.
+      const cur = useStore.getState().shuffleSec;
+      if (cur == null && smartPrevShuffleRef.current != null) {
+        useStore.getState().setShuffleSec(smartPrevShuffleRef.current);
+      }
+      smartPrevShuffleRef.current = null;
+    };
+  }, [smartOn]);
+
+  // If the user manually re-enables auto-shuffle, gracefully step out of smart mode.
+  useEffect(() => {
+    if (smartOn && shuffleSec != null) setSmartOn(false);
+  }, [shuffleSec, smartOn]);
+
+  // ── Reality Storm director (reactive AI warp) ─────────────────────────
+  const [stormOn, setStormOn] = useState(false);
+  const [stormFlashKey, setStormFlashKey] = useState(0);
+  const stormRef = useRef<StormDirector | null>(null);
+
+  const toggleStorm = useCallback(() => { setStormOn(v => !v); }, []);
+
+  useEffect(() => {
+    if (!stormOn) return;
+    if (useStore.getState().shuffleSec != null) useStore.getState().setShuffleSec(null);
+    setSmartOn(false);
+
+    const storm = new StormDirector({
+      getVideo: () => useStore.getState().videoElement,
+      onStorm: (ids, o) => {
+        useStore.getState().moshStorm(ids, { explosive: o.explosive, regions: o.regions });
+        setStormFlashKey(performance.now());
+      },
+      onTimeWarp: () => { try { timeController.triggerFreeze(320); } catch {} },
+    });
+    stormRef.current = storm;
+    storm.start();
+
+    return () => { storm.stop(); stormRef.current = null; };
+  }, [stormOn]);
+
+  useEffect(() => {
+    if (stormOn && (smartOn || shuffleSec != null)) setStormOn(false);
+  }, [smartOn, shuffleSec, stormOn]);
+
+
+
   const takeScreenshot = async () => {
     const c = getCanvas();
     if (!c) return;
     try {
-      const blob = await exportCanvas(c, { format: "png", scale: 1, aspect: null });
-      downloadBlob(blob, `mosh-${Date.now()}.png`);
-      toast.success("Screenshot saved");
+      // Free tier caps export at 720px on the long edge. Supporters get full res.
+      const longEdge = Math.max(c.width, c.height);
+      const scale = paywall.isSupporter ? 1 : Math.min(1, 720 / longEdge);
+      const blob = await exportCanvas(c, { format: "png", scale, aspect: null });
+      const filename = `mosh-${Date.now()}.png`;
+      shareOrDownload(blob, filename);
+      toast.success(paywall.isSupporter ? "Screenshot ready" : "Screenshot ready (720p · unlock for full res)", {
+        description: canNativeShare() ? "Share sheet opening…" : "Saved to downloads",
+      });
     } catch (e) {
       toast.error("Screenshot failed");
     }
   };
+
+  const shareCurrent = useCallback(async () => {
+    const c = getCanvas();
+    if (!c) { shareApp(); return; }
+    try {
+      const longEdge = Math.max(c.width, c.height);
+      const scale = Math.min(1, 1440 / longEdge);
+      const blob = await exportCanvas(c, { format: "jpg", scale, aspect: null, quality: 0.9 });
+      const shared = await shareBlob(blob, `mosh-${Date.now()}.jpg`, {
+        title: "MOSH",
+        text: "made with MOSH — brutalist webgl visualizer",
+        url: window.location.origin,
+      });
+      if (!shared) {
+        // Web Share with files unavailable — fall back to URL share.
+        await shareApp();
+      }
+    } catch {
+      await shareApp();
+    }
+  }, []);
+
+  const captureGif = useCallback(async () => {
+    if (gifBusy) return;
+    if (!paywall.require("Seamless GIF loop")) return;
+    const c = getCanvas();
+    if (!c) { toast.error("No visualizer to capture"); return; }
+    setGifBusy(true);
+    setGifProgress(0);
+    // Pause auto-shuffle so the mosh effect stays locked during the 7s window.
+    const prevShuffle = useStore.getState().shuffleSec;
+    if (prevShuffle != null) useStore.getState().setShuffleSec(null);
+    const t = toast.loading("Locking mosh · capturing seamless GIF…", { duration: 20_000 });
+    try {
+      const result = await captureLoopingGif(c, {
+        durationMs: 7000,
+        fps: 12,
+        maxWidth: 480,
+        onProgress: (phase, p) => {
+          // Weight capture as 0..0.7, encode as 0.7..1
+          setGifProgress(phase === "capture" ? p * 0.7 : 0.7 + p * 0.3);
+        },
+      });
+      downloadBlob(result.blob, `mosh-${Date.now()}_loop.gif`);
+      const quality = result.loopScore > 0.85 ? "tight loop" : result.loopScore > 0.6 ? "clean loop" : "loop";
+      toast.success(`GIF saved · ${result.frameCount}f · ${quality}`, { id: t });
+    } catch (e) {
+      toast.error("GIF capture failed", { id: t });
+    } finally {
+      if (prevShuffle != null) useStore.getState().setShuffleSec(prevShuffle);
+      setGifBusy(false);
+      setGifProgress(0);
+    }
+  }, [gifBusy, paywall]);
+
 
   const toggleRecord = async () => {
     const c = getCanvas();
@@ -239,16 +493,37 @@ export default function Editor() {
         recStartRef.current = performance.now();
         setRecElapsed(0);
         setIsRecording(true);
-        toast.success("Recording started · Shift+R to stop");
+        if (paywall.isSupporter) {
+          toast.success("Recording started · Shift+R to stop");
+        } else {
+          toast.success("Recording started · 15s free cap · Shift+R to stop early");
+          if (recCapRef.current) window.clearTimeout(recCapRef.current);
+          recCapRef.current = window.setTimeout(() => {
+            recCapRef.current = null;
+            if (recorderRef.current?.state === "recording") {
+              toast("15s free cap reached — unlock supporter for longer clips", {
+                action: { label: "Unlock", onClick: () => paywall.purchase() },
+              });
+              toggleRecord();
+            }
+          }, 15_000);
+        }
       } catch (e) {
         toast.error("Could not start recording");
       }
     } else {
       try {
+        if (recCapRef.current) { window.clearTimeout(recCapRef.current); recCapRef.current = null; }
         const blob = await rec.stop();
         setIsRecording(false);
-        downloadBlob(blob, `mosh-${Date.now()}.${rec.extension()}`);
-        toast.success("Recording saved");
+        const filename = `mosh-${Date.now()}.${rec.extension()}`;
+        shareOrDownload(blob, filename);
+        toast.success("Recording ready", {
+          duration: 10000,
+          description: canNativeShare()
+            ? "Share sheet opening — post to TikTok, Instagram, Snapchat…"
+            : "Saved to downloads",
+        });
       } catch (e) {
         toast.error("Could not stop recording");
         setIsRecording(false);
@@ -327,7 +602,13 @@ export default function Editor() {
         return;
       }
 
-      // Single-key M => mic toggle (Shift+I alias preserved below)
+      // ————————————— Hot-trigger single-key shortcuts —————————————
+      // Mnemonic mapping — matches the icon rack in the top-right corner.
+      //   R = Record · M = Mic · A = Auto-shuffle · X = mosh (eXplode)
+      //   S = Save favorite · Shift+S = open favorites list
+      //   Z = freeZe · C = Capture (screenshot) · P/F = Perf · H = Hide UI
+
+      // M => mic toggle
       if (!e.shiftKey && (e.key === "m" || e.key === "M")) {
         e.preventDefault();
         const next = !useStore.getState().micEnabled;
@@ -335,10 +616,56 @@ export default function Editor() {
         setMicFlash({ on: next, key: performance.now() });
         return;
       }
-      // Single-key R => recording (Shift+V alias preserved below)
+      // R => recording
       if (!e.shiftKey && (e.key === "r" || e.key === "R")) {
         e.preventDefault();
         toggleRecord();
+        return;
+      }
+      // A => auto-shuffle toggle (default 5s)
+      if (!e.shiftKey && (e.key === "a" || e.key === "A")) {
+        e.preventDefault();
+        const cur = useStore.getState().shuffleSec;
+        useStore.getState().setShuffleSec(cur == null ? 5 : null);
+        return;
+      }
+      // X => mosh / randomize
+      if (!e.shiftKey && (e.key === "x" || e.key === "X")) {
+        e.preventDefault();
+        mosh();
+        return;
+      }
+      // S => save current mosh as favorite
+      if (!e.shiftKey && (e.key === "s" || e.key === "S")) {
+        e.preventDefault();
+        useStore.getState().saveFavorite();
+        return;
+      }
+      // Z => freeze / slow-mo
+      if (!e.shiftKey && (e.key === "z" || e.key === "Z")) {
+        e.preventDefault();
+        timeController.triggerFreeze(1400);
+        setFreezeOn(true);
+        window.setTimeout(() => setFreezeOn(false), 1400);
+        setIconFlash({ icon: "freeze", label: "Freeze", key: performance.now() });
+        return;
+      }
+      // C => capture screenshot
+      if (!e.shiftKey && (e.key === "c" || e.key === "C")) {
+        e.preventDefault();
+        takeScreenshot();
+        return;
+      }
+      // G => GIF loop capture (7s seamless)
+      if (!e.shiftKey && (e.key === "g" || e.key === "G")) {
+        e.preventDefault();
+        captureGif();
+        return;
+      }
+      // I => Smart AI director (supporter unlock)
+      if (!e.shiftKey && (e.key === "i" || e.key === "I")) {
+        e.preventDefault();
+        toggleSmart();
         return;
       }
 
@@ -351,7 +678,6 @@ export default function Editor() {
 
       // H => toggle UI hide / peek
       if (!e.shiftKey && (e.key === "h" || e.key === "H")) {
-        // PerformanceMode handles its own H peek; only act when not in perf mode
         if (!useStore.getState().isPerformanceMode) {
           e.preventDefault();
           setHideUI(v => !v);
@@ -359,7 +685,7 @@ export default function Editor() {
         return;
       }
 
-      // Shift combos (kept from prior version)
+      // ————————————— Shift combos —————————————
       if (e.shiftKey && (e.key === "M" || e.key === "m")) { e.preventDefault(); mosh(); return; }
       if (e.shiftKey && (e.key === "I" || e.key === "i")) {
         e.preventDefault();
@@ -370,6 +696,16 @@ export default function Editor() {
       }
       if (e.shiftKey && (e.key === "V" || e.key === "v")) { e.preventDefault(); toggleRecord(); return; }
       if (e.shiftKey && (e.key === "C" || e.key === "c")) { e.preventDefault(); takeScreenshot(); return; }
+      if (e.shiftKey && (e.key === "S" || e.key === "s")) {
+        e.preventDefault();
+        window.dispatchEvent(new CustomEvent("mosh:toggle-favorites"));
+        return;
+      }
+      if (e.shiftKey && (e.key === "A" || e.key === "a")) {
+        e.preventDefault();
+        window.dispatchEvent(new CustomEvent("mosh:cycle-shuffle"));
+        return;
+      }
       if (e.shiftKey && (e.key === "F" || e.key === "f")) {
         e.preventDefault();
         timeController.triggerFreeze(1400);
@@ -395,7 +731,7 @@ export default function Editor() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [mosh, undo, redo, setMicEnabled, paletteOpen, shortcutsOpen, saveSlot, loadSlot, rerollSeed, flashSlot, exportBestStill]);
+  }, [mosh, undo, redo, setMicEnabled, paletteOpen, shortcutsOpen, saveSlot, loadSlot, rerollSeed, flashSlot, exportBestStill, captureGif]);
 
   // First-load shortcuts hint (3s)
   useEffect(() => {
@@ -430,7 +766,6 @@ export default function Editor() {
       const detail = (e as CustomEvent<{ bpm: number }>).detail;
       if (!detail) return;
       setBpmFlash({ bpm: detail.bpm, key: performance.now() });
-      toast.message(`BPM detected · ${detail.bpm}`, { duration: 2000 });
     };
     window.addEventListener("aegis:bpm-detected", onBpm);
     return () => window.removeEventListener("aegis:bpm-detected", onBpm);
@@ -454,7 +789,7 @@ export default function Editor() {
     let startedAt = 0;
     let startX = 0, startY = 0;
     let activeId: number | null = null;
-    const HOLD_MS = 1500;
+    const HOLD_MS = 750;
 
     const detachWindow = () => {
       window.removeEventListener("pointermove", onMoveWin);
@@ -544,11 +879,6 @@ export default function Editor() {
       }
     }
     try { localStorage.setItem("cathedral_seen_audio_defaults", "1"); } catch {}
-    if (count > 0) {
-      toast.success(`Mic enabled · auto-mapped ${count} effect${count === 1 ? "" : "s"} to audio. Click ~ on any param to customize.`);
-    } else {
-      toast.success("Mic enabled · click ~ on any param to map it to audio.");
-    }
   }, [micEnabled]);
 
   useEffect(() => {
@@ -618,19 +948,22 @@ export default function Editor() {
           }
           if (e.shiftKey) { e.preventDefault(); mosh(); }
         }}
-        className={`relative bg-background select-none w-full h-screen shrink-0`}
+        className={`relative bg-background select-none w-full h-[100dvh] shrink-0 no-touch-scroll ${isCameraLive ? "live-ring" : ""}`}
 
         title="Shift+Click to MOSH"
       >
         <div data-tap-fade-target className="absolute inset-0 opacity-100">
           <GlCanvas />
         </div>
+        {!hasSource && <StartCameraOverlay />}
         <SystemAudioHud visible={systemAudioEnabled} />
-        <MobileGestures
-          onTogglePerf={togglePerf}
-          onScreenshot={takeScreenshot}
-          onMicFlash={(on) => setMicFlash({ on, key: performance.now() })}
-        />
+        {hasSource && (
+          <MobileGestures
+            onTogglePerf={togglePerf}
+            onScreenshot={takeScreenshot}
+            onMicFlash={(on) => setMicFlash({ on, key: performance.now() })}
+          />
+        )}
         <TrackpadGestures
           targetRef={canvasContainerRef}
           onTogglePerf={togglePerf}
@@ -639,7 +972,69 @@ export default function Editor() {
         <KaossSurface />
         <RippleLayer />
         <SourceTransition trigger={transitionKey} />
-        <TapToBegin />
+        
+        {/* TapToBegin removed — StartCameraOverlay is the live-first empty state and TapToBegin's centered button used to intercept clicks meant for "go live". */}
+        {!isPerformanceMode && (
+          <HotTriggers
+            isRecording={isRecording}
+            onToggleRecord={toggleRecord}
+            onScreenshot={takeScreenshot}
+            onGif={captureGif}
+            onShare={shareCurrent}
+            onSupport={() => navigate("/pricing")}
+            gifBusy={gifBusy}
+            gifProgress={gifProgress}
+            onFreeze={() => {
+              timeController.triggerFreeze(1400);
+              setFreezeOn(true);
+              window.setTimeout(() => setFreezeOn(false), 1400);
+              setIconFlash({ icon: "freeze", label: "Freeze", key: performance.now() });
+            }}
+            onMicFlash={(on) => setMicFlash({ on, key: performance.now() })}
+            smartOn={smartOn}
+            smartLocked={!paywall.isSupporter}
+            onToggleSmart={toggleSmart}
+            stormOn={stormOn}
+            onToggleStorm={toggleStorm}
+            isFullscreen={isBrowserFs}
+            onToggleFullscreen={toggleFullscreen}
+            onHome={() => {
+              if (isRecording) { try { toggleRecord(); } catch {} }
+              try { useStore.getState().reset(); } catch {}
+              try { useStore.getState().clearVideoSource(); } catch {}
+              try { useStore.getState().clearImage(); } catch {}
+              navigate("/");
+            }}
+            dimmed={idleHidden}
+          />
+        )}
+        {smartOn && (
+          <div
+            key={smartFlashKey}
+            aria-hidden
+            className="pointer-events-none absolute inset-0 z-20 animate-[smartFlash_420ms_ease-out_forwards]"
+            style={{
+              background: "radial-gradient(circle at 50% 50%, hsl(var(--accent) / 0.10), transparent 55%)",
+              mixBlendMode: "screen",
+            }}
+          />
+        )}
+        {stormOn && (
+          <div
+            key={stormFlashKey}
+            aria-hidden
+            className="pointer-events-none absolute inset-0 z-20 animate-[smartFlash_420ms_ease-out_forwards]"
+            style={{
+              background: "radial-gradient(circle at 50% 50%, hsl(var(--accent) / 0.16), transparent 60%)",
+              mixBlendMode: "screen",
+            }}
+          />
+        )}
+        {!isPerformanceMode && !hideUI && (
+          <div className={`absolute top-3 right-3 z-40 pointer-events-auto transition-opacity duration-500 ${idleHidden ? "opacity-0 pointer-events-none" : "opacity-100"}`}>
+            <AccountChip />
+          </div>
+        )}
         {onboardingActive && !hasSource && (
           <OnboardingPrompts onComplete={() => { setOnboardingActive(false); markOnboardingSeen(); }} />
         )}
@@ -745,13 +1140,30 @@ export default function Editor() {
               <div className="ml-2 hidden sm:block">
                 <SlotIndicator onLoad={(i) => loadSlot(i)} />
               </div>
+              <div className="ml-1">
+                <CameraMenu />
+              </div>
             </div>
 
             <div className="flex items-center gap-0.5">
-              <button onClick={undo} className="btn-icon h-7 w-7" aria-label="undo" title="Undo (⌘Z)">
+              <button
+                onClick={undo}
+                disabled={!canUndo}
+                className="btn-icon h-7 w-7 disabled:opacity-30 disabled:cursor-not-allowed"
+                aria-label="undo"
+                aria-disabled={!canUndo}
+                title="Undo (⌘Z)"
+              >
                 <Undo2 className="h-3.5 w-3.5" strokeWidth={1.5} />
               </button>
-              <button onClick={redo} className="btn-icon h-7 w-7" aria-label="redo" title="Redo (⌘Y)">
+              <button
+                onClick={redo}
+                disabled={!canRedo}
+                className="btn-icon h-7 w-7 disabled:opacity-30 disabled:cursor-not-allowed"
+                aria-label="redo"
+                aria-disabled={!canRedo}
+                title="Redo (⌘Y)"
+              >
                 <Redo2 className="h-3.5 w-3.5" strokeWidth={1.5} />
               </button>
               <button
@@ -908,3 +1320,4 @@ export default function Editor() {
     </main>
   );
 }
+

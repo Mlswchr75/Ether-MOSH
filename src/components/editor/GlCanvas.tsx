@@ -1,0 +1,555 @@
+import { useEffect, useRef, useState } from "react";
+import { useStore } from "@/store/useStore";
+import { MoshRenderer, type RenderLayer } from "@/engine/Renderer";
+import { evalModulator } from "@/engine/modulators";
+import { BeatClock } from "@/engine/beat";
+import { MicAnalyzer } from "@/engine/mic";
+import { EFFECTS_BY_ID } from "@/engine/effects";
+import { timeController } from "@/engine/timefx";
+import { ProceduralSource } from "@/engine/proceduralSource";
+import { FrequencyStrip, BeatBorder } from "./AudioFeedback";
+import { startAnalyzer, stopAnalyzer, getAudioData } from "@/engine/audioAnalyzer";
+import { IsolationOverlay } from "./IsolationOverlay";
+import { StickerCapture } from "./StickerCapture";
+import { toast } from "sonner";
+import { vrMode } from "@/engine/vrMode";
+import { VrButton } from "./VrButton";
+
+
+/**
+ * Heuristic default audio map for any unmapped param. When the mic is on,
+ * EVERY layer breathes — no manual wiring required. Users can still override
+ * per-param via the "~" tilde control to set explicit `audioMaps`.
+ */
+type DefaultMap = { source: "bass" | "mid" | "treble" | "overall" | "beat"; amount: number; smoothing: number };
+function defaultAudioMap(key: string): DefaultMap {
+  const k = key.toLowerCase();
+  // Punchy / kick-driven params
+  if (/(amount|intensity|strength|power|drive|gain|mix)/.test(k))
+    return { source: "bass", amount: 0.55, smoothing: 0.25 };
+  // Beat-snappy structural shifts
+  if (/(scale|size|zoom|radius|thick|width|count|density|stripes|cells|blocks|tiles|grid|repeat)/.test(k))
+    return { source: "beat", amount: 0.35, smoothing: 0.05 };
+  // Color / hue → treble shimmer
+  if (/(hue|color|tint|saturat|chroma|rainbow|spectrum|prism)/.test(k))
+    return { source: "treble", amount: 0.45, smoothing: 0.4 };
+  // Spatial distortion → mid energy
+  if (/(shift|offset|displace|warp|distort|skew|twist|swirl|wave|wobble|bend|pinch|spread|split|spacing|angle)/.test(k))
+    return { source: "mid", amount: 0.4, smoothing: 0.3 };
+  // Time / motion / speed → overall envelope
+  if (/(speed|rate|time|phase|frequency|tempo|flow|drift)/.test(k))
+    return { source: "overall", amount: 0.3, smoothing: 0.5 };
+  // Threshold / cutoff / detail → bass
+  if (/(threshold|cutoff|edge|detail|noise|grain)/.test(k))
+    return { source: "bass", amount: 0.4, smoothing: 0.3 };
+  // Default — gentle overall pulse so nothing is ever fully static
+  return { source: "overall", amount: 0.25, smoothing: 0.5 };
+}
+
+
+export function GlCanvas() {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const rendererRef = useRef<MoshRenderer | null>(null);
+  const beatRef = useRef(new BeatClock());
+  const micRef = useRef(new MicAnalyzer());
+  const proceduralRef = useRef<ProceduralSource | null>(null);
+  const layersRef = useRef(useStore.getState().layers);
+  const showBeforeAfterRef = useRef(useStore.getState().showBeforeAfter);
+  const vrFrameRef = useRef<(() => void) | null>(null);
+
+  const imageElement = useStore(s => s.imageElement);
+  const videoElement = useStore(s => s.videoElement);
+  const showBeforeAfter = useStore(s => s.showBeforeAfter);
+  const beforeAfterSplit = useStore(s => s.beforeAfterSplit);
+  const bpm = useStore(s => s.bpm);
+  const beatEnabled = useStore(s => s.beatEnabled);
+  const micEnabled = useStore(s => s.micEnabled);
+  const systemAudioEnabled = useStore(s => s.systemAudioEnabled);
+  const micSensitivity = useStore(s => s.micSensitivity);
+  const lastAppliedBpmAtRef = useRef(0);
+  const audioSmoothRef = useRef<Map<string, number>>(new Map());
+  const isPerformanceMode = useStore(s => s.isPerformanceMode);
+  const showMetersInPerformance = useStore(s => s.showMetersInPerformance);
+  const tileMode = useStore(s => s.tileMode);
+  const tileUniforms = useStore(s => s.tileUniforms);
+
+  // Init renderer
+  useEffect(() => {
+    if (!canvasRef.current) return;
+    rendererRef.current = new MoshRenderer(canvasRef.current);
+    useStore.getState().setGlCanvas(canvasRef.current);
+    return () => {
+      useStore.getState().setGlCanvas(null);
+      rendererRef.current?.dispose();
+      rendererRef.current = null;
+    };
+  }, []);
+
+  // Source — priority: live video > still image > procedural ambient.
+  useEffect(() => {
+    if (!rendererRef.current) return;
+    if (videoElement) {
+      proceduralRef.current?.stop();
+      rendererRef.current.setSourceVideo(videoElement);
+      const refresh = () => rendererRef.current?.refreshSourceAspect();
+      videoElement.addEventListener("loadedmetadata", refresh);
+      videoElement.addEventListener("resize", refresh);
+      const tryPlay = () => { videoElement.play().catch(() => {}); };
+      tryPlay();
+      return () => {
+        videoElement.removeEventListener("loadedmetadata", refresh);
+        videoElement.removeEventListener("resize", refresh);
+      };
+    }
+    if (imageElement) {
+      proceduralRef.current?.stop();
+      rendererRef.current.setSourceImage(imageElement);
+    } else {
+      if (!proceduralRef.current) proceduralRef.current = new ProceduralSource(1024);
+      proceduralRef.current.start();
+      rendererRef.current.setSourceCanvas(proceduralRef.current.canvas);
+    }
+    const r = containerRef.current?.getBoundingClientRect();
+    if (r) rendererRef.current.resize(r.width, r.height);
+  }, [imageElement, videoElement]);
+
+  // Cleanup procedural on unmount
+  useEffect(() => () => { proceduralRef.current?.dispose(); proceduralRef.current = null; }, []);
+
+  // Auto-resume AudioContext on tab refocus
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState !== "visible") return;
+      const m = micRef.current;
+      if (!m.enabled) return;
+      if (m.isSuspended()) {
+        m.resume();
+      }
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, []);
+
+  // Resize observer
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const ro = new ResizeObserver(() => {
+      const el = containerRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      rendererRef.current?.resize(r.width, r.height);
+    });
+    ro.observe(containerRef.current);
+    return () => ro.disconnect();
+  }, []);
+
+  // Beat sync settings
+  useEffect(() => { beatRef.current.setBpm(bpm); }, [bpm]);
+  useEffect(() => { beatRef.current.enabled = beatEnabled; }, [beatEnabled]);
+
+  // Seamless tile pass
+  useEffect(() => {
+    rendererRef.current?.setTile(tileMode, tileUniforms);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tileMode]);
+  useEffect(() => {
+    if (tileMode === "none") return;
+    rendererRef.current?.updateTileUniforms(tileUniforms);
+  }, [tileMode, tileUniforms]);
+
+  // Microphone sensitivity passthrough
+  useEffect(() => { micRef.current.sensitivity = micSensitivity; }, [micSensitivity]);
+
+  // Lightweight singleton analyzer mirrored off the system-audio stream.
+  useEffect(() => {
+    if (systemAudioEnabled) {
+      const stream = (window as any).__aegisPendingSystemStream as MediaStream | undefined
+        ?? (window as any).__aegisActiveSystemStream as MediaStream | undefined;
+      if (stream) {
+        (window as any).__aegisActiveSystemStream = stream;
+        try { startAnalyzer(stream); } catch (e) { console.warn("[audioAnalyzer]", e); }
+      }
+    } else {
+      stopAnalyzer();
+      (window as any).__aegisActiveSystemStream = undefined;
+    }
+  }, [systemAudioEnabled]);
+
+  // Mic / system audio enable/disable lifecycle (mutually exclusive).
+  useEffect(() => {
+    const mic = micRef.current;
+    const wantSource: "mic" | "system" | null = micEnabled ? "mic" : systemAudioEnabled ? "system" : null;
+    mic.stop();
+    if (!wantSource) return;
+    if (wantSource === "mic" && !mic.isSupported()) {
+      toast.error("Microphone not supported in this browser");
+      useStore.getState().setMicEnabled(false);
+      return;
+    }
+    (window as any).__aegisSystemAudioEnded = () => {
+      useStore.getState().setSystemAudioEnabled(false);
+    };
+    let presetStream: MediaStream | undefined;
+    if (wantSource === "system") {
+      presetStream = (window as any).__aegisPendingSystemStream as MediaStream | undefined;
+      (window as any).__aegisPendingSystemStream = undefined;
+      if (!presetStream) {
+        toast.error("Click the device-audio button again to share a tab");
+        useStore.getState().setSystemAudioEnabled(false);
+        return;
+      }
+    }
+    mic.start(wantSource, presetStream).then(() => {
+      toast.success(wantSource === "system"
+        ? "Routing device audio — every layer reacts"
+        : "Listening — every layer is now sound-reactive");
+    }).catch((err) => {
+      console.error("[audio] capture failed:", err);
+      const isSystem = wantSource === "system";
+      const msg = (err && err.name) === "NotAllowedError"
+        ? `${isSystem ? "Screen share" : "Microphone"} permission denied`
+        : (err?.message || (isSystem ? "Couldn't capture system audio" : "Microphone unavailable"));
+      if (isSystem) {
+        useStore.getState().setSystemAudioEnabled(false);
+        toast.error(`${msg} — falling back to microphone`);
+        if (mic.isSupported() && !useStore.getState().micEnabled) {
+          useStore.getState().setMicEnabled(true);
+        }
+      } else {
+        toast.error(msg);
+        useStore.getState().setMicEnabled(false);
+      }
+    });
+  }, [micEnabled, systemAudioEnabled]);
+
+  // Auto-resume the AudioContext if iOS suspends it.
+  useEffect(() => {
+    const mic = micRef.current;
+    const onVis = () => { if (!document.hidden) mic.resume(); };
+    const onTouch = () => mic.resume();
+    document.addEventListener("visibilitychange", onVis);
+    window.addEventListener("touchend", onTouch, { passive: true });
+    window.addEventListener("pointerup", onTouch);
+    return () => {
+      document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("touchend", onTouch);
+      window.removeEventListener("pointerup", onTouch);
+    };
+  }, []);
+
+  useEffect(() => () => micRef.current.stop(), []);
+
+  useEffect(() => useStore.subscribe((state) => {
+    layersRef.current = state.layers;
+    showBeforeAfterRef.current = state.showBeforeAfter;
+  }), []);
+
+  // Render loop with adaptive resolution
+  useEffect(() => {
+    let raf = 0;
+    const samples: number[] = [];
+    let last = performance.now();
+    let scale = window.innerWidth < 768 ? 0.58 : 0.72;
+    rendererRef.current?.setRenderScale(scale);
+
+    const renderOnce = () => {
+      const now = performance.now();
+      const dt = now - last; last = now;
+      samples.push(dt);
+      if (samples.length > 30) samples.shift();
+      const avg = samples.reduce((a, b) => a + b, 0) / samples.length;
+      const fps = 1000 / avg;
+      (window as any).__aegisFps = fps;
+
+      // Adaptive
+      if (fps < 42 && scale > 0.45) {
+        scale = Math.max(0.45, scale - 0.1);
+        rendererRef.current?.setRenderScale(scale);
+      } else if (fps > 58 && scale < 0.9) {
+        scale = Math.min(0.9, scale + 0.04);
+        rendererRef.current?.setRenderScale(scale);
+      }
+
+      const t = timeController.tick();
+      const beatPulse = beatRef.current.pulse(now);
+      const micPulse = micRef.current.level();
+      const mic = micRef.current;
+      (window as any).__aegisMicLevel = micPulse;
+      (window as any).__aegisAudioBands = mic.bands;
+      const sources: Record<string, number> = {
+        bass: mic.bassLevel,
+        sub: mic.subLevel,
+        kick: mic.kickLevel,
+        lowMid: mic.lowMidLevel,
+        mid: mic.midLevel,
+        highMid: mic.highMidLevel,
+        treble: mic.trebleLevel,
+        presence: mic.presenceLevel,
+        overall: mic.overallLevel,
+        energy: mic.energyLevel,
+        centroid: mic.centroidLevel,
+        beat: 0,
+      };
+      if (mic.consumeBeat()) {
+        (window as any).__aegisLastBeatAt = now;
+        sources.beat = 1;
+        window.dispatchEvent(new Event("aegis:beat"));
+      } else {
+        const lastBeat = (window as any).__aegisLastBeatAt as number | undefined;
+        if (lastBeat) {
+          const since = now - lastBeat;
+          sources.beat = since < 240 ? Math.pow(1 - since / 240, 2) : 0;
+        }
+      }
+      (window as any).__aegisAudioSources = sources;
+
+      const detectedAt = mic.detectedBpmAt;
+      const detectedBpm = mic.detectedBpm;
+      if (detectedBpm && detectedAt && detectedAt !== lastAppliedBpmAtRef.current) {
+        lastAppliedBpmAtRef.current = detectedAt;
+        const store = useStore.getState();
+        if (Math.abs(store.bpm - detectedBpm) >= 1) {
+          store.setBpm(detectedBpm);
+          (window as any).__aegisDetectedBpm = detectedBpm;
+          window.dispatchEvent(new CustomEvent("aegis:bpm-detected", { detail: { bpm: detectedBpm } }));
+        }
+      }
+      const rippleUntil = (window as any).__aegisRippleUntil as number | undefined;
+      let ripplePulse = 0;
+      if (rippleUntil && now < rippleUntil) {
+        const remaining = (rippleUntil - now) / 800;
+        ripplePulse = Math.max(0, Math.min(1, remaining));
+      }
+
+      const kaossLevel = Math.max(0, Math.min(1, (window as any).__aegisKaossLevel ?? 0));
+      const kaossPalette = (window as any).__aegisKaossPalette as
+        | { bass: number; mid: number; treble: number; overall: number; beat: number }
+        | undefined;
+      if (kaossLevel > 0.001 && kaossPalette) {
+        sources.bass    = Math.min(1, sources.bass    + kaossLevel * kaossPalette.bass);
+        sources.mid     = Math.min(1, sources.mid     + kaossLevel * kaossPalette.mid);
+        sources.treble  = Math.min(1, sources.treble  + kaossLevel * kaossPalette.treble);
+        sources.overall = Math.min(1, sources.overall + kaossLevel * kaossPalette.overall);
+        sources.beat    = Math.min(1, sources.beat    + kaossLevel * kaossPalette.beat);
+      }
+      const kaossActive = kaossLevel > 0.01;
+
+      const sysBeat = useStore.getState().systemAudioEnabled ? getAudioData().beat : 0;
+      const pulse = Math.max(beatPulse, micPulse, ripplePulse, kaossLevel, sysBeat);
+      const audioSmooth = audioSmoothRef.current;
+      const reactiveOn = mic.enabled || kaossActive;
+      const renderLayers: RenderLayer[] = layersRef.current.map(l => {
+        const params: Record<string, number> = {};
+        const def = EFFECTS_BY_ID[l.effectId];
+        for (const k of Object.keys(l.params)) {
+          let v = l.params[k];
+          const mod = l.mods[k];
+          if (mod) v = v + evalModulator(mod.type, t, mod.speed, mod.depth, mod.offset, pulse);
+          const am = l.audioMaps?.[k];
+          const pdef = def?.params.find(p => p.key === k);
+          const range = pdef ? (pdef.max - pdef.min) : 1;
+          if (am && reactiveOn) {
+            const target = sources[am.source] ?? 0;
+            const smKey = `${l.id}:${k}`;
+            const prev = audioSmooth.get(smKey) ?? 0;
+            const alpha = Math.max(0.02, 1 - am.smoothing * 0.98);
+            const sm = prev + (target - prev) * alpha;
+            audioSmooth.set(smKey, sm);
+            v = v + sm * am.amount * range;
+          } else if (reactiveOn && !am) {
+            const dm = defaultAudioMap(k);
+            const target = sources[dm.source] ?? 0;
+            const smKey = `${l.id}:${k}:def`;
+            const prev = audioSmooth.get(smKey) ?? 0;
+            const alpha = Math.max(0.02, 1 - dm.smoothing * 0.98);
+            const sm = prev + (target - prev) * alpha;
+            audioSmooth.set(smKey, sm);
+            v = v + sm * dm.amount * range;
+          }
+          params[k] = v;
+        }
+        let opacity = l.opacity;
+        if (showBeforeAfterRef.current) opacity = 0;
+        return {
+          id: l.id,
+          effectId: l.effectId,
+          hidden: l.hidden,
+          opacity,
+          blend: l.blend,
+          params,
+          region: l.region ?? null,
+        };
+      });
+
+      rendererRef.current?.render(renderLayers, pulse);
+    };
+
+    vrFrameRef.current = renderOnce;
+
+    const tick = () => {
+      if (!vrMode.active) renderOnce();
+      raf = requestAnimationFrame(tick);
+    };
+
+    raf = requestAnimationFrame(tick);
+    return () => { cancelAnimationFrame(raf); vrFrameRef.current = null; };
+  }, []);
+
+  const [fitMode, setFitMode] = useState<"contain" | "cover">("contain");
+  useEffect(() => {
+    const compute = () => {
+      if (!isPerformanceMode) { setFitMode("contain"); return; }
+      const isMobile = window.matchMedia("(pointer: coarse)").matches || window.innerWidth < 900;
+      if (!isMobile || !imageElement) { setFitMode("contain"); return; }
+      const iw = imageElement.naturalWidth || imageElement.width;
+      const ih = imageElement.naturalHeight || imageElement.height;
+      if (!iw || !ih) { setFitMode("contain"); return; }
+      const imgAspect = iw / ih;
+      const devAspect = window.innerWidth / Math.max(1, window.innerHeight);
+      const imgLandscape = imgAspect > 1.05;
+      const devLandscape = devAspect > 1.05;
+      setFitMode(imgLandscape === devLandscape ? "contain" : "cover");
+    };
+    compute();
+    window.addEventListener("resize", compute);
+    window.addEventListener("orientationchange", compute);
+    return () => {
+      window.removeEventListener("resize", compute);
+      window.removeEventListener("orientationchange", compute);
+    };
+  }, [isPerformanceMode, imageElement]);
+
+  const coverFill = isPerformanceMode && fitMode === "cover";
+
+  return (
+    <div ref={containerRef} className="relative h-full w-full overflow-hidden">
+      <canvas
+        ref={canvasRef}
+        data-mosh-canvas
+        className="relative z-10 block h-full w-full"
+        style={{ imageRendering: "auto", objectFit: "cover" }}
+      />
+
+      <IsolationOverlay />
+      <StickerCapture />
+      <VrButton getRenderer={() => rendererRef.current} getFrame={() => vrFrameRef.current} />
+
+
+      <BeatBorder />
+      <FrequencyStrip hidden={isPerformanceMode && !showMetersInPerformance} />
+
+      {showBeforeAfter && imageElement && (
+        <div
+          className="pointer-events-none absolute inset-0 flex items-center justify-center z-20"
+        >
+          <div
+            className="relative overflow-hidden"
+            style={{ width: "100%", height: "100%" }}
+          >
+            <img
+              src={imageElement.src}
+              alt=""
+              className="absolute left-0 top-1/2 -translate-y-1/2 h-full w-full object-contain"
+              style={{ clipPath: `inset(0 ${(1 - beforeAfterSplit) * 100}% 0 0)` }}
+            />
+            <div
+              className="absolute top-0 h-full w-px bg-primary shadow-[0_0_12px_hsl(var(--primary))]"
+              style={{ left: `${beforeAfterSplit * 100}%` }}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * MirrorWings — fills the letterboxed gutters in fullscreen with mirrored
+ * copies of the main GL canvas.
+ */
+function MirrorWings({
+  canvasRef, containerRef,
+}: {
+  canvasRef: React.RefObject<HTMLCanvasElement>;
+  containerRef: React.RefObject<HTMLDivElement>;
+}) {
+  const leftRef = useRef<HTMLCanvasElement>(null);
+  const rightRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    let raf = 0;
+    const tick = () => {
+      raf = requestAnimationFrame(tick);
+      const main = canvasRef.current;
+      const cont = containerRef.current;
+      const left = leftRef.current;
+      const right = rightRef.current;
+      if (!main || !cont || !left || !right) return;
+      if (main.width === 0 || main.height === 0) return;
+
+      const cRect = cont.getBoundingClientRect();
+      const mRect = main.getBoundingClientRect();
+      const gutter = Math.max(0, Math.floor((cRect.width - mRect.width) / 2));
+      if (gutter <= 1) {
+        left.style.display = "none";
+        right.style.display = "none";
+        return;
+      }
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const cssH = Math.floor(mRect.height);
+      const wingPxW = Math.max(1, Math.floor(gutter * dpr));
+      const wingPxH = Math.max(1, Math.floor(cssH * dpr));
+
+      for (const w of [left, right]) {
+        if (w.width !== wingPxW || w.height !== wingPxH) {
+          w.width = wingPxW; w.height = wingPxH;
+        }
+        w.style.display = "block";
+        w.style.width = `${gutter}px`;
+        w.style.height = `${cssH}px`;
+      }
+
+      const lctx = left.getContext("2d");
+      const rctx = right.getContext("2d");
+      if (!lctx || !rctx) return;
+
+      const sliceW = Math.min(main.width, Math.floor((gutter / mRect.height) * main.height));
+
+      rctx.save();
+      rctx.setTransform(-1, 0, 0, 1, wingPxW, 0);
+      rctx.drawImage(
+        main,
+        main.width - sliceW, 0, sliceW, main.height,
+        0, 0, wingPxW, wingPxH,
+      );
+      rctx.restore();
+
+      lctx.save();
+      lctx.setTransform(-1, 0, 0, 1, wingPxW, 0);
+      lctx.drawImage(
+        main,
+        0, 0, sliceW, main.height,
+        0, 0, wingPxW, wingPxH,
+      );
+      lctx.restore();
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [canvasRef, containerRef]);
+
+  return (
+    <>
+      <canvas
+        ref={leftRef}
+        className="absolute left-0 top-1/2 -translate-y-1/2 z-0 pointer-events-none"
+        style={{ imageRendering: "pixelated" }}
+      />
+      <canvas
+        ref={rightRef}
+        className="absolute right-0 top-1/2 -translate-y-1/2 z-0 pointer-events-none"
+        style={{ imageRendering: "pixelated" }}
+      />
+    </>
+  );
+}
