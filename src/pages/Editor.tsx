@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
 import { ArrowLeft, Download, Layers, Sparkles, Sliders, Music, Eye, Undo2, Redo2, Maximize2, Minimize2, Circle, Mic, MicOff, MonitorSpeaker, Snowflake, Rewind, Repeat, Keyboard, X } from "lucide-react";
 import { useStore } from "@/store/useStore";
@@ -36,7 +36,6 @@ import { SystemAudioHud } from "@/components/editor/SystemAudioHud";
 
 import { AboutTrigger } from "@/components/AboutOverlay";
 import { CameraMenu } from "@/components/editor/CameraMenu";
-import { defaultFacing, requestCameraStream } from "@/hooks/useCamera";
 
 import { StartCameraOverlay } from "@/components/editor/StartCameraOverlay";
 import { HotTriggers } from "@/components/editor/HotTriggers";
@@ -51,8 +50,6 @@ import { useIdleHide } from "@/hooks/useIdleHide";
 
 export default function Editor() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const setVideoSource = useStore(s => s.setVideoSource);
   const imageElement = useStore(s => s.imageElement);
   const videoElement = useStore(s => s.videoElement);
   const hasSource = imageElement || videoElement;
@@ -117,18 +114,6 @@ export default function Editor() {
   const prevImageRef = useRef<HTMLImageElement | null>(null);
 
   useFullscreenSync();
-
-  // Auto-start camera when navigated from "go live →" button (?source=camera)
-  useEffect(() => {
-    if (searchParams.get("source") !== "camera") return;
-    const facing = defaultFacing();
-    requestCameraStream({ facing }).then((stream) => {
-      setVideoSource(stream, facing === "user" ? "front camera" : "rear camera");
-    }).catch(() => {
-      // Permission denied or no camera — StartCameraOverlay is already visible
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const idleHidden = useIdleHide(5000);
 

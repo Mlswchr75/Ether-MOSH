@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { motion } from "framer-motion";
 import { useStore } from "@/store/useStore";
 import { haptic } from "@/hooks/useHaptics";
+import { defaultFacing, requestCameraStream } from "@/hooks/useCamera";
 import { MoshingBackdrop } from "@/components/home/MoshingBackdrop";
 import { AboutTrigger } from "@/components/AboutOverlay";
 import { BioFlicker } from "@/components/home/BioFlicker";
@@ -19,6 +20,7 @@ const EASE_SNAP = [0.22, 1, 0.36, 1] as const;
 const Index = () => {
   const navigate = useNavigate();
   const setImage = useStore(s => s.setImage);
+  const setVideoSource = useStore(s => s.setVideoSource);
   const fileRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
 
@@ -35,6 +37,21 @@ const Index = () => {
   }, [navigate, setImage]);
 
   const openPicker = useCallback(() => fileRef.current?.click(), []);
+
+  // Called directly from a click handler (user gesture) so getUserMedia fires
+  // in the right context and mobile browsers show the permission dialog.
+  const handleGoLive = useCallback(async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const facing = defaultFacing();
+    try {
+      const stream = await requestCameraStream({ facing });
+      setVideoSource(stream, facing === "user" ? "front camera" : "rear camera");
+      navigate("/edit");
+    } catch {
+      // Permission denied / no camera — navigate anyway, editor handles retry
+      navigate("/edit");
+    }
+  }, [navigate, setVideoSource]);
 
   const loadFromUrl = useCallback(async (src: string, productUrl: string) => {
     try {
@@ -246,7 +263,7 @@ const Index = () => {
           </div>
           <div className="pointer-events-auto flex items-center gap-4">
             <button
-              onClick={(e) => { e.stopPropagation(); navigate("/edit?source=camera"); }}
+              onClick={handleGoLive}
               className="font-mono text-xs uppercase tracking-[0.2em] text-foreground/70 hover:text-accent transition"
             >
               go live →

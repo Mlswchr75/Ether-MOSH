@@ -138,14 +138,24 @@ export class MoshRenderer {
   private perFrameUpdate = false;
 
   setSourceImage(image: HTMLImageElement) {
-    const tex = new THREE.Texture(image);
+    // Draw into a Canvas2D first so Three.js gets a CanvasTexture — the same
+    // upload path as the procedural source which is known to work on mobile.
+    // new THREE.Texture(HTMLImageElement) + needsUpdate can fail silently on
+    // iOS Safari when the image comes from a blob URL.
+    const w = image.naturalWidth || image.width || 1;
+    const h = image.naturalHeight || image.height || 1;
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (ctx) ctx.drawImage(image, 0, 0, w, h);
+    const tex = new THREE.CanvasTexture(canvas);
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.minFilter = THREE.LinearFilter;
     tex.magFilter = THREE.LinearFilter;
-    tex.needsUpdate = true;
     this.sourceTex?.dispose();
     this.sourceTex = tex;
-    this.sourceAspect = image.naturalWidth / image.naturalHeight;
+    this.sourceAspect = w / h;
     this.perFrameUpdate = false;
     this.resize(this.cssWidth, this.cssHeight);
     this.scheduleWarmup();
