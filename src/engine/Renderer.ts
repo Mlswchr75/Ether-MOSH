@@ -438,6 +438,12 @@ export class MoshRenderer {
     this.sourceFillMaterial.dispose();
     this.tileMaterial?.dispose();
     this.rtTile?.dispose();
+    // Explicitly lose the WebGL context so GPU resources are freed immediately
+    // rather than waiting for GC — critical on iOS where the context limit is ~4-8.
+    try {
+      const ext = this.renderer.getContext().getExtension("WEBGL_lose_context");
+      ext?.loseContext();
+    } catch {}
     this.renderer.dispose();
   }
 }

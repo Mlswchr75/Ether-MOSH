@@ -142,7 +142,7 @@ export function StickerCapture() {
     removeSticker(id);
   };
 
-  useEffect(() => () => { gallery.forEach(s => URL.revokeObjectURL(s.url)); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => { gallery?.forEach(s => URL.revokeObjectURL(s.url)); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!stickerMode) return null;
 

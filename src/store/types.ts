@@ -1,6 +1,17 @@
 import type { BlendMode } from "@/engine/blend";
 export type { PaletteProfile, BiomeId } from "@/engine/imagePalette";
 
+export type IsolationMode = 'off' | 'auto' | 'tap';
+
+export type StickerEntry = {
+  id: string;
+  url: string;
+  animated: boolean;
+  w: number;
+  h: number;
+  ts: number;
+};
+
 export type ModulatorType = "sine" | "triangle" | "saw" | "perlin" | "random" | "beat" | "bass" | "mid" | "high" | "audio";
 
 export type Modulator = {
@@ -36,6 +47,14 @@ export type Layer = {
 };
 
 export type Intensity = "mild" | "savage" | "nuclear" | "interdimensional";
+
+export type Favorite = {
+  id: string;
+  name: string;
+  layers: Layer[];
+  seed?: string;
+  createdAt?: string;
+};
 
 export type Snapshot = {
   layers: Layer[];

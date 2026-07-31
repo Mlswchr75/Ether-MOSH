@@ -99,10 +99,12 @@ const Index = () => {
         <meta property="og:url" content="https://ether-mosh.lovable.app/" />
       </Helmet>
       <h1 className="sr-only">MOSH — Real-time audio-reactive image and video glitch instrument</h1>
-      {/* Fullscreen moshing dropzone */}
-      <button
-        type="button"
+      {/* Fullscreen moshing dropzone — using div so nested interactive elements are valid HTML */}
+      <div
+        role="button"
+        tabIndex={0}
         onClick={openPicker}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") openPicker(); }}
         onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
         onDragLeave={() => setDragOver(false)}
         onDrop={(e) => {
@@ -308,7 +310,7 @@ const Index = () => {
           ref={fileRef} type="file" accept="image/*" hidden
           onChange={(e) => { const f = e.target.files?.[0]; if (f) loadFile(f); }}
         />
-      </button>
+      </div>
 
       <Suspense fallback={null}>
         <DemoCarousel onSelect={loadFromUrl} isIdle={false} />

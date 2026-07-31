@@ -2,7 +2,8 @@ import { create } from "zustand";
 import { EFFECTS, EFFECTS_BY_ID, type EffectCategory } from "@/engine/effects";
 import { BLEND_MODES, type BlendMode } from "@/engine/blend";
 import { generateSeed, rngFromSeed } from "@/engine/seed";
-import type { AudioMap, Intensity, Layer, Modulator, PaletteProfile } from "./types";
+import type { AudioMap, Favorite, Intensity, IsolationMode, Layer, Modulator, PaletteProfile, StickerEntry } from "./types";
+import type { CameraFacing } from "@/hooks/useCamera";
 import { DEFAULT_TILE_UNIFORMS, type TileMode, type TileUniforms } from "@/engine/tile";
 import { extractPalette } from "@/engine/imagePalette";
 import { BIOME_LABELS, biomeAccentHex } from "@/engine/imagePalette";
@@ -51,6 +52,17 @@ type State = {
   tileUniforms: TileUniforms;
   /** Latest extracted palette/biome profile for the current image (null until extracted). */
   paletteProfile: PaletteProfile | null;
+  /** Saved effect presets. */
+  favorites: Favorite[];
+  /** Isolation overlay mode. */
+  isolationMode: IsolationMode;
+  isolationFeather: number;
+  isolationInvert: boolean;
+  /** Sticker capture mode. */
+  stickerMode: boolean;
+  stickerGallery: StickerEntry[];
+  /** Which camera is active ('user' = front, 'environment' = rear). */
+  cameraFacing: CameraFacing | null;
 };
 
 type Actions = {
@@ -106,6 +118,18 @@ type Actions = {
   setTileMode: (m: TileMode) => void;
   updateTileUniforms: (u: Partial<TileUniforms>) => void;
   setPaletteProfile: (p: PaletteProfile | null) => void;
+  saveFavorite: () => void;
+  applyFavorite: (id: string) => boolean;
+  removeFavorite: (id: string) => void;
+  renameFavorite: (id: string, name: string) => void;
+  moshDirected: (ids: string[]) => void;
+  moshStorm: (ids: string[], opts?: { explosive?: boolean; regions?: unknown }) => void;
+  addStickerToGallery: (sticker: StickerEntry) => void;
+  removeStickerFromGallery: (id: string) => void;
+  setStickerMode: (b: boolean) => void;
+  setIsolationMode: (m: IsolationMode) => void;
+  setIsolationFeather: (n: number) => void;
+  setIsolationInvert: (b: boolean) => void;
 };
 
 const newId = () => Math.random().toString(36).slice(2, 9);
@@ -210,6 +234,13 @@ export const useStore = create<State & Actions>((set, get) => ({
   tileMode: "none",
   tileUniforms: { ...DEFAULT_TILE_UNIFORMS },
   paletteProfile: null,
+  favorites: loadFavoritesFromStorage(),
+  isolationMode: "off" as IsolationMode,
+  isolationFeather: 4,
+  isolationInvert: false,
+  stickerMode: false,
+  stickerGallery: [],
+  cameraFacing: null,
 
   setGlCanvas: (canvas) => set({ glCanvas: canvas }),
 
@@ -254,6 +285,8 @@ export const useStore = create<State & Actions>((set, get) => ({
     video.autoplay = true;
     video.setAttribute("playsinline", "true");
     try { video.play()?.catch(() => {}); } catch {}
+    const facing: CameraFacing | null =
+      name === "front camera" ? "user" : name === "rear camera" ? "environment" : null;
     set({
       imageUrl: null,
       imageElement: null,
@@ -261,6 +294,7 @@ export const useStore = create<State & Actions>((set, get) => ({
       videoStream: stream,
       sourceName: name ?? "live camera",
       paletteProfile: null,
+      cameraFacing: facing,
     });
   },
   clearVideoSource: () => {
@@ -428,6 +462,98 @@ export const useStore = create<State & Actions>((set, get) => ({
   setTileMode: (m) => set({ tileMode: m }),
   updateTileUniforms: (u) => set(s => ({ tileUniforms: { ...s.tileUniforms, ...u } })),
   setPaletteProfile: (p) => set({ paletteProfile: p }),
+
+  saveFavorite: () => {
+    const s = get();
+    const fav: Favorite = {
+      id: (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2)),
+      name: `Preset ${new Date().toLocaleTimeString()}`,
+      layers: s.layers.map(l => ({ ...l, params: { ...l.params }, mods: { ...l.mods }, audioMaps: { ...(l.audioMaps ?? {}) } })),
+      seed: s.seed,
+      createdAt: new Date().toISOString(),
+    };
+    set(st => {
+      const next = [...st.favorites, fav];
+      try { localStorage.setItem("cathedral_favorites_v1", JSON.stringify(next)); } catch {}
+      return { favorites: next };
+    });
+  },
+
+  applyFavorite: (id) => {
+    const s = get();
+    const fav = s.favorites.find(f => f.id === id);
+    if (!fav) return false;
+    const cloned = fav.layers.map(l => ({ ...l, id: newId(), params: { ...l.params }, mods: { ...l.mods }, audioMaps: { ...(l.audioMaps ?? {}) } }));
+    set({ past: pushPast(s), future: [], layers: cloned, seed: fav.seed ?? s.seed });
+    return true;
+  },
+
+  removeFavorite: (id) => set(st => {
+    const next = st.favorites.filter(f => f.id !== id);
+    try { localStorage.setItem("cathedral_favorites_v1", JSON.stringify(next)); } catch {}
+    return { favorites: next };
+  }),
+
+  renameFavorite: (id, name) => set(st => {
+    const next = st.favorites.map(f => f.id === id ? { ...f, name } : f);
+    try { localStorage.setItem("cathedral_favorites_v1", JSON.stringify(next)); } catch {}
+    return { favorites: next };
+  }),
+
+  moshDirected: (ids) => set(s => {
+    const seed = generateSeed();
+    const rand = rngFromSeed(seed);
+    const locked = s.layers.filter(l => l.locked);
+    const fresh: Layer[] = ids.flatMap((eid, idx) => {
+      const def = EFFECTS_BY_ID[eid];
+      if (!def) return [];
+      const params: Record<string, number> = {};
+      for (const p of def.params) params[p.key] = p.default;
+      return [{
+        id: newId(),
+        effectId: eid,
+        hidden: false, locked: false,
+        blend: (idx === 0 ? "normal" : SAFE_BLENDS[Math.floor(rand() * SAFE_BLENDS.length)]) as import("@/engine/blend").BlendMode,
+        opacity: idx === 0 ? 1 : 0.75 + rand() * 0.25,
+        params,
+        mods: Object.fromEntries(def.params.map(p => [p.key, null])),
+        audioMaps: Object.fromEntries(def.params.map(p => [p.key, null])),
+      }];
+    });
+    return { ...s, past: pushPast(s), future: [], layers: [...locked, ...fresh], seed };
+  }),
+
+  moshStorm: (ids) => set(s => {
+    const seed = generateSeed();
+    const rand = rngFromSeed(seed);
+    const locked = s.layers.filter(l => l.locked);
+    const fresh: Layer[] = ids.flatMap((eid, idx) => {
+      const def = EFFECTS_BY_ID[eid];
+      if (!def) return [];
+      const params: Record<string, number> = {};
+      for (const p of def.params) {
+        params[p.key] = sampleParam(rand, p.min, p.max, p.default, 0.9, p.step);
+      }
+      return [{
+        id: newId(),
+        effectId: eid,
+        hidden: false, locked: false,
+        blend: (idx === 0 ? "normal" : EXOTIC_BLENDS[Math.floor(rand() * EXOTIC_BLENDS.length)]) as import("@/engine/blend").BlendMode,
+        opacity: idx === 0 ? 1 : 0.7 + rand() * 0.3,
+        params,
+        mods: Object.fromEntries(def.params.map(p => [p.key, null])),
+        audioMaps: Object.fromEntries(def.params.map(p => [p.key, null])),
+      }];
+    });
+    return { ...s, past: pushPast(s), future: [], layers: [...locked, ...fresh], seed };
+  }),
+
+  addStickerToGallery: (sticker) => set(s => ({ stickerGallery: [...s.stickerGallery, sticker] })),
+  removeStickerFromGallery: (id) => set(s => ({ stickerGallery: s.stickerGallery.filter(x => x.id !== id) })),
+  setStickerMode: (b) => set({ stickerMode: b }),
+  setIsolationMode: (m) => set({ isolationMode: m }),
+  setIsolationFeather: (n) => set({ isolationFeather: n }),
+  setIsolationInvert: (b) => set({ isolationInvert: b }),
 }));
 
 function mapLayer(layers: Layer[], id: string, fn: (l: Layer) => Layer): Layer[] {
@@ -435,6 +561,15 @@ function mapLayer(layers: Layer[], id: string, fn: (l: Layer) => Layer): Layer[]
 }
 function pushPast(s: State): Layer[][] {
   return [...s.past, s.layers].slice(-HISTORY_LIMIT);
+}
+
+function loadFavoritesFromStorage(): Favorite[] {
+  if (typeof localStorage === "undefined") return [];
+  try {
+    const raw = localStorage.getItem("cathedral_favorites_v1");
+    if (raw) return JSON.parse(raw) as Favorite[];
+  } catch {}
+  return [];
 }
 
 function loadSlotsFromStorage(): Array<Layer[] | null> {

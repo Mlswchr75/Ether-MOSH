@@ -77,8 +77,13 @@ export function GlCanvas() {
   // Init renderer
   useEffect(() => {
     if (!canvasRef.current) return;
-    rendererRef.current = new MoshRenderer(canvasRef.current);
-    useStore.getState().setGlCanvas(canvasRef.current);
+    try {
+      rendererRef.current = new MoshRenderer(canvasRef.current);
+      useStore.getState().setGlCanvas(canvasRef.current);
+    } catch (err) {
+      console.error("WebGL init failed:", err);
+      toast.error("WebGL unavailable — try closing other tabs or refreshing.");
+    }
     return () => {
       useStore.getState().setGlCanvas(null);
       rendererRef.current?.dispose();
