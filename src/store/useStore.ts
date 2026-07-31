@@ -18,6 +18,8 @@ type State = {
   /** Live MediaStream source (camera). When set, takes precedence over imageElement. */
   videoElement: HTMLVideoElement | null;
   videoStream: MediaStream | null;
+  /** The WebGL canvas element managed by GlCanvas; used by StickerCapture. */
+  glCanvas: HTMLCanvasElement | null;
   layers: Layer[];
   selectedLayerId: string | null;
   seed: string;
@@ -56,6 +58,7 @@ type Actions = {
   setVideoSource: (stream: MediaStream, name?: string) => void;
   clearVideoSource: () => void;
   clearImage: () => void;
+  setGlCanvas: (canvas: HTMLCanvasElement | null) => void;
 
   addLayer: (effectId: string) => void;
   removeLayer: (id: string) => void;
@@ -181,6 +184,7 @@ export const useStore = create<State & Actions>((set, get) => ({
   imageElement: null,
   videoElement: null,
   videoStream: null,
+  glCanvas: null,
   layers: [],
   selectedLayerId: null,
   seed: generateSeed(),
@@ -206,6 +210,8 @@ export const useStore = create<State & Actions>((set, get) => ({
   tileMode: "none",
   tileUniforms: { ...DEFAULT_TILE_UNIFORMS },
   paletteProfile: null,
+
+  setGlCanvas: (canvas) => set({ glCanvas: canvas }),
 
   setImage: (url, el) => {
     // Picking an image kills any active live video.
