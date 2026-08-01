@@ -188,8 +188,9 @@ export class MoshRenderer {
     const w = video.videoWidth || 16;
     const h = video.videoHeight || 9;
     this.sourceAspect = w / h;
-    // VideoTexture auto-updates each render — no manual needsUpdate needed.
-    this.perFrameUpdate = false;
+    // Force needsUpdate every frame so the texture uploads even if
+    // requestVideoFrameCallback isn't firing (iOS Safari quirk with off-DOM video).
+    this.perFrameUpdate = true;
     this.resize(this.cssWidth, this.cssHeight);
     this.scheduleWarmup();
   }

@@ -248,6 +248,8 @@ export const useStore = create<State & Actions>((set, get) => ({
     // Picking an image kills any active live video.
     const prevStream = useStore.getState().videoStream;
     if (prevStream) { try { prevStream.getTracks().forEach(t => t.stop()); } catch {} }
+    const prevVideo = useStore.getState().videoElement;
+    if (prevVideo) { try { prevVideo.srcObject = null; } catch {} try { prevVideo.parentNode?.removeChild(prevVideo); } catch {} }
     set({ imageUrl: url, imageElement: el, videoElement: null, videoStream: null, paletteProfile: null });
     // Async upscale — runs in a worker so the render loop isn't disturbed.
     // When done, swap in the higher-res element so fullscreen / zoom stays crisp.
@@ -278,12 +280,22 @@ export const useStore = create<State & Actions>((set, get) => ({
     if (prevStream && prevStream !== stream) {
       try { prevStream.getTracks().forEach(t => t.stop()); } catch {}
     }
+    // Remove any previous off-screen video node.
+    const prevVideo = useStore.getState().videoElement;
+    if (prevVideo) { try { prevVideo.srcObject = null; } catch {} try { prevVideo.parentNode?.removeChild(prevVideo); } catch {} }
     const video = document.createElement("video");
     video.srcObject = stream;
     video.muted = true;
     video.playsInline = true;
     video.autoplay = true;
     video.setAttribute("playsinline", "true");
+    // iOS Safari requires the <video> element to be in the DOM for MediaStream
+    // autoplay to work — off-DOM video elements silently fail to play on iOS.
+    Object.assign(video.style, {
+      position: "fixed", top: "-9999px", left: "-9999px",
+      width: "1px", height: "1px", opacity: "0", pointerEvents: "none",
+    });
+    document.body.appendChild(video);
     try { video.play()?.catch(() => {}); } catch {}
     const facing: CameraFacing | null =
       name === "front camera" ? "user" : name === "rear camera" ? "environment" : null;
@@ -300,13 +312,20 @@ export const useStore = create<State & Actions>((set, get) => ({
   clearVideoSource: () => {
     const s = useStore.getState();
     if (s.videoStream) { try { s.videoStream.getTracks().forEach(t => t.stop()); } catch {} }
-    if (s.videoElement) { try { s.videoElement.srcObject = null; } catch {} }
+    if (s.videoElement) {
+      try { s.videoElement.srcObject = null; } catch {}
+      try { s.videoElement.parentNode?.removeChild(s.videoElement); } catch {}
+    }
     set({ videoElement: null, videoStream: null });
   },
   clearImage: () => {
     try { document.documentElement.style.removeProperty("--synth-accent"); } catch {}
     const s = useStore.getState();
     if (s.videoStream) { try { s.videoStream.getTracks().forEach(t => t.stop()); } catch {} }
+    if (s.videoElement) {
+      try { s.videoElement.srcObject = null; } catch {}
+      try { s.videoElement.parentNode?.removeChild(s.videoElement); } catch {}
+    }
     set({ imageUrl: null, imageElement: null, videoElement: null, videoStream: null, sourceName: null, layers: [], past: [], future: [], paletteProfile: null });
   },
 
