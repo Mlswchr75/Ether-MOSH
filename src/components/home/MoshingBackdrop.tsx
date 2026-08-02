@@ -34,6 +34,11 @@ export const MoshingBackdrop = () => {
     const host = hostRef.current;
     if (!host) return;
 
+    // Safety check: ensure host has dimensions before building WebGL canvas
+    if (host.clientWidth === 0 || host.clientHeight === 0) {
+      // Let container settle dimensions before mounting canvas
+    }
+
     const canvas = document.createElement("canvas");
     canvas.style.position = "absolute";
     canvas.style.inset = "0";
@@ -43,20 +48,35 @@ export const MoshingBackdrop = () => {
     const src = document.createElement("canvas");
     src.width = 320;
     src.height = 200;
-    const sctx = src.getContext("2d")!;
+    const sctx = src.getContext("2d");
+
+    if (!sctx) {
+      if (canvas.parentNode) host.removeChild(canvas);
+      return;
+    }
 
     let renderer: MoshRenderer | null = null;
     try {
       renderer = new MoshRenderer(canvas);
     } catch {
       // WebGL unavailable — leave the static gradient background
-      host.removeChild(canvas);
+      if (canvas.parentNode) host.removeChild(canvas);
       return;
     }
+
     renderer.setSourceCanvas(src);
     renderer.setRenderScale(0.5); // backdrop can be soft; save the GPU for /edit
 
-    const resize = () => renderer!.resize(host.clientWidth, host.clientHeight);
+    const resize = () => {
+      if (renderer && host.clientWidth > 0 && host.clientHeight > 0) {
+        try {
+          renderer.resize(host.clientWidth, host.clientHeight);
+        } catch (e) {
+          console.warn("MOSH: WebGL resize failed softly", e);
+        }
+      }
+    };
+
     resize();
     const ro = new ResizeObserver(resize);
     ro.observe(host);
@@ -90,31 +110,48 @@ export const MoshingBackdrop = () => {
     };
 
     const loop = () => {
-      const now = performance.now();
-      const t = (now - start) / 1000;
-      if (now - lastSwap > 9000) {
-        stackIdx = (stackIdx + 1) % STACK_ROTATION.length;
-        lastSwap = now;
+      try {
+        const now = performance.now();
+        const t = (now - start) / 1000;
+        if (now - lastSwap > 9000) {
+          stackIdx = (stackIdx + 1) % STACK_ROTATION.length;
+          lastSwap = now;
+        }
+
+        paintSource(t);
+
+        const layers: RenderLayer[] = STACK_ROTATION[stackIdx].map((l, i) => ({
+          id: `bg${i}`,
+          effectId: l.effectId,
+          hidden: false,
+          opacity: l.opacity,
+          blend: i === 0 ? "normal" : "screen",
+          params: fillParams(l.effectId, l.params),
+        }));
+
+        if (renderer && src.width > 0 && src.height > 0) {
+          renderer.render(layers, 0.3 + 0.3 * Math.sin(t * 2));
+        }
+      } catch (err) {
+        console.error("MOSH WebGL backdrop caught render error safely:", err);
       }
-      paintSource(t);
-      const layers: RenderLayer[] = STACK_ROTATION[stackIdx].map((l, i) => ({
-        id: `bg${i}`,
-        effectId: l.effectId,
-        hidden: false,
-        opacity: l.opacity,
-        blend: i === 0 ? "normal" : "screen",
-        params: fillParams(l.effectId, l.params),
-      }));
-      renderer!.render(layers, 0.3 + 0.3 * Math.sin(t * 2));
+
       raf = requestAnimationFrame(loop);
     };
+
     raf = requestAnimationFrame(loop);
 
     return () => {
       cancelAnimationFrame(raf);
       ro.disconnect();
-      renderer?.dispose();
-      canvas.remove();
+      try {
+        renderer?.dispose();
+      } catch {
+        // Ignore disposal context errors
+      }
+      if (canvas.parentNode) {
+        canvas.remove();
+      }
     };
   }, []);
 
