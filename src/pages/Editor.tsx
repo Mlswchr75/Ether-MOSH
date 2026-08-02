@@ -1003,8 +1003,7 @@ export default function Editor() {
         <RippleLayer />
         <SourceTransition trigger={transitionKey} />
         
-        {/* TapToBegin removed — StartCameraOverlay is the live-first empty state and TapToBegin's centered button used to intercept clicks meant for "go live". */}
-{/* 
+        {/* TapToBegin removed — StartCameraOverlay is the live-first empty state and TapToBegin's centered button used to intercept clicks meant for "go live". */} 
         {!isPerformanceMode && (
           <HotTriggers
             isRecording={isRecording}
@@ -1039,7 +1038,6 @@ export default function Editor() {
             dimmed={idleHidden}
           />
         )}
-        */}
         {stormOn && (
           <div
             key={stormFlashKey}
