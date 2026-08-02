@@ -193,8 +193,9 @@ export class MoshRenderer {
   /** Use a live <video> (camera / MediaStream) as the source. GPU-uploaded
    *  via THREE.VideoTexture for smooth performance — no Canvas2D readback. */
   setSourceVideo(video: HTMLVideoElement) {
-    const readyWidth = video.videoWidth || (video as HTMLVideoElement & { width?: number }).width || 16;
-    const readyHeight = video.videoHeight || (video as HTMLVideoElement & { height?: number }).height || 9;
+    const readyWidth = video.videoWidth || (video as HTMLVideoElement & { width?: number }).width || 640;
+    const readyHeight = video.videoHeight || (video as HTMLVideoElement & { height?: number }).height || 480;
+
     const tex = new THREE.VideoTexture(video);
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.minFilter = THREE.LinearFilter;
