@@ -1,4 +1,4 @@
-import * as THREE from "three";
+// forcing a new Netlify deployimport * as THREE from "three";
 import { EFFECTS_BY_ID } from "./effects";
 import { BLEND_INDEX, COMPOSITOR_FRAG, PASSTHROUGH_VERT, type BlendMode } from "./blend";
 import {
