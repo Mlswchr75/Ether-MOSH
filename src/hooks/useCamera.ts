@@ -53,12 +53,48 @@ async function safeGetUserMedia(constraints: MediaStreamConstraints): Promise<Me
   return legacyGetUserMedia(constraints);
 }
 
-/**
- * Build a progressive fallback chain of constraints. We start with the caller's
- * preferred facing/device and gradually relax constraints so that quirky mobile
- * browsers (in-app webviews, older Android Chrome, iOS Safari in odd contexts)
- * still surface *some* working camera rather than throwing.
- */
+/** Warm up the camera stream in a hidden HTML5 video element to ensure active pixels on macOS/iOS */
+async function warmUpCameraVideo(stream: MediaStream): Promise<void> {
+  if (typeof window === "undefined") return;
+  const video = document.createElement("video");
+  video.muted = true;
+  video.playsInline = true;
+  video.autoplay = true;
+  video.srcObject = stream;
+
+  return new Promise<void>((resolve) => {
+    let resolved = false;
+    const finish = () => {
+      if (!resolved) {
+        resolved = true;
+        video.pause();
+        video.srcObject = null;
+        video.remove();
+        resolve();
+      }
+    };
+
+    const timeout = setTimeout(finish, 1000); // 1-second max safety fallback
+
+    video.onloadedmetadata = () => {
+      video.play().then(() => {
+        if (video.videoWidth > 0 && video.videoHeight > 0) {
+          clearTimeout(timeout);
+          finish();
+        }
+      }).catch(finish);
+    };
+
+    // If metadata doesn't fire immediately, check timeupdate
+    video.ontimeupdate = () => {
+      if (video.videoWidth > 0 && video.videoHeight > 0) {
+        clearTimeout(timeout);
+        finish();
+      }
+    };
+  });
+}
+
 function constraintChain(facing: CameraFacing, deviceId?: string): MediaStreamConstraints[] {
   const chain: MediaStreamConstraints[] = [];
   if (deviceId) {
@@ -73,13 +109,7 @@ function constraintChain(facing: CameraFacing, deviceId?: string): MediaStreamCo
   return chain;
 }
 
-/**
- * Call inside a user gesture. Tries a progressive chain of constraints so the
- * camera starts on as many devices/browsers as possible. Returns the stream or
- * throws with a tagged `.cameraError` property describing the first hard failure.
- */
 export async function requestCameraStream(opts?: { facing?: CameraFacing; deviceId?: string }): Promise<MediaStream> {
-  // Feature-detect: mediaDevices OR any legacy shim.
   const nav = navigator as unknown as { getUserMedia?: unknown; webkitGetUserMedia?: unknown; mozGetUserMedia?: unknown };
   const hasAny =
     !!navigator.mediaDevices?.getUserMedia || !!nav.getUserMedia || !!nav.webkitGetUserMedia || !!nav.mozGetUserMedia;
@@ -88,7 +118,7 @@ export async function requestCameraStream(opts?: { facing?: CameraFacing; device
     (e as unknown as { cameraError: CameraError }).cameraError = "unsupported";
     throw e;
   }
-  // Insecure origin → getUserMedia will always reject; give a clear message.
+  
   if (typeof window !== "undefined" && !window.isSecureContext && window.location.hostname !== "localhost") {
     const e = new Error("Camera requires HTTPS");
     (e as unknown as { cameraError: CameraError }).cameraError = "permission";
@@ -102,15 +132,16 @@ export async function requestCameraStream(opts?: { facing?: CameraFacing; device
   for (const c of chain) {
     try {
       const stream = await safeGetUserMedia(c);
-      if (stream && stream.getVideoTracks().length > 0) return stream;
-      // Empty stream — treat as notfound and try next.
+      if (stream && stream.getVideoTracks().length > 0 && stream.getVideoTracks()[0].readyState === "live") {
+        // 🔥 Warm up video playback so hardware feeds valid frames before WebGL canvas reads it
+        await warmUpCameraVideo(stream);
+        return stream;
+      }
       lastErr = Object.assign(new Error("no video tracks"), { name: "NotFoundError" });
     } catch (err) {
       lastErr = err;
       const tag = classifyError(err);
-      // Permission errors are terminal — retrying won't help and can annoy the user.
       if (tag === "permission") break;
-      // Otherwise keep trying the next relaxed constraint.
     }
   }
   const tagged = (lastErr instanceof Error ? lastErr : new Error("Camera failed")) as Error & { cameraError?: CameraError };
@@ -148,7 +179,6 @@ export function useCamera() {
     if (activeStreamRef.current) {
       activeStreamRef.current.getTracks().forEach(t => t.stop());
       activeStreamRef.current = null;
-      // iOS needs a real event-loop turn (≥100 ms) to release hardware before getUserMedia
       await new Promise<void>(r => setTimeout(r, 150));
     }
     const f = opts?.facing ?? facing;
@@ -161,9 +191,11 @@ export function useCamera() {
       if (opts?.facing) setFacing(opts.facing);
       if (opts?.deviceId !== undefined) setDeviceId(opts.deviceId);
       refreshDevices();
+      return true;
     } catch (err) {
       setError((err as { cameraError?: CameraError }).cameraError ?? "unknown");
       setIsLive(false);
+      return false;
     }
   }, [facing, deviceId, setVideoSource, refreshDevices]);
 
@@ -172,7 +204,6 @@ export function useCamera() {
     start({ facing: next, deviceId: undefined });
   }, [facing, start]);
 
-  // Enumerate immediately on mount (labels may be empty until permission)
   useEffect(() => {
     if (!navigator.mediaDevices?.enumerateDevices) return;
     refreshDevices();

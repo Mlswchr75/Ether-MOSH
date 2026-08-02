@@ -31,6 +31,7 @@ import { KaossSurface } from "@/components/editor/KaossSurface";
 import { MobileGestures } from "@/components/editor/MobileGestures";
 import { TrackpadGestures } from "@/components/editor/TrackpadGestures";
 import { toggleSystemAudio } from "@/engine/systemAudio";
+import { loadImageFile, loadImageFromClipboard } from "@/lib/sourceLoader";
 import { SystemAudioHud } from "@/components/editor/SystemAudioHud";
 
 
@@ -116,6 +117,24 @@ export default function Editor() {
   useFullscreenSync();
 
   const idleHidden = useIdleHide(5000);
+  const loadDroppedImage = useCallback(async (file: File) => {
+    const ok = await loadImageFile(file);
+    if (ok) toast.success("Image loaded — moshing…");
+  }, []);
+
+  useEffect(() => {
+    const onPaste = async (e: ClipboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest("input, textarea, [contenteditable='true']")) return;
+      if (await loadImageFromClipboard(e)) {
+        e.preventDefault();
+        toast.success("Pasted image — moshing…");
+      }
+    };
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  }, []);
+
 
   // Plain browser fullscreen (kills the Chrome chrome) — independent of
   // Performance Mode so the mosh icons stay visible.
@@ -910,6 +929,15 @@ export default function Editor() {
       {/* Canvas — fills the viewport by default. All menu UI lives below the fold. */}
       <div
         ref={canvasContainerRef}
+        onDragOver={(e) => {
+          if (Array.from(e.dataTransfer.types).includes("Files")) e.preventDefault();
+        }}
+        onDrop={(e) => {
+          const file = e.dataTransfer.files?.[0];
+          if (!file) return;
+          e.preventDefault();
+          loadDroppedImage(file);
+        }}
         onPointerDown={(e) => {
           // Cmd/Ctrl-click → ripple (Performance Mode only)
           if (useStore.getState().isPerformanceMode && (e.metaKey || e.ctrlKey)) {
