@@ -1,4 +1,5 @@
 import * as THREE from "three";
+(window as any).THREE = THREE;
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
