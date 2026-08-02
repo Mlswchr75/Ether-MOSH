@@ -4,7 +4,7 @@ import { useCamera } from "@/hooks/useCamera";
 import { toast } from "sonner";
 
 export function CameraMenu() {
-  const { isLive, facing, error, devices, start, stop, flip } = useCamera();
+  const { isLive, facing, devices, start, stop, flip } = useCamera();
   const [open, setOpen] = useState(false);
 
   const handleStart = async () => {
@@ -12,17 +12,9 @@ export function CameraMenu() {
       toast.error("Camera not supported on this browser");
       return;
     }
-    await start();
-    if (error) {
-      const msgs: Record<string, string> = {
-        permission: "Camera permission denied",
-        busy: "Camera in use by another app",
-        notfound: "No camera found",
-        aborted: "Camera start interrupted — try again",
-        unsupported: "Camera not supported on this browser",
-        unknown: "Couldn't access camera",
-      };
-      toast.error(msgs[error] ?? "Camera error");
+    const ok = await start();
+    if (!ok) {
+      toast.error("Couldn't access camera — check browser permissions and try again");
     }
     setOpen(false);
   };
