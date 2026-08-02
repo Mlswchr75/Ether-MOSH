@@ -1004,6 +1004,7 @@ export default function Editor() {
         <SourceTransition trigger={transitionKey} />
         
         {/* TapToBegin removed — StartCameraOverlay is the live-first empty state and TapToBegin's centered button used to intercept clicks meant for "go live". */}
+{/* 
         {!isPerformanceMode && (
           <HotTriggers
             isRecording={isRecording}
@@ -1038,17 +1039,7 @@ export default function Editor() {
             dimmed={idleHidden}
           />
         )}
-        {smartOn && (
-          <div
-            key={smartFlashKey}
-            aria-hidden
-            className="pointer-events-none absolute inset-0 z-20 animate-[smartFlash_420ms_ease-out_forwards]"
-            style={{
-              background: "radial-gradient(circle at 50% 50%, hsl(var(--accent) / 0.10), transparent 55%)",
-              mixBlendMode: "screen",
-            }}
-          />
-        )}
+        */}
         {stormOn && (
           <div
             key={stormFlashKey}
