@@ -69,6 +69,12 @@ export class MoshRenderer {
     });
     this.renderer.setClearColor(0x000000, 0);
 
+    // 🔥 FIX: Set pixel unpack alignment to 1 byte so non-4-byte divisible video/image textures never break WebGL
+    try {
+      const gl = this.renderer.getContext();
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    } catch {}
+
     const geom = new THREE.PlaneGeometry(2, 2);
     this.quad = new THREE.Mesh(geom);
     this.scene.add(this.quad);
@@ -138,10 +144,6 @@ export class MoshRenderer {
   private perFrameUpdate = false;
 
   setSourceImage(image: HTMLImageElement) {
-    // Draw into a Canvas2D first so Three.js gets a CanvasTexture — the same
-    // upload path as the procedural source which is known to work on mobile.
-    // new THREE.Texture(HTMLImageElement) + needsUpdate can fail silently on
-    // iOS Safari when the image comes from a blob URL.
     const w = image.naturalWidth || image.width || 1;
     const h = image.naturalHeight || image.height || 1;
     const canvas = document.createElement("canvas");
@@ -153,6 +155,13 @@ export class MoshRenderer {
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.minFilter = THREE.LinearFilter;
     tex.magFilter = THREE.LinearFilter;
+    
+    // Ensure WebGL pixel unpacking isn't strict on 4-byte boundaries
+    try {
+      const gl = this.renderer.getContext();
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    } catch {}
+
     this.sourceTex?.dispose();
     this.sourceTex = tex;
     this.sourceAspect = w / h;
@@ -167,6 +176,12 @@ export class MoshRenderer {
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.minFilter = THREE.LinearFilter;
     tex.magFilter = THREE.LinearFilter;
+
+    try {
+      const gl = this.renderer.getContext();
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    } catch {}
+
     this.sourceTex?.dispose();
     this.sourceTex = tex;
     this.sourceAspect = canvas.width / canvas.height;
@@ -183,13 +198,17 @@ export class MoshRenderer {
     tex.minFilter = THREE.LinearFilter;
     tex.magFilter = THREE.LinearFilter;
     tex.generateMipmaps = false;
+
+    try {
+      const gl = this.renderer.getContext();
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    } catch {}
+
     this.sourceTex?.dispose();
     this.sourceTex = tex;
     const w = video.videoWidth || 16;
     const h = video.videoHeight || 9;
     this.sourceAspect = w / h;
-    // Force needsUpdate every frame so the texture uploads even if
-    // requestVideoFrameCallback isn't firing (iOS Safari quirk with off-DOM video).
     this.perFrameUpdate = true;
     this.resize(this.cssWidth, this.cssHeight);
     this.scheduleWarmup();
@@ -212,8 +231,6 @@ export class MoshRenderer {
     if (!this.sourceTex) return;
 
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    // Cover: canvas matches the container exactly; image cropping happens in
-    // the source-fill shader via UV remap (uCover).
     const drawW = cssW;
     const drawH = cssH;
     const pxW = Math.max(1, Math.round(drawW * dpr * this.renderScale));
@@ -224,7 +241,6 @@ export class MoshRenderer {
     this.canvas.style.width = `${drawW}px`;
     this.canvas.style.height = `${drawH}px`;
 
-    // Cover-fit UV scale — see cover formula in sourceFillMaterial.
     const dstA = drawW / Math.max(1, drawH);
     const srcA = this.sourceAspect || 1;
     const coverX = Math.min(1, dstA / srcA);
@@ -298,8 +314,10 @@ export class MoshRenderer {
     const time = (performance.now() - this.startTime) / 1000;
     const w = this.rtA.width, h = this.rtA.height;
 
-    // Procedural / video sources need per-frame texture uploads.
-    if (this.perFrameUpdate && this.sourceTex) this.sourceTex.needsUpdate = true;
+    // Force video texture update every frame to prevent blank/frozen camera frames
+    if (this.perFrameUpdate && this.sourceTex) {
+      this.sourceTex.needsUpdate = true;
+    }
 
     // Step 1 — render source into rtA, cover-fitted to the viewport.
     this.sourceFillMaterial.uniforms.uTex.value = this.sourceTex;
@@ -327,7 +345,6 @@ export class MoshRenderer {
         const k = `u${p.key[0].toUpperCase() + p.key.slice(1)}`;
         uni[k].value = layer.params[p.key] ?? p.default;
       }
-      // Render effect into write target (single full-screen pass)
       this.quad.material = entry.material;
       this.renderer.setRenderTarget(effectTarget);
       this.renderer.render(this.scene, this.camera);
@@ -337,9 +354,6 @@ export class MoshRenderer {
         continue;
       }
 
-      // Composite effect over the accumulated result into a third target.
-      // Never sample from and render into the same WebGLRenderTarget; stronger
-      // MOSH stacks use 3+ layers, and feedback loops can blank/corrupt output.
       this.compositor.uniforms.uPrev.value = read.texture;
       this.compositor.uniforms.uCur.value = effectTarget.texture;
       this.compositor.uniforms.uOpacity.value = layer.opacity;
@@ -377,14 +391,13 @@ export class MoshRenderer {
       this.rtTile = null;
       return;
     }
-    const frag = mode === "seamless" ? TILE_OFFSET_FRAG
-               :                       TILE_FREQ_FRAG;
+    const frag = mode === "seamless" ? TILE_OFFSET_FRAG : TILE_FREQ_FRAG;
     this.tileMaterial?.dispose();
     this.tileMaterial = new THREE.ShaderMaterial({
       vertexShader: PASSTHROUGH_VERT,
       fragmentShader: frag,
       uniforms: {
-        uTex:    { value: null },
+        uTex:     { value: null },
         uAngle:  { value: this._tileUniforms.angle },
         uScale:  { value: this._tileUniforms.scale },
         uPhaseX: { value: this._tileUniforms.phaseX },
@@ -421,8 +434,6 @@ export class MoshRenderer {
   /** Read final pixels back as ImageData at current resolution. */
   readPixels(): { data: Uint8Array; width: number; height: number } {
     const w = this.rtA.width, h = this.rtA.height;
-    // Final result lives wherever last compositor wrote; easier: re-render to a known buffer
-    // For export we use a dedicated method — see export.ts which calls render() then reads canvas.
     return { data: new Uint8Array(0), width: w, height: h };
   }
 
@@ -439,8 +450,6 @@ export class MoshRenderer {
     this.sourceFillMaterial.dispose();
     this.tileMaterial?.dispose();
     this.rtTile?.dispose();
-    // Explicitly lose the WebGL context so GPU resources are freed immediately
-    // rather than waiting for GC — critical on iOS where the context limit is ~4-8.
     try {
       const ext = this.renderer.getContext().getExtension("WEBGL_lose_context");
       ext?.loseContext();
