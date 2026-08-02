@@ -193,6 +193,8 @@ export class MoshRenderer {
   /** Use a live <video> (camera / MediaStream) as the source. GPU-uploaded
    *  via THREE.VideoTexture for smooth performance — no Canvas2D readback. */
   setSourceVideo(video: HTMLVideoElement) {
+    const readyWidth = video.videoWidth || (video as HTMLVideoElement & { width?: number }).width || 16;
+    const readyHeight = video.videoHeight || (video as HTMLVideoElement & { height?: number }).height || 9;
     const tex = new THREE.VideoTexture(video);
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.minFilter = THREE.LinearFilter;
@@ -206,9 +208,7 @@ export class MoshRenderer {
 
     this.sourceTex?.dispose();
     this.sourceTex = tex;
-    const w = video.videoWidth || 16;
-    const h = video.videoHeight || 9;
-    this.sourceAspect = w / h;
+    this.sourceAspect = readyWidth / readyHeight;
     this.perFrameUpdate = true;
     this.resize(this.cssWidth, this.cssHeight);
     this.scheduleWarmup();
@@ -314,9 +314,18 @@ export class MoshRenderer {
     const time = (performance.now() - this.startTime) / 1000;
     const w = this.rtA.width, h = this.rtA.height;
 
-    // Force video texture update every frame to prevent blank/frozen camera frames
+    // Force dynamic textures to update every frame. For camera/video, wait until
+    // the element has real decoded pixels; uploading too early can leave some
+    // Safari/WebGL combinations stuck on an all-black texture.
     if (this.perFrameUpdate && this.sourceTex) {
-      this.sourceTex.needsUpdate = true;
+      const source = (this.sourceTex as THREE.Texture).image;
+      if (source instanceof HTMLVideoElement) {
+        if (source.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+          this.sourceTex.needsUpdate = true;
+        }
+      } else {
+        this.sourceTex.needsUpdate = true;
+      }
     }
 
     // Step 1 — render source into rtA, cover-fitted to the viewport.

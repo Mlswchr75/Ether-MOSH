@@ -96,15 +96,33 @@ export function GlCanvas() {
     if (!rendererRef.current) return;
     if (videoElement) {
       proceduralRef.current?.stop();
-      rendererRef.current.setSourceVideo(videoElement);
+      let cancelled = false;
+      const r = containerRef.current?.getBoundingClientRect();
+      const applyVideo = () => {
+        if (cancelled || !rendererRef.current) return;
+        rendererRef.current.setSourceVideo(videoElement);
+        rendererRef.current.refreshSourceAspect();
+        if (r) rendererRef.current.resize(r.width, r.height);
+      };
       const refresh = () => rendererRef.current?.refreshSourceAspect();
+      const tryPlay = () => { videoElement.play().catch(() => {}); };
+      const hasPixels = () => videoElement.videoWidth > 0 && videoElement.videoHeight > 0 && videoElement.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA;
+
       videoElement.addEventListener("loadedmetadata", refresh);
       videoElement.addEventListener("resize", refresh);
-      const tryPlay = () => { videoElement.play().catch(() => {}); };
+      videoElement.addEventListener("canplay", applyVideo, { once: true });
+      videoElement.addEventListener("playing", applyVideo, { once: true });
       tryPlay();
+      if (hasPixels()) applyVideo();
+
+      const fallback = window.setTimeout(applyVideo, 700);
       return () => {
+        cancelled = true;
+        window.clearTimeout(fallback);
         videoElement.removeEventListener("loadedmetadata", refresh);
         videoElement.removeEventListener("resize", refresh);
+        videoElement.removeEventListener("canplay", applyVideo);
+        videoElement.removeEventListener("playing", applyVideo);
       };
     }
     if (imageElement) {

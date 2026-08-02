@@ -5,6 +5,7 @@ import { Upload } from "lucide-react";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
 import { useStore } from "@/store/useStore";
+import { loadImageFile, loadImageFromClipboard } from "@/lib/sourceLoader";
 import { haptic } from "@/hooks/useHaptics";
 import { defaultFacing, requestCameraStream } from "@/hooks/useCamera";
 import { MoshingBackdrop } from "@/components/home/MoshingBackdrop";
@@ -19,22 +20,16 @@ const EASE_SNAP = [0.22, 1, 0.36, 1] as const;
 
 const Index = () => {
   const navigate = useNavigate();
-  const setImage = useStore(s => s.setImage);
   const setVideoSource = useStore(s => s.setVideoSource);
   const fileRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
 
   const loadFile = useCallback(async (file: File) => {
-    const url = URL.createObjectURL(file);
-    const img = new Image();
-    img.onload = () => {
-      setImage(url, img);
-      useStore.getState().setSourceName(file.name);
-      haptic([8, 10, 16]);
-      navigate("/edit");
-    };
-    img.src = url;
-  }, [navigate, setImage]);
+    const ok = await loadImageFile(file);
+    if (!ok) return;
+    haptic([8, 10, 16]);
+    navigate("/edit");
+  }, [navigate]);
 
   const openPicker = useCallback(() => fileRef.current?.click(), []);
 
@@ -69,24 +64,17 @@ const Index = () => {
 
   // Clipboard paste — paste an image anywhere on the home page to start moshing
   useEffect(() => {
-    const onPaste = (e: ClipboardEvent) => {
-      const items = e.clipboardData?.items;
-      if (!items) return;
-      for (const it of items) {
-        if (it.kind === "file" && it.type.startsWith("image/")) {
-          const f = it.getAsFile();
-          if (f) {
-            e.preventDefault();
-            toast.success("Pasted image — moshing…");
-            loadFile(f);
-            return;
-          }
-        }
+    const onPaste = async (e: ClipboardEvent) => {
+      if (await loadImageFromClipboard(e)) {
+        e.preventDefault();
+        toast.success("Pasted image — moshing…");
+        haptic([8, 10, 16]);
+        navigate("/edit");
       }
     };
     window.addEventListener("paste", onPaste);
     return () => window.removeEventListener("paste", onPaste);
-  }, [loadFile]);
+  }, [navigate]);
 
   return (
     <main className="relative h-screen w-screen overflow-hidden bg-background text-foreground">

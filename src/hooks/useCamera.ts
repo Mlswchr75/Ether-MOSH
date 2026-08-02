@@ -191,9 +191,11 @@ export function useCamera() {
       if (opts?.facing) setFacing(opts.facing);
       if (opts?.deviceId !== undefined) setDeviceId(opts.deviceId);
       refreshDevices();
+      return true;
     } catch (err) {
       setError((err as { cameraError?: CameraError }).cameraError ?? "unknown");
       setIsLive(false);
+      return false;
     }
   }, [facing, deviceId, setVideoSource, refreshDevices]);
 
