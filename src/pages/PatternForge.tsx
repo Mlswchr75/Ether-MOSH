@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { Helmet } from "react-helmet-async";
 import { Download, ArrowLeft, Shuffle } from "lucide-react";
 import { MoshRenderer } from "@/engine/Renderer";
