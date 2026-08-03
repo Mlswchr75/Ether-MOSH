@@ -18,25 +18,29 @@ const PALETTES: { name: string; colors: [string, string, string] }[] = [
   { name: "heat",    colors: ["#FF6B00", "#FF0033", "#100400"] },
 ];
 
-const EFFECT_STACKS: Array<{ effectId: string; params: Record<string, number>; opacity: number }[]> = [
-  [
-    { effectId: "plasmaField", params: { amount: 0.7, speed: 0.5, scale: 4 }, opacity: 1 },
-    { effectId: "rgbShift",   params: { amount: 0.4, angle: 0.5 },            opacity: 0.85 },
-  ],
-  [
-    { effectId: "liquidWarp", params: { amount: 0.6, speed: 0.4, scale: 5 }, opacity: 1 },
-    { effectId: "vhsBleed",   params: { amount: 0.5, speed: 0.6 },            opacity: 0.8 },
-  ],
-  [
-    { effectId: "pixelSort",  params: { threshold: 0.4, amount: 0.7 },        opacity: 1 },
-    { effectId: "scanBreak",  params: { amount: 0.5, speed: 0.8 },             opacity: 0.75 },
-  ],
-  [
-    { effectId: "plasmaField", params: { amount: 0.55, speed: 0.9, scale: 6 }, opacity: 0.9 },
-    { effectId: "liquidWarp",  params: { amount: 0.5, speed: 0.7, scale: 3 },  opacity: 0.85 },
-    { effectId: "rgbShift",    params: { amount: 0.3, angle: 1.2 },             opacity: 0.7 },
-  ],
+// Expanded pool of available effects with randomized parameter generators
+const AVAILABLE_EFFECT_POOL = [
+  { id: "plasmaField", getParams: () => ({ amount: 0.5 + Math.random() * 0.4, speed: 0.3 + Math.random() * 0.7, scale: Math.floor(3 + Math.random() * 4) }) },
+  { id: "liquidWarp",  getParams: () => ({ amount: 0.4 + Math.random() * 0.5, speed: 0.3 + Math.random() * 0.6, scale: Math.floor(3 + Math.random() * 4) }) },
+  { id: "pixelSort",   getParams: () => ({ threshold: 0.3 + Math.random() * 0.4, amount: 0.5 + Math.random() * 0.4 }) },
+  { id: "rgbShift",    getParams: () => ({ amount: 0.2 + Math.random() * 0.5, angle: Math.random() * Math.PI }) },
+  { id: "vhsBleed",    getParams: () => ({ amount: 0.3 + Math.random() * 0.5, speed: 0.4 + Math.random() * 0.5 }) },
+  { id: "scanBreak",   getParams: () => ({ amount: 0.4 + Math.random() * 0.4, speed: 0.5 + Math.random() * 0.5 }) },
+  { id: "datamosh",    getParams: () => ({ amount: 0.5 + Math.random() * 0.4, blocksize: Math.floor(4 + Math.random() * 8) }) },
+  { id: "melt",        getParams: () => ({ amount: 0.4 + Math.random() * 0.5, speed: 0.3 + Math.random() * 0.5 }) },
 ];
+
+const generateRandomStack = () => {
+  const count = Math.floor(Math.random() * 3) + 2; // Picks 2 to 4 effects
+  const shuffled = [...AVAILABLE_EFFECT_POOL].sort(() => 0.5 - Math.random());
+  const selected = shuffled.slice(0, count);
+
+  return selected.map((fx, i) => ({
+    effectId: fx.id,
+    params: fx.getParams(),
+    opacity: 0.7 + Math.random() * 0.3,
+  }));
+};
 
 function drawSource(
   ctx: CanvasRenderingContext2D,
@@ -74,16 +78,15 @@ export default function PatternForge() {
   const rendererRef = useRef<MoshRenderer | null>(null);
 
   const [paletteIdx, setPaletteIdx] = useState(0);
-  const [stackIdx, setStackIdx] = useState(0);
+  const [currentStack, setCurrentStack] = useState(() => generateRandomStack());
   const [seed, setSeed] = useState(() => Math.floor(Math.random() * 0xFFFFFF));
   const [exporting, setExporting] = useState(false);
 
   const palette = PALETTES[paletteIdx];
-  const stack = EFFECT_STACKS[stackIdx];
 
   const randomise = useCallback(() => {
     setSeed(Math.floor(Math.random() * 0xFFFFFF));
-    setStackIdx(Math.floor(Math.random() * EFFECT_STACKS.length));
+    setCurrentStack(generateRandomStack());
     setPaletteIdx(Math.floor(Math.random() * PALETTES.length));
   }, []);
 
@@ -124,7 +127,7 @@ export default function PatternForge() {
     const loop = () => {
       const t = (performance.now() - start) / 1000;
       drawSource(sctx, src.width, src.height, palette.colors, seed, t);
-      const layers: RenderLayer[] = stack.map((l, i) => ({
+      const layers: RenderLayer[] = currentStack.map((l, i) => ({
         id: `forge${i}`,
         effectId: l.effectId,
         hidden: false,
@@ -144,8 +147,7 @@ export default function PatternForge() {
       canvas.remove();
       rendererRef.current = null;
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [palette, stack, seed]);
+  }, [palette, currentStack, seed]);
 
   const handleExport = useCallback(async () => {
     const canvas = exportCanvasRef.current;
@@ -243,23 +245,16 @@ export default function PatternForge() {
             </div>
           </div>
 
-          {/* Effect stack */}
+          {/* Current Effect Stack Summary */}
           <div>
             <p className="mb-3 font-mono text-[9px] uppercase tracking-[0.4em] text-foreground/40">
-              effect
+              active effects
             </p>
-            <div className="space-y-1.5">
-              {EFFECT_STACKS.map((s, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  onClick={() => setStackIdx(i)}
-                  className={`w-full px-2 py-1.5 text-left font-mono text-[10px] uppercase tracking-[0.2em] transition ${
-                    i === stackIdx ? "text-accent" : "text-foreground/50 hover:text-foreground/80"
-                  }`}
-                >
-                  {s.map(l => l.effectId).join(" + ")}
-                </button>
+            <div className="space-y-1">
+              {currentStack.map((l, i) => (
+                <div key={i} className="font-mono text-[10px] uppercase tracking-[0.2em] text-accent/80">
+                  {l.effectId}
+                </div>
               ))}
             </div>
           </div>
