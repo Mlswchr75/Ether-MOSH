@@ -18,27 +18,27 @@ const PALETTES: { name: string; colors: [string, string, string] }[] = [
   { name: "heat",    colors: ["#FF6B00", "#FF0033", "#100400"] },
 ];
 
-// Expanded pool of available effects with randomized parameter generators
+// Validated effect IDs matching MoshRenderer registry
 const AVAILABLE_EFFECT_POOL = [
-  { id: "plasmaField", getParams: () => ({ amount: 0.5 + Math.random() * 0.4, speed: 0.3 + Math.random() * 0.7, scale: Math.floor(3 + Math.random() * 4) }) },
-  { id: "liquidWarp",  getParams: () => ({ amount: 0.4 + Math.random() * 0.5, speed: 0.3 + Math.random() * 0.6, scale: Math.floor(3 + Math.random() * 4) }) },
-  { id: "pixelSort",   getParams: () => ({ threshold: 0.3 + Math.random() * 0.4, amount: 0.5 + Math.random() * 0.4 }) },
-  { id: "rgbShift",    getParams: () => ({ amount: 0.2 + Math.random() * 0.5, angle: Math.random() * Math.PI }) },
-  { id: "vhsBleed",    getParams: () => ({ amount: 0.3 + Math.random() * 0.5, speed: 0.4 + Math.random() * 0.5 }) },
-  { id: "scanBreak",   getParams: () => ({ amount: 0.4 + Math.random() * 0.4, speed: 0.5 + Math.random() * 0.5 }) },
-  { id: "datamosh",    getParams: () => ({ amount: 0.5 + Math.random() * 0.4, blocksize: Math.floor(4 + Math.random() * 8) }) },
-  { id: "melt",        getParams: () => ({ amount: 0.4 + Math.random() * 0.5, speed: 0.3 + Math.random() * 0.5 }) },
+  { id: "plasmaField", getParams: () => ({ amount: 0.6 + Math.random() * 0.3, speed: 0.4 + Math.random() * 0.4, scale: Math.floor(3 + Math.random() * 3) }) },
+  { id: "liquidWarp",  getParams: () => ({ amount: 0.5 + Math.random() * 0.4, speed: 0.4 + Math.random() * 0.4, scale: Math.floor(3 + Math.random() * 3) }) },
+  { id: "pixelSort",   getParams: () => ({ threshold: 0.3 + Math.random() * 0.3, amount: 0.6 + Math.random() * 0.3 }) },
+  { id: "rgbShift",    getParams: () => ({ amount: 0.3 + Math.random() * 0.4, angle: Math.random() * Math.PI }) },
+  { id: "vhsBleed",    getParams: () => ({ amount: 0.4 + Math.random() * 0.4, speed: 0.4 + Math.random() * 0.4 }) },
+  { id: "scanBreak",   getParams: () => ({ amount: 0.5 + Math.random() * 0.4, speed: 0.5 + Math.random() * 0.4 }) },
+  { id: "datamosh",    getParams: () => ({ amount: 0.6 + Math.random() * 0.3, blocksize: Math.floor(6 + Math.random() * 6) }) },
+  { id: "melt",        getParams: () => ({ amount: 0.5 + Math.random() * 0.4, speed: 0.4 + Math.random() * 0.4 }) },
 ];
 
 const generateRandomStack = () => {
-  const count = Math.floor(Math.random() * 3) + 2; // Picks 2 to 4 effects
+  const count = Math.floor(Math.random() * 3) + 2; 
   const shuffled = [...AVAILABLE_EFFECT_POOL].sort(() => 0.5 - Math.random());
   const selected = shuffled.slice(0, count);
 
-  return selected.map((fx, i) => ({
+  return selected.map((fx) => ({
     effectId: fx.id,
     params: fx.getParams(),
-    opacity: 0.7 + Math.random() * 0.3,
+    opacity: 0.75 + Math.random() * 0.25,
   }));
 };
 
@@ -126,6 +126,13 @@ export default function PatternForge() {
 
     const loop = () => {
       const t = (performance.now() - start) / 1000;
+
+      // Guard against zero-dimension layout frames
+      if (host.clientWidth === 0 || host.clientHeight === 0) {
+        raf = requestAnimationFrame(loop);
+        return;
+      }
+
       drawSource(sctx, src.width, src.height, palette.colors, seed, t);
       const layers: RenderLayer[] = currentStack.map((l, i) => ({
         id: `forge${i}`,
