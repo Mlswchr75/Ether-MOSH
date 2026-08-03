@@ -259,12 +259,21 @@ export default function PatternForge() {
             <p className="mb-3 font-mono text-[9px] uppercase tracking-[0.4em] text-foreground/40">
               active effects
             </p>
-            <div className="space-y-1">
-              {currentStack.map((l, i) => (
-                <div key={i} className="font-mono text-[10px] uppercase tracking-[0.2em] text-accent/80">
-                  {l.effectId}
-                </div>
-              ))}
+            <div className="space-y-1 overflow-hidden">
+              <AnimatePresence mode="popLayout">
+                {currentStack.map((l, i) => (
+                  <motion.div
+                    key={`${l.effectId}-${i}`}
+                    initial={{ opacity: 0, x: -12, filter: "blur(4px)" }}
+                    animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
+                    exit={{ opacity: 0, x: 12, filter: "blur(4px)" }}
+                    transition={{ duration: 0.3, delay: i * 0.05, ease: EASE }}
+                    className="font-mono text-[10px] uppercase tracking-[0.2em] text-accent/80"
+                  >
+                    {l.effectId}
+                  </motion.div>
+                ))}
+              </AnimatePresence>
             </div>
           </div>
 
