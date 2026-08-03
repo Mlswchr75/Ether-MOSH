@@ -1,9 +1,7 @@
-// Storm Director — reactive "reality warp" mode. Offline, token-free.
-// A more aggressive sibling of SmartDirector: instead of switching on a musical
-// timer, it reacts INSTANTLY to motion jerks and audio onsets, firing bursts
-// that range from subtle drifts to full explosive stacks — each randomized and
-// audio-mapped so the whole frame keeps warping to movement and sound between
-// bursts. Never replaces SmartDirector; it's an alternate mode.
+// Storm Director — reactive "reality warp" mode. 
+// GOD MODE: Hyper-localized, chaotic micro-storms.
+// Tracks tiny movements (fingers, lips) and spawns multiple small, 
+// independent stacks of clashing effects rather than global screen wipes.
 
 import { EFFECTS } from "./effects";
 
@@ -46,13 +44,15 @@ export class StormDirector {
   private motionPrev = 0;
   private beatCount = 0;
   private beatListener: (() => void) | null = null;
-  private GW = 4; private GH = 3;
+  
+  // INCREASED GRID RESOLUTION: 20x15 (300 zones) instead of 4x3 to track fingers!
+  private GW = 20; private GH = 15;
   private zoneMotion: number[];
 
   constructor(opts: StormOpts) {
     this.opts = opts;
     this.canvas = document.createElement("canvas");
-    this.canvas.width = 96; this.canvas.height = 54;
+    this.canvas.width = 160; this.canvas.height = 120; // Higher res sampling
     this.ctx = this.canvas.getContext("2d", { willReadFrequently: true });
     this.zoneMotion = new Array(this.GW * this.GH).fill(0);
   }
@@ -63,7 +63,7 @@ export class StormDirector {
     this.lastBurst = performance.now();
     this.beatListener = () => { this.beatCount += 1; };
     window.addEventListener("aegis:beat", this.beatListener);
-    window.setTimeout(() => this.fire(false, 0.4), 150); // engage instantly
+    window.setTimeout(() => this.fire(false, 0.4), 150); 
     const loop = () => { if (!this.running) return; this.tick(); this.raf = requestAnimationFrame(loop); };
     this.raf = requestAnimationFrame(loop);
   }
@@ -78,105 +78,105 @@ export class StormDirector {
 
   private tick() {
     const now = performance.now();
-    if (now - this.lastSample < 33) return; // ~30Hz motion sampling
+    if (now - this.lastSample < 33) return; 
     this.lastSample = now;
     this.sample();
 
     const audio = (window as any).__aegisAudioSources as Record<string, number> | undefined;
     const bass = audio ? Math.max(audio.kick ?? 0, audio.sub ?? 0, audio.bass ?? 0) : 0;
 
-    // "Jerk" = sudden positive jump in motion — the lightning trigger.
     const jerk = Math.max(0, this.motion - this.motionPrev);
     this.motionPrev = this.motion;
 
     const gap = now - this.lastBurst;
     const sceneChange = Math.max(0, this.motion - this.motionAvg * 1.7 - 0.06);
 
-    const explosiveTrigger = (jerk > 0.14 || bass > 0.72 || sceneChange > 0.4) && gap > 220;
-    const beatTrigger = this.beatCount >= 2 && gap > 520;
-    const idleDrift = gap > 2600;
+    // HYPER-AGGRESSIVE TRIGGERS: Lower cooldowns, lower thresholds
+    const explosiveTrigger = (jerk > 0.08 || bass > 0.6 || sceneChange > 0.2) && gap > 120; 
+    const beatTrigger = this.beatCount >= 1 && gap > 250; 
+    const idleDrift = gap > 600;
 
     if (explosiveTrigger) {
-      const power = Math.min(1, jerk * 3 + bass * 0.5 + sceneChange);
+      const power = Math.min(1, jerk * 4 + bass * 0.7 + sceneChange);
       this.fire(true, power);
-      if (power > 0.6 && Math.random() < 0.4) { try { this.opts.onTimeWarp?.(); } catch {} }
+      if (power > 0.4 && Math.random() < 0.6) { try { this.opts.onTimeWarp?.(); } catch {} }
     } else if (beatTrigger) {
-      this.fire(Math.random() < 0.45, 0.5); // randomize explosive vs subtle for variety
+      this.fire(Math.random() < 0.5, 0.6); 
     } else if (idleDrift) {
-      this.fire(false, 0.3);
+      this.fire(false, 0.4);
     }
   }
 
   private fire(explosive: boolean, power = 0.5) {
     const rand = Math.random;
     let ids: string[];
+    
+    // CRAZY EFFECT STACKS: Combines incompatible/clashing effects on purpose
     if (explosive) {
-      // Prefer 2..3 effects (was 3..6) so bursts feel like localized flickers,
-      // not screen-consuming stacks. Only rare peaks push to 4.
-      const n = 2 + (power > 0.75 && rand() < 0.35 ? 2 : (rand() < 0.5 ? 1 : 0));
+      const n = 4 + Math.floor(rand() * 4); // Up to 7 simultaneous effects!
       ids = sample(EXPLOSIVE_POOL, n, rand);
-      if (rand() < 0.5 && MOTION_POOL.length) ids.splice(1, 0, pick(MOTION_POOL, rand));
-      ids = Array.from(new Set(ids)).slice(0, 4);
+      if (MOTION_POOL.length) ids.splice(1, 0, pick(MOTION_POOL, rand), pick(MOTION_POOL, rand));
     } else {
-      const n = 1 + (rand() < 0.35 ? 1 : 0); // 1..2 (was 1..3)
+      const n = 3 + Math.floor(rand() * 3); // 3 to 5 effects even on subtle
       ids = sample(SUBTLE_POOL, n, rand);
-      if (rand() < 0.25 && MOTION_POOL.length) ids.push(pick(MOTION_POOL, rand));
-      ids = Array.from(new Set(ids)).slice(0, 2);
+      if (MOTION_POOL.length) ids.push(pick(MOTION_POOL, rand));
     }
+    ids = Array.from(new Set(ids)).slice(0, 8); // Cap at 8 pure chaos layers
+
     if (!ids.length) return;
-    const regions = this.computeRegions(ids.length, explosive, power, rand);
+    
+    // SPAWN SWARMS OF REGIONS: 6-15 regions per burst instead of 1-3
+    const regionCount = explosive ? (6 + Math.floor(rand() * 10)) : (4 + Math.floor(rand() * 5));
+    const regions = this.computeRegions(regionCount, explosive, power, rand);
+    
     try { this.opts.onStorm(ids, { explosive, regions }); } catch {}
     try { this.opts.onBurst?.(power); } catch {}
     this.lastBurst = performance.now();
     this.beatCount = 0;
   }
 
-  /**
-   * Element-aware region picker. Uses the per-zone motion map to focus each
-   * burst layer on the hottest sub-regions of the frame instead of blanketing
-   * everything. Falls back to a small random region near the frame's motion
-   * centroid when nothing stands out (still keeps bursts localized).
-   */
   private computeRegions(count: number, explosive: boolean, power: number, rand: () => number): StormRegion[] {
     const zw = 1 / this.GW, zh = 1 / this.GH;
-    // Rank zones by motion.
     const ranked = this.zoneMotion
       .map((m, i) => ({ i, m }))
       .sort((a, b) => b.m - a.m);
-    const threshold = 0.04;
-    const hot = ranked.filter(z => z.m > threshold).slice(0, Math.max(count, 3));
-
-    // Base radius: one zone wide, scaled by power (bigger bursts read slightly larger).
-    const baseRx = zw * (explosive ? 0.75 : 0.6) * (0.85 + power * 0.35);
-    const baseRy = zh * (explosive ? 0.85 : 0.7) * (0.85 + power * 0.35);
-    const soft = 0.45;
+      
+    // SENSITIVE THRESHOLD: Pick up tiny micro-movements
+    const threshold = 0.01; 
+    const hot = ranked.filter(z => z.m > threshold).slice(0, Math.max(count, 15));
 
     const out: StormRegion[] = [];
     for (let i = 0; i < count; i++) {
       let cx: number, cy: number, rx: number, ry: number;
+      
       if (hot.length) {
         const z = hot[i % hot.length];
         const zx = z.i % this.GW;
         const zy = Math.floor(z.i / this.GW);
-        // Jitter within the zone so repeated bursts on the same subject don't stack identically.
-        cx = (zx + 0.5) * zw + (rand() - 0.5) * zw * 0.4;
-        cy = (zy + 0.5) * zh + (rand() - 0.5) * zh * 0.4;
-        // Slightly bigger radius when the zone motion is very high.
-        const boost = 1 + z.m * 0.6;
-        rx = baseRx * boost;
-        ry = baseRy * boost;
+        
+        // Jitter wildly around the detected motion point
+        cx = (zx + 0.5) * zw + (rand() - 0.5) * zw * 2.0;
+        cy = (zy + 0.5) * zh + (rand() - 0.5) * zh * 2.0;
+        
+        // TINY, HIGHLY VARIABLE SIZES: From speck-sized to medium blobs
+        const sizeMod = 0.2 + rand() * 2.5;
+        rx = zw * sizeMod * (explosive ? 1.5 : 1.0);
+        ry = zh * sizeMod * (explosive ? 1.5 : 1.0);
       } else {
-        // Idle drift: small wandering region so subtle bursts still feel spatial.
-        cx = 0.25 + rand() * 0.5;
-        cy = 0.25 + rand() * 0.5;
-        rx = baseRx * 1.2;
-        ry = baseRy * 1.2;
+        // Idle drift scatters random tiny portals everywhere
+        cx = rand(); cy = rand();
+        rx = zw * (0.5 + rand() * 2);
+        ry = zh * (0.5 + rand() * 2);
       }
+      
+      // EXTREME EDGES: Some bubbles are sharp cutouts, some are smooth blurs
+      const soft = 0.05 + rand() * 0.9; 
+      
       out.push({
-        cx: Math.max(0.02, Math.min(0.98, cx)),
-        cy: Math.max(0.02, Math.min(0.98, cy)),
-        rx: Math.max(0.05, Math.min(0.6, rx)),
-        ry: Math.max(0.06, Math.min(0.7, ry)),
+        cx: Math.max(0.01, Math.min(0.99, cx)),
+        cy: Math.max(0.01, Math.min(0.99, cy)),
+        rx: Math.max(0.01, Math.min(0.4, rx)), // Allow incredibly tiny radiuses
+        ry: Math.max(0.01, Math.min(0.4, ry)),
         soft,
       });
     }
