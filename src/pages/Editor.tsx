@@ -30,7 +30,7 @@ import { enterFullscreen, exitFullscreen, hasSeenPerfMode, markPerfModeSeen, use
 import { toast } from "sonner";
 import { shareApp, shareBlob, shareOrDownload, canNativeShare } from "@/lib/share";
 import { KaossSurface } from "@/components/editor/KaossSurface";
-import { MobileGestures } from "@/components/editor/MobileGestures";
+import { QuadrantSurface } from "@/components/editor/QuadrantSurface";
 import { TrackpadGestures } from "@/components/editor/TrackpadGestures";
 import { toggleSystemAudio } from "@/engine/systemAudio";
 import { loadImageFile, loadImageFromClipboard } from "@/lib/sourceLoader";
@@ -988,11 +988,7 @@ export default function Editor() {
         {!hasSource && <StartCameraOverlay />}
         <SystemAudioHud visible={systemAudioEnabled} />
         {hasSource && (
-          <MobileGestures
-            onTogglePerf={togglePerf}
-            onScreenshot={takeScreenshot}
-            onMicFlash={(on) => setMicFlash({ on, key: performance.now() })}
-          />
+          <QuadrantSurface onTogglePerf={togglePerf} />
         )}
         <TrackpadGestures
           targetRef={canvasContainerRef}

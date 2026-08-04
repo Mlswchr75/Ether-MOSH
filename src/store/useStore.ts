@@ -1,6 +1,13 @@
 import { create } from "zustand";
 import { EFFECTS, EFFECTS_BY_ID, type EffectCategory } from "@/engine/effects";
 import { BLEND_MODES, type BlendMode } from "@/engine/blend";
+import {
+  QUADRANT_COUNT,
+  blendForRelation,
+  rollQuadrantEffect,
+  type QuadrantIndex,
+  type RelationLabel,
+} from "@/engine/quadrants";
 import { generateSeed, rngFromSeed } from "@/engine/seed";
 import type { AudioMap, Favorite, Intensity, IsolationMode, Layer, Modulator, PaletteProfile, StickerEntry } from "./types";
 import type { CameraFacing } from "@/hooks/useCamera";
@@ -12,6 +19,10 @@ import { toast } from "sonner";
 
 const HISTORY_LIMIT = 20;
 const MOSH_EXCLUDED_EFFECTS = new Set(["bloom", "frameSmear"]);
+/** How many recently-used effects each quadrant refuses to roll again. */
+const QUADRANT_MEMORY = 4;
+/** How many recently-used effects a full mosh avoids reaching for. */
+const MOSH_MEMORY = 8;
 
 type State = {
   imageUrl: string | null;
@@ -63,6 +74,22 @@ type State = {
   stickerGallery: StickerEntry[];
   /** Which camera is active ('user' = front, 'environment' = rear). */
   cameraFacing: CameraFacing | null;
+  /** Per-quadrant ring of recently-rolled effect ids (anti-repetition). */
+  quadrantHistory: string[][];
+  /** Recently-used effect ids across full moshes (anti-repetition). */
+  recentEffects: string[];
+  /** Last quadrant roll — drives the transient on-canvas readout. */
+  lastQuadrantRoll: QuadrantRoll | null;
+};
+
+export type QuadrantRoll = {
+  quadrant: QuadrantIndex;
+  effectId: string;
+  effectName: string;
+  relation: RelationLabel;
+  affinity: number;
+  /** performance.now() at roll time — used to auto-fade the readout. */
+  at: number;
 };
 
 type Actions = {
@@ -87,6 +114,14 @@ type Actions = {
 
   mosh: (intensity?: Intensity) => void;
   reset: () => void;
+
+  /**
+   * Re-roll a single quadrant against whatever the other three hold. Pads the
+   * stack when the quadrant is still empty so the quadrant↔layer map stays
+   * 1:1. Returns the roll, or null when the target layer is locked.
+   */
+  moshQuadrant: (q: QuadrantIndex, opts?: { targetAffinity?: number }) => QuadrantRoll | null;
+  clearQuadrantRoll: () => void;
 
   setIntensity: (i: Intensity) => void;
   setBeforeAfter: (open: boolean) => void;
@@ -162,21 +197,57 @@ const sampleParam = (
   return v;
 };
 
-function pickEffectsWeighted(rand: () => number, count: number): string[] {
+/**
+ * Choose `count` effects for a full mosh.
+ *
+ * Three rules keep successive moshes from feeling like the same trick:
+ *   1. The category walk is shuffled per mosh instead of following one fixed
+ *      order, so stacks don't always read corruption→color→geometry.
+ *   2. An effect never appears twice in the same stack.
+ *   3. Effects used by recent moshes (`avoid`) are skipped while alternatives
+ *      remain, so the same favourites don't resurface every tap.
+ */
+function pickEffectsWeighted(rand: () => number, count: number, avoid: string[] = []): string[] {
   const byCat: Record<EffectCategory, string[]> = {
-    corruption: EFFECTS.filter(e => e.category === "corruption" && !MOSH_EXCLUDED_EFFECTS.has(e.id)).map(e => e.id),
-    color:      EFFECTS.filter(e => e.category === "color" && !MOSH_EXCLUDED_EFFECTS.has(e.id)).map(e => e.id),
-    geometry:   EFFECTS.filter(e => e.category === "geometry" && !MOSH_EXCLUDED_EFFECTS.has(e.id)).map(e => e.id),
-    atmosphere: EFFECTS.filter(e => e.category === "atmosphere" && !MOSH_EXCLUDED_EFFECTS.has(e.id)).map(e => e.id),
+    corruption: [], color: [], geometry: [], atmosphere: [],
   };
-  const cats: EffectCategory[] = ["corruption", "color", "geometry", "corruption", "atmosphere"];
+  for (const e of EFFECTS) {
+    if (!MOSH_EXCLUDED_EFFECTS.has(e.id)) byCat[e.category].push(e.id);
+  }
+
+  // A stack wants a backbone of corruption/geometry with colour and
+  // atmosphere on top — shuffle within that shape rather than fixing the order.
+  const walk: EffectCategory[] = shuffle<EffectCategory>(["corruption", "geometry"], rand)
+    .concat(shuffle<EffectCategory>(["color", "atmosphere"], rand))
+    .concat(shuffle<EffectCategory>(["corruption", "color", "geometry", "atmosphere"], rand));
+
+  const stale = new Set(avoid);
+  const used = new Set<string>();
   const picked: string[] = [];
+
   for (let i = 0; i < count; i++) {
-    const cat = cats[i % cats.length];
+    const cat = walk[i % walk.length];
+    // Prefer unused + not-recently-seen; relax each constraint only if the
+    // pool has nothing left to offer.
     const pool = byCat[cat];
-    picked.push(pool[Math.floor(rand() * pool.length)]);
+    const fresh = pool.filter(id => !used.has(id) && !stale.has(id));
+    const unused = pool.filter(id => !used.has(id));
+    const candidates = fresh.length ? fresh : unused.length ? unused : pool;
+    const id = candidates[Math.floor(rand() * candidates.length)];
+    used.add(id);
+    picked.push(id);
   }
   return picked;
+}
+
+/** Fisher–Yates against the seeded RNG so shuffles stay reproducible. */
+function shuffle<T>(arr: T[], rand: () => number): T[] {
+  const out = arr.slice();
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
 }
 
 function makeLayer(effectId: string, opts: Partial<Layer> = {}): Layer {
@@ -241,6 +312,9 @@ export const useStore = create<State & Actions>((set, get) => ({
   stickerMode: false,
   stickerGallery: [],
   cameraFacing: null,
+  quadrantHistory: Array.from({ length: QUADRANT_COUNT }, () => [] as string[]),
+  recentEffects: [],
+  lastQuadrantRoll: null,
 
   setGlCanvas: (canvas) => set({ glCanvas: canvas }),
 
@@ -385,7 +459,10 @@ export const useStore = create<State & Actions>((set, get) => ({
 
     const locked = s.layers.filter(l => l.locked);
     const targetCount = Math.floor(profile.count[0] + rand() * (profile.count[1] - profile.count[0] + 1));
-    const newEffects = pickEffectsWeighted(rand, targetCount);
+    // Locked layers are already on screen — treat them as "recently seen" too
+    // so a re-roll doesn't sit an identical effect next to one.
+    const avoid = [...s.recentEffects, ...locked.map(l => l.effectId)];
+    const newEffects = pickEffectsWeighted(rand, targetCount, avoid);
 
     const fresh: Layer[] = newEffects.map((eid, idx) => {
       const def = EFFECTS_BY_ID[eid];
@@ -419,8 +496,116 @@ export const useStore = create<State & Actions>((set, get) => ({
       };
     });
 
-    return { ...s, past: pushPast(s), future: [], layers: [...locked, ...fresh], seed };
+    return {
+      ...s,
+      past: pushPast(s), future: [],
+      layers: [...locked, ...fresh],
+      seed,
+      recentEffects: [...s.recentEffects, ...newEffects].slice(-MOSH_MEMORY),
+      // A full mosh replaces every quadrant, so quadrant memory starts over.
+      quadrantHistory: Array.from({ length: QUADRANT_COUNT }, () => [] as string[]),
+      lastQuadrantRoll: null,
+    };
   }),
+
+  moshQuadrant: (q, opts) => {
+    const s = get();
+    const rand = rngFromSeed(generateSeed());
+    const layers = s.layers;
+
+    if (layers[q]?.locked) return null;
+
+    // Everything the other quadrants are showing right now.
+    const neighbours = layers
+      .slice(0, QUADRANT_COUNT)
+      .map((l, i) => (i === q ? "" : l.effectId))
+      .filter(Boolean);
+
+    const roll = rollQuadrantEffect({
+      neighbours,
+      exclude: [layers[q]?.effectId ?? "", ...(s.quadrantHistory[q] ?? [])].filter(Boolean),
+      targetAffinity: opts?.targetAffinity,
+      rand,
+    });
+
+    const def = EFFECTS_BY_ID[roll.effectId];
+    if (!def) return null;
+
+    const profile = intensityProfile(s.intensity);
+    const params: Record<string, number> = {};
+    for (const p of def.params) {
+      params[p.key] = sampleParam(rand, p.min, p.max, p.default, profile.range, p.step);
+    }
+
+    const next = layers.slice();
+    // Pad the stack so quadrant N always addresses layers[N]. Tapping an empty
+    // quadrant therefore *grows* the stack instead of silently missing.
+    while (next.length < q) {
+      const fillRoll = rollQuadrantEffect({
+        neighbours: next.map(l => l.effectId),
+        exclude: next.map(l => l.effectId),
+        rand,
+      });
+      const fillDef = EFFECTS_BY_ID[fillRoll.effectId];
+      const fillParams: Record<string, number> = {};
+      for (const p of fillDef.params) {
+        fillParams[p.key] = sampleParam(rand, p.min, p.max, p.default, profile.range, p.step);
+      }
+      next.push({
+        id: newId(),
+        effectId: fillRoll.effectId,
+        hidden: false, locked: false,
+        blend: blendForRelation(fillRoll.affinity, rand, next.length === 0),
+        opacity: next.length === 0 ? 1 : profile.opacityRange[0] + rand() * (profile.opacityRange[1] - profile.opacityRange[0]),
+        params: fillParams,
+        mods: Object.fromEntries(fillDef.params.map(p => [p.key, null])),
+        audioMaps: Object.fromEntries(fillDef.params.map(p => [p.key, null])),
+      });
+    }
+
+    const isBase = q === 0;
+    const existing = next[q];
+    const layer: Layer = {
+      id: existing?.id ?? newId(),
+      effectId: roll.effectId,
+      hidden: false,
+      locked: false,
+      // The base layer stays fully opaque and normal-blended so the source is
+      // never wiped out from underneath the stack.
+      blend: blendForRelation(roll.affinity, rand, isBase),
+      opacity: isBase
+        ? 1
+        : profile.opacityRange[0] + rand() * (profile.opacityRange[1] - profile.opacityRange[0]),
+      params,
+      mods: Object.fromEntries(def.params.map(p => [p.key, null])),
+      audioMaps: Object.fromEntries(def.params.map(p => [p.key, null])),
+    };
+    next[q] = layer;
+
+    const history = s.quadrantHistory.map(h => h.slice());
+    history[q] = [...(history[q] ?? []), roll.effectId].slice(-QUADRANT_MEMORY);
+
+    const record: QuadrantRoll = {
+      quadrant: q,
+      effectId: roll.effectId,
+      effectName: def.name,
+      relation: roll.relation,
+      affinity: roll.affinity,
+      at: (typeof performance !== "undefined" ? performance.now() : Date.now()),
+    };
+
+    set({
+      past: pushPast(s), future: [],
+      layers: next,
+      selectedLayerId: layer.id,
+      quadrantHistory: history,
+      recentEffects: [...s.recentEffects, roll.effectId].slice(-MOSH_MEMORY),
+      lastQuadrantRoll: record,
+    });
+    return record;
+  },
+
+  clearQuadrantRoll: () => set({ lastQuadrantRoll: null }),
 
   reset: () => set(s => ({ ...s, past: pushPast(s), future: [], layers: [] })),
 

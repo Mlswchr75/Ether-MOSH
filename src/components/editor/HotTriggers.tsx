@@ -224,12 +224,15 @@ export function HotTriggers({ isRecording, onToggleRecord, onScreenshot, onFreez
   };
 
   return (
+    /* top-14 keeps the rail clear of the account chip pinned at top-3/right-3
+       (z-40), which would otherwise sit on top of the first trigger. */
     <div
-      className={`hot-triggers pointer-events-none absolute right-3 top-3 z-30 flex flex-col items-end gap-1 safe-top safe-right transition-opacity duration-700 ${dimmed ? "opacity-0" : "opacity-100"}`}
+      className={`hot-triggers pointer-events-none absolute right-3 top-14 z-30 flex flex-col items-end gap-1 safe-top safe-right transition-opacity duration-700 ${dimmed ? "opacity-0" : "opacity-100"}`}
     >
-      {/* Vertical column — no overflow clipping so left-opening panels stay visible */}
+      {/* Auto-wrapping rail: fills a column, then starts a second one inward.
+          No overflow clipping, so left-opening panels stay visible. */}
       <div
-        className={`pointer-events-auto flex flex-col items-center gap-1.5 ${dimmed ? "pointer-events-none" : ""}`}
+        className={`hot-trigger-rail pointer-events-auto ${dimmed ? "pointer-events-none" : ""}`}
       >
         {onHome && (
           <HotBtn delay={0} label="Back to start" onClick={onHome}>
