@@ -1,34 +1,37 @@
-# Open decisions — §7 collections and related
+# §7 collections — resolutions and remaining decisions
 
-Everything in the handoff's fix list is done. These four items were left for a
-human decision because they are business calls, not data errors, and two of them
-are outward-facing.
+Everything in the handoff's fix list is done. Items 1 and 2 below were decided by
+the store owner and are now applied; items 3–5 remain open.
 
 ---
 
-## 1. Radical Optimist in the main nav
+## 1. Radical Optimist — populated instead of pulled from nav ✅ DONE
 
-**State:** 1 product, manual collection, currently linked in the main menu under
-`Collections` (last item). The handoff recommended pulling it until it has 8–10+
-products.
+**Owner decision:** rather than removing the link, build the collection out past
+21 products.
 
-**Why not done automatically:** Shopify has no "remove one menu item" mutation.
-`menuUpdate` replaces the entire menu, so dropping this one link means rewriting
-all 7 top-level items and 20 children. That is a bigger, riskier operation on live
-storefront navigation than the handoff anticipated (it assumed an admin toggle).
+**Applied:** 30 products selected against the collection's own stated ethos —
+loungewear & intimates, affirmation-forward prints, radiant/bold color stories,
+power silhouettes — then tagged `Radical Optimist` via `tagsAdd` (append, so no
+existing tags were overwritten). The collection was converted from manual to a
+**smart collection** with rule `TAG EQUALS "Radical Optimist"`, matching the
+pattern already used by Infinite Echo and Vibe-Checked Vectors.
 
-The exact mutation is written and ready in `proposed-nav-prune.graphql` — it
-preserves every other item's ID, title, type and target. It needs a yes.
+**Result: 30 products.** It now maintains itself — tagging a future product adds
+it automatically, with no manual collection editing.
+
+Products with dark or aggressive themes (skull / thorns / hazmat / graveyard
+motifs) were explicitly filtered out as fighting the collection's ethos.
+
+The nav stays as-is. `proposed-nav-prune.graphql` is retained only as a reference
+for how to safely rewrite the main menu if that is ever wanted.
 
 **Correction to the handoff:** `Infinite Echo` (2 products) is **not** in the main
-menu at all, so no nav change is needed for it.
+menu at all, so it needed no nav change either.
 
-## 2. `meme-ohs` — empty collection
+## 2. `meme-ohs` — deleted ✅ DONE
 
-0 products, tag-rule based on the tag `meme-ohs`, not in any menu. The handoff
-said "delete or repurpose if there's no plan to populate it." Deleting a
-collection is destructive and depends entirely on whether this is a planned drop.
-Left in place.
+Empty (0 products), tag-ruled, in no menu. Deleted per owner decision.
 
 ## 3. Large "manual" collections
 

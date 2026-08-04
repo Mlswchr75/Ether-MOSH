@@ -108,9 +108,15 @@ they read as duplicates. That is a merchandising/SEO problem worth fixing with
 real print names, not a deduplication problem.
 
 ### §7 — Collections
-Audited; see `open-decisions.md`. Nav state corrected: **Infinite Echo is not in
-the main menu at all** (the handoff said it was). Radical Optimist is, nested
-under Collections. No nav change made — see open decisions.
+- **Radical Optimist: 1 → 30 products.** Per owner decision the collection was
+  built out rather than pulled from the nav. 30 products were selected against the
+  collection's stated ethos (loungewear & intimates, affirmation-forward prints,
+  radiant color, power silhouettes; dark/aggressive motifs filtered out), tagged
+  `Radical Optimist` with `tagsAdd`, and the collection converted from manual to a
+  smart collection ruled on that tag — so it now maintains itself.
+- **`meme-ohs` deleted** (0 products, in no menu) per owner decision.
+- Nav state corrected: **Infinite Echo is not in the main menu at all** (the
+  handoff said it was). Nav left unchanged.
 
 ---
 
