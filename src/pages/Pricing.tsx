@@ -2,15 +2,10 @@ import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Helmet } from "react-helmet-async";
 import { Check } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
+import { useEntitlements } from "@/hooks/useEntitlements";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
-
-const UNLOCK_URL = "https://buy.stripe.com/7sYbJ2c9O4JE2NfbxO3gk01";
-const TIP_URLS = {
-  1:  "https://donate.stripe.com/fZufZifm0a3YfA1bxO3gk02",
-  5:  "https://donate.stripe.com/aFacN6ehWcc63Rj31i3gk03",
-  25: "https://donate.stripe.com/3cI9AU5Lqcc62NfdFW3gk04",
-} as const;
 
 const FEATURES_FREE = [
   "58 GPU shader effects",
@@ -23,16 +18,25 @@ const FEATURES_FREE = [
 
 const FEATURES_UNLOCK = [
   "Everything in free",
-  "WebM video export",
-  "System audio capture",
-  "Upscaled export (2× / 4×)",
-  "Best-frame capture mode",
-  "Tile + mirror post-process",
+  "Smart AI director (auto-picks moshes to the beat)",
+  "Seamless GIF loop capture (7-second perfect loops)",
+  "Unlimited recording length (free is capped at 15s)",
+  "Full-resolution screenshot exports (free is capped at 720p)",
   "All future updates included",
 ];
 
 export default function Pricing() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const { isSupporter } = useEntitlements();
+
+  const startCheckout = (priceId: string) => {
+    if (!user) {
+      navigate(`/auth?next=${encodeURIComponent(`/checkout?price=${priceId}`)}`);
+      return;
+    }
+    navigate(`/checkout?price=${priceId}`);
+  };
 
   return (
     <main className="min-h-screen bg-background text-foreground">
@@ -67,13 +71,12 @@ export default function Pricing() {
           </p>
           <p className="mx-auto mt-4 max-w-md font-mono text-xs leading-relaxed text-foreground/55">
             MOSH is free to use. One small payment unlocks video export and the full
-            feature set — no subscription, no account required for the unlock.
+            feature set — no subscription. Sign-in required so your unlock follows you
+            to any device or browser, including ether-mosh.lovable.app.
           </p>
         </motion.div>
 
-        {/* Plans */}
         <div className="mt-14 grid gap-6 sm:grid-cols-2">
-          {/* Free */}
           <motion.div
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
@@ -100,7 +103,6 @@ export default function Pricing() {
             </button>
           </motion.div>
 
-          {/* Unlock */}
           <motion.div
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
@@ -123,18 +125,22 @@ export default function Pricing() {
                 </li>
               ))}
             </ul>
-            <a
-              href={UNLOCK_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-8 flex w-full items-center justify-center border border-primary bg-primary/10 py-3 font-mono text-xs uppercase tracking-[0.3em] text-primary transition hover:bg-primary/20"
-            >
-              unlock mosh — $4.99 →
-            </a>
+            {isSupporter ? (
+              <div className="mt-8 flex w-full items-center justify-center border border-primary/60 bg-primary/10 py-3 font-mono text-xs uppercase tracking-[0.3em] text-primary">
+                unlocked
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => startCheckout("mosh_supporter_once")}
+                className="mt-8 flex w-full items-center justify-center border border-primary bg-primary/10 py-3 font-mono text-xs uppercase tracking-[0.3em] text-primary transition hover:bg-primary/20"
+              >
+                {user ? "unlock mosh — $4.99 →" : "sign in & unlock →"}
+              </button>
+            )}
           </motion.div>
         </div>
 
-        {/* Tip jar */}
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
@@ -149,21 +155,23 @@ export default function Pricing() {
             a tip keeps the shaders alive.
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
-            {([1, 5, 25] as const).map(amount => (
-              <a
-                key={amount}
-                href={TIP_URLS[amount]}
-                target="_blank"
-                rel="noopener noreferrer"
+            {([
+              { amount: 1, priceId: "mosh_tip_1" },
+              { amount: 5, priceId: "mosh_tip_5" },
+              { amount: 25, priceId: "mosh_tip_25" },
+            ] as const).map(({ amount, priceId }) => (
+              <button
+                key={priceId}
+                type="button"
+                onClick={() => startCheckout(priceId)}
                 className="border border-border/50 px-5 py-2.5 font-mono text-xs uppercase tracking-[0.25em] text-foreground/60 transition hover:border-accent hover:text-accent"
               >
                 ${amount}
-              </a>
+              </button>
             ))}
           </div>
         </motion.div>
 
-        {/* FAQ */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -172,7 +180,7 @@ export default function Pricing() {
         >
           <h2 className="font-mono text-[10px] uppercase tracking-[0.4em] text-foreground/40">faq</h2>
           {[
-            { q: "Do I need an account?", a: "No account is required to use MOSH or to unlock it. Your payment is linked to an email address and that's it." },
+            { q: "Do I need an account?", a: "Yes — a quick free account keeps your unlock synced across devices and both mosh.lovable.app and mosh.netlify.app." },
             { q: "What browsers are supported?", a: "Chrome, Firefox, Edge, and Safari on desktop. Chrome and Safari on mobile. WebGL is required; the App will tell you if your browser isn't supported." },
             { q: "Will I get future updates?", a: "Yes. The one-time payment includes all future updates to MOSH — new effects, features, and improvements." },
             { q: "Is there a refund policy?", a: "Yes. 14-day no-questions-asked refund. See our refund policy for details." },
