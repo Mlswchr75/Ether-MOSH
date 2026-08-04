@@ -1,0 +1,92 @@
+import { useCallback, useEffect, useState } from "react";
+import { EmbeddedCheckoutProvider, EmbeddedCheckout } from "@stripe/react-stripe-js";
+import { Loader2 } from "lucide-react";
+import { getStripe, getStripeEnvironment } from "@/lib/stripe";
+import { supabase } from "@/integrations/supabase/client";
+
+interface StripeEmbeddedCheckoutProps {
+  priceId: string;
+  quantity?: number;
+  customerEmail?: string;
+  userId?: string;
+  returnUrl?: string;
+  onError?: (message: string) => void;
+}
+
+export function StripeEmbeddedCheckout({
+  priceId,
+  quantity,
+  customerEmail,
+  userId,
+  returnUrl,
+  onError,
+}: StripeEmbeddedCheckoutProps) {
+  const [error, setError] = useState<string | null>(null);
+  const [ready, setReady] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    setError(null);
+    setReady(false);
+  }, [priceId, attempt]);
+
+  const fetchClientSecret = useCallback(async (): Promise<string> => {
+    try {
+      const { data, error: fnError } = await supabase.functions.invoke("create-checkout", {
+        body: {
+          priceId,
+          quantity,
+          customerEmail,
+          userId,
+          returnUrl: returnUrl || `${window.location.origin}/pricing?checkout=success`,
+          environment: getStripeEnvironment(),
+        },
+      });
+      if (fnError || !data?.clientSecret) {
+        throw new Error(fnError?.message || data?.error || "Failed to create checkout session");
+      }
+      setReady(true);
+      return data.clientSecret as string;
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Checkout is unavailable right now.";
+      setError(message);
+      onError?.(message);
+      throw e;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [priceId, quantity, customerEmail, userId, returnUrl, attempt]);
+
+  if (error) {
+    return (
+      <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-6 text-center">
+        <p className="font-mono text-[11px] uppercase tracking-[0.25em] text-destructive">
+          checkout unavailable
+        </p>
+        <p className="mt-3 text-sm text-foreground/75">{error}</p>
+        <button
+          type="button"
+          onClick={() => setAttempt((a) => a + 1)}
+          className="mt-5 rounded border border-destructive/60 px-4 py-2 font-mono text-xs uppercase tracking-[0.25em] text-destructive hover:bg-destructive/15 transition"
+        >
+          try again
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div id="checkout" className="relative min-h-[420px]">
+      {!ready && (
+        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-background">
+          <Loader2 className="h-5 w-5 animate-spin text-accent" aria-hidden />
+          <p className="font-mono text-[11px] uppercase tracking-[0.25em] text-muted-foreground">
+            opening secure checkout…
+          </p>
+        </div>
+      )}
+      <EmbeddedCheckoutProvider key={`${priceId}:${attempt}`} stripe={getStripe()} options={{ fetchClientSecret }}>
+        <EmbeddedCheckout />
+      </EmbeddedCheckoutProvider>
+    </div>
+  );
+}
