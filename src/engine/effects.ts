@@ -758,6 +758,206 @@ export const EFFECTS: EffectDef[] = [
     vec3 ice = vec3(0.7, 0.9, 1.0) * frost;
     gl_FragColor = vec4(mix(c.rgb, c.rgb*0.5 + ice, freeze*uAmount), c.a);
     `),
+
+  // ── SIGNATURE SET ─────────────────────────────────────────────────
+  // Built for the quadrant instrument. Every effect below takes exactly
+  // TWO continuous params, because a quadrant drag binds X to params[0]
+  // and Y to params[1] — a third param would be unreachable by gesture and
+  // a single one would push Y onto layer opacity. No `step` either: a
+  // stepped param visibly snaps under a finger. Several read uPulse so
+  // they answer taps, the mic and the beat clock rather than only the clock.
+
+  fx("drosteTunnel", "Droste Tunnel", "geometry", "Endless recursive zoom — the image falls into itself forever.",
+    [{ key: "depth", label: "Depth", min: 0, max: 1, default: 0.5 },
+     { key: "twist", label: "Twist", min: -1, max: 1, default: 0.3 }],
+    `
+    vec2 c = vUv - 0.5;
+    c.x *= uResolution.x / max(uResolution.y, 1.0);
+    float r = max(length(c), 1e-4);
+    float a = atan(c.y, c.x);
+    // Log-polar space turns "scale by N" into "translate by log N", so a
+    // simple scroll along lr yields a seamless infinite zoom.
+    float zoom = mix(1.0, 4.0, uDepth);
+    float lr = log(r);
+    a += uTwist * lr * 1.2 + uTime * 0.12;
+    float band = 6.2831 / zoom;
+    float rr = exp(mod(lr - uTime * 0.35, band) - band * 0.5);
+    vec2 uv = 0.5 + vec2(cos(a), sin(a)) * rr * 0.5;
+    // Mirror-tile the lookup so the recursion never hits a clamped edge.
+    vec2 muv = abs(fract(uv * 0.5) * 2.0 - 1.0);
+    gl_FragColor = texture2D(uTex, muv);
+    `),
+
+  fx("shockwave", "Shockwave", "corruption", "Concentric blast rings that refract light — fires on every pulse.",
+    [{ key: "amount", label: "Force", min: 0, max: 1, default: 0.5 },
+     { key: "rings", label: "Rings", min: 0, max: 1, default: 0.4 }],
+    `
+    vec2 c = vUv - 0.5;
+    c.x *= uResolution.x / max(uResolution.y, 1.0);
+    float r = length(c);
+    float freq = mix(6.0, 48.0, uRings);
+    // uPulse drives the wavefront outward, so taps and beats visibly detonate.
+    float wave = sin(r * freq - uTime * 3.0 - uPulse * 7.0);
+    float ring = wave * exp(-r * 2.2);
+    float amt = uAmount * (0.35 + uPulse * 0.9);
+    vec2 dir = c / max(r, 1e-4);
+    vec2 off = dir * ring * amt * 0.06;
+    // Split the channels across the wavefront — refraction, not just offset.
+    vec3 col = vec3(
+      texture2D(uTex, vUv + off * 1.3).r,
+      texture2D(uTex, vUv + off).g,
+      texture2D(uTex, vUv + off * 0.7).b
+    );
+    col += vec3(0.55, 0.75, 1.0) * max(0.0, ring) * amt * 0.55;
+    gl_FragColor = vec4(col, 1.0);
+    `),
+
+  fx("liquidChrome", "Liquid Chrome", "color", "Molten mercury — the frame reskinned as poured metal.",
+    [{ key: "flow", label: "Flow", min: 0, max: 1, default: 0.5 },
+     { key: "sheen", label: "Sheen", min: 0, max: 1, default: 0.6 }],
+    `
+    vec2 px = 1.0 / uResolution;
+    vec2 uv = vUv + (vec2(noise(vUv * 3.0 + uTime * 0.2),
+                          noise(vUv * 3.0 - uTime * 0.17)) - 0.5) * 0.04 * uFlow;
+    float sp = mix(1.0, 4.0, uFlow);
+    vec3 L = vec3(0.299, 0.587, 0.114);
+    vec3 base = texture2D(uTex, uv).rgb;
+    float l  = dot(base, L);
+    float lx = dot(texture2D(uTex, uv + vec2(px.x * sp, 0.0)).rgb, L);
+    float ly = dot(texture2D(uTex, uv + vec2(0.0, px.y * sp)).rgb, L);
+    // Treat luminance as a height field; its gradient is the surface normal.
+    // Flow also deepens the relief, so X sweeps gentle ripple → violent molten.
+    float relief = mix(4.0, 18.0, uFlow);
+    vec3 n = normalize(vec3((l - lx) * relief, (l - ly) * relief, 1.0));
+    vec3 rfl = reflect(vec3(0.0, 0.0, -1.0), n);
+    float band = sin(rfl.y * 6.0 + uTime * 0.6) * 0.5 + 0.5;
+    vec3 sky = mix(vec3(0.05, 0.06, 0.13), vec3(0.92, 0.96, 1.0), pow(band, 2.0));
+    sky += vec3(1.0, 0.45, 0.85) * pow(max(0.0,  rfl.x), 5.0) * 0.6;
+    sky += vec3(0.2, 0.9, 1.0)   * pow(max(0.0, -rfl.x), 5.0) * 0.45;
+    // Sheen is the polish axis: matte keeps the frame's own colour, mirror
+    // replaces it with the reflected environment. Without this the shader
+    // collapses to grey steel and the Y axis does nothing.
+    vec3 metal = mix(base * (0.55 + l * 0.9), sky * (0.4 + l * 0.8), uSheen);
+    float spec = pow(max(0.0, dot(rfl, normalize(vec3(0.4, 0.6, 1.0)))), mix(6.0, 120.0, uSheen));
+    vec3 col = metal + spec * (0.4 + uPulse * 0.8) * mix(0.35, 1.0, uSheen);
+    gl_FragColor = vec4(col, 1.0);
+    `),
+
+  fx("voronoiShatter", "Voronoi Shatter", "geometry", "Organic cellular fracture — safety glass mid-break.",
+    [{ key: "density", label: "Shards", min: 0, max: 1, default: 0.45 },
+     { key: "displace", label: "Scatter", min: 0, max: 1, default: 0.5 }],
+    `
+    float cells = mix(4.0, 26.0, uDensity);
+    vec2 g = vUv * cells;
+    vec2 gi = floor(g);
+    vec2 gf = fract(g);
+    float d1 = 8.0;
+    float d2 = 8.0;
+    vec2 bestCell = gi;
+    for (int y = -1; y <= 1; y++) {
+      for (int x = -1; x <= 1; x++) {
+        vec2 o = vec2(float(x), float(y));
+        vec2 cell = gi + o;
+        vec2 p = o + vec2(rand(cell), rand(cell + 7.3));
+        p += 0.25 * vec2(sin(uTime * 0.7 + rand(cell) * 6.28),
+                         cos(uTime * 0.6 + rand(cell + 3.1) * 6.28));
+        float d = length(p - gf);
+        // Keep the two nearest sites: their difference is the cell border.
+        if (d < d1) { d2 = d1; d1 = d; bestCell = cell; }
+        else if (d < d2) { d2 = d; }
+      }
+    }
+    vec2 jitter = (vec2(rand(bestCell + 1.7), rand(bestCell + 9.2)) - 0.5) * uDisplace * 0.25;
+    vec2 muv = abs(fract((vUv + jitter) * 0.5) * 2.0 - 1.0);
+    vec4 col = texture2D(uTex, muv);
+    float edge = smoothstep(0.0, 0.07, d2 - d1);
+    col.rgb *= 0.2 + 0.8 * edge;
+    col.rgb += vec3(0.6, 0.8, 1.0) * (1.0 - edge) * 0.3;
+    gl_FragColor = col;
+    `),
+
+  fx("prismDispersion", "Prism Dispersion", "color", "Light torn into its spectrum — a diffraction grating over the frame.",
+    [{ key: "spread", label: "Spread", min: 0, max: 1, default: 0.45 },
+     { key: "bend", label: "Bend", min: 0, max: 1, default: 0.35 }],
+    `
+    vec2 c = vUv - 0.5;
+    c.x *= uResolution.x / max(uResolution.y, 1.0);
+    float r = length(c);
+    vec2 radial = c / max(r, 1e-4);
+    float ang = 0.8 + uTime * 0.15;
+    vec2 linear = vec2(cos(ang), sin(ang));
+    // Bend morphs a straight diffraction grating into a radial prism halo.
+    // A plain rotation angle would be a dead axis: 0 and 2PI are the same
+    // direction, so a full drag would land exactly where it started.
+    vec2 dir = normalize(mix(linear, radial, uBend) + vec2(1e-5));
+    float reach = uSpread * mix(0.08, 0.08 + r * 0.16, uBend);
+    vec3 acc = vec3(0.0);
+    vec3 wsum = vec3(0.0);
+    // Nine spectral taps, violet through red, each displaced by its own
+    // "wavelength" — the further the tap, the longer the wavelength.
+    for (int i = 0; i < 9; i++) {
+      float lam = float(i) / 8.0;
+      float t = (lam - 0.5) * 2.0;
+      vec3 w = hsv2rgb(vec3(0.75 - lam * 0.75, 0.9, 1.0));
+      acc += texture2D(uTex, vUv + dir * t * reach).rgb * w;
+      wsum += w;
+    }
+    vec3 col = acc / max(wsum, vec3(1e-3));
+    // Faint travelling interference fringes sell the grating.
+    float fringe = sin(dot(vUv, dir) * 140.0 - uTime * 1.5) * 0.5 + 0.5;
+    col *= 1.0 + fringe * uSpread * 0.12;
+    gl_FragColor = vec4(col, 1.0);
+    `),
+
+  fx("neonContour", "Neon Contour", "atmosphere", "Everything redrawn as glowing hue-cycling neon tubing.",
+    [{ key: "threshold", label: "Threshold", min: 0, max: 1, default: 0.35 },
+     { key: "glow", label: "Glow", min: 0, max: 1, default: 0.6 }],
+    `
+    vec2 px = 1.0 / uResolution;
+    vec3 L = vec3(0.299, 0.587, 0.114);
+    float tl = dot(texture2D(uTex, vUv + px * vec2(-1.0,-1.0)).rgb, L);
+    float tc = dot(texture2D(uTex, vUv + px * vec2( 0.0,-1.0)).rgb, L);
+    float tr = dot(texture2D(uTex, vUv + px * vec2( 1.0,-1.0)).rgb, L);
+    float ml = dot(texture2D(uTex, vUv + px * vec2(-1.0, 0.0)).rgb, L);
+    float mr = dot(texture2D(uTex, vUv + px * vec2( 1.0, 0.0)).rgb, L);
+    float bl = dot(texture2D(uTex, vUv + px * vec2(-1.0, 1.0)).rgb, L);
+    float bc = dot(texture2D(uTex, vUv + px * vec2( 0.0, 1.0)).rgb, L);
+    float br = dot(texture2D(uTex, vUv + px * vec2( 1.0, 1.0)).rgb, L);
+    float gx = (tr + 2.0 * mr + br) - (tl + 2.0 * ml + bl);
+    float gy = (bl + 2.0 * bc + br) - (tl + 2.0 * tc + tr);
+    float e = length(vec2(gx, gy));
+    float t = mix(0.06, 0.9, uThreshold);
+    float edge = smoothstep(t * 0.45, t, e);
+    vec3 hue = hsv2rgb(vec3(fract(uTime * 0.06 + vUv.y * 0.35 + vUv.x * 0.15), 0.85, 1.0));
+    // Higher glow dims the plate further so the tubing reads as light.
+    vec3 base = texture2D(uTex, vUv).rgb * mix(0.55, 0.08, uGlow);
+    vec3 col = base + hue * edge * (0.6 + uGlow * 2.2) * (0.75 + uPulse * 0.8);
+    gl_FragColor = vec4(col, 1.0);
+    `),
+
+  fx("inkFlow", "Ink Flow", "corruption", "Pixels dragged along a curling current — ink bleeding through water.",
+    [{ key: "flow", label: "Current", min: 0, max: 1, default: 0.5 },
+     { key: "scale", label: "Turbulence", min: 0, max: 1, default: 0.4 }],
+    `
+    float sc = mix(1.5, 9.0, uScale);
+    float t = uTime * 0.3;
+    float e = 0.02;
+    // Curl of a scalar noise field is divergence-free, so the image is
+    // advected along smooth closed streamlines instead of smearing outward.
+    vec2 p = vUv * sc;
+    vec2 curl = vec2(noise(p + vec2(0.0, e) + t) - noise(p - vec2(0.0, e) + t),
+                    -(noise(p + vec2(e, 0.0) - t) - noise(p - vec2(e, 0.0) - t))) / (2.0 * e);
+    vec2 uv = vUv + curl * uFlow * 0.02;
+    // A second advection step lengthens the streamlines into ribbons.
+    vec2 p2 = uv * sc;
+    vec2 curl2 = vec2(noise(p2 + vec2(0.0, e) + t) - noise(p2 - vec2(0.0, e) + t),
+                     -(noise(p2 + vec2(e, 0.0) - t) - noise(p2 - vec2(e, 0.0) - t))) / (2.0 * e);
+    uv += curl2 * uFlow * 0.014;
+    vec4 col = texture2D(uTex, uv);
+    float dens = clamp(length(curl) * 0.06, 0.0, 1.0);
+    col.rgb = mix(col.rgb, col.rgb * (1.0 - dens * 0.5) + vec3(0.05, 0.07, 0.12) * dens, uFlow);
+    gl_FragColor = col;
+    `),
 ];
 
 export const EFFECTS_BY_ID: Record<string, EffectDef> = Object.fromEntries(EFFECTS.map(e => [e.id, e]));

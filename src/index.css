@@ -276,6 +276,114 @@
   }
 
   /* ---------------- Unified section header ---------------- */
+  /* ---------------- Hot triggers (canvas overlay rail) ----------------
+     The rail sits over the visualizer and must fit EVERY trigger on every
+     device without scrolling or clipping. Two things make that work:
+
+       1. Size is driven by --ht-size, a viewport-relative clamp, so the
+          buttons and their icons shrink on small screens instead of
+          overflowing. Icon SVGs inherit --ht-ico, which overrides the
+          Tailwind h-4/w-4 on each <svg> (`.hot-trigger svg` is the more
+          specific selector).
+       2. The rail is a grid that flows into extra COLUMNS once the row
+          count is capped (see .hot-triggers), so a stack too tall for the
+          viewport becomes a second rail rather than running off-screen.
+     -------------------------------------------------------------------- */
+  .hot-trigger {
+    /* Sized from the shorter viewport axis so landscape phones shrink too. */
+    --ht-size: clamp(30px, 7.2vmin, 40px);
+    --ht-ico: clamp(15px, 3.6vmin, 19px);
+
+    position: relative;
+    display: grid;
+    place-items: center;
+    inline-size: var(--ht-size);
+    block-size: var(--ht-size);
+    flex: none;
+
+    color: hsl(var(--text-secondary));
+    background: hsl(var(--surface-0) / 0.55);
+    border: 1px solid hsl(var(--border-default));
+    border-radius: 2px;
+    backdrop-filter: blur(12px) saturate(140%);
+    -webkit-backdrop-filter: blur(12px) saturate(140%);
+
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    transition: color 120ms ease-out, border-color 120ms ease-out,
+                background-color 120ms ease-out, transform 120ms ease-out;
+    animation: ui-rise 220ms ease-out both;
+  }
+  .hot-trigger svg {
+    /* Beats the utility h-4/w-4 so icons scale with the rail. */
+    inline-size: var(--ht-ico);
+    block-size: var(--ht-ico);
+  }
+  .hot-trigger:hover {
+    color: hsl(var(--text-primary));
+    border-color: hsl(var(--border-strong));
+    background: hsl(var(--surface-0) / 0.75);
+  }
+  .hot-trigger:active { transform: scale(0.92); }
+  .hot-trigger:focus-visible {
+    outline: 1px solid hsl(var(--accent));
+    outline-offset: 1px;
+  }
+  .hot-trigger[data-active] {
+    color: hsl(var(--accent));
+    border-color: hsl(var(--accent) / 0.55);
+    background: hsl(var(--accent) / 0.1);
+  }
+  .hot-trigger:disabled { opacity: 0.4; pointer-events: none; }
+
+  /* The duplicated icon is a chromatic-offset ghost, not a second icon. */
+  .hot-trigger__ico {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    place-items: center;
+  }
+  .hot-trigger__glitch {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    color: hsl(var(--accent));
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 120ms ease-out, transform 120ms ease-out;
+  }
+  .hot-trigger:hover .hot-trigger__glitch,
+  .hot-trigger[data-active] .hot-trigger__glitch {
+    opacity: 0.5;
+    transform: translate(1px, -1px);
+  }
+
+  /* The rail itself. `auto-fill` over a bounded height lets the browser work
+     out how many triggers fit the current viewport; `grid-auto-flow: column`
+     spills the rest into a second (then third) rail instead of clipping them.
+     No breakpoint guesswork — it adapts to any screen, including landscape
+     phones and split-screen windows. */
+  .hot-trigger-rail {
+    display: grid;
+    grid-auto-flow: column;
+    grid-template-rows: repeat(auto-fill, var(--ht-row, 40px));
+    max-block-size: var(--ht-rail-h);
+    gap: 6px;
+    justify-items: center;
+    align-content: start;
+    /* Column 1 hugs the screen edge; overflow rails grow inward (leftward). */
+    direction: rtl;
+  }
+  .hot-trigger-rail > * { direction: ltr; }
+  .hot-trigger-rail {
+    /* Mirrors .hot-trigger's own sizing so the row track matches the button. */
+    --ht-row: clamp(30px, 7.2vmin, 40px);
+    /* Space left for the top offset, safe-area inset and the REC badge. */
+    --ht-rail-h: calc(100dvh - 6rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  }
+
   .section-header {
     position: sticky; top: 0; z-index: 5;
     display: flex; align-items: center; gap: 10px;
@@ -370,6 +478,12 @@
 @layer utilities {
   .no-scrollbar::-webkit-scrollbar { display: none; }
   .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+  /* Keep overlays clear of notches, rounded corners and home indicators. */
+  .safe-top    { padding-top: env(safe-area-inset-top, 0px); }
+  .safe-right  { padding-right: env(safe-area-inset-right, 0px); }
+  .safe-bottom { padding-bottom: env(safe-area-inset-bottom, 0px); }
+  .safe-left   { padding-left: env(safe-area-inset-left, 0px); }
 
   @keyframes ui-rise {
     from { opacity: 0; transform: translateY(4px); }
