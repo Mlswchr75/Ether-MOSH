@@ -1,4 +1,4 @@
-import { Mic, MicOff, Circle, Square, Sparkles, Scissors, Snowflake, Camera, Shuffle, Star, Play, Pencil, Trash2, X, Film, Brain, Lock, Share2, Tornado, Maximize2, Minimize2, Gem, Home, SwitchCamera, Crosshair } from "lucide-react";
+import { Mic, MicOff, Circle, Square, Sparkles, Scissors, Snowflake, Camera, Shuffle, Star, Play, Pencil, Trash2, X, Film, Brain, Lock, Share2, Tornado, Maximize2, Minimize2, Gem, Home, SwitchCamera, Crosshair, Eraser } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useStore } from "@/store/useStore";
 import { requestCameraStream, type CameraFacing } from "@/hooks/useCamera";
@@ -26,6 +26,10 @@ type Props = {
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;
   onHome?: () => void;
+  /** Drop every effect and show the bare remastered source. */
+  onClearFx?: () => void;
+  /** True when something is actually on — the button dims when there isn't. */
+  hasFx?: boolean;
   dimmed?: boolean;
 };
 
@@ -68,7 +72,7 @@ function HotBtn({
  * Floating cluster of "moshing" cute icons over the visualizer.
  * The DOM overlay is outside <canvas>, so canvas.captureStream() never records these.
  */
-export function HotTriggers({ isRecording, onToggleRecord, onScreenshot, onFreeze, onGif, onShare, onSupport, gifBusy, gifProgress, onMicFlash, smartOn, onToggleSmart, smartLocked, stormOn, onToggleStorm, isFullscreen, onToggleFullscreen, onHome, dimmed }: Props) {
+export function HotTriggers({ isRecording, onToggleRecord, onScreenshot, onFreeze, onGif, onShare, onSupport, gifBusy, gifProgress, onMicFlash, smartOn, onToggleSmart, smartLocked, stormOn, onToggleStorm, isFullscreen, onToggleFullscreen, onHome, onClearFx, hasFx, dimmed }: Props) {
   const micEnabled = useStore(s => s.micEnabled);
   const setMicEnabled = useStore(s => s.setMicEnabled);
   const mosh = useStore(s => s.mosh);
@@ -340,6 +344,22 @@ export function HotTriggers({ isRecording, onToggleRecord, onScreenshot, onFreez
         <HotBtn delay={180} label="Mosh" onClick={mosh}>
           <Sparkles className="h-4 w-4" strokeWidth={1.5} />
         </HotBtn>
+
+        {onClearFx && (
+          <button
+            type="button"
+            onClick={onClearFx}
+            disabled={!hasFx}
+            aria-label="Clear all effects and show the remastered source"
+            title="Clear all FX — show the remastered source only"
+            data-no-longpress
+            className="hot-trigger"
+            style={{ animationDelay: `190ms` }}
+          >
+            <span className="hot-trigger__glitch" aria-hidden><Eraser className="h-4 w-4" strokeWidth={1.5} /></span>
+            <span className="hot-trigger__ico"><Eraser className="h-4 w-4" strokeWidth={1.5} /></span>
+          </button>
+        )}
 
         {onToggleSmart && (
           <button

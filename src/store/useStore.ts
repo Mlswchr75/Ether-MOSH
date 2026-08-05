@@ -159,6 +159,12 @@ type Actions = {
   moshQuadrant: (q: QuadrantIndex, opts?: { targetAffinity?: number }) => QuadrantRoll | null;
   clearQuadrantRoll: () => void;
 
+  /**
+   * Drop every effect and stop anything that would re-apply one, leaving the
+   * bare HDR-remastered source on screen. Undoable like any other change.
+   */
+  clearAllFx: () => void;
+
   setIntensity: (i: Intensity) => void;
   setBeforeAfter: (open: boolean) => void;
   setBeforeAfterSplit: (v: number) => void;
@@ -573,6 +579,22 @@ export const useStore = create<State & Actions>((set, get) => ({
   },
 
   clearQuadrantRoll: () => set({ lastQuadrantRoll: null }),
+
+  clearAllFx: () => set(s => ({
+    ...s,
+    past: pushPast(s), future: [],
+    layers: [],
+    selectedLayerId: null,
+    // Auto-shuffle would re-mosh within seconds and undo the clear. The Smart
+    // and Storm directors live in the editor's own state, so the caller has to
+    // stop those — see Editor's clearAllFx handler.
+    shuffleSec: null,
+    // Forget the art direction too: the next mosh should start fresh rather
+    // than continue composing under a look the user just cleared away.
+    currentLook: null,
+    quadrantHistory: Array.from({ length: QUADRANT_COUNT }, () => [] as string[]),
+    lastQuadrantRoll: null,
+  })),
 
   reset: () => set(s => ({ ...s, past: pushPast(s), future: [], layers: [] })),
 
