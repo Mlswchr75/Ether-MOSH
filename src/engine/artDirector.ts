@@ -236,6 +236,7 @@ type Craft = {
  */
 const CRAFT: Record<string, Craft> = {
   // ── GRADE ──────────────────────────────────────────────────────────
+  filmicTone:      { role: "grade", fidelity: "cinematic", gives: { contrast: 1.0, color: 0.3 }, cost: 0.1, replaces: 0.05 },
   hueRotate:       { role: "grade", fidelity: "neutral",   gives: { color: 0.8 }, cost: 0.1, replaces: 0.55 },
   solarize:        { role: "grade", fidelity: "neutral",   gives: { contrast: 0.7, color: 0.5 }, cost: 0.35, replaces: 0.5 },
   rainbowMap:      { role: "grade", fidelity: "neutral",   gives: { color: 1.0 }, cost: 0.5, replaces: 0.95 },
@@ -343,7 +344,7 @@ export type Look = {
 export const LOOKS: Look[] = [
   {
     id: "chromeNoir", name: "CHROME NOIR", blurb: "Polished metal, deep falloff.",
-    picks: { grade: ["liquidChrome", "duotone"], form: ["lensWarp", "perspectiveTilt", "zoomBlur"],
+    picks: { grade: ["liquidChrome", "filmicTone", "duotone"], form: ["lensWarp", "perspectiveTilt", "zoomBlur"],
              accent: ["rgbShift", "bufferEcho"], finish: ["vignette", "godRays", "filmGrain"] },
     suits: { saturation: -0.6, contrast: 0.5, needsColor: 0.3 }, drive: 0.5,
   },
@@ -367,7 +368,7 @@ export const LOOKS: Look[] = [
   },
   {
     id: "deepVoid", name: "DEEP VOID", blurb: "Weight, shadow and drift.",
-    picks: { grade: ["duotone", "infraredDream"], form: ["frameSmear", "perspectiveTilt", "melt"],
+    picks: { grade: ["filmicTone", "duotone", "infraredDream"], form: ["frameSmear", "perspectiveTilt", "melt"],
              accent: ["bufferEcho", "scanFreeze"], finish: ["fog", "vignette", "dustMotes"] },
     suits: { needsCompression: 0.8, brightness: 0.3, clipHigh: 0.5 }, drive: 0.45,
   },
@@ -379,7 +380,7 @@ export const LOOKS: Look[] = [
   },
   {
     id: "glassFracture", name: "GLASS FRACTURE", blurb: "The frame under stress.",
-    picks: { grade: ["liquidChrome", "voltage"], form: ["voronoiShatter", "crystalize", "kaleidoscope"],
+    picks: { grade: ["liquidChrome", "filmicTone", "voltage"], form: ["voronoiShatter", "crystalize", "kaleidoscope"],
              accent: ["shockwave", "hexShatter"], finish: ["holoShine", "bloom", "vignette"] },
     suits: { needsStructure: 0.9, density: -0.4 }, drive: 0.7,
   },
@@ -391,13 +392,13 @@ export const LOOKS: Look[] = [
   },
   {
     id: "vortex", name: "VORTEX", blurb: "Everything pulled to one point.",
-    picks: { grade: ["oilSlick", "colorQuake"], form: ["drosteTunnel", "twirl", "fractalZoom"],
+    picks: { grade: ["oilSlick", "filmicTone", "colorQuake"], form: ["drosteTunnel", "twirl", "fractalZoom"],
              accent: ["shockwave", "pixelExplode"], finish: ["bloom", "godRays", "vignette"] },
     suits: { needsStructure: 0.7, contrast: 0.3 }, drive: 0.8,
   },
   {
     id: "titanium", name: "TITANIUM", blurb: "Desaturated, sharp, expensive.",
-    picks: { grade: ["liquidChrome", "posterize"], form: ["perspectiveTilt", "lensWarp", "mirror"],
+    picks: { grade: ["filmicTone", "liquidChrome", "posterize"], form: ["perspectiveTilt", "lensWarp", "mirror"],
              accent: ["rgbShift", "jitter"], finish: ["vignette", "filmGrain", "godRays"] },
     suits: { saturation: -0.7, needsContrast: 0.4, density: 0.3 }, drive: 0.4,
   },
@@ -481,7 +482,7 @@ const ROLE_OPACITY: Record<Role, [number, number]> = {
 /** Blend pools that flatter each role. */
 const ROLE_BLENDS: Record<Role, BlendMode[]> = {
   grade:  ["normal"],
-  form:   ["normal", "normal", "screen"],
+  form:   ["normal", "normal", "normal", "screen"],
   accent: ["screen", "overlay", "hardLight", "normal"],
   finish: ["screen", "additive", "screen", "overlay"],
 };
@@ -603,12 +604,27 @@ export function paramsForRole(
   return out;
 }
 
-export function opacityForRole(role: Role, look: Look, brief: FrameBrief, rand: () => number): number {
+export function opacityForRole(
+  role: Role,
+  look: Look,
+  brief: FrameBrief,
+  rand: () => number,
+  effectId?: string,
+): number {
   const [lo, hi] = ROLE_OPACITY[role];
   let v = lo + rand() * (hi - lo);
   // Hold accents back further on an already-busy frame.
   if (role === "accent" || role === "finish") v *= 1 - brief.needsRestraint * 0.25;
-  return Math.max(0.25, Math.min(1, v * (0.85 + look.drive * 0.2)));
+
+  // The heavier an effect rewrites the frame, the further it gets held back.
+  // A full-strength Droste or kaleidoscope obliterates the subject; the same
+  // effect at two-thirds reads as the real image seen through the distortion,
+  // which is both more legible and more interesting. This is what keeps the
+  // stack showcasing the content instead of replacing it.
+  const cost = effectId ? (CRAFT[effectId]?.cost ?? 0.4) : 0.4;
+  v *= 1 - cost * 0.34;
+
+  return Math.max(0.22, Math.min(1, v * (0.85 + look.drive * 0.2)));
 }
 
 export function blendForRole(role: Role, rand: () => number): BlendMode {
@@ -649,7 +665,7 @@ export function compose(
       effectId: id,
       role,
       params: paramsForRole(id, role, look, brief, rand),
-      opacity: opacityForRole(role, look, brief, rand),
+      opacity: opacityForRole(role, look, brief, rand, id),
       // The grade always composites normally — it's a tonal foundation, and an
       // exotic blend at the bottom of the stack can wipe the frame to black.
       blend: role === "grade" ? "normal" : blendForRole(role, rand),

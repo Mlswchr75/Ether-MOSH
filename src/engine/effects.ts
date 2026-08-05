@@ -759,6 +759,27 @@ export const EFFECTS: EffectDef[] = [
     gl_FragColor = vec4(mix(c.rgb, c.rgb*0.5 + ice, freeze*uAmount), c.a);
     `),
 
+  fx("filmicTone", "Filmic Tone", "color", "Contrast, shadow density and colour depth — the remaster pass.",
+    [{ key: "punch", label: "Punch", min: 0, max: 1, default: 0.55 },
+     { key: "depth", label: "Depth", min: 0, max: 1, default: 0.4 }],
+    `
+    vec3 c = texture2D(uTex, vUv).rgb;
+    // Pull the black point down so shadows have real density instead of sitting
+    // grey. Renormalised so highlights don't move with it.
+    float bp = uDepth * 0.18;
+    c = clamp((c - bp) / max(1e-3, 1.0 - bp), 0.0, 1.0);
+    // Filmic S-curve. smoothstep IS an S by construction, so this always
+    // steepens the midtones and rolls off softly at both ends rather than
+    // hard-clipping the way a straight multiply would. Applied twice at the top
+    // of the range for a steeper curve, with no branch.
+    float t = uPunch * 2.0;
+    vec3 s = mix(c, smoothstep(vec3(0.0), vec3(1.0), c), clamp(t, 0.0, 1.0));
+    s = mix(s, smoothstep(vec3(0.0), vec3(1.0), s), clamp(t - 1.0, 0.0, 1.0));
+    // A contrast curve desaturates as it compresses — put the colour back.
+    float l = dot(s, vec3(0.299, 0.587, 0.114));
+    gl_FragColor = vec4(clamp(mix(vec3(l), s, 1.0 + uPunch * 0.45), 0.0, 1.0), 1.0);
+    `),
+
   // ── SIGNATURE SET ─────────────────────────────────────────────────
   // Built for the quadrant instrument. Every effect below takes exactly
   // TWO continuous params, because a quadrant drag binds X to params[0]

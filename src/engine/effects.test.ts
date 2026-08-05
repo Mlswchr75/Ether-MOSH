@@ -11,11 +11,12 @@ const SIGNATURE_SET = [
   "prismDispersion",
   "neonContour",
   "inkFlow",
+  "filmicTone",
 ];
 
 describe("effect registry", () => {
-  it("holds 65 effects", () => {
-    expect(EFFECTS.length).toBe(65);
+  it("holds 66 effects", () => {
+    expect(EFFECTS.length).toBe(66);
   });
 
   it("has no duplicate ids", () => {

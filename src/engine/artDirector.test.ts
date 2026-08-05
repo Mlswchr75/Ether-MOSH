@@ -9,6 +9,7 @@ import {
   chooseLook,
   compose,
   craftOf,
+  opacityForRole,
   pickForRole,
   poolForRole,
   roleForQuadrant,
@@ -166,7 +167,10 @@ describe("composition", () => {
       // holding it under 1.0 lets the real frame show through — the difference
       // between grading a shot and replacing it.
       expect(grade.blend).toBe("normal");
-      expect(grade.opacity).toBeGreaterThan(0.5);
+      // Floor is 0.4, not 0.5: a heavy grade (bitCrush, posterize) is held back
+      // further by the cost weighting, which is the intended behaviour. It only
+      // has to stay strong enough to read as a grade at all.
+      expect(grade.opacity).toBeGreaterThan(0.4);
       expect(grade.opacity).toBeLessThan(0.95);
     }
   });
@@ -246,6 +250,44 @@ describe("content-awareness", () => {
       empty += cost(greyBrief, `em-${i}`);
     }
     expect(busy).toBeLessThan(empty);
+  });
+});
+
+describe("tonal punch", () => {
+  const brief = briefFrom(NEUTRAL_STATS);
+
+  it("registers a tone curve the director can reach for", () => {
+    // Before this existed there was no effect in the library whose primary job
+    // was adding contrast, so nothing could restore punch a stack had spent.
+    const c = craftOf("filmicTone");
+    expect(c).not.toBeNull();
+    expect(c!.role).toBe("grade");
+    expect(c!.gives.contrast).toBeGreaterThanOrEqual(0.9);
+    // It must preserve the frame it's grading, not overwrite it.
+    expect(c!.cost).toBeLessThan(0.2);
+    expect(c!.replaces ?? 0).toBeLessThan(0.2);
+  });
+
+  it("holds heavy effects back harder than gentle ones", () => {
+    // A layer that rearranges the frame gets less opacity, so the source still
+    // reads through it. This is what keeps stacks legible.
+    let heavy = 0, light = 0;
+    for (let i = 0; i < 60; i++) {
+      const r1 = rngFromSeed(`h-${i}`);
+      const r2 = rngFromSeed(`h-${i}`);
+      heavy += opacityForRole("form", LOOKS[0], brief, r1, "drosteTunnel"); // cost 0.55
+      light += opacityForRole("form", LOOKS[0], brief, r2, "lensWarp");     // cost 0.25
+    }
+    expect(heavy).toBeLessThan(light);
+  });
+
+  it("keeps every composed opacity in a usable range", () => {
+    for (let i = 0; i < 60; i++) {
+      for (const l of compose(brief, rngFromSeed(`op-${i}`)).layers) {
+        expect(l.opacity).toBeGreaterThan(0.15);
+        expect(l.opacity).toBeLessThanOrEqual(1);
+      }
+    }
   });
 });
 

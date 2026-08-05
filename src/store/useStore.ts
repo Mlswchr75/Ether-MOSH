@@ -523,7 +523,7 @@ export const useStore = create<State & Actions>((set, get) => ({
         effectId: fillId,
         hidden: false, locked: false,
         blend: fillRole === "grade" ? "normal" : blendForRole(fillRole, rand),
-        opacity: opacityForRole(fillRole, look, brief, rand),
+        opacity: opacityForRole(fillRole, look, brief, rand, fillId),
         params: paramsForRole(fillId, fillRole, look, brief, rand),
         mods: Object.fromEntries(fillDef.params.map(p => [p.key, null])),
         audioMaps: Object.fromEntries(fillDef.params.map(p => [p.key, null])),
@@ -539,7 +539,7 @@ export const useStore = create<State & Actions>((set, get) => ({
       // The grade sits at the bottom fully opaque so the source is never
       // wiped out from underneath the stack.
       blend: role === "grade" ? "normal" : blendForRole(role, rand),
-      opacity: opacityForRole(role, look, brief, rand),
+      opacity: opacityForRole(role, look, brief, rand, effectId),
       params: paramsForRole(effectId, role, look, brief, rand),
       mods: Object.fromEntries(def.params.map(p => [p.key, null])),
       audioMaps: Object.fromEntries(def.params.map(p => [p.key, null])),
