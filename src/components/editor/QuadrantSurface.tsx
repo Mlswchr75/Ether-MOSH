@@ -18,6 +18,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useStore } from "@/store/useStore";
 import { useKaossStore } from "@/store/kaossStore";
 import { EFFECTS_BY_ID } from "@/engine/effects";
+import { ROLE_LABELS, roleForQuadrant } from "@/engine/artDirector";
 import {
   QUADRANT_SHORT,
   applyAxisDelta,
@@ -62,6 +63,10 @@ type Readout = {
   yLabel: string; yValue: number;
   /** Set for a re-roll rather than a param sweep. */
   relation?: string;
+  /** Which part of the composition this quadrant drives (GRADE/FORM/…). */
+  role?: string;
+  /** The art direction the stack is composed under. */
+  look?: string;
   at: number;
 };
 
@@ -261,6 +266,8 @@ export function QuadrantSurface({ onRoll, onTogglePerf }: Props) {
       effectName: roll.effectName,
       xLabel: "", xValue: 0, yLabel: "", yValue: 0,
       relation: roll.relation,
+      role: ROLE_LABELS[roll.role],
+      look: useStore.getState().currentLook?.name,
       at: performance.now(),
     });
     onRoll?.(roll.quadrant);
@@ -343,7 +350,9 @@ function QuadrantGuides({ active, layers }: { active: QuadrantIndex | null; laye
                 opacity: isActive ? 1 : 0.75,
               }}
             >
-              {QUADRANT_SHORT[q]}
+              {/* Naming the role teaches the composition grammar without a tutorial:
+                  Q1 grades, Q2 forms, Q3 accents, Q4 finishes. */}
+              {QUADRANT_SHORT[q]} {ROLE_LABELS[roleForQuadrant(q)]}
             </span>
           </div>
         );
@@ -365,10 +374,26 @@ function QuadrantReadout({ r }: { r: Readout }) {
         </span>
         {r.relation ? (
           <>
+            {r.role && (
+              <>
+                <span className="font-mono text-[9px] text-white/30">/</span>
+                <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-white/45">
+                  {r.role}
+                </span>
+              </>
+            )}
             <span className="font-mono text-[9px] text-white/30">/</span>
             <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-white/60">
               {r.relation}
             </span>
+            {r.look && (
+              <>
+                <span className="font-mono text-[9px] text-white/30">·</span>
+                <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-[hsl(var(--accent))]/80">
+                  {r.look}
+                </span>
+              </>
+            )}
           </>
         ) : (
           <>
