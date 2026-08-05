@@ -25,7 +25,7 @@ import {
 } from "@/engine/artDirector";
 import { generateSeed, rngFromSeed } from "@/engine/seed";
 import type { AudioMap, Favorite, Intensity, IsolationMode, Layer, Modulator, PaletteProfile, StickerEntry } from "./types";
-import type { CameraFacing } from "@/hooks/useCamera";
+import { facingOfTrack, type CameraFacing } from "@/lib/cameraFacing";
 import { DEFAULT_TILE_UNIFORMS, type TileMode, type TileUniforms } from "@/engine/tile";
 import { extractPalette } from "@/engine/imagePalette";
 import { BIOME_LABELS, biomeAccentHex } from "@/engine/imagePalette";
@@ -355,8 +355,13 @@ export const useStore = create<State & Actions>((set, get) => ({
     });
     document.body.appendChild(video);
     try { video.play()?.catch(() => {}); } catch {}
+    // Derive facing from the TRACK, not from the label we passed in. The label
+    // records what we asked for; the track records what we actually got. Trusting
+    // the label let cameraFacing drift out of sync with reality, and since the
+    // flip button computes the next side from it, the toggle could stick.
     const facing: CameraFacing | null =
-      name === "front camera" ? "user" : name === "rear camera" ? "environment" : null;
+      facingOfTrack(stream.getVideoTracks()[0])
+      ?? (name === "front camera" ? "user" : name === "rear camera" ? "environment" : null);
     set({
       imageUrl: null,
       imageElement: null,
