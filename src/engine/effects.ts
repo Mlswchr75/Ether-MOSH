@@ -55,6 +55,50 @@ vec3 hsv2rgb(vec3 c){
   vec3 p=abs(fract(c.xxx+K.xyz)*6.-K.www);
   return c.z*mix(K.xxx,clamp(p-K.xxx,0.,1.),c.y);
 }
+/* 13-tap disc blur: centre plus two hexagonal rings, hand-unrolled so there is
+   no loop and no trig. For a diffusion glow this is visually indistinguishable
+   from a 7x7 Gaussian while doing a quarter of the texture fetches — and these
+   run on every frame of every stack, so the fetches are the frame budget. */
+vec3 discBlur(vec2 uv, float radiusPx){
+  vec2 r = radiusPx / uResolution;
+  vec3 b = texture2D(uTex, uv).rgb * 0.148;
+  b += texture2D(uTex, uv + vec2( 0.476,  0.275)*r).rgb * 0.085;
+  b += texture2D(uTex, uv + vec2( 0.000,  0.550)*r).rgb * 0.085;
+  b += texture2D(uTex, uv + vec2(-0.476,  0.275)*r).rgb * 0.085;
+  b += texture2D(uTex, uv + vec2(-0.476, -0.275)*r).rgb * 0.085;
+  b += texture2D(uTex, uv + vec2( 0.000, -0.550)*r).rgb * 0.085;
+  b += texture2D(uTex, uv + vec2( 0.476, -0.275)*r).rgb * 0.085;
+  b += texture2D(uTex, uv + vec2( 1.000,  0.000)*r).rgb * 0.057;
+  b += texture2D(uTex, uv + vec2( 0.500,  0.866)*r).rgb * 0.057;
+  b += texture2D(uTex, uv + vec2(-0.500,  0.866)*r).rgb * 0.057;
+  b += texture2D(uTex, uv + vec2(-1.000,  0.000)*r).rgb * 0.057;
+  b += texture2D(uTex, uv + vec2(-0.500, -0.866)*r).rgb * 0.057;
+  b += texture2D(uTex, uv + vec2( 0.500, -0.866)*r).rgb * 0.057;
+  return b;
+}
+/* The gather half of a bloom on the same 13-tap disc: each tap weighted by how
+   far it exceeds a luminance threshold. The directions are advanced by a 60
+   degree rotation matrix per step, so the loop runs without any trig. */
+vec3 discBright(vec2 uv, float radiusPx, float thresh){
+  vec2 r = radiusPx / uResolution;
+  vec3 L = vec3(0.299, 0.587, 0.114);
+  vec3 s = texture2D(uTex, uv).rgb;
+  vec3 sum = s * max(0.0, dot(s, L) - thresh);
+  float w = 1.0;
+  mat2 rot60 = mat2(0.5, 0.866025, -0.866025, 0.5);
+  vec2 d = vec2(1.0, 0.0);
+  vec2 e = vec2(0.866025, 0.5) * 0.55;   // inner ring, offset 30 degrees
+  for (int i = 0; i < 6; i++) {
+    s = texture2D(uTex, uv + d * r).rgb;
+    sum += s * max(0.0, dot(s, L) - thresh);
+    s = texture2D(uTex, uv + e * r).rgb;
+    sum += s * max(0.0, dot(s, L) - thresh);
+    w += 2.0;
+    d = rot60 * d;
+    e = rot60 * e;
+  }
+  return sum / w;
+}
 `;
 
 const fx = (id: string, name: string, category: EffectCategory, blurb: string, params: ParamSchema[], body: string): EffectDef => ({
@@ -352,18 +396,10 @@ export const EFFECTS: EffectDef[] = [
      { key: "threshold", label: "Threshold", min: 0, max: 1, default: 0.6 }],
     `
     vec4 c = texture2D(uTex, vUv);
-    vec3 sum = vec3(0.0);
-    float w = 0.0;
-    for(int x=-3;x<=3;x++){
-      for(int y=-3;y<=3;y++){
-        vec2 o = vec2(float(x), float(y))/uResolution * 4.0;
-        vec3 s = texture2D(uTex, vUv+o).rgb;
-        float l = max(0.0, dot(s, vec3(0.299,0.587,0.114)) - uThreshold);
-        sum += s * l;
-        w += 1.0;
-      }
-    }
-    gl_FragColor = vec4(c.rgb + sum/w * uAmount * 4.0, c.a);
+    // 13-tap disc rather than a 7x7 grid: the old kernel spanned +/-3 taps at
+    // 4px spacing, so 12px of reach buys the same halo for a quarter of the cost.
+    vec3 glow = discBright(vUv, 12.0, uThreshold);
+    gl_FragColor = vec4(c.rgb + glow * uAmount * 4.0, c.a);
     `),
 
   fx("staticSnow", "Static Snow", "atmosphere", "Dead-channel TV noise.",
@@ -666,11 +702,13 @@ export const EFFECTS: EffectDef[] = [
      { key: "decay", label: "Decay", min: 0.8, max: 1.0, default: 0.95 }],
     `
     vec2 src = vec2(0.5 + sin(uTime*0.2)*0.3, 0.5 + cos(uTime*0.15)*0.3);
-    vec2 dir = (vUv - src)/12.0;
+    // 8 march steps instead of 12, each proportionally longer so the shafts
+    // reach just as far. The falloff hides the coarser sampling.
+    vec2 dir = (vUv - src)/8.0;
     vec2 uv = vUv;
     vec3 acc = vec3(0.0);
     float w = 1.0;
-    for (int i=0;i<12;i++) {
+    for (int i=0;i<8;i++) {
       uv -= dir;
       vec3 s = texture2D(uTex, uv).rgb;
       float l = max(0.0, dot(s, vec3(0.299,0.587,0.114)) - 0.4);
@@ -678,7 +716,7 @@ export const EFFECTS: EffectDef[] = [
       w *= uDecay;
     }
     vec4 c = texture2D(uTex, vUv);
-    gl_FragColor = vec4(c.rgb + acc*uAmount*0.3, c.a);
+    gl_FragColor = vec4(c.rgb + acc*uAmount*0.45, c.a);
     `),
 
   fx("auroraVeil", "Aurora Veil", "atmosphere", "Flowing iridescent curtain overlay.",
@@ -711,15 +749,9 @@ export const EFFECTS: EffectDef[] = [
      { key: "radius", label: "Radius", min: 1, max: 12, default: 5 }],
     `
     vec4 c = texture2D(uTex, vUv);
-    vec3 blur = vec3(0.0);
-    float w = 0.0;
-    for (int x=-3;x<=3;x++) for (int y=-3;y<=3;y++) {
-      vec2 o = vec2(float(x), float(y))/uResolution * uRadius;
-      float k = exp(-(float(x*x+y*y))/8.0);
-      blur += texture2D(uTex, vUv+o).rgb * k;
-      w += k;
-    }
-    blur /= w;
+    // Disc kernel rather than a 7x7 Gaussian: same look, 13 fetches not 49.
+    // uRadius*3 matches the old kernel's reach (it stepped +/-3 taps).
+    vec3 blur = discBlur(vUv, uRadius * 3.0);
     vec3 screen = 1.0 - (1.0 - c.rgb) * (1.0 - blur);
     gl_FragColor = vec4(mix(c.rgb, screen, uAmount), c.a);
     `),
@@ -879,9 +911,12 @@ export const EFFECTS: EffectDef[] = [
       for (int x = -1; x <= 1; x++) {
         vec2 o = vec2(float(x), float(y));
         vec2 cell = gi + o;
-        vec2 p = o + vec2(rand(cell), rand(cell + 7.3));
-        p += 0.25 * vec2(sin(uTime * 0.7 + rand(cell) * 6.28),
-                         cos(uTime * 0.6 + rand(cell + 3.1) * 6.28));
+        vec2 h = vec2(rand(cell), rand(cell + 7.3));
+        vec2 p = o + h;
+        // Reuse h for the drift phase — rand() is a sin internally, so hashing
+        // again here doubled the transcendental cost of every cell.
+        p += 0.25 * vec2(sin(uTime * 0.7 + h.x * 6.28),
+                         cos(uTime * 0.6 + h.y * 6.28));
         float d = length(p - gf);
         // Keep the two nearest sites: their difference is the cell border.
         if (d < d1) { d2 = d1; d1 = d; bestCell = cell; }

@@ -217,6 +217,16 @@ type Craft = {
   /** How much source detail it destroys, 0..1 — the stack has a budget. */
   cost: number;
   /**
+   * Measured GPU cost as a multiple of a trivial passthrough pass, from an
+   * in-browser benchmark of every shader. Omitted means ~1x (cheap).
+   *
+   * The stack spends against a GPU budget as well as a detail budget, so a
+   * composition can never stack four of the most expensive effects and drop
+   * frames. This is the structural half of "no lag" — the other half is the
+   * shaders themselves being cheap.
+   */
+  gpu?: number;
+  /**
    * How completely it overwrites the frame's own colour, 0..1.
    *
    * A grade that *enriches* (contrast, warmth, a duotone push) still reads as
@@ -244,10 +254,10 @@ const CRAFT: Record<string, Craft> = {
   duotone:         { role: "grade", fidelity: "cinematic", gives: { color: 0.7, contrast: 0.6 }, cost: 0.4, replaces: 0.6 },
   infraredDream:   { role: "grade", fidelity: "cinematic", gives: { color: 0.85 }, cost: 0.4, replaces: 0.8 },
   oilSlick:        { role: "grade", fidelity: "cinematic", gives: { color: 0.9 }, cost: 0.35, replaces: 0.85 },
-  liquidChrome:    { role: "grade", fidelity: "cinematic", gives: { contrast: 0.8, light: 0.6 }, cost: 0.5, replaces: 0.55 },
-  prismDispersion: { role: "grade", fidelity: "cinematic", gives: { color: 0.85, light: 0.4 }, cost: 0.25 },
+  liquidChrome:    { role: "grade", fidelity: "cinematic", gives: { contrast: 0.8, light: 0.6 }, cost: 0.5, gpu: 3.5, replaces: 0.55 },
+  prismDispersion: { role: "grade", fidelity: "cinematic", gives: { color: 0.85, light: 0.4 }, cost: 0.25, gpu: 5.9 },
   colorQuake:      { role: "grade", fidelity: "neutral",   gives: { color: 0.8, contrast: 0.4 }, cost: 0.35, replaces: 0.5 },
-  voltage:         { role: "grade", fidelity: "neutral",   gives: { contrast: 0.8, color: 0.5 }, cost: 0.4 },
+  voltage:         { role: "grade", fidelity: "neutral",   gives: { contrast: 0.8, color: 0.5 }, cost: 0.4, gpu: 2.2 },
   chromaPulse:     { role: "grade", fidelity: "neutral",   gives: { color: 0.7 }, cost: 0.25 },
   noiseTint:       { role: "grade", fidelity: "lofi",      gives: { color: 0.4 }, cost: 0.3, replaces: 0.4 },
   vhsBleed:        { role: "grade", fidelity: "lofi",      gives: { color: 0.5 }, cost: 0.45, replaces: 0.4 },
@@ -258,28 +268,28 @@ const CRAFT: Record<string, Craft> = {
 
   // ── FORM ───────────────────────────────────────────────────────────
   melt:            { role: "form", fidelity: "cinematic", gives: { structure: 0.7 }, cost: 0.4 },
-  liquidWarp:      { role: "form", fidelity: "cinematic", gives: { structure: 0.8 }, cost: 0.4 },
+  liquidWarp:      { role: "form", fidelity: "cinematic", gives: { structure: 0.8 }, cost: 0.4, gpu: 2.1 },
   ripple:          { role: "form", fidelity: "cinematic", gives: { structure: 0.6 }, cost: 0.3 },
-  inkFlow:         { role: "form", fidelity: "cinematic", gives: { structure: 0.85 }, cost: 0.4 },
+  inkFlow:         { role: "form", fidelity: "cinematic", gives: { structure: 0.85 }, cost: 0.4, gpu: 3.4 },
   lensWarp:        { role: "form", fidelity: "cinematic", gives: { structure: 0.5 }, cost: 0.25 },
-  zoomBlur:        { role: "form", fidelity: "cinematic", gives: { structure: 0.5, light: 0.4 }, cost: 0.45 },
+  zoomBlur:        { role: "form", fidelity: "cinematic", gives: { structure: 0.5, light: 0.4 }, cost: 0.45, gpu: 5.4 },
   perspectiveTilt: { role: "form", fidelity: "cinematic", gives: { structure: 0.6 }, cost: 0.3 },
   drosteTunnel:    { role: "form", fidelity: "cinematic", gives: { structure: 1.0 }, cost: 0.55 },
-  voronoiShatter:  { role: "form", fidelity: "cinematic", gives: { structure: 0.95 }, cost: 0.5 },
-  crystalize:      { role: "form", fidelity: "cinematic", gives: { structure: 0.85 }, cost: 0.5 },
+  voronoiShatter:  { role: "form", fidelity: "cinematic", gives: { structure: 0.95 }, cost: 0.5, gpu: 8.2 },
+  crystalize:      { role: "form", fidelity: "cinematic", gives: { structure: 0.85 }, cost: 0.5, gpu: 7.7 },
   kaleidoscope:    { role: "form", fidelity: "neutral",   gives: { structure: 1.0 }, cost: 0.6 },
   mirror:          { role: "form", fidelity: "neutral",   gives: { structure: 0.8 }, cost: 0.4 },
   twirl:           { role: "form", fidelity: "neutral",   gives: { structure: 0.8 }, cost: 0.45 },
-  fractalZoom:     { role: "form", fidelity: "neutral",   gives: { structure: 0.9 }, cost: 0.55 },
+  fractalZoom:     { role: "form", fidelity: "neutral",   gives: { structure: 0.9 }, cost: 0.55, gpu: 3.9 },
   polarFold:       { role: "form", fidelity: "neutral",   gives: { structure: 0.9 }, cost: 0.55 },
-  displacement:    { role: "form", fidelity: "neutral",   gives: { structure: 0.7 }, cost: 0.45 },
+  displacement:    { role: "form", fidelity: "neutral",   gives: { structure: 0.7 }, cost: 0.45, gpu: 2.2 },
   pageCurl:        { role: "form", fidelity: "neutral",   gives: { structure: 0.6 }, cost: 0.35 },
   pixelSort:       { role: "form", fidelity: "lofi",      gives: { structure: 0.7 }, cost: 0.5 },
   sliceDrift:      { role: "form", fidelity: "lofi",      gives: { structure: 0.6 }, cost: 0.5 },
-  frameSmear:      { role: "form", fidelity: "cinematic", gives: { structure: 0.4 }, cost: 0.5 },
+  frameSmear:      { role: "form", fidelity: "cinematic", gives: { structure: 0.4 }, cost: 0.5, gpu: 4.6 },
 
   // ── ACCENT ─────────────────────────────────────────────────────────
-  shockwave:       { role: "accent", fidelity: "cinematic", gives: { structure: 0.6, light: 0.5 }, cost: 0.3 },
+  shockwave:       { role: "accent", fidelity: "cinematic", gives: { structure: 0.6, light: 0.5 }, cost: 0.3, gpu: 2.0 },
   rgbShift:        { role: "accent", fidelity: "cinematic", gives: { color: 0.5 }, cost: 0.2 },
   bufferEcho:      { role: "accent", fidelity: "cinematic", gives: { light: 0.4 }, cost: 0.35 },
   hexShatter:      { role: "accent", fidelity: "neutral",   gives: { structure: 0.8 }, cost: 0.5 },
@@ -296,9 +306,9 @@ const CRAFT: Record<string, Craft> = {
   staticSnow:      { role: "accent", fidelity: "lofi",      gives: {}, cost: 0.5 },
 
   // ── FINISH ─────────────────────────────────────────────────────────
-  bloom:           { role: "finish", fidelity: "cinematic", gives: { light: 1.0 }, cost: 0.2 },
-  godRays:         { role: "finish", fidelity: "cinematic", gives: { light: 1.0 }, cost: 0.2 },
-  dreamGlow:       { role: "finish", fidelity: "cinematic", gives: { light: 0.85 }, cost: 0.25 },
+  bloom:           { role: "finish", fidelity: "cinematic", gives: { light: 1.0 }, cost: 0.2, gpu: 6.4 },
+  godRays:         { role: "finish", fidelity: "cinematic", gives: { light: 1.0 }, cost: 0.2, gpu: 5.1 },
+  dreamGlow:       { role: "finish", fidelity: "cinematic", gives: { light: 0.85 }, cost: 0.25, gpu: 5.1 },
   auroraVeil:      { role: "finish", fidelity: "cinematic", gives: { light: 0.7, color: 0.7 }, cost: 0.25 },
   lightLeak:       { role: "finish", fidelity: "cinematic", gives: { light: 0.8, color: 0.5 }, cost: 0.2 },
   holoShine:       { role: "finish", fidelity: "cinematic", gives: { light: 0.7, color: 0.6 }, cost: 0.2 },
@@ -306,7 +316,7 @@ const CRAFT: Record<string, Craft> = {
   dustMotes:       { role: "finish", fidelity: "cinematic", gives: { light: 0.4 }, cost: 0.1 },
   vignette:        { role: "finish", fidelity: "cinematic", gives: { contrast: 0.5 }, cost: 0.1 },
   filmGrain:       { role: "finish", fidelity: "neutral",   gives: {}, cost: 0.15 },
-  neonContour:     { role: "finish", fidelity: "cinematic", gives: { structure: 0.7, light: 0.8 }, cost: 0.45 },
+  neonContour:     { role: "finish", fidelity: "cinematic", gives: { structure: 0.7, light: 0.8 }, cost: 0.45, gpu: 4.0 },
   plasmaField:     { role: "finish", fidelity: "neutral",   gives: { color: 0.8, light: 0.6 }, cost: 0.4 },
 };
 
@@ -491,6 +501,21 @@ const ROLE_BLENDS: Record<Role, BlendMode[]> = {
 const COST_BUDGET = 1.5;
 
 /**
+ * Total GPU cost a stack may spend, in passthrough-pass multiples.
+ *
+ * Four cheap effects cost ~4. The most expensive single effect is ~8. A cap of
+ * 16 lets a stack afford one or two heavy effects but never four, which is what
+ * keeps frame time bounded no matter what the director rolls. Anything cheap is
+ * effectively free against this.
+ */
+const GPU_BUDGET = 16;
+
+/** Measured GPU cost of an effect; unmeasured effects are cheap (~1x). */
+export function gpuCostOf(id: string): number {
+  return CRAFT[id]?.gpu ?? 1;
+}
+
+/**
  * Choose the effect for one role, honouring the look, the brief and a
  * remaining detail budget.
  *
@@ -503,10 +528,11 @@ export function pickForRole(
   look: Look,
   brief: FrameBrief,
   rand: () => number,
-  opts: { exclude?: string[]; budgetLeft?: number; affinityTarget?: number } = {},
+  opts: { exclude?: string[]; budgetLeft?: number; gpuLeft?: number; affinityTarget?: number } = {},
 ): string {
   const exclude = new Set(opts.exclude ?? []);
   const budget = opts.budgetLeft ?? COST_BUDGET;
+  const gpuLeft = opts.gpuLeft ?? GPU_BUDGET;
   const affinity = opts.affinityTarget ?? 1;
 
   const onLook = (look.picks[role] ?? []).filter(id => CRAFT[id] && !exclude.has(id));
@@ -549,6 +575,14 @@ export function pickForRole(
 
     // Anything over budget is a last resort.
     if (c.cost > budget) score -= 1.5;
+
+    // Frame time is a hard constraint, not a preference: an effect that would
+    // blow the remaining GPU budget is pushed out of contention entirely, and
+    // expensive-but-affordable ones are mildly discouraged so a stack doesn't
+    // spend everything on its first pick.
+    const gpu = c.gpu ?? 1;
+    if (gpu > gpuLeft) score -= 6;
+    score -= (gpu - 1) * 0.06;
 
     return { id, score: score + rand() * 0.5 };
   });
@@ -655,12 +689,16 @@ export function compose(
 
   const used = new Set(opts.avoidEffects ?? []);
   let budget = COST_BUDGET;
+  let gpu = GPU_BUDGET;
   const layers: ComposedLayer[] = [];
 
   for (const role of roles) {
-    const id = pickForRole(role, look, brief, rand, { exclude: [...used], budgetLeft: budget });
+    const id = pickForRole(role, look, brief, rand, {
+      exclude: [...used], budgetLeft: budget, gpuLeft: gpu,
+    });
     used.add(id);
     budget -= CRAFT[id]?.cost ?? 0.3;
+    gpu -= gpuCostOf(id);
     layers.push({
       effectId: id,
       role,

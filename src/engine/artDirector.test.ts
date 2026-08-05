@@ -9,6 +9,7 @@ import {
   chooseLook,
   compose,
   craftOf,
+  gpuCostOf,
   opacityForRole,
   pickForRole,
   poolForRole,
@@ -233,10 +234,15 @@ describe("content-awareness", () => {
   it("reaches for colour on a grey frame more than on a vivid one", () => {
     const vividBrief = briefFrom(statsFromPixels(solid(16, 16, 255, 30, 160), 16, 16));
     const colorOf = (id: string) => craftOf(id)?.gives.color ?? 0;
+    // Averaged over every look, not one: a look whose whole grade palette is
+    // already colourful has no room to discriminate, which made this a coin
+    // flip sensitive to unrelated scoring changes.
     let grey = 0, vivid = 0;
-    for (let i = 0; i < 80; i++) {
-      grey += colorOf(pickForRole("grade", LOOKS[3], greyBrief, rngFromSeed(`g${i}`)));
-      vivid += colorOf(pickForRole("grade", LOOKS[3], vividBrief, rngFromSeed(`v${i}`)));
+    for (const look of LOOKS) {
+      for (let i = 0; i < 20; i++) {
+        grey += colorOf(pickForRole("grade", look, greyBrief, rngFromSeed(`g${look.id}${i}`)));
+        vivid += colorOf(pickForRole("grade", look, vividBrief, rngFromSeed(`v${look.id}${i}`)));
+      }
     }
     expect(grey).toBeGreaterThan(vivid);
   });
@@ -357,6 +363,35 @@ describe("variety", () => {
       const shared = stacks[i].filter(id => stacks[i - 1].includes(id)).length;
       // Consecutive stacks may echo one slot, never read as the same stack.
       expect(shared, `stacks ${i - 1}/${i} too similar`).toBeLessThan(3);
+    }
+  });
+});
+
+describe("frame budget", () => {
+  const brief = briefFrom(NEUTRAL_STATS);
+
+  it("never composes a stack that blows the GPU budget", () => {
+    // The structural half of "no lag": whatever the director rolls, total
+    // shader cost stays bounded. 16x is roughly two heavy effects plus two
+    // cheap ones; four heavy ones would be ~28x and drop frames.
+    for (let i = 0; i < 300; i++) {
+      const c = compose(brief, rngFromSeed(`gpu-${i}`));
+      const total = c.layers.reduce((a, l) => a + gpuCostOf(l.effectId), 0);
+      expect(total, c.layers.map(l => l.effectId).join(" > ")).toBeLessThanOrEqual(16);
+    }
+  });
+
+  it("costs every effect, defaulting unmeasured ones to cheap", () => {
+    for (const id of Object.keys(EFFECTS_BY_ID)) {
+      const g = gpuCostOf(id);
+      expect(g).toBeGreaterThanOrEqual(1);
+      expect(g).toBeLessThan(12);
+    }
+  });
+
+  it("still fills all four roles under the budget", () => {
+    for (let i = 0; i < 120; i++) {
+      expect(compose(brief, rngFromSeed(`full-${i}`)).layers).toHaveLength(4);
     }
   });
 });

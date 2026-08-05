@@ -106,12 +106,103 @@ export class MoshRenderer {
         varying vec2 vUv;
         uniform sampler2D uTex;
         uniform vec2 uCover;
+        uniform vec2 uResolution;
+        uniform float uHdr;
+
+        const vec3 LUMA = vec3(0.299, 0.587, 0.114);
+
+        /* Local tone map — the "HDR remaster" every pixel gets before any effect
+           sees it.
+
+           A global curve can only trade shadows against highlights. What reads as
+           HDR is *local* contrast: compare each pixel to the average of its
+           neighbourhood, lift the neighbourhood, then re-apply the difference
+           amplified. Dark regions get the most lift, so an underexposed frame
+           opens up while an already-bright one is barely touched — the strength
+           is derived per pixel, so nothing upstream has to measure the scene.
+
+           Six wide taps for the local average; it only needs to be approximate,
+           and this whole thing rides along in the existing source pass, so the
+           HDR treatment costs no extra render target and no extra draw. */
         void main(){
-          vec2 uv = (vUv - 0.5) * uCover + 0.5;
-          gl_FragColor = texture2D(uTex, clamp(uv, 0.0, 1.0));
+          vec2 uv = clamp((vUv - 0.5) * uCover + 0.5, 0.0, 1.0);
+          vec3 c = texture2D(uTex, uv).rgb;
+
+          if (uHdr <= 0.001) { gl_FragColor = vec4(c, 1.0); return; }
+
+          vec2 r = 14.0 / uResolution;
+          vec3 t0 = texture2D(uTex, clamp(uv + vec2( 1.000,  0.000)*r, 0.0, 1.0)).rgb;
+          vec3 t1 = texture2D(uTex, clamp(uv + vec2( 0.500,  0.866)*r, 0.0, 1.0)).rgb;
+          vec3 t2 = texture2D(uTex, clamp(uv + vec2(-0.500,  0.866)*r, 0.0, 1.0)).rgb;
+          vec3 t3 = texture2D(uTex, clamp(uv + vec2(-1.000,  0.000)*r, 0.0, 1.0)).rgb;
+          vec3 t4 = texture2D(uTex, clamp(uv + vec2(-0.500, -0.866)*r, 0.0, 1.0)).rgb;
+          vec3 t5 = texture2D(uTex, clamp(uv + vec2( 0.500, -0.866)*r, 0.0, 1.0)).rgb;
+          vec3 local = (t0 + t1 + t2 + t3 + t4 + t5) / 6.0;
+
+          float l = dot(c, LUMA);
+          float lLocal = dot(local, LUMA);
+          float detail = l - lLocal;
+
+          // Edge guard, for free. A single-scale local tone map paints a dark
+          // halo wherever the neighbourhood straddles a strong edge, because the
+          // local average is dragged across the boundary. Proper edge-aware
+          // filtering (bilateral, guided) would cost many more fetches — but the
+          // luminance SPREAD of the taps already gathered says the same thing:
+          // a wide spread means this pixel sits on an edge, so stop re-applying
+          // detail there and the ringing goes with it.
+          float l0 = dot(t0, LUMA), l1 = dot(t1, LUMA), l2 = dot(t2, LUMA);
+          float l3 = dot(t3, LUMA), l4 = dot(t4, LUMA), l5 = dot(t5, LUMA);
+          float lo = min(min(min(l0, l1), min(l2, l3)), min(l4, l5));
+          float hi = max(max(max(l0, l1), max(l2, l3)), max(l4, l5));
+          detail *= 1.0 - smoothstep(0.10, 0.34, hi - lo);
+
+          // Coring. A low-light frame's small local differences are mostly
+          // sensor noise, and amplifying them is what makes a lifted image look
+          // grainy rather than remastered. Fade out everything below ~9% luma
+          // difference and keep genuine edges intact.
+          detail *= smoothstep(0.0, 0.09, abs(detail));
+          // Cap the overshoot so strong edges don't ring. Without this the
+          // amplified difference paints a dark halo around bright subjects,
+          // which is the giveaway artefact of naive local tone mapping.
+          detail = clamp(detail, -0.10, 0.10);
+
+          // Shadow lift: gamma below 1 opens the low end, and the exponent is
+          // driven by how dark the NEIGHBOURHOOD is, so a bright subject on a
+          // dark ground doesn't get flattened along with the ground.
+          float darkness = 1.0 - smoothstep(0.0, 0.55, lLocal);
+          float g = mix(1.0, 0.58, uHdr * darkness);
+          float lifted = pow(max(l, 0.0), g);
+
+          // Re-apply local detail, amplified — this is what reads as HDR rather
+          // than as a plain brightness raise.
+          // Modest amplification: the shadow lift above is what opens up a dark
+          // frame, and pushing detail much past this rings the edges. The two
+          // are independent, so restraint here costs no brightness.
+          float outL = lifted + detail * (1.0 + uHdr * 0.45);
+
+          // Lifting shadows amplifies sensor noise, and noise is exactly what a
+          // low-light frame has most of. Pull the darkest areas slightly toward
+          // the local average to keep the lift clean.
+          float shadow = 1.0 - smoothstep(0.0, 0.35, max(l, lLocal));
+          vec3 base = mix(c, local, uHdr * min(1.0, darkness * 0.30 + shadow * 0.45));
+
+          // Rescale by luminance ratio so hue and saturation ride along instead
+          // of washing out, then push chroma back where the lift stole it.
+          // Floor well above zero: at a near-black pixel adjacent to a bright
+          // one this ratio would otherwise explode and speckle the edge.
+          vec3 outC = base * (outL / max(l, 0.02));
+          float outLum = dot(outC, LUMA);
+          outC = mix(vec3(outLum), outC, 1.0 + uHdr * (0.22 + darkness * 0.45));
+
+          gl_FragColor = vec4(clamp(outC, 0.0, 1.0), 1.0);
         }
       `,
-      uniforms: { uTex: { value: null }, uCover: { value: new THREE.Vector2(1, 1) } },
+      uniforms: {
+        uTex: { value: null },
+        uCover: { value: new THREE.Vector2(1, 1) },
+        uResolution: { value: new THREE.Vector2(1, 1) },
+        uHdr: { value: 1 },
+      },
       depthTest: false,
       depthWrite: false,
     });
@@ -250,6 +341,13 @@ export class MoshRenderer {
     if (this.rtA.width !== pxW || this.rtA.height !== pxH) {
       this.allocTargets(pxW, pxH);
     }
+    // The HDR pass samples a neighbourhood, so it needs the target size.
+    (this.sourceFillMaterial.uniforms.uResolution.value as THREE.Vector2).set(pxW, pxH);
+  }
+
+  /** 0 disables the HDR remaster pass; 1 is full strength (the default). */
+  setHdr(amount: number) {
+    this.sourceFillMaterial.uniforms.uHdr.value = Math.max(0, Math.min(1, amount));
   }
 
   setRenderScale(scale: number) {
