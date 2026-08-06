@@ -6,6 +6,11 @@ import { Download, ArrowLeft, Shuffle } from "lucide-react";
 import { MoshRenderer } from "@/engine/Renderer";
 import type { RenderLayer } from "@/engine/Renderer";
 import { rngFromSeed } from "@/engine/seed";
+import { drawSeamless } from "@/engine/seamlessSource";
+import { composeForgeStack, type ForgeLayer } from "@/engine/forgeCompose";
+import { seamScore, seamPasses } from "@/engine/tileSafety";
+import { EFFECTS_BY_ID } from "@/engine/effects";
+import { toast } from "sonner";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
 
@@ -18,58 +23,11 @@ const PALETTES: { name: string; colors: [string, string, string] }[] = [
   { name: "heat",    colors: ["#FF6B00", "#FF0033", "#100400"] },
 ];
 
-// Validated lowercase effect IDs matching MoshRenderer registry
-const AVAILABLE_EFFECT_POOL = [
-  { id: "plasmafield", getParams: () => ({ amount: 0.6 + Math.random() * 0.3, speed: 0.4 + Math.random() * 0.4, scale: Math.floor(3 + Math.random() * 3) }) },
-  { id: "liquidwarp",  getParams: () => ({ amount: 0.5 + Math.random() * 0.4, speed: 0.4 + Math.random() * 0.4, scale: Math.floor(3 + Math.random() * 3) }) },
-  { id: "pixelsort",   getParams: () => ({ threshold: 0.3 + Math.random() * 0.3, amount: 0.6 + Math.random() * 0.3 }) },
-  { id: "rgbshift",    getParams: () => ({ amount: 0.3 + Math.random() * 0.4, angle: Math.random() * Math.PI }) },
-  { id: "vhsbleed",    getParams: () => ({ amount: 0.4 + Math.random() * 0.4, speed: 0.4 + Math.random() * 0.4 }) },
-  { id: "scanbreak",   getParams: () => ({ amount: 0.5 + Math.random() * 0.4, speed: 0.5 + Math.random() * 0.4 }) },
-  { id: "datamosh",    getParams: () => ({ amount: 0.6 + Math.random() * 0.3, blocksize: Math.floor(6 + Math.random() * 6) }) },
-  { id: "melt",        getParams: () => ({ amount: 0.5 + Math.random() * 0.4, speed: 0.4 + Math.random() * 0.4 }) },
-];
-
-const generateRandomStack = () => {
-  const count = Math.floor(Math.random() * 3) + 2; // Picks 2 to 4 effects
-  const shuffled = [...AVAILABLE_EFFECT_POOL].sort(() => 0.5 - Math.random());
-  const selected = shuffled.slice(0, count);
-
-  return selected.map((fx) => ({
-    effectId: fx.id,
-    params: fx.getParams(),
-    opacity: 0.75 + Math.random() * 0.25,
-  }));
-};
-
-function drawSource(
-  ctx: CanvasRenderingContext2D,
-  w: number,
-  h: number,
-  colors: [string, string, string],
-  seed: number,
-  t: number,
-) {
-  const rng = rngFromSeed(seed.toString(36));
-  const g = ctx.createLinearGradient(0, 0, w, h);
-  g.addColorStop(0, colors[0]);
-  g.addColorStop(0.5, colors[1]);
-  g.addColorStop(1, colors[2]);
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, w, h);
-  for (let i = 0; i < 8; i++) {
-    const x = (rng() + Math.sin(t * 0.3 + i * 1.1) * 0.2) * w;
-    const y = (rng() + Math.cos(t * 0.25 + i * 0.9) * 0.2) * h;
-    const r = 20 + rng() * 60;
-    const b = ctx.createRadialGradient(x, y, 0, x, y, r);
-    b.addColorStop(0, colors[Math.floor(i % 3)] + "CC");
-    b.addColorStop(1, "transparent");
-    ctx.fillStyle = b;
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fill();
-  }
-}
+/**
+ * Print sizes. 2048 covers most garment panels at 150 DPI; 4096 is there for
+ * large-format and for anything that will be scaled up by a fulfiller.
+ */
+const EXPORT_SIZES = [1024, 2048, 4096] as const;
 
 export default function PatternForge() {
   const navigate = useNavigate();
@@ -78,17 +36,30 @@ export default function PatternForge() {
   const rendererRef = useRef<MoshRenderer | null>(null);
 
   const [paletteIdx, setPaletteIdx] = useState(0);
-  const [currentStack, setCurrentStack] = useState(() => generateRandomStack());
+  const [seamless, setSeamless] = useState(true);
+  const [intensity, setIntensity] = useState(0.6);
   const [seed, setSeed] = useState(() => Math.floor(Math.random() * 0xFFFFFF));
+  const [currentStack, setCurrentStack] = useState<ForgeLayer[]>(
+    () => composeForgeStack({ rand: Math.random, seamless: true, intensity: 0.6 }),
+  );
   const [exporting, setExporting] = useState(false);
+  const [seam, setSeam] = useState<number | null>(null);
 
   const palette = PALETTES[paletteIdx];
 
   const randomise = useCallback(() => {
     setSeed(Math.floor(Math.random() * 0xFFFFFF));
-    setCurrentStack(generateRandomStack());
+    setCurrentStack(composeForgeStack({ rand: Math.random, seamless, intensity }));
     setPaletteIdx(Math.floor(Math.random() * PALETTES.length));
-  }, []);
+    setSeam(null);
+  }, [seamless, intensity]);
+
+  // Re-roll when the pool changes: a stack built without the tile constraint
+  // will contain effects that cannot survive it.
+  useEffect(() => {
+    setCurrentStack(composeForgeStack({ rand: Math.random, seamless, intensity }));
+    setSeam(null);
+  }, [seamless]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -113,6 +84,9 @@ export default function PatternForge() {
     }
 
     renderer.setSourceCanvas(src);
+    // Wrapped sampling is what lets ordinary displacement effects continue
+    // across the join instead of smearing the edge pixel.
+    renderer.setTileableSampling(seamless);
 
     const resize = () => {
       renderer!.resize(host.clientWidth, host.clientHeight);
@@ -133,14 +107,19 @@ export default function PatternForge() {
         return;
       }
 
-      drawSource(sctx, src.width, src.height, palette.colors, seed, t);
-      
+      drawSeamless(sctx, src.width, src.height, {
+        colors: palette.colors,
+        seed: seed.toString(36),
+        t,
+        complexity: 2 + Math.round(intensity * 4),
+      });
+
       const layers: RenderLayer[] = currentStack.map((l, i) => ({
         id: `forge${i}`,
         effectId: l.effectId,
         hidden: false,
         opacity: l.opacity,
-        blend: i === 0 ? "normal" : "screen",
+        blend: l.blend,
         params: l.params,
       }));
 
@@ -156,25 +135,107 @@ export default function PatternForge() {
       canvas.remove();
       rendererRef.current = null;
     };
-  }, [palette, currentStack, seed]);
+  }, [palette, currentStack, seed, seamless, intensity]);
 
-  const handleExport = useCallback(async () => {
-    const canvas = exportCanvasRef.current;
-    if (!canvas || exporting) return;
+  /**
+   * Render the pattern at print resolution, off-screen.
+   *
+   * The preview canvas is viewport-sized — nowhere near enough pixels for a
+   * garment panel. This spins up a second renderer at the requested square
+   * size, renders one frame, measures the seam, and only then hands over the
+   * file. Measuring rather than assuming matters because the effect stack is
+   * random: the classifier keeps obviously-unsafe effects out of the pool, but
+   * the output is the only thing that actually proves a tile.
+   */
+  const exportAt = useCallback(async (size: number) => {
+    if (exporting) return;
     setExporting(true);
+    const t = toast.loading(`Rendering ${size}x${size}…`);
+    let off: HTMLCanvasElement | null = null;
+    let r: MoshRenderer | null = null;
     try {
-      const blob = await new Promise<Blob | null>(res => canvas.toBlob(res, "image/png"));
-      if (!blob) return;
+      off = document.createElement("canvas");
+      off.width = size;
+      off.height = size;
+      r = new MoshRenderer(off);
+
+      const src = document.createElement("canvas");
+      // Source resolution scales with output so the field keeps its detail
+      // instead of being magnified into mush at 4K.
+      src.width = src.height = Math.min(1024, Math.max(256, size / 2));
+      const sctx = src.getContext("2d")!;
+      drawSeamless(sctx, src.width, src.height, {
+        colors: palette.colors,
+        seed: seed.toString(36),
+        t: 0,
+        complexity: 2 + Math.round(intensity * 4),
+      });
+
+      r.setSourceCanvas(src);
+      r.setTileableSampling(seamless);
+      r.setRenderScale(1);          // no internal downscale for a print asset
+      r.resize(size, size);
+      r.setHdrIntensity(0);
+      r.setHdr(0);
+
+      const layers: RenderLayer[] = currentStack.map((l, i) => ({
+        id: `forge${i}`,
+        effectId: l.effectId,
+        hidden: false,
+        opacity: l.opacity,
+        blend: l.blend,
+        params: l.params,
+      }));
+      // Two passes: the first compiles shaders, the second renders with them
+      // warm. A single pass can capture a frame where a shader is still linking.
+      r.render(layers, 0.5);
+      r.render(layers, 0.5);
+
+      // Verify the tile actually closes before calling it a print asset.
+      let score: number | null = null;
+      try {
+        const probe = document.createElement("canvas");
+        const pw = 256;
+        probe.width = probe.height = pw;
+        const pctx = probe.getContext("2d", { willReadFrequently: true })!;
+        pctx.drawImage(off, 0, 0, pw, pw);
+        const s = seamScore(pctx.getImageData(0, 0, pw, pw).data, pw, pw);
+        score = s.worst;
+        setSeam(score);
+        if (seamless && !seamPasses(s)) {
+          toast.warning("Seam detected", {
+            id: t,
+            description: `Edge match ${(score * 100).toFixed(1)}% — reshuffle for a cleaner tile.`,
+            duration: 9000,
+          });
+        }
+      } catch {
+        /* measurement is advisory; never block the export on it */
+      }
+
+      const blob = await new Promise<Blob | null>(res => off!.toBlob(res, "image/png"));
+      if (!blob) throw new Error("Encoding failed");
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `mosh-forge-${seed.toString(16)}.png`;
+      a.download = `mosh-forge-${seed.toString(16)}-${size}${seamless ? "-tile" : ""}.png`;
       a.click();
-      URL.revokeObjectURL(url);
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+
+      if (!seamless || score === null || score >= 0.97) {
+        toast.success(`${size}x${size} exported`, {
+          id: t,
+          description: seamless && score !== null ? `Seamless · edge match ${(score * 100).toFixed(1)}%` : undefined,
+        });
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Export failed", { id: t });
     } finally {
+      r?.dispose();
+      off?.remove();
       setExporting(false);
     }
-  }, [seed, exporting]);
+  }, [exporting, palette, seed, currentStack, seamless, intensity]);
 
   return (
     <main className="flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground">
@@ -205,15 +266,21 @@ export default function PatternForge() {
             <Shuffle className="h-3 w-3" />
             shuffle
           </button>
-          <button
-            type="button"
-            onClick={handleExport}
-            disabled={exporting}
-            className="flex items-center gap-1.5 border border-primary/60 px-3 py-1.5 font-mono text-xs uppercase tracking-[0.2em] text-primary transition hover:bg-primary/10 disabled:opacity-40"
-          >
-            <Download className="h-3 w-3" />
-            {exporting ? "saving…" : "export png"}
-          </button>
+          <div className="flex items-center gap-1 border border-primary/60">
+            <Download className="ml-2 h-3 w-3 text-primary" />
+            {EXPORT_SIZES.map(sz => (
+              <button
+                key={sz}
+                type="button"
+                onClick={() => exportAt(sz)}
+                disabled={exporting}
+                title={`Export ${sz}x${sz} PNG${seamless ? " (seamless tile)" : ""}`}
+                className="px-2 py-1.5 font-mono text-xs uppercase tracking-[0.15em] text-primary transition hover:bg-primary/10 disabled:opacity-40"
+              >
+                {sz >= 1024 ? `${sz / 1024}k` : sz}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -254,6 +321,49 @@ export default function PatternForge() {
             </div>
           </div>
 
+          {/* Seamless */}
+          <div>
+            <p className="mb-3 font-mono text-[9px] uppercase tracking-[0.4em] text-foreground/40">
+              output
+            </p>
+            <button
+              type="button"
+              onClick={() => setSeamless(v => !v)}
+              className={`flex w-full items-center justify-between px-2 py-1.5 font-mono text-[10px] uppercase tracking-[0.2em] transition ${
+                seamless ? "text-accent" : "text-foreground/50 hover:text-foreground/80"
+              }`}
+            >
+              seamless tile
+              <span>{seamless ? "on" : "off"}</span>
+            </button>
+            {seamless && (
+              <p className="mt-1 px-2 font-mono text-[8px] leading-relaxed uppercase tracking-[0.15em] text-foreground/30">
+                pool limited to effects that survive tiling
+              </p>
+            )}
+            {seam !== null && (
+              <p className={`mt-2 px-2 font-mono text-[9px] uppercase tracking-[0.2em] ${
+                seam >= 0.97 ? "text-accent/80" : "text-destructive/80"
+              }`}>
+                edge match {(seam * 100).toFixed(1)}%
+              </p>
+            )}
+          </div>
+
+          {/* Intensity */}
+          <div>
+            <p className="mb-2 font-mono text-[9px] uppercase tracking-[0.4em] text-foreground/40">
+              density
+            </p>
+            <input
+              type="range" min={0} max={1} step={0.05}
+              value={intensity}
+              onChange={(e) => setIntensity(parseFloat(e.target.value))}
+              className="w-full accent-[hsl(var(--accent))]"
+              aria-label="Pattern density"
+            />
+          </div>
+
           {/* Current Effect Stack Summary */}
           <div>
             <p className="mb-3 font-mono text-[9px] uppercase tracking-[0.4em] text-foreground/40">
@@ -263,7 +373,7 @@ export default function PatternForge() {
               <AnimatePresence mode="popLayout">
                 {currentStack.map((l, i) => (
                   <motion.div
-                    key={`${l.effectId}-${i}`}
+                    key={`${EFFECTS_BY_ID[l.effectId]?.name ?? l.effectId}-${i}`}
                     initial={{ opacity: 0, x: -12, filter: "blur(4px)" }}
                     animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
                     exit={{ opacity: 0, x: 12, filter: "blur(4px)" }}
@@ -296,7 +406,8 @@ export default function PatternForge() {
 
           <div className="mt-auto border-t border-border/30 pt-4">
             <p className="font-mono text-[9px] leading-relaxed text-foreground/30 uppercase tracking-[0.2em]">
-              Export the pattern and drop it into MOSH to use it as a source image.
+              Seamless tiles repeat edge-to-edge for all-over print. 2k suits most
+              garment panels at 150 DPI; 4k for large format.
             </p>
           </div>
         </motion.div>
