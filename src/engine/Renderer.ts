@@ -1,4 +1,4 @@
-// forcing a new Netlify deployimport * as THREE from "three";
+import * as THREE from "three";
 import { EFFECTS_BY_ID } from "./effects";
 import { BLEND_INDEX, COMPOSITOR_FRAG, PASSTHROUGH_VERT, type BlendMode } from "./blend";
 import {
@@ -37,6 +37,16 @@ export class MoshRenderer {
   private rtA!: THREE.WebGLRenderTarget;
   private rtB!: THREE.WebGLRenderTarget;
   private rtC!: THREE.WebGLRenderTarget;
+  /**
+   * Frame history. Unlike rtA/rtB/rtC — which are scratch buffers refilled from
+   * the source every frame — these persist across frames so effects can sample
+   * what the screen looked like last frame via `uFeedback`. Ping-ponged because
+   * a target cannot be sampled and written in the same pass.
+   */
+  private rtHistA!: THREE.WebGLRenderTarget;
+  private rtHistB!: THREE.WebGLRenderTarget;
+  /** Nothing has been written to history yet — uFeedback reads as black. */
+  private historyPrimed = false;
   private sourceTex: THREE.Texture | null = null;
   private sourceAspect = 1;
   private cssWidth = 1;
@@ -123,6 +133,8 @@ export class MoshRenderer {
     this.rtA?.dispose();
     this.rtB?.dispose();
     this.rtC?.dispose();
+    this.rtHistA?.dispose();
+    this.rtHistB?.dispose();
     const opts: THREE.RenderTargetOptions = {
       minFilter: THREE.LinearFilter,
       magFilter: THREE.LinearFilter,
@@ -134,6 +146,11 @@ export class MoshRenderer {
     this.rtA = new THREE.WebGLRenderTarget(w, h, opts);
     this.rtB = new THREE.WebGLRenderTarget(w, h, opts);
     this.rtC = new THREE.WebGLRenderTarget(w, h, opts);
+    this.rtHistA = new THREE.WebGLRenderTarget(w, h, opts);
+    this.rtHistB = new THREE.WebGLRenderTarget(w, h, opts);
+    // Resized buffers start undefined; treat history as cold so the first
+    // frame after a resize doesn't sample garbage.
+    this.historyPrimed = false;
     if (this.rtTile) {
       this.rtTile.dispose();
       this.rtTile = new THREE.WebGLRenderTarget(w, h, opts);
@@ -285,6 +302,7 @@ export class MoshRenderer {
     const def = EFFECTS_BY_ID[effectId];
     const uniforms: Record<string, THREE.IUniform> = {
       uTex: { value: null },
+      uFeedback: { value: null },
       uResolution: { value: new THREE.Vector2(1, 1) },
       uTime: { value: 0 },
       uPulse: { value: 0 },
@@ -347,6 +365,9 @@ export class MoshRenderer {
       const compositeTarget = targets.find(t => t !== read && t !== effectTarget)!;
 
       uni.uTex.value = read.texture;
+      // Last frame's finished output. Black until the first frame lands, so
+      // feedback effects fade in rather than flashing garbage.
+      uni.uFeedback.value = this.historyPrimed ? this.rtHistA.texture : null;
       (uni.uResolution.value as THREE.Vector2).set(w, h);
       uni.uTime.value = time;
       uni.uPulse.value = pulse;
@@ -382,6 +403,19 @@ export class MoshRenderer {
       this.renderer.render(this.scene, this.camera);
       finalTex = this.rtTile.texture;
     }
+
+    // --- History write ---
+    // Copy this frame's finished output into the history buffer, then swap, so
+    // next frame's uFeedback samples it. Written before the screen blit because
+    // the blit unbinds the render target.
+    this.blitMaterial.uniforms.uTex.value = finalTex;
+    this.quad.material = this.blitMaterial;
+    this.renderer.setRenderTarget(this.rtHistB);
+    this.renderer.render(this.scene, this.camera);
+    const swap = this.rtHistA;
+    this.rtHistA = this.rtHistB;
+    this.rtHistB = swap;
+    this.historyPrimed = true;
 
     // Final blit to screen
     this.blitMaterial.uniforms.uTex.value = finalTex;
@@ -453,6 +487,8 @@ export class MoshRenderer {
     this.rtA.dispose();
     this.rtB.dispose();
     this.rtC.dispose();
+    this.rtHistA.dispose();
+    this.rtHistB.dispose();
     this.sourceTex?.dispose();
     this.compositor.dispose();
     this.blitMaterial.dispose();

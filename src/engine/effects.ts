@@ -31,6 +31,10 @@ const COMMON_HEADER = /* glsl */ `
 precision mediump float;
 varying vec2 vUv;
 uniform sampler2D uTex;
+// Last frame's finished output — the only way an effect can have memory.
+// Black on the first frame and after a resize, so always fade it in rather
+// than assuming it holds something.
+uniform sampler2D uFeedback;
 uniform vec2 uResolution;
 uniform float uTime;
 uniform float uPulse;
@@ -957,6 +961,98 @@ export const EFFECTS: EffectDef[] = [
     float dens = clamp(length(curl) * 0.06, 0.0, 1.0);
     col.rgb = mix(col.rgb, col.rgb * (1.0 - dens * 0.5) + vec3(0.05, 0.07, 0.12) * dens, uFlow);
     gl_FragColor = col;
+    `),
+
+  // ── TEMPORAL ──────────────────────────────────────────────────────
+  // These sample uFeedback (last frame's output) and are the only effects
+  // with memory. Every one decays toward the live frame so it can never
+  // latch on and freeze the screen.
+
+  fx("trailDecay", "Trail Decay", "corruption", "Motion leaves burning trails that decay over seconds — real accumulation, not a blur.",
+    [{ key: "persistence", label: "Persistence", min: 0, max: 1, default: 0.7 },
+     { key: "bleed", label: "Bleed", min: 0, max: 1, default: 0.35 }],
+    `
+    vec4 cur = texture2D(uTex, vUv);
+    // Sample history slightly spread so trails smear as they fade.
+    vec2 g = (1.0/uResolution) * (1.0 + uBleed * 6.0);
+    vec3 hist = texture2D(uFeedback, vUv).rgb * 0.5
+              + texture2D(uFeedback, vUv + vec2(g.x, 0.0)).rgb * 0.125
+              + texture2D(uFeedback, vUv - vec2(g.x, 0.0)).rgb * 0.125
+              + texture2D(uFeedback, vUv + vec2(0.0, g.y)).rgb * 0.125
+              + texture2D(uFeedback, vUv - vec2(0.0, g.y)).rgb * 0.125;
+    // Capped below 1.0 so energy always drains — no runaway white-out.
+    float keep = uPersistence * 0.92;
+    gl_FragColor = vec4(max(cur.rgb, hist * keep), cur.a);
+    `),
+
+  fx("motionMomentum", "Momentum", "corruption", "Pixels that changed get shoved along their direction of travel — the image gains inertia.",
+    [{ key: "amount", label: "Amount", min: 0, max: 1, default: 0.6 },
+     { key: "reach", label: "Reach", min: 0, max: 1, default: 0.5 }],
+    `
+    vec2 px = 1.0/uResolution;
+    vec4 cur = texture2D(uTex, vUv);
+    // Cheap motion estimate: where does frame difference fall off fastest?
+    float d0 = length(cur.rgb - texture2D(uFeedback, vUv).rgb);
+    float dx = length(texture2D(uTex, vUv + vec2(px.x*2.0,0.0)).rgb - texture2D(uFeedback, vUv + vec2(px.x*2.0,0.0)).rgb);
+    float dy = length(texture2D(uTex, vUv + vec2(0.0,px.y*2.0)).rgb - texture2D(uFeedback, vUv + vec2(0.0,px.y*2.0)).rgb);
+    vec2 flow = vec2(dx - d0, dy - d0);
+    float m = clamp(d0 * 3.0, 0.0, 1.0);
+    vec2 push = flow * uReach * 0.35;
+    vec4 shoved = texture2D(uTex, vUv - push);
+    vec3 ghost = texture2D(uFeedback, vUv - push * 2.0).rgb;
+    gl_FragColor = vec4(mix(cur.rgb, mix(shoved.rgb, ghost, 0.4), m * uAmount), cur.a);
+    `),
+
+  fx("infiniteZoom", "Infinite Zoom", "geometry", "The previous frame is re-projected slightly larger each frame — a true recursive corridor that never bottoms out.",
+    [{ key: "zoom", label: "Zoom", min: -1, max: 1, default: 0.45 },
+     { key: "spin", label: "Spin", min: -1, max: 1, default: 0.15 },
+     { key: "feed", label: "Feedback", min: 0, max: 1, default: 0.75 }],
+    `
+    vec2 p = vUv - 0.5;
+    float s = 1.0 - uZoom * 0.03;
+    float a = uSpin * 0.02;
+    // Rotate + scale the history sample point; iterating this every frame is
+    // what builds the endless tunnel.
+    mat2 rot = mat2(cos(a), -sin(a), sin(a), cos(a));
+    vec2 huv = rot * p * s + 0.5;
+    vec3 hist = texture2D(uFeedback, huv).rgb;
+    vec4 cur = texture2D(uTex, vUv);
+    // Slight desaturation per hop stops the recursion saturating to neon mush.
+    hist *= 0.985;
+    gl_FragColor = vec4(mix(cur.rgb, max(cur.rgb * 0.55, hist), uFeed * 0.85), cur.a);
+    `),
+
+  fx("timeDisplace", "Time Displace", "corruption", "Brightness decides how far back in time each pixel is sampled — the frame tears itself across multiple moments.",
+    [{ key: "amount", label: "Amount", min: 0, max: 1, default: 0.6 },
+     { key: "warp", label: "Warp", min: 0, max: 1, default: 0.4 }],
+    `
+    vec4 cur = texture2D(uTex, vUv);
+    float lum = dot(cur.rgb, vec3(0.299,0.587,0.114));
+    // Displace the history lookup by luminance, so bright and dark regions
+    // lag by different amounts and the image shears through time.
+    vec2 off = vec2(sin(lum*6.2831 + uTime*0.7), cos(lum*6.2831 - uTime*0.5)) * uWarp * 0.05;
+    vec3 past = texture2D(uFeedback, vUv + off).rgb;
+    float sel = smoothstep(0.25, 0.75, lum);
+    gl_FragColor = vec4(mix(cur.rgb, mix(past, cur.rgb, sel), uAmount), cur.a);
+    `),
+
+  fx("reactionBloom", "Reaction Bloom", "atmosphere", "Bright areas seed a reaction-diffusion growth that creeps outward frame after frame.",
+    [{ key: "growth", label: "Growth", min: 0, max: 1, default: 0.5 },
+     { key: "decay", label: "Decay", min: 0, max: 1, default: 0.5 }],
+    `
+    vec2 px = 1.0/uResolution;
+    vec4 cur = texture2D(uTex, vUv);
+    // Laplacian of the history = diffusion term.
+    vec3 c = texture2D(uFeedback, vUv).rgb;
+    vec3 lap = texture2D(uFeedback, vUv + vec2(px.x,0.0)).rgb
+             + texture2D(uFeedback, vUv - vec2(px.x,0.0)).rgb
+             + texture2D(uFeedback, vUv + vec2(0.0,px.y)).rgb
+             + texture2D(uFeedback, vUv - vec2(0.0,px.y)).rgb
+             - 4.0 * c;
+    float seed = max(0.0, dot(cur.rgb, vec3(0.299,0.587,0.114)) - 0.55);
+    vec3 grown = c + lap * uGrowth * 0.28 + seed * 0.25;
+    grown *= mix(0.90, 0.985, uDecay);
+    gl_FragColor = vec4(max(cur.rgb * 0.85, grown), cur.a);
     `),
 ];
 
