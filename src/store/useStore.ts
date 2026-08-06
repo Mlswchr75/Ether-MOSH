@@ -114,6 +114,12 @@ type State = {
   currentBrief: FrameBrief | null;
   /** Last quadrant roll — drives the transient on-canvas readout. */
   lastQuadrantRoll: QuadrantRoll | null;
+  /**
+   * Which voice the next plain tap re-rolls. Tapping cycles GRADE → FORM →
+   * ACCENT → FINISH so the stack evolves one part at a time without the user
+   * having to aim at anything; a full mosh resets it to the grade.
+   */
+  voiceCursor: number;
 };
 
 export type QuadrantRoll = {
@@ -157,6 +163,13 @@ type Actions = {
    * 1:1. Returns the roll, or null when the target layer is locked.
    */
   moshQuadrant: (q: QuadrantIndex, opts?: { targetAffinity?: number }) => QuadrantRoll | null;
+  /**
+   * Re-roll the next voice in rotation. This is what a plain tap does: no
+   * aiming, no map to memorise, but a smaller and more steerable change than a
+   * full mosh. Skips locked voices; returns null only when every voice is
+   * locked.
+   */
+  moshNext: () => QuadrantRoll | null;
   clearQuadrantRoll: () => void;
 
   /**
@@ -294,6 +307,7 @@ export const useStore = create<State & Actions>((set, get) => ({
   stickerGallery: [],
   cameraFacing: null,
   quadrantHistory: Array.from({ length: QUADRANT_COUNT }, () => [] as string[]),
+  voiceCursor: 0,
   recentEffects: [],
   recentLooks: [],
   currentLook: null,
@@ -487,6 +501,8 @@ export const useStore = create<State & Actions>((set, get) => ({
       // A full mosh replaces every quadrant, so quadrant memory starts over.
       quadrantHistory: Array.from({ length: QUADRANT_COUNT }, () => [] as string[]),
       lastQuadrantRoll: null,
+      // Next tap picks up at the grade again.
+      voiceCursor: 0,
     };
   }),
 
@@ -583,6 +599,26 @@ export const useStore = create<State & Actions>((set, get) => ({
     return record;
   },
 
+  moshNext: () => {
+    const s = get();
+    // Rotate over the voices the stack actually uses, so tapping cycles what is
+    // on screen instead of growing the stack toward four.
+    const count = Math.min(QUADRANT_COUNT, Math.max(1, s.layers.length));
+
+    // Walk forward to the first unlocked voice. Locked voices are the user's
+    // "keep this" vote, so they are stepped over rather than treated as a dead
+    // tap — that is what makes lock-and-keep-tapping feel like steering.
+    for (let step = 0; step < count; step++) {
+      const q = ((s.voiceCursor + step) % count) as QuadrantIndex;
+      if (s.layers[q]?.locked) continue;
+      const roll = get().moshQuadrant(q);
+      if (!roll) continue;
+      set({ voiceCursor: (q + 1) % count });
+      return roll;
+    }
+    return null;
+  },
+
   clearQuadrantRoll: () => set({ lastQuadrantRoll: null }),
 
   clearAllFx: () => set(s => ({
@@ -599,6 +635,7 @@ export const useStore = create<State & Actions>((set, get) => ({
     currentLook: null,
     quadrantHistory: Array.from({ length: QUADRANT_COUNT }, () => [] as string[]),
     lastQuadrantRoll: null,
+    voiceCursor: 0,
   })),
 
   reset: () => set(s => ({ ...s, past: pushPast(s), future: [], layers: [] })),
