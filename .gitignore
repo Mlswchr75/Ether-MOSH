@@ -1,3 +1,8 @@
+tools/cutouts/cutouts/
+tools/cutouts/review.html
+tools/cutouts/failures.csv
+tools/cutouts/.venv/
+__pycache__/
 # Logs
 logs
 *.log
