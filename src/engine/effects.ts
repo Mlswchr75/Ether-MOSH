@@ -1526,6 +1526,83 @@ export const EFFECTS: EffectDef[] = [
     gl_FragColor = vec4(c + streak * vec3(0.35, 0.6, 1.0) * uAmount * 9.0, 1.0);
     `),
 
+  // ── PORTED FROM THE LOVABLE BUILD ─────────────────────────────────
+  // These four existed only on the Lovable build and were never in this repo.
+  // They are distinct from this library's own caustics / moire / contourMap:
+  // those are surface treatments, these are full-frame optical systems.
+
+  fx("feedbackTunnel", "Feedback Tunnel", "geometry", "Fly into an infinite zoom-spiral — the archetypal VJ tunnel remapped from your live feed.",
+    [{ key: "speed", label: "Speed", min: 0, max: 4, default: 1.0 },
+     { key: "spin", label: "Spin", min: -2, max: 2, default: 0.5 },
+     { key: "zoom", label: "Zoom", min: 0.2, max: 3, default: 1.0 }],
+    `
+    vec2 p = vUv - 0.5;
+    float r = max(length(p), 0.0001);
+    float a = atan(p.y, p.x);
+    float tunnel = -log(r) * uZoom * 0.5 + uTime * uSpeed * 0.4;
+    float spinUv = a / 6.2831853 + uTime * uSpin * 0.05;
+    vec2 tuv = vec2(fract(spinUv + 0.5), fract(tunnel));
+    tuv.x += sin(tuv.y * 6.2831853 + uTime * 0.3) * 0.015 * uZoom;
+    vec4 c = texture2D(uTex, tuv);
+    float depth = fract(tunnel);
+    c.rgb *= 0.2 + 0.8 * (depth * depth);
+    c.rgb *= smoothstep(0.0, 0.15, r);
+    gl_FragColor = c;
+    `),
+
+  fx("topoContour", "Topographic", "color", "Luminance contour bands rendered as animated rainbow elevation lines — like a live topo map.",
+    [{ key: "amount", label: "Mix", min: 0, max: 1, default: 0.85 },
+     { key: "bands", label: "Bands", min: 3, max: 30, default: 10, step: 1 },
+     { key: "speed", label: "Cycle", min: 0, max: 2, default: 0.4 }],
+    `
+    vec4 c = texture2D(uTex, vUv);
+    float lum = dot(c.rgb, vec3(0.299, 0.587, 0.114));
+    float t = lum * uBands + uTime * uSpeed * 0.3;
+    float band = fract(t);
+    float line = 1.0 - smoothstep(0.0, 0.06, min(band, 1.0 - band));
+    float hue = floor(t) / uBands + uTime * uSpeed * 0.04;
+    vec3 fillCol = hsv2rgb(vec3(fract(hue), 0.85, 0.9));
+    vec3 lineCol = hsv2rgb(vec3(fract(hue + 0.5), 1.0, 1.0));
+    vec3 topo = mix(fillCol, lineCol, line);
+    gl_FragColor = vec4(mix(c.rgb, topo, uAmount), c.a);
+    `),
+
+  fx("causticWater", "Caustic Water", "atmosphere", "Shimmering light refractions as if viewed through a sunlit water surface.",
+    [{ key: "amount", label: "Amount", min: 0, max: 1, default: 0.65 },
+     { key: "scale", label: "Scale", min: 1, max: 16, default: 5 },
+     { key: "speed", label: "Speed", min: 0, max: 4, default: 1.2 }],
+    `
+    float t = uTime * uSpeed * 0.5;
+    vec2 p = vUv * uScale;
+    float n1 = noise(p + vec2(t * 0.9, t * 0.7));
+    float n2 = noise(p * 1.4 - vec2(t * 0.6, t * 0.85));
+    float n3 = noise(p * 0.65 + vec2(t * 0.45, -t * 0.6));
+    float caustic = n1 * n2 * n3;
+    caustic = pow(clamp(caustic * 3.0, 0.0, 1.0), 1.2);
+    vec2 refr = vec2(n1 - 0.5, n2 - 0.5) * uAmount * 0.05;
+    vec4 c = texture2D(uTex, vUv + refr);
+    vec3 lightColor = mix(vec3(0.25, 0.55, 1.0), vec3(1.0, 0.97, 0.92), caustic);
+    gl_FragColor = vec4(c.rgb + lightColor * caustic * uAmount * 1.6, c.a);
+    `),
+
+  fx("moirePulse", "Moiré Pulse", "geometry", "Two concentric ring systems at incommensurate frequencies — hypnotic interference beats that never repeat.",
+    [{ key: "amount", label: "Amount", min: 0, max: 1, default: 0.8 },
+     { key: "density", label: "Density", min: 0.5, max: 3, default: 1.5 },
+     { key: "speed", label: "Speed", min: 0, max: 4, default: 1.5 }],
+    `
+    vec2 p = vUv - 0.5;
+    float rr = length(p) * 28.0 * uDensity;
+    float t = uTime * uSpeed;
+    float ring1 = sin(rr - t * 2.0);
+    float ring2 = sin(rr * 1.0847 + t * 1.73);
+    float moire = ring1 * ring2 * 0.5 + 0.5;
+    moire = pow(moire, 1.8);
+    float hue = moire * 0.5 + t * 0.08 + length(p) * 0.4;
+    vec3 col = hsv2rgb(vec3(fract(hue), 0.95, 0.5 + 0.5 * moire));
+    vec4 c = texture2D(uTex, vUv);
+    gl_FragColor = vec4(mix(c.rgb, c.rgb * 0.2 + col * 1.6, moire * uAmount), c.a);
+    `),
+
   // ── TEMPORAL ──────────────────────────────────────────────────────
   // These sample uFeedback (last frame's output) and are the only effects
   // with memory. Every one decays toward the live frame so it can never

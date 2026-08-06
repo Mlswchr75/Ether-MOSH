@@ -197,6 +197,60 @@ describe("composition", () => {
     expect(c.layers.map(l => l.role)).toEqual(["grade", "finish"]);
   });
 
+  it("goes deeper than four without losing role order", () => {
+    for (let i = 0; i < 40; i++) {
+      const c = compose(neutralBrief, rngFromSeed(`deep-${i}`), { roleCount: 7, chaos: 0.6 });
+      expect(c.layers).toHaveLength(7);
+      // Depth doubles roles rather than inventing them, and the stack still
+      // reads bottom-to-top.
+      const order = c.layers.map(l => ROLES.indexOf(l.role));
+      expect([...order]).toEqual([...order].sort((a, b) => a - b));
+      expect(c.layers[0].role).toBe("grade");
+    }
+  });
+
+  it("never repeats an effect even in a deep chaotic stack", () => {
+    for (let i = 0; i < 60; i++) {
+      const ids = compose(neutralBrief, rngFromSeed(`dd-${i}`), { roleCount: 7, chaos: 1 })
+        .layers.map(l => l.effectId);
+      expect(new Set(ids).size).toBe(ids.length);
+    }
+  });
+
+  it("keeps the grade strict even at maximum chaos", () => {
+    // The grade is the tonal foundation; an arbitrary effect underneath
+    // everything wipes the frame, so rule-breaks must never touch it.
+    for (let i = 0; i < 60; i++) {
+      const c = compose(neutralBrief, rngFromSeed(`gc-${i}`), { roleCount: 7, chaos: 1 });
+      expect(craftOf(c.layers[0].effectId)?.role).toBe("grade");
+    }
+  });
+
+  it("actually breaks the grammar when asked, and never when not", () => {
+    const offRole = (chaos: number) => {
+      let n = 0;
+      for (let i = 0; i < 120; i++) {
+        for (const l of compose(neutralBrief, rngFromSeed(`br-${chaos}-${i}`), { roleCount: 7, chaos }).layers) {
+          if (craftOf(l.effectId)?.role !== l.role) n++;
+        }
+      }
+      return n;
+    };
+    // Strict mode is a guarantee, not a tendency.
+    expect(offRole(0)).toBe(0);
+    expect(offRole(1)).toBeGreaterThan(0);
+  });
+
+  it("keeps deep stacks inside a bounded gpu ceiling", () => {
+    for (let i = 0; i < 80; i++) {
+      const c = compose(neutralBrief, rngFromSeed(`gb-${i}`), { roleCount: 7, chaos: 1 });
+      const total = c.layers.reduce((a, l) => a + gpuCostOf(l.effectId), 0);
+      // Deeper stacks earn more budget, but it is capped — this is what keeps
+      // frame time bounded however wild the roll.
+      expect(total).toBeLessThanOrEqual(28 + 8);
+    }
+  });
+
   it("writes params inside every declared range", () => {
     for (let i = 0; i < 60; i++) {
       for (const l of compose(neutralBrief, rngFromSeed(`p-${i}`)).layers) {
