@@ -1,0 +1,19 @@
+{
+  "name": "@mosh/engine",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MOSH 2.0 rendering engine — HDR post-processing, GPU motion fields, on-device segmentation, and region-masked effect stacks. Backend-agnostic (WebGL2 baseline, WebGPU progressive enhancement).",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "peerDependencies": {
+    "three": ">=0.160.0"
+  },
+  "sideEffects": false
+}
