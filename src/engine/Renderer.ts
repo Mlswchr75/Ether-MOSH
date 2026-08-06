@@ -69,6 +69,18 @@ export class MoshRenderer {
   private depthPrimed = false;
   private depthMaterial!: THREE.ShaderMaterial;
   /**
+   * Optical flow — per-pixel motion, encoded as a signed vec2 in rg.
+   *
+   * The depth proxy only asks *whether* a pixel moved. This asks which way and
+   * how fast, which is what lets an effect drag, smear or refract along the
+   * direction things are actually travelling rather than along a fixed axis.
+   * Ping-ponged so the field can be smoothed over time; raw per-frame flow is
+   * far too noisy to displace by.
+   */
+  private rtFlowA!: THREE.WebGLRenderTarget;
+  private rtFlowB!: THREE.WebGLRenderTarget;
+  private flowMaterial!: THREE.ShaderMaterial;
+  /**
    * Strided ring of past *output* frames. Unlike rtHistA/B (one frame back), this
    * reaches back ~250ms so different regions of the image can be shown at
    * genuinely different moments. Strided — written every Nth frame — so four
@@ -424,6 +436,72 @@ export class MoshRenderer {
       depthWrite: false,
     });
 
+    /* Optical flow, by the normal-flow approximation.
+
+       Real dense flow (Lucas-Kanade, Horn-Schunck) is an iterative solve and
+       far beyond a per-frame budget here. But the brightness-constancy
+       assumption gives a closed form in one step: a surface's apparent motion
+       along its own gradient is -It * grad / |grad|^2, where It is the temporal
+       difference. It only recovers motion perpendicular to edges — the aperture
+       problem — and that limitation is invisible for this purpose, because what
+       we do with the vector is drag pixels around, not measure anything.
+
+       Smoothed hard over time. Raw per-frame flow is dominated by sensor noise
+       in flat regions, and displacing by it looks like static rather than
+       like motion. */
+    this.flowMaterial = new THREE.ShaderMaterial({
+      vertexShader: PASSTHROUGH_VERT,
+      fragmentShader: `
+        precision mediump float;
+        varying vec2 vUv;
+        uniform sampler2D uSrc;
+        uniform sampler2D uPrevSrc;
+        uniform sampler2D uPrevFlow;
+        uniform vec2 uResolution;
+        uniform float uPrimed;
+
+        float luma(vec3 c){ return dot(c, vec3(0.299, 0.587, 0.114)); }
+
+        void main(){
+          vec2 px = 1.0 / uResolution;
+          float c  = luma(texture2D(uSrc, vUv).rgb);
+          float l  = luma(texture2D(uSrc, vUv - vec2(px.x, 0.0)).rgb);
+          float r  = luma(texture2D(uSrc, vUv + vec2(px.x, 0.0)).rgb);
+          float d  = luma(texture2D(uSrc, vUv - vec2(0.0, px.y)).rgb);
+          float u  = luma(texture2D(uSrc, vUv + vec2(0.0, px.y)).rgb);
+          float p  = luma(texture2D(uPrevSrc, vUv).rgb);
+
+          vec2 grad = vec2(r - l, u - d) * 0.5;
+          float dt = c - p;
+
+          // The epsilon is doing real work: where the gradient vanishes the
+          // division explodes, and a flat wall would otherwise report the
+          // fastest motion in the frame.
+          float denom = dot(grad, grad) + 0.0025;
+          vec2 flow = -dt * grad / denom;
+
+          // Clamp before smoothing. A single specular flash produces an
+          // enormous spurious vector, and letting it into the accumulator
+          // poisons the field for a second afterwards.
+          flow = clamp(flow, vec2(-1.0), vec2(1.0));
+
+          vec2 prev = (texture2D(uPrevFlow, vUv).rg * 2.0 - 1.0) * uPrimed;
+          vec2 outF = mix(prev, flow, 0.18);
+
+          gl_FragColor = vec4(outF * 0.5 + 0.5, 0.0, 1.0);
+        }
+      `,
+      uniforms: {
+        uSrc: { value: null },
+        uPrevSrc: { value: null },
+        uPrevFlow: { value: null },
+        uResolution: { value: new THREE.Vector2(1, 1) },
+        uPrimed: { value: 0 },
+      },
+      depthTest: false,
+      depthWrite: false,
+    });
+
     this.allocTargets(2, 2);
   }
 
@@ -436,6 +514,8 @@ export class MoshRenderer {
     this.rtDepthA?.dispose();
     this.rtDepthB?.dispose();
     this.rtSrcPrev?.dispose();
+    this.rtFlowA?.dispose();
+    this.rtFlowB?.dispose();
     for (const rt of this.rtRing) rt.dispose();
     const opts: THREE.RenderTargetOptions = {
       minFilter: THREE.LinearFilter,
@@ -459,6 +539,8 @@ export class MoshRenderer {
     this.rtDepthA = new THREE.WebGLRenderTarget(dw, dh, opts);
     this.rtDepthB = new THREE.WebGLRenderTarget(dw, dh, opts);
     this.rtSrcPrev = new THREE.WebGLRenderTarget(dw, dh, opts);
+    this.rtFlowA = new THREE.WebGLRenderTarget(dw, dh, opts);
+    this.rtFlowB = new THREE.WebGLRenderTarget(dw, dh, opts);
 
     // Ring depth: a phone cannot spare four extra full-size buffers, and the
     // effect still reads at three.
@@ -670,6 +752,7 @@ export class MoshRenderer {
       uTex: { value: null },
       uFeedback: { value: null },
       uDepth: { value: null },
+      uFlow: { value: null },
       uHist0: { value: null },
       uHist1: { value: null },
       uHist2: { value: null },
@@ -740,6 +823,21 @@ export class MoshRenderer {
     this.rtDepthB = depthSwap;
     this.depthPrimed = true;
 
+    // Flow must run before rtSrcPrev is overwritten — it needs the same
+    // previous frame the depth pass just used.
+    this.flowMaterial.uniforms.uSrc.value = this.rtA.texture;
+    this.flowMaterial.uniforms.uPrevSrc.value = this.rtSrcPrev.texture;
+    this.flowMaterial.uniforms.uPrevFlow.value = this.rtFlowA.texture;
+    this.flowMaterial.uniforms.uPrimed.value = this.depthPrimed ? 1 : 0;
+    (this.flowMaterial.uniforms.uResolution.value as THREE.Vector2)
+      .set(this.rtFlowA.width, this.rtFlowA.height);
+    this.quad.material = this.flowMaterial;
+    this.renderer.setRenderTarget(this.rtFlowB);
+    this.renderer.render(this.scene, this.camera);
+    const flowSwap = this.rtFlowA;
+    this.rtFlowA = this.rtFlowB;
+    this.rtFlowB = flowSwap;
+
     this.blitMaterial.uniforms.uTex.value = this.rtA.texture;
     this.quad.material = this.blitMaterial;
     this.renderer.setRenderTarget(this.rtSrcPrev);
@@ -762,6 +860,7 @@ export class MoshRenderer {
       // feedback effects fade in rather than flashing garbage.
       uni.uFeedback.value = this.historyPrimed ? this.rtHistA.texture : null;
       uni.uDepth.value = this.rtDepthA.texture;
+      uni.uFlow.value = this.rtFlowA.texture;
       // Ring entries newest-first. Anything past what has actually been written
       // reads as the newest frame, so a cold ring degrades to "no time offset"
       // instead of sampling an undefined buffer.
@@ -936,6 +1035,8 @@ export class MoshRenderer {
     this.rtDepthA?.dispose();
     this.rtDepthB?.dispose();
     this.rtSrcPrev?.dispose();
+    this.rtFlowA?.dispose();
+    this.rtFlowB?.dispose();
     for (const rt of this.rtRing) rt.dispose();
     this.rtRing = [];
     this.sourceTex?.dispose();
@@ -943,6 +1044,7 @@ export class MoshRenderer {
     this.blitMaterial.dispose();
     this.sourceFillMaterial.dispose();
     this.depthMaterial?.dispose();
+    this.flowMaterial?.dispose();
     this.finisherMaterial.dispose();
     this.tileMaterial?.dispose();
     this.rtTile?.dispose();

@@ -176,13 +176,39 @@ describe("composition", () => {
     }
   });
 
-  it("holds accents and finishes below full opacity so stacks don't turn to mud", () => {
+  /**
+   * Mud is caused by a loud layer covering everything beneath it — so the rule
+   * is about full-frame coverage, not about opacity alone.
+   *
+   * A REGIONED accent only covers part of the frame; the grade and form still
+   * read everywhere else, so it can run as loud as it likes without burying
+   * anything. That distinction is what lets a stack be violent and legible at
+   * the same time, and narrowing this test to full-frame layers is the point
+   * rather than a concession — an unregioned accent is still capped.
+   */
+  it("holds full-frame accents and finishes below full opacity so stacks don't turn to mud", () => {
     for (let i = 0; i < 40; i++) {
       const c = compose(neutralBrief, rngFromSeed(`o-${i}`));
       for (const l of c.layers) {
+        if (l.region) continue;
         if (l.role === "accent" || l.role === "finish") expect(l.opacity).toBeLessThan(0.85);
       }
     }
+  });
+
+  it("only lets an accent past that cap when it is confined to a region", () => {
+    // Guards the exemption itself: if regions ever stopped being applied, the
+    // test above would silently become vacuous rather than start failing.
+    let loudRegioned = 0;
+    for (let i = 0; i < 200; i++) {
+      for (const l of compose(neutralBrief, rngFromSeed(`or-${i}`), { wildness: 0.9 }).layers) {
+        if (l.opacity >= 0.85 && (l.role === "accent" || l.role === "finish")) {
+          expect(l.region, `${l.effectId} loud but unregioned`).toBeTruthy();
+          loudRegioned++;
+        }
+      }
+    }
+    expect(loudRegioned).toBeGreaterThan(0);
   });
 
   it("never repeats an effect inside one stack", () => {

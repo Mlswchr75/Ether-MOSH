@@ -59,7 +59,14 @@ uniform vec2 uResolution;
 uniform float uTime;
 uniform float uPulse;
 
+/* Per-pixel motion, signed. Points the way the surface under this pixel is
+   travelling, magnitude roughly proportional to speed. Recovers motion
+   perpendicular to edges only (the aperture problem) — irrelevant here, since
+   it is used to drag pixels around rather than to measure anything. */
+uniform sampler2D uFlow;
+
 float depthAt(vec2 uv){ return texture2D(uDepth, clamp(uv, 0.0, 1.0)).r; }
+vec2 flowAt(vec2 uv){ return texture2D(uFlow, clamp(uv, 0.0, 1.0)).rg * 2.0 - 1.0; }
 
 /* Sample the output as it was 'age' ago — 0 is the most recent retained frame,
    1 is the far end of the ring. Interpolates between adjacent slots so a moving
@@ -1856,6 +1863,202 @@ export const EFFECTS: EffectDef[] = [
     float g = timeAt(vUv, s * 0.45).g;
     float b = texture2D(uTex, vUv).b;
     gl_FragColor = vec4(r, g, b, 1.0);
+    `),
+
+  // ── FLOW & OPTICS ─────────────────────────────────────────────────
+  // The flow set reads uFlow, so their distortion follows whatever is actually
+  // moving in frame instead of a fixed axis — wave your hand and the image
+  // deforms along your hand. The optics set models real lens and glass
+  // behaviour, where the wow comes from the artefact being physically correct
+  // rather than from the amount of it.
+
+  fx("flowSmear", "Flow Smear", "dimension", "The image drags along whatever is actually moving. Wave your hand and reality follows it.",
+    [{ key: "amount", label: "Drag", min: 0, max: 1, default: 0.55 },
+     { key: "reach", label: "Reach", min: 0, max: 1, default: 0.5 }],
+    `
+    vec2 f = flowAt(vUv);
+    // Six taps walked backwards along the flow vector. A single offset only
+    // shifts the image; a walk leaves a wake, which is what reads as drag.
+    vec2 step = f * uAmount * 0.09 * (0.4 + uReach);
+    vec3 acc = texture2D(uTex, vUv).rgb;
+    float w = 1.0;
+    for (int i = 1; i < 6; i++) {
+      float fi = float(i);
+      float wi = 1.0 - fi / 6.0;
+      acc += texture2D(uTex, clamp(vUv - step * fi, 0.0, 1.0)).rgb * wi;
+      w += wi;
+    }
+    gl_FragColor = vec4(acc / w, 1.0);
+    `),
+
+  fx("flowTurbulence", "Turbulence", "dimension", "Motion becomes a fluid field — the frame churns and curls around anything that moves.",
+    [{ key: "amount", label: "Churn", min: 0, max: 1, default: 0.5 },
+     { key: "swirl", label: "Curl", min: 0, max: 1, default: 0.6 },
+     { key: "scale", label: "Scale", min: 0, max: 1, default: 0.45 }],
+    `
+    vec2 f = flowAt(vUv);
+    // Rotating the flow vector 90 degrees turns translation into circulation:
+    // the curl of the field rather than the field itself, which is what makes
+    // it read as fluid rather than as a shove.
+    vec2 curl = vec2(-f.y, f.x);
+    vec2 dir = mix(f, curl, uSwirl);
+    float n = noise(vUv * (3.0 + uScale * 22.0) + uTime * 0.35);
+    vec2 off = dir * uAmount * 0.14 * (0.55 + n * 0.9) * (0.7 + uPulse * 0.7);
+    gl_FragColor = vec4(texture2D(uTex, clamp(vUv - off, 0.0, 1.0)).rgb, 1.0);
+    `),
+
+  fx("glassRefract", "Glass", "geometry", "The frame becomes a sheet of moulded glass — living crystal that bends the light behind it.",
+    [{ key: "thickness", label: "Thickness", min: 0, max: 1, default: 0.5 },
+     { key: "facets", label: "Facets", min: 0, max: 1, default: 0.4 },
+     { key: "sheen", label: "Sheen", min: 0, max: 1, default: 0.5 }],
+    `
+    // Height field -> surface normal -> refracted offset. Modelling it as a
+    // real surface rather than a UV wobble is what makes it read as glass
+    // instead of as a ripple filter.
+    float s = 2.0 + uFacets * 14.0;
+    vec2 q = vUv * s + uTime * 0.12;
+    float h  = noise(q);
+    float hx = noise(q + vec2(0.09, 0.0));
+    float hy = noise(q + vec2(0.0, 0.09));
+    vec2 n = vec2(hx - h, hy - h) * 9.0;
+
+    vec2 off = n * uThickness * 0.075;
+    vec3 c = texture2D(uTex, clamp(vUv + off, 0.0, 1.0)).rgb;
+
+    // Dispersion: the channels take slightly different paths through the
+    // thickness, which is the giveaway that light passed through a solid.
+    c.r = texture2D(uTex, clamp(vUv + off * 1.12, 0.0, 1.0)).r;
+    c.b = texture2D(uTex, clamp(vUv + off * 0.88, 0.0, 1.0)).b;
+
+    // Specular from the same normal — free, and it makes the surface read
+    // as having a direction it is being lit from.
+    float spec = pow(max(0.0, dot(normalize(n + 0.0001), normalize(vec2(0.6, 0.8)))), 3.0);
+    c += spec * uSheen * 0.4;
+    gl_FragColor = vec4(c, 1.0);
+    `),
+
+  fx("chromaAberrate", "Aberration", "color", "Real lens dispersion — colour splits harder toward the edges, exactly as glass does it.",
+    [{ key: "amount", label: "Dispersion", min: 0, max: 1, default: 0.5 },
+     { key: "edge", label: "Edge Bias", min: 0, max: 1, default: 0.7 }],
+    `
+    // Radial, not uniform. A flat RGB offset is a glitch; dispersion that grows
+    // with distance from the optical centre is a lens, and the eye knows the
+    // difference even when it cannot name it.
+    vec2 rel = vUv - 0.5;
+    float r2 = dot(rel, rel);
+    float k = uAmount * 0.06 * mix(1.0, r2 * 4.0, uEdge);
+    vec3 c;
+    c.r = texture2D(uTex, clamp(vUv - rel * k, 0.0, 1.0)).r;
+    c.g = texture2D(uTex, vUv).g;
+    c.b = texture2D(uTex, clamp(vUv + rel * k, 0.0, 1.0)).b;
+    gl_FragColor = vec4(c, 1.0);
+    `),
+
+  fx("crtPhosphor", "CRT", "atmosphere", "Curved glass, phosphor stripes and a bleeding shadow mask. A real tube, not a scanline overlay.",
+    [{ key: "curve", label: "Curvature", min: 0, max: 1, default: 0.45 },
+     { key: "mask", label: "Shadow Mask", min: 0, max: 1, default: 0.6 },
+     { key: "bleed", label: "Bloom", min: 0, max: 1, default: 0.4 }],
+    `
+    // Barrel-warp the sample position: the picture is painted on the inside of
+    // a curved tube, so the geometry has to bend before anything else does.
+    vec2 uv = vUv * 2.0 - 1.0;
+    uv *= 1.0 + dot(uv, uv) * uCurve * 0.22;
+    uv = uv * 0.5 + 0.5;
+    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
+      gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return;
+    }
+
+    vec3 c = texture2D(uTex, uv).rgb;
+    c += discBlur(uv, 5.0) * uBleed * 0.6;
+
+    // Aperture grille: each screen column belongs to one phosphor stripe.
+    float col = floor(uv.x * uResolution.x / 3.0);
+    vec3 stripe = vec3(
+      step(0.5, abs(mod(col, 3.0) - 0.0) < 0.5 ? 1.0 : 0.0),
+      step(0.5, abs(mod(col, 3.0) - 1.0) < 0.5 ? 1.0 : 0.0),
+      step(0.5, abs(mod(col, 3.0) - 2.0) < 0.5 ? 1.0 : 0.0)
+    );
+    c *= mix(vec3(1.0), stripe * 1.9, uMask * 0.55);
+
+    // Horizontal scanline gaps, and a slight edge falloff for the tube.
+    c *= 0.72 + 0.28 * sin(uv.y * uResolution.y * 3.14159);
+    vec2 e = abs(uv - 0.5);
+    c *= 1.0 - smoothstep(0.42, 0.72, max(e.x, e.y)) * 0.5;
+    gl_FragColor = vec4(c, 1.0);
+    `),
+
+  fx("mandalaBloom", "Mandala", "geometry", "Radial mirror symmetry with drifting rotation — a kaleidoscope that breathes.",
+    [{ key: "slices", label: "Slices", min: 3, max: 24, default: 8, step: 1 },
+     { key: "spin", label: "Spin", min: 0, max: 1, default: 0.35 },
+     { key: "zoom", label: "Zoom", min: 0, max: 1, default: 0.45 }],
+    `
+    vec2 rel = vUv - 0.5;
+    rel.x *= uResolution.x / max(1.0, uResolution.y);
+    float a = atan(rel.y, rel.x);
+    float r = length(rel);
+
+    // Fold the angle into one wedge, then mirror alternate wedges so the seams
+    // meet instead of butting — a kaleidoscope is mirrors, not copies.
+    float seg = 6.2831853 / max(3.0, uSlices);
+    a = mod(a + uTime * uSpin * 0.5 + uPulse * 0.4, seg);
+    a = abs(a - seg * 0.5);
+
+    r *= 1.0 - uZoom * 0.45;
+    vec2 uv = vec2(cos(a), sin(a)) * r;
+    uv.x /= uResolution.x / max(1.0, uResolution.y);
+    gl_FragColor = vec4(texture2D(uTex, clamp(uv + 0.5, 0.0, 1.0)).rgb, 1.0);
+    `),
+
+  fx("volumetricShaft", "God Rays", "atmosphere", "Light shafts cast outward from the brightest points, with dust hanging in them.",
+    [{ key: "amount", label: "Shafts", min: 0, max: 1, default: 0.55 },
+     { key: "reach", label: "Reach", min: 0, max: 1, default: 0.5 },
+     { key: "warmth", label: "Warmth", min: 0, max: 1, default: 0.45 }],
+    `
+    // Radial occlusion march from the frame centre. Each step samples further
+    // out and keeps only what is bright, so light appears to travel through the
+    // volume rather than being painted on it.
+    vec3 base = texture2D(uTex, vUv).rgb;
+    vec2 dir = (vUv - 0.5) * (0.024 + uReach * 0.055);
+    vec3 acc = vec3(0.0);
+    float w = 1.0;
+    for (int i = 1; i <= 10; i++) {
+      vec2 uv = clamp(vUv - dir * float(i), 0.0, 1.0);
+      vec3 s = texture2D(uTex, uv).rgb;
+      float bright = max(0.0, dot(s, vec3(0.299, 0.587, 0.114)) - 0.58);
+      acc += s * bright * w;
+      w *= 0.86;
+    }
+    acc /= 6.0;
+    vec3 tint = mix(vec3(1.0), vec3(1.25, 1.02, 0.72), uWarmth);
+    gl_FragColor = vec4(base + acc * tint * uAmount * (1.2 + uPulse * 0.8), 1.0);
+    `),
+
+  fx("emberField", "Embers", "atmosphere", "A field of drifting embers that surges on the beat and lights the frame from within.",
+    [{ key: "density", label: "Density", min: 0, max: 1, default: 0.5 },
+     { key: "drift", label: "Drift", min: 0, max: 1, default: 0.5 },
+     { key: "glow", label: "Glow", min: 0, max: 1, default: 0.6 }],
+    `
+    vec3 base = texture2D(uTex, vUv).rgb;
+    float cells = 8.0 + uDensity * 30.0;
+    vec2 p = vUv * cells;
+    p.y -= uTime * (0.25 + uDrift * 1.1);
+    // Flow pushes the field around, so the embers are carried by whatever is
+    // moving in shot instead of falling on a fixed track.
+    p += flowAt(vUv) * 2.4 * uDrift;
+
+    vec2 cell = floor(p);
+    vec2 f = fract(p);
+    float h = rand(cell);
+    if (h < 0.55) { gl_FragColor = vec4(base, 1.0); return; }
+
+    vec2 c = vec2(rand(cell + 3.1), rand(cell + 7.7));
+    float d = length(f - c);
+    float spark = exp(-d * (26.0 - uGlow * 13.0));
+    // Each ember has its own phase, so the field twinkles rather than pulsing
+    // as one sheet, and the beat surges all of them together on top of that.
+    float tw = 0.55 + 0.45 * sin(uTime * (2.2 + h * 5.0) + h * 26.0);
+    vec3 col = mix(vec3(1.0, 0.55, 0.18), vec3(1.0, 0.88, 0.6), h);
+    gl_FragColor = vec4(base + col * spark * tw * uGlow * (1.0 + uPulse * 1.5), 1.0);
     `),
 
   fx("volumetricPull", "Volumetric Pull", "dimension", "The subject stretches toward the lens while the room falls away behind. Depth as a physical force.",

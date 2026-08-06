@@ -426,6 +426,19 @@ const CRAFT: Record<string, Craft> = {
   strataSlice:     { role: "form", fidelity: "neutral",   gives: { structure: 0.95 }, cost: 0.7, gpu: 2.6 },
   chronoBleed:     { role: "form", fidelity: "cinematic", gives: { structure: 0.7, color: 0.7 }, cost: 0.55, gpu: 2.4 },
   volumetricPull:  { role: "form", fidelity: "cinematic", gives: { structure: 0.9 }, cost: 0.6, gpu: 1.5 },
+
+  // ── FLOW & OPTICS ──────────────────────────────────────────────────
+  // Flow effects follow real motion, so they are `form` — they restructure.
+  // The optics set is graded by what it models: aberration and CRT are colour
+  // and atmosphere treatments, glass genuinely re-projects.
+  flowSmear:       { role: "form",   fidelity: "cinematic", gives: { structure: 0.85, light: 0.3 }, cost: 0.55, gpu: 3.6 },
+  flowTurbulence:  { role: "form",   fidelity: "cinematic", gives: { structure: 0.95 }, cost: 0.6, gpu: 2.0 },
+  glassRefract:    { role: "form",   fidelity: "cinematic", gives: { structure: 0.8, light: 0.5 }, cost: 0.55, gpu: 3.4 },
+  mandalaBloom:    { role: "form",   fidelity: "cinematic", gives: { structure: 1.0 }, cost: 0.65, gpu: 1.5 },
+  chromaAberrate:  { role: "accent", fidelity: "cinematic", gives: { color: 0.6, light: 0.2 }, cost: 0.2, gpu: 2.2 },
+  crtPhosphor:     { role: "finish", fidelity: "lofi",      gives: { contrast: 0.5 }, cost: 0.5, gpu: 4.4, replaces: 0.4 },
+  volumetricShaft: { role: "finish", fidelity: "cinematic", gives: { light: 1.0 }, cost: 0.3, gpu: 6.0 },
+  emberField:      { role: "finish", fidelity: "cinematic", gives: { light: 0.8, color: 0.4 }, cost: 0.3, gpu: 2.6 },
 };
 
 export function craftOf(id: string): Craft | null {
@@ -562,6 +575,92 @@ export const LOOKS: Look[] = [
              accent: ["echoTrails", "bufferEcho", "shockwave"],
              finish: ["godRays", "dreamGlow", "anamorphic"] },
     suits: { brightness: -0.3, needsLift: 0.4, needsColor: 0.4 }, drive: 0.75,
+  },
+
+  /* Named destinations.
+     Each of these is one recognisable end state rather than a general mood —
+     the picks are chosen so the combination lands somewhere specific, and the
+     drive is set high because half-strength versions of these read as nothing
+     in particular. They exist to give the director somewhere to actually aim. */
+  {
+    id: "mandalaBurst", name: "MANDALA BURST", blurb: "Psychedelic mandala explosion.",
+    picks: { grade: ["rainbowMap", "hueRotate", "chromaPulse"],
+             form: ["mandalaBloom", "kaleidoscope", "polarFold"],
+             accent: ["rgbShift", "chromaAberrate", "shockwave"],
+             finish: ["bloom", "holoShine", "volumetricShaft"] },
+    suits: { needsColor: 0.8, density: 0.3 }, drive: 0.88,
+  },
+  {
+    id: "liquidDream", name: "LIQUID DREAM", blurb: "A liquid dream state.",
+    picks: { grade: ["filmicTone", "oilSlick", "duotone"],
+             form: ["flowTurbulence", "liquidWarp", "flowSmear"],
+             accent: ["echoTrails", "bufferEcho", "trailDecay"],
+             finish: ["dreamGlow", "fog", "auroraVeil"] },
+    suits: { needsLift: 0.4, saturation: -0.2 }, drive: 0.72,
+  },
+  {
+    id: "infiniteTunnel", name: "INFINITE TUNNEL", blurb: "An endless tunnel that never stops arriving.",
+    picks: { grade: ["hueRotate", "rainbowMap", "infraredDream"],
+             form: ["feedbackTunnel", "drosteTunnel", "infiniteZoom", "fractalZoom"],
+             accent: ["rgbShift", "chromaAberrate"],
+             finish: ["bloom", "neonContour", "dustMotes"] },
+    suits: { needsColor: 0.7, density: 0.4 }, drive: 0.9,
+  },
+  {
+    id: "cyberSpirit", name: "CYBER SPIRIT", blurb: "A body traced in light, the room left behind.",
+    picks: { grade: ["duotone", "voltage", "thermal"],
+             form: ["depthShear", "depthEcho", "parallaxExplode"],
+             accent: ["rgbShift", "jitter", "chromaAberrate"],
+             finish: ["neonContour", "bloom", "emberField"] },
+    suits: { brightness: -0.4, needsContrast: 0.4 }, drive: 0.8,
+  },
+  {
+    id: "retroTape", name: "RETRO TAPE", blurb: "Retro digital nostalgia, badly preserved.",
+    picks: { grade: ["vhsBleed", "posterize", "bitCrush", "paletteDither"],
+             form: ["sliceDrift", "pixelSort", "slitScan"],
+             accent: ["datamosh", "blockShift", "compressionTears", "scanBreak"],
+             finish: ["crtPhosphor", "filmGrain", "vignette"] },
+    suits: { density: 0.4, contrast: 0.3 }, drive: 0.78,
+  },
+  {
+    id: "crystalHallucination", name: "CRYSTAL HALLUCINATION", blurb: "Reality through cut glass.",
+    picks: { grade: ["prismDispersion", "liquidChrome", "oilSlick"],
+             form: ["glassRefract", "crystalize", "voronoiShatter"],
+             accent: ["chromaAberrate", "rgbShift"],
+             finish: ["bloom", "caustics", "holoShine"] },
+    suits: { needsColor: 0.7, needsContrast: 0.3 }, drive: 0.82,
+  },
+  {
+    id: "festivalPlasma", name: "FESTIVAL PLASMA", blurb: "Main-stage visuals, driven by the room.",
+    picks: { grade: ["chromaPulse", "voltage", "rainbowMap"],
+             form: ["mandalaBloom", "kaleidoscope", "flowTurbulence"],
+             accent: ["shockwave", "rgbShift", "pixelExplode"],
+             finish: ["plasmaField", "bloom", "emberField", "volumetricShaft"] },
+    suits: { brightness: -0.3, needsColor: 0.6 }, drive: 0.95,
+  },
+  {
+    id: "digitalMelt", name: "DIGITAL MELT", blurb: "The image sorts itself apart and runs.",
+    picks: { grade: ["posterize", "bitCrush", "thermal"],
+             form: ["pixelSort", "melt", "strataSlice", "flowSmear"],
+             accent: ["timeDisplace", "motionMomentum", "datamosh"],
+             finish: ["filmGrain", "vignette", "fog"] },
+    suits: { density: 0.5, contrast: 0.3 }, drive: 0.85,
+  },
+  {
+    id: "livingCrystal", name: "LIVING CRYSTAL", blurb: "A crystal surface that breathes and refracts.",
+    picks: { grade: ["liquidChrome", "prismDispersion", "filmicTone"],
+             form: ["glassRefract", "ripple", "lensWarp"],
+             accent: ["chromaAberrate", "shockwave", "bufferEcho"],
+             finish: ["caustics", "bloom", "dreamGlow", "anamorphic"] },
+    suits: { needsLift: 0.4, needsColor: 0.4 }, drive: 0.76,
+  },
+  {
+    id: "spiritDepths", name: "SPIRIT DEPTHS", blurb: "You in one world, the room in another.",
+    picks: { grade: ["infraredDream", "duotone", "filmicTone"],
+             form: ["dimensionSplit", "timeShatter", "volumetricPull", "chronoBleed"],
+             accent: ["echoTrails", "chromaAberrate", "rgbShift"],
+             finish: ["volumetricShaft", "emberField", "dustMotes"] },
+    suits: { needsContrast: 0.4, brightness: -0.2 }, drive: 0.86,
   },
 ];
 
@@ -715,6 +814,22 @@ export function pickForRole(
   else pool = wider.length ? wider : onLook;
   if (!pool.length) pool = poolForRole(role);
 
+  // Frame time is a hard constraint, not a preference. Scoring alone was enough
+  // while picks only ever came from the top three, but a wider window can reach
+  // past a scoring penalty — so anything unaffordable leaves the pool outright
+  // whenever something affordable exists.
+  const affordable = pool.filter(id => (CRAFT[id]?.gpu ?? 1) <= gpuLeft);
+  if (affordable.length) {
+    pool = affordable;
+  } else {
+    // Nothing in this role fits the remaining budget. Take the cheapest rather
+    // than letting a wide pick window reach for the most expensive thing on the
+    // shelf: the old width of 3 kept that out of range by accident, and without
+    // this a late finish could triple the frame cost on its own.
+    const cheapest = Math.min(...pool.map(id => CRAFT[id]?.gpu ?? 1));
+    pool = pool.filter(id => (CRAFT[id]?.gpu ?? 1) <= cheapest + 0.001);
+  }
+
   const scored = pool.map(id => {
     const c = CRAFT[id];
     let score = 0;
@@ -726,12 +841,20 @@ export function pickForRole(
     score += (c.gives.structure ?? 0) * brief.needsStructure * 1.3;
 
     // A busy frame wants restraint, and an over-bright one wants less light.
-    score -= (c.gives.structure ?? 0) * brief.needsRestraint * 1.1 * (1 - wildness * 0.7);
+    // Content-awareness, not taste: a frame that is already busy genuinely has
+    // less room for more structure. Wildness overrides preferences, not the
+    // director's reading of the picture, so this one stays at full strength.
+    score -= (c.gives.structure ?? 0) * brief.needsRestraint * 1.1;
     score -= (c.gives.light ?? 0) * brief.needsCompression * 1.2;
     // Cost is a proxy for how dramatic an effect is, so penalising it always
     // meant systematically preferring the tamer option. A wild roll should want
     // the expensive one.
-    score -= c.cost * (0.4 + brief.needsRestraint * 0.8) * (1 - wildness * 0.95);
+    // Split deliberately. The flat 0.4 is a baseline aversion to drama and is
+    // exactly the taste wildness exists to override. The needsRestraint term is
+    // content-awareness — a busy frame genuinely does want less piled on it —
+    // and must survive at any wildness, or the director stops looking at the
+    // picture at all.
+    score -= c.cost * (0.4 * (1 - wildness * 0.95) + brief.needsRestraint * 0.8);
 
     // House style: polish by default, grit only when the look asks for it —
     // or when the roll is wild enough to want it anyway.
@@ -772,7 +895,27 @@ export function pickForRole(
      wildness means a wild roll can reach an effect the brief ranked eighth —
      still directed, but no longer the same shortlist every time. */
   const width = Math.max(1, Math.min(scored.length, 2 + Math.round(wildness * 7)));
-  return scored[Math.floor(rand() * width)].id;
+  const top = scored.slice(0, width);
+  /* Weighted by rank, not uniform.
+
+     Picking uniformly across a wide window throws the ranking away — and the
+     ranking is the entire brief: what the frame is short of, how busy it
+     already is, what the look wants. A wide uniform window made the director
+     stop reading the picture. Falling weights keep the best pick the most
+     likely while still letting the eighth-ranked effect turn up sometimes,
+     which is variety without going blind. */
+  let total = 0;
+  const weights = top.map((_, i) => {
+    const w = 1 / (1 + i * 0.55);
+    total += w;
+    return w;
+  });
+  let r = rand() * total;
+  for (let i = 0; i < top.length; i++) {
+    r -= weights[i];
+    if (r <= 0) return top[i].id;
+  }
+  return top[0].id;
 }
 
 /**
@@ -874,8 +1017,18 @@ export function opacityForRole(
     ? cost * 0.06
     : cost * 0.34 * (1 - wildness * 0.8);
   v *= 1 - damp;
+  v *= 0.85 + look.drive * 0.2 + wildness * 0.16;
 
-  return Math.max(0.22, Math.min(1, v * (0.85 + look.drive * 0.2 + wildness * 0.16)));
+  // A full-frame accent or finish at near-full opacity buries the grade and the
+  // form underneath it — that is the mud this whole hierarchy exists to avoid,
+  // and wildness is not allowed to reach it. A REGIONED one is a different
+  // case entirely: it only covers part of the frame, so the layers beneath
+  // still read everywhere else, and it may go as loud as it likes.
+  if (!opts.regioned && (role === "accent" || role === "finish")) {
+    v = Math.min(v, 0.84);
+  }
+
+  return Math.max(0.22, Math.min(1, v));
 }
 
 export function blendForRole(role: Role, rand: () => number): BlendMode {
@@ -967,12 +1120,23 @@ export function compose(
   // pixels instead of on top of each other.
   let partition = rand() < 0.12 + wildness * 0.64 ? rollPartition(rand, wildness) : null;
 
-  for (const role of roles) {
+  for (let ri = 0; ri < roles.length; ri++) {
+    const role = roles[ri];
     // The rule-break. Never applied to the grade: it is the tonal foundation
     // and an arbitrary effect underneath everything wipes the frame.
     const breakRule = role !== "grade" && rand() < chaos * 0.5;
+    /* Reserve frame time for the roles still to come.
+       Without this an early role can spend the budget down to nothing, and the
+       last one then overshoots no matter how cheap it picks — there is a floor
+       of 1x per effect. Holding back that floor per remaining role is what
+       makes the ceiling an actual guarantee rather than a near miss. */
+    const reserve = (roles.length - ri - 1) * 1.0;
     const id = pickForRole(role, look, brief, rand, {
-      exclude: [...used], budgetLeft: budget, gpuLeft: gpu, anyRole: breakRule, wildness,
+      exclude: [...used],
+      budgetLeft: budget,
+      gpuLeft: Math.max(1, gpu - reserve),
+      anyRole: breakRule,
+      wildness,
     });
     used.add(id);
     budget -= CRAFT[id]?.cost ?? 0.3;
