@@ -19,6 +19,7 @@ import {
   paramsForRole,
   pickForRole,
   roleForQuadrant,
+  rollWildness,
   type FrameBrief,
   type Look,
   type Role,
@@ -66,6 +67,21 @@ const CHAOS: Record<Intensity, number> = {
   savage: 0.15,
   nuclear: 0.35,
   interdimensional: 0.6,
+};
+
+/**
+ * Lower bound on how wild a roll may be, per intensity.
+ *
+ * A floor rather than a fixed value: each mosh still rolls its own wildness
+ * with real spread, so even INTERDIMENSIONAL varies tap to tap. Raising the
+ * setting shifts the whole distribution up instead of pinning it, which keeps
+ * every setting worth pressing repeatedly.
+ */
+const WILD_FLOOR: Record<Intensity, number> = {
+  mild: 0,
+  savage: 0.18,
+  nuclear: 0.42,
+  interdimensional: 0.62,
 };
 
 type State = {
@@ -484,6 +500,7 @@ export const useStore = create<State & Actions>((set, get) => ({
     const composition = compose(brief, rand, {
       roleCount: ROLE_COUNT[inten],
       chaos: CHAOS[inten],
+      wildness: rollWildness(rand, WILD_FLOOR[inten]),
       avoidLooks: s.recentLooks,
       avoidEffects: [...s.recentEffects, ...locked.map(l => l.effectId)],
     });
@@ -542,6 +559,9 @@ export const useStore = create<State & Actions>((set, get) => ({
     // Q3 accents, Q4 finishes.
     const role = roleForQuadrant(q);
     const affinity = opts?.targetAffinity ?? skewedAffinity(rand);
+    // Each quadrant re-roll gets its own wildness, so repeatedly tapping one
+    // quadrant sweeps a real range instead of nudging the same effect.
+    const wild = rollWildness(rand, WILD_FLOOR[s.intensity]);
 
     const held = layers
       .slice(0, QUADRANT_COUNT)
@@ -551,6 +571,7 @@ export const useStore = create<State & Actions>((set, get) => ({
     const effectId = pickForRole(role, look, brief, rand, {
       exclude: [layers[q]?.effectId ?? "", ...held, ...(s.quadrantHistory[q] ?? [])].filter(Boolean),
       affinityTarget: affinity,
+      wildness: wild,
     });
     const def = EFFECTS_BY_ID[effectId];
     if (!def) return null;
@@ -569,8 +590,8 @@ export const useStore = create<State & Actions>((set, get) => ({
         effectId: fillId,
         hidden: false, locked: false,
         blend: fillRole === "grade" ? "normal" : blendForRole(fillRole, rand),
-        opacity: opacityForRole(fillRole, look, brief, rand, fillId),
-        params: paramsForRole(fillId, fillRole, look, brief, rand),
+        opacity: opacityForRole(fillRole, look, brief, rand, fillId, { wildness: wild }),
+        params: paramsForRole(fillId, fillRole, look, brief, rand, wild),
         mods: Object.fromEntries(fillDef.params.map(p => [p.key, null])),
         audioMaps: Object.fromEntries(fillDef.params.map(p => [p.key, null])),
       });
@@ -585,8 +606,8 @@ export const useStore = create<State & Actions>((set, get) => ({
       // The grade sits at the bottom fully opaque so the source is never
       // wiped out from underneath the stack.
       blend: role === "grade" ? "normal" : blendForRole(role, rand),
-      opacity: opacityForRole(role, look, brief, rand, effectId),
-      params: paramsForRole(effectId, role, look, brief, rand),
+      opacity: opacityForRole(role, look, brief, rand, effectId, { wildness: wild }),
+      params: paramsForRole(effectId, role, look, brief, rand, wild),
       mods: Object.fromEntries(def.params.map(p => [p.key, null])),
       audioMaps: Object.fromEntries(def.params.map(p => [p.key, null])),
     };
