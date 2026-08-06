@@ -47,8 +47,25 @@ const LOOK_MEMORY = 4;
 const ROLE_COUNT: Record<Intensity, number> = {
   mild: 2,
   savage: 3,
-  nuclear: 4,
-  interdimensional: 4,
+  nuclear: 5,
+  interdimensional: 7,
+};
+
+/**
+ * How far the director may break its own grammar at each intensity.
+ *
+ * Mild stays strict — it is the setting you reach for when you want the shot
+ * back, not reinvented. The top end is meant to surprise you, so it reaches
+ * outside the role shelves often enough that no two stacks rhyme.
+ *
+ * interdimensional used to be identical to nuclear; depth and chaos are what
+ * now make it a different setting rather than a different word.
+ */
+const CHAOS: Record<Intensity, number> = {
+  mild: 0,
+  savage: 0.15,
+  nuclear: 0.35,
+  interdimensional: 0.6,
 };
 
 type State = {
@@ -466,6 +483,7 @@ export const useStore = create<State & Actions>((set, get) => ({
     const locked = s.layers.filter(l => l.locked);
     const composition = compose(brief, rand, {
       roleCount: ROLE_COUNT[inten],
+      chaos: CHAOS[inten],
       avoidLooks: s.recentLooks,
       avoidEffects: [...s.recentEffects, ...locked.map(l => l.effectId)],
     });

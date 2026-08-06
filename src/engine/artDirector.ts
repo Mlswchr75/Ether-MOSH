@@ -336,6 +336,14 @@ const CRAFT: Record<string, Craft> = {
   caustics:         { role: "finish", fidelity: "cinematic", gives: { light: 0.9 }, cost: 0.3, gpu: 2.0 },
   anamorphic:       { role: "finish", fidelity: "cinematic", gives: { light: 0.95 }, cost: 0.25, gpu: 6.5 },
 
+  // Ported from the Lovable build — full-frame optical systems rather than
+  // surface treatments, which is what separates them from this library's own
+  // caustics / moire / contourMap.
+  feedbackTunnel:   { role: "form",   fidelity: "cinematic", gives: { structure: 0.95 }, cost: 0.65, gpu: 1.6 },
+  moirePulse:       { role: "form",   fidelity: "neutral",   gives: { structure: 0.8, color: 0.7 }, cost: 0.55, replaces: 0.7 },
+  topoContour:      { role: "grade",  fidelity: "neutral",   gives: { color: 1.0, contrast: 0.6 }, cost: 0.5, replaces: 0.9 },
+  causticWater:     { role: "finish", fidelity: "cinematic", gives: { light: 0.9, color: 0.4 }, cost: 0.3, gpu: 3.2 },
+
   // Temporal — the only effects that sample uFeedback, so they read as motion
   // and memory rather than as a filter. All are single-pass and cheap on GPU
   // (one or two extra texture fetches); their real expense is that they hold
@@ -525,6 +533,15 @@ const ROLE_BLENDS: Record<Role, BlendMode[]> = {
   finish: ["screen", "additive", "screen", "overlay"],
 };
 
+/**
+ * Deepest stack the director will build.
+ *
+ * Four is the complete sentence; past that it doubles roles rather than
+ * inventing new ones. Seven is where added layers stop reading as composition
+ * and start reading as sediment.
+ */
+export const MAX_ROLES = 7;
+
 /** Total detail destruction a single stack is allowed to spend. */
 const COST_BUDGET = 1.5;
 
@@ -556,7 +573,18 @@ export function pickForRole(
   look: Look,
   brief: FrameBrief,
   rand: () => number,
-  opts: { exclude?: string[]; budgetLeft?: number; gpuLeft?: number; affinityTarget?: number } = {},
+  opts: {
+    exclude?: string[];
+    budgetLeft?: number;
+    gpuLeft?: number;
+    affinityTarget?: number;
+    /**
+     * Ignore the role's own shelf and draw from the whole library. This is how
+     * an effect ends up somewhere it was never filed — a geometry effect
+     * finishing a stack, a finish used as an accent.
+     */
+    anyRole?: boolean;
+  } = {},
 ): string {
   const exclude = new Set(opts.exclude ?? []);
   const budget = opts.budgetLeft ?? COST_BUDGET;
@@ -564,12 +592,15 @@ export function pickForRole(
   const affinity = opts.affinityTarget ?? 1;
 
   const onLook = (look.picks[role] ?? []).filter(id => CRAFT[id] && !exclude.has(id));
-  const wider = poolForRole(role).filter(id => !exclude.has(id));
+  const wider = (opts.anyRole ? Object.keys(CRAFT) : poolForRole(role)).filter(id => !exclude.has(id));
   const offLook = wider.filter(id => !(look.picks[role] ?? []).includes(id));
 
   // Affinity decides which shelf to reach for; the brief decides what to take.
+  // A rule-break skips the look's own picks entirely — deferring to them is
+  // exactly the habit it exists to break.
   let pool: string[];
-  if (affinity >= 0.2) pool = onLook.length ? onLook : wider;
+  if (opts.anyRole) pool = wider.length ? wider : onLook;
+  else if (affinity >= 0.2) pool = onLook.length ? onLook : wider;
   else if (affinity <= -0.2) pool = offLook.length ? offLook : wider;
   else pool = wider.length ? wider : onLook;
   if (!pool.length) pool = poolForRole(role);
@@ -703,26 +734,61 @@ export function blendForRole(role: Role, rand: () => number): BlendMode {
 export function compose(
   brief: FrameBrief,
   rand: () => number,
-  opts: { roleCount?: number; avoidLooks?: string[]; avoidEffects?: string[]; look?: Look } = {},
+  opts: {
+    roleCount?: number;
+    avoidLooks?: string[];
+    avoidEffects?: string[];
+    look?: Look;
+    /**
+     * 0..1. How willing the director is to break its own grammar.
+     *
+     * At 0 it composes strictly: one effect per role, each drawn from that
+     * role's own shelf — the four-part sentence, every time. Above 0, each
+     * slot has a chance to reach into *any* shelf instead, so an effect can
+     * turn up somewhere it was never filed. That is the whole point: the
+     * skeleton guarantees the stack reads, and the rule-breaks stop every
+     * stack reading the *same*.
+     *
+     * Defaults to 0 so the grammar holds unless a caller asks for chaos.
+     */
+    chaos?: number;
+  } = {},
 ): Composition {
   const look = opts.look ?? chooseLook(brief, rand, opts.avoidLooks ?? []);
-  const roleCount = Math.max(1, Math.min(4, opts.roleCount ?? 4));
+  const roleCount = Math.max(1, Math.min(MAX_ROLES, opts.roleCount ?? 4));
+  const chaos = Math.max(0, Math.min(1, opts.chaos ?? 0));
+
   // A 2-role stack is grade + finish: tone and light, no distortion. A 3-role
   // stack adds form. Accent is the last thing added, never the first.
-  const roles: Role[] =
+  const base: Role[] =
     roleCount >= 4 ? ["grade", "form", "accent", "finish"]
     : roleCount === 3 ? ["grade", "form", "finish"]
     : roleCount === 2 ? ["grade", "finish"]
     : ["grade"];
 
+  // Past four, the stack doubles up rather than inventing new roles: a second
+  // accent, a second finish, a second form. Sorted back into role order so the
+  // sentence still reads bottom-to-top however deep it gets.
+  const extras: Role[] = ["accent", "finish", "form"];
+  const roles: Role[] = [...base];
+  for (let i = 4; i < roleCount; i++) roles.push(extras[(i - 4) % extras.length]);
+  roles.sort((a, b) => ROLES.indexOf(a) - ROLES.indexOf(b));
+
   const used = new Set(opts.avoidEffects ?? []);
-  let budget = COST_BUDGET;
-  let gpu = GPU_BUDGET;
+  // Deeper stacks get proportionally more to spend — otherwise a 7-layer stack
+  // is four real effects and three the budget refused to pay for. Both ceilings
+  // stay bounded so frame time can't run away.
+  const extraRoles = Math.max(0, roleCount - 4);
+  let budget = Math.min(COST_BUDGET + extraRoles * 0.3, 2.4);
+  let gpu = Math.min(GPU_BUDGET + extraRoles * 4, 28);
   const layers: ComposedLayer[] = [];
 
   for (const role of roles) {
+    // The rule-break. Never applied to the grade: it is the tonal foundation
+    // and an arbitrary effect underneath everything wipes the frame.
+    const breakRule = role !== "grade" && rand() < chaos * 0.5;
     const id = pickForRole(role, look, brief, rand, {
-      exclude: [...used], budgetLeft: budget, gpuLeft: gpu,
+      exclude: [...used], budgetLeft: budget, gpuLeft: gpu, anyRole: breakRule,
     });
     used.add(id);
     budget -= CRAFT[id]?.cost ?? 0.3;
