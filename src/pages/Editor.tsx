@@ -233,7 +233,7 @@ export default function Editor() {
 
   // Page title
   useEffect(() => {
-    const base = "Cathedral // Mosh";
+    const base = "ETHER-MOSH!";
     document.title = isPerformanceMode
       ? "●"
       : sourceName ? `${sourceName} – ${base}` : base;

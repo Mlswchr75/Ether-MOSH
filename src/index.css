@@ -459,6 +459,92 @@
     background: hsl(var(--accent));
   }
 
+  /* ---------------- Hot trigger buttons (right-side toolbar) ---------------- */
+  .hot-trigger {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 3px;
+    background: rgba(0, 0, 0, 0.62);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.58);
+    cursor: pointer;
+    transition: color 120ms ease-out, background 120ms ease-out, border-color 120ms ease-out;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    animation: hot-trigger-in 350ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    flex-shrink: 0;
+  }
+  .hot-trigger:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.10);
+    border-color: rgba(255, 255, 255, 0.18);
+  }
+  .hot-trigger[data-active] {
+    color: hsl(var(--accent));
+    border-color: hsl(var(--accent) / 0.45);
+    background: hsl(var(--accent) / 0.10);
+  }
+  .hot-trigger:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+  @keyframes hot-trigger-in {
+    from { opacity: 0; transform: translateX(10px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+
+  /* Glitch ghost — sits absolutely over the button, invisible by default */
+  .hot-trigger__glitch {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    color: hsl(var(--accent));
+  }
+  .hot-trigger:hover .hot-trigger__glitch {
+    animation: hot-glitch 0.5s steps(1) infinite;
+  }
+  @keyframes hot-glitch {
+    0%   { opacity: 0; }
+    12%  { opacity: 0.55; transform: translate(-2px, 1px); clip-path: inset(28% 0 50% 0); }
+    24%  { opacity: 0; transform: translate(0, 0); clip-path: none; }
+    68%  { opacity: 0; }
+    76%  { opacity: 0.4; transform: translate(2px, -1px); clip-path: inset(58% 0 16% 0); }
+    88%  { opacity: 0; transform: translate(0, 0); clip-path: none; }
+    100% { opacity: 0; }
+  }
+
+  /* Visible icon — normal flex child centered by the button */
+  .hot-trigger__ico {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative; /* ensures it paints above the absolute glitch */
+    z-index: 1;
+  }
+
+  /* Slide-in for picker / favorites panels */
+  .panel-in-3d {
+    animation: panel-in 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  @keyframes panel-in {
+    from { opacity: 0; transform: translateX(6px) scale(0.97); }
+    to   { opacity: 1; transform: translateX(0) scale(1); }
+  }
+
+  /* iOS safe-area inset utilities */
+  .safe-top    { padding-top: env(safe-area-inset-top, 0px); }
+  .safe-right  { padding-right: env(safe-area-inset-right, 0px); }
+  .safe-bottom { padding-bottom: env(safe-area-inset-bottom, 0px); }
+  .safe-left   { padding-left: env(safe-area-inset-left, 0px); }
+
   /* ---------------- Misc ---------------- */
   .editor-shell { contain: layout paint; }
 

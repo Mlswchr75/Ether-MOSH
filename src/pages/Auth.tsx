@@ -5,6 +5,7 @@ import { ArrowLeft, Mail } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
+
 // NOTE: Netlify build intentionally does NOT use Lovable's Apple/Google OAuth
 // (@lovable.dev/cloud-auth-js) — that SDK is tied to Lovable's own auth domain
 // and isn't safe to run from a different origin, and it's not in this repo's
@@ -106,6 +107,7 @@ export default function Auth() {
       toast.error(err instanceof Error ? err.message : "google sign-in failed");
       setBusy(null);
     }
+    // On success the browser redirects — no further action needed.
   };
 
   return (
