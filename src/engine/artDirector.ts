@@ -296,7 +296,7 @@ const CRAFT: Record<string, Craft> = {
   frameSmear:      { role: "form", fidelity: "cinematic", gives: { structure: 0.4 }, cost: 0.5, gpu: 4.6 },
 
   emboss:           { role: "form", fidelity: "cinematic", gives: { structure: 0.7, contrast: 0.5 }, cost: 0.5, gpu: 2.3 },
-  spinBlur:         { role: "form", fidelity: "cinematic", gives: { structure: 0.6 }, cost: 0.5, gpu: 6.3 },
+  extrude:         { role: "form", fidelity: "cinematic", gives: { structure: 0.85, contrast: 0.4 }, cost: 0.5, gpu: 4.5 },
   moire:            { role: "form", fidelity: "neutral", gives: { structure: 0.8, color: 0.5 }, cost: 0.55, gpu: 2.0 },
   slitScan:         { role: "form", fidelity: "neutral", gives: { structure: 0.8 }, cost: 0.5 },
 

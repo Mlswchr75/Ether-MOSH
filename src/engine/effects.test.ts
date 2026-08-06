@@ -5,7 +5,7 @@ import { axisTargets } from "./quadrants";
 /** The effects written for the quadrant instrument. */
 const EXPANSION_SET = [
   "halftone", "crossHatch", "kuwahara", "anaglyph", "photocopy", "contourMap",
-  "emboss", "spinBlur", "moire", "slitScan", "rollingShutter", "echoTrails",
+  "emboss", "moire", "slitScan", "rollingShutter", "echoTrails", "extrude",
   "caustics", "anamorphic",
 ];
 

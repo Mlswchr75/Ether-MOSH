@@ -161,23 +161,42 @@ export const EFFECTS: EffectDef[] = [
     `),
 
   fx("jitter", "Jitter", "corruption", "Per-pixel chromatic shake.",
-    [{ key: "amount", label: "Amount", min: 0, max: 1, default: 0.4 }],
+    [{ key: "amount", label: "Amount", min: 0, max: 1, default: 0.45 },
+     { key: "rate", label: "Rate", min: 0, max: 1, default: 0.5 }],
     `
-    float t = uTime*30.0 + uPulse*3.0;
+    float t = uTime * mix(6.0, 70.0, uRate) + uPulse*3.0;
     vec2 j = vec2(noise(vec2(vUv.y*40.0,t)), noise(vec2(vUv.x*40.0,t+11.0))) - 0.5;
-    gl_FragColor = texture2D(uTex, vUv + j*uAmount*0.11);
+    // Per-channel shake, which is what "chromatic" in the blurb promised and
+    // what keeps this distinct from a plain positional wobble.
+    vec2 o = j * uAmount * 0.13;
+    vec3 col;
+    col.r = texture2D(uTex, vUv + o * 1.35).r;
+    col.g = texture2D(uTex, vUv + o * 0.15).g;
+    col.b = texture2D(uTex, vUv - o * 1.05).b;
+    gl_FragColor = vec4(col, 1.0);
     `),
 
   fx("scanBreak", "Scan Break", "corruption", "Horizontal line tears.",
     [{ key: "amount", label: "Amount", min: 0, max: 1, default: 0.6 },
      { key: "speed", label: "Speed", min: 0, max: 4, default: 1 }],
     `
-    // step(0.97, ...) tore only ~3% of scanlines, so the effect barely showed.
-    // A wider gate plus a bigger displacement makes the tearing read.
-    float band = step(0.80, sin(vUv.y*120.0 + uTime*uSpeed*8.0));
-    float shift = (rand(vec2(floor(vUv.y*200.0), floor(uTime*4.0))) - 0.5)*uAmount*1.4;
-    vec2 uv = vec2(fract(vUv.x + shift*band), vUv.y);
-    gl_FragColor = texture2D(uTex, uv);
+    // Torn scanlines that also split their colour channels and jump vertically.
+    // A pure horizontal slide read as interchangeable with every other smear in
+    // the library and vanished the moment anything was stacked on it.
+    float band = step(0.74, sin(vUv.y*120.0 + uTime*uSpeed*8.0));
+    float row = floor(vUv.y*200.0);
+    float shift = (rand(vec2(row, floor(uTime*4.0))) - 0.5)*uAmount*1.7;
+    // Torn rows grab from elsewhere in the frame rather than merely sliding.
+    float vjump = (rand(vec2(row+13.0, floor(uTime*4.0))) - 0.5)*uAmount*0.22*band;
+    vec2 uv = vec2(fract(vUv.x + shift*band), clamp(vUv.y + vjump, 0.0, 1.0));
+    float sep = shift * band * 0.16;
+    vec3 col;
+    col.r = texture2D(uTex, uv + vec2(sep, 0.0)).r;
+    col.g = texture2D(uTex, uv).g;
+    col.b = texture2D(uTex, uv - vec2(sep, 0.0)).b;
+    // Signal spike along the tear edge.
+    col += vec3(0.7, 0.85, 1.0) * band * abs(shift) * 0.5;
+    gl_FragColor = vec4(col, 1.0);
     `),
 
   fx("frameSmear", "Frame Smear", "corruption", "Directional motion smear.",
@@ -210,10 +229,26 @@ export const EFFECTS: EffectDef[] = [
     [{ key: "amount", label: "Amount", min: 0, max: 1, default: 0.5 },
      { key: "offset", label: "Offset", min: 0, max: 0.2, default: 0.04 }],
     `
-    vec4 a = texture2D(uTex, vUv);
-    vec4 b = texture2D(uTex, vUv + vec2(uOffset, uOffset*0.6));
-    vec4 c = texture2D(uTex, vUv - vec2(uOffset*0.7, uOffset*0.3));
-    gl_FragColor = mix(a, max(max(a,b),c), uAmount);
+    // Phosphor persistence rather than a three-tap lighten. Bright areas burn a
+    // decaying trail into the frame the way a CRT does, which is a different
+    // idea from Echo Trails' rotating ghosts and no longer reads like haze.
+    vec3 cur = texture2D(uTex, vUv).rgb;
+    vec3 burn = vec3(0.0);
+    float w = 0.0;
+    vec2 drift = vec2(uOffset, uOffset * 0.45);
+    for (int i = 1; i < 7; i++) {
+      float t = float(i);
+      vec3 s = texture2D(uTex, clamp(vUv - drift * t, 0.0, 1.0)).rgb;
+      // Only what was bright leaves a trail — that is what makes it phosphor.
+      float hot = max(0.0, dot(s, vec3(0.299, 0.587, 0.114)) - 0.34);
+      float k = exp(-t * 0.55);
+      burn += s * hot * k;
+      w += k;
+    }
+    burn /= max(w, 0.001);
+    // Trails skew green-white as real phosphor decay does.
+    vec3 col = cur + burn * vec3(0.72, 1.0, 0.80) * uAmount * 4.5;
+    gl_FragColor = vec4(col, 1.0);
     `),
 
   // ── COLOR CHAOS ───────────────────────────────────────────────────
@@ -221,31 +256,48 @@ export const EFFECTS: EffectDef[] = [
     [{ key: "amount", label: "Amount", min: 0, max: 1, default: 0.4 },
      { key: "angle", label: "Angle", min: 0, max: 3.14159, default: 0 }],
     `
-    // Half a turn, not a full one: at 2*PI the direction is identical to 0, so
-    // a full drag of the pad's Y axis landed exactly where it started. Offset
-    // also widened — 4% of frame was barely visible.
-    vec2 dir = vec2(cos(uAngle), sin(uAngle)) * uAmount * 0.09;
-    float r = texture2D(uTex, vUv + dir).r;
-    float g = texture2D(uTex, vUv).g;
-    float b = texture2D(uTex, vUv - dir).b;
-    gl_FragColor = vec4(r,g,b, texture2D(uTex,vUv).a);
+    // Radial prismatic divergence rather than a flat linear offset: channels
+    // separate outward from a moving focus, so this reads as a lens breaking
+    // apart rather than as the horizontal tape smear VHS Bleed already owns.
+    // It was the single most redundant effect in the library before this,
+    // appearing in ten near-duplicate pairs.
+    vec2 focus = vec2(0.5) + 0.22 * vec2(cos(uAngle * 2.0), sin(uAngle * 2.0));
+    vec2 d = vUv - focus;
+    float rr = length(d);
+    vec2 dir = d / max(rr, 1e-4);
+    // Divergence grows with radius, the way real chromatic aberration does.
+    float k = uAmount * 0.19 * (0.25 + rr * 1.8);
+    vec3 col;
+    col.r = texture2D(uTex, vUv + dir * k * 1.00).r;
+    col.g = texture2D(uTex, vUv + dir * k * 0.25).g;
+    col.b = texture2D(uTex, vUv - dir * k * 0.85).b;
+    // Prismatic rim where the split is widest.
+    float rim = smoothstep(0.25, 0.75, rr) * uAmount;
+    col += vec3(0.40, 0.14, 0.62) * rim * 0.45;
+    gl_FragColor = vec4(col, 1.0);
     `),
 
   fx("hueRotate", "Hue Rotate", "color", "Rotate the entire color wheel.",
-    [{ key: "amount", label: "Amount", min: -1, max: 1, default: 0.3 }],
+    [{ key: "amount", label: "Amount", min: -1, max: 1, default: 0.3 },
+     { key: "vividness", label: "Vividness", min: 0, max: 1, default: 0.5 }],
     `
     vec4 c = texture2D(uTex, vUv);
     vec3 hsv = rgb2hsv(c.rgb);
     hsv.x = fract(hsv.x + uAmount);
+    // Rotating hue alone left the pad's Y axis dead; saturation is the natural
+    // partner and runs this from washed out to electric.
+    hsv.y = clamp(hsv.y * mix(0.15, 2.4, uVividness), 0.0, 1.0);
     gl_FragColor = vec4(hsv2rgb(hsv), c.a);
     `),
 
   fx("solarize", "Solarize", "color", "Invert highlights — print blowout.",
-    [{ key: "amount", label: "Amount", min: 0, max: 1, default: 0.7 }],
+    [{ key: "amount", label: "Amount", min: 0, max: 1, default: 0.7 },
+     { key: "pivot", label: "Pivot", min: 0.15, max: 0.85, default: 0.5 }],
     `
     vec4 c = texture2D(uTex, vUv);
     vec3 inv = 1.0 - c.rgb;
-    vec3 sol = mix(c.rgb, inv, step(0.5, c.rgb));
+    // Pivot moves which tones invert — the whole character of a solarisation.
+    vec3 sol = mix(c.rgb, inv, step(vec3(uPivot), c.rgb));
     gl_FragColor = vec4(mix(c.rgb, sol, uAmount), c.a);
     `),
 
@@ -260,13 +312,30 @@ export const EFFECTS: EffectDef[] = [
     `),
 
   fx("vhsBleed", "VHS Bleed", "color", "Horizontal chroma smear, retro tape.",
-    [{ key: "amount", label: "Amount", min: 0, max: 1, default: 0.6 }],
+    [{ key: "amount", label: "Amount", min: 0, max: 1, default: 0.6 },
+     { key: "tracking", label: "Tracking", min: 0, max: 1, default: 0.5 }],
     `
-    float r = texture2D(uTex, vUv + vec2(0.030*uAmount, 0.0)).r;
-    float g = texture2D(uTex, vUv).g;
-    float b = texture2D(uTex, vUv - vec2(0.044*uAmount, 0.0)).b;
-    float band = sin(vUv.y*800.0)*0.10*uAmount;
-    gl_FragColor = vec4(r+band, g, b-band, 1.0);
+    // Full tape damage: chroma smear, drifting tracking bands, dropouts and a
+    // head-switching tear along the bottom. Previously a faint horizontal
+    // chroma offset, which is why it read as interchangeable with RGB Shift.
+    float tape = uTime * 0.6;
+    float trackBand = smoothstep(mix(0.85, 0.05, uTracking), 1.0, sin(vUv.y * 34.0 - tape * 3.0));
+    float wobble = (noise(vec2(vUv.y * 90.0, tape * 4.0)) - 0.5) * uAmount * 0.18 * trackBand;
+    // Head switching: the bottom of the frame shears hard, as on a real deck.
+    float headSwitch = smoothstep(0.10, 0.0, vUv.y);
+    wobble += (noise(vec2(vUv.y * 220.0, tape * 9.0)) - 0.5) * uAmount * 0.34 * headSwitch;
+    vec2 uv = vec2(fract(vUv.x + wobble), vUv.y);
+    vec3 col;
+    col.r = texture2D(uTex, uv + vec2(0.028*uAmount, 0.0)).r;
+    col.g = texture2D(uTex, uv).g;
+    col.b = texture2D(uTex, uv - vec2(0.040*uAmount, 0.0)).b;
+    // Dropouts and luma noise, concentrated in the tracking bands.
+    float dropout = step(0.985, noise(vec2(vUv.y * 300.0, tape * 12.0)));
+    col = mix(col, vec3(0.78), dropout * uAmount * 0.85);
+    col += (noise(vUv * vec2(60.0, 700.0) + tape) - 0.5) * uAmount * 0.34 * (0.3 + trackBand);
+    // Interlace darkening so it reads as a tape image rather than a tint.
+    col *= 1.0 - 0.24 * uAmount * step(0.5, fract(vUv.y * uResolution.y * 0.5));
+    gl_FragColor = vec4(col, 1.0);
     `),
 
   fx("scanlines", "CRT Scanlines", "color", "Cathode ray tube banding.",
@@ -280,18 +349,24 @@ export const EFFECTS: EffectDef[] = [
     `),
 
   fx("posterize", "Posterize", "color", "Quantize tone bands.",
-    [{ key: "levels", label: "Levels", min: 2, max: 16, default: 5, step: 1 }],
+    [{ key: "levels", label: "Levels", min: 2, max: 16, default: 5 },
+     { key: "bias", label: "Bias", min: 0, max: 1, default: 0.5 }],
     `
     vec4 c = texture2D(uTex, vUv);
-    c.rgb = floor(c.rgb*uLevels)/uLevels;
+    // Levels unstepped, because a stepped param snaps under a dragging finger.
+    // Bias shifts where the bands land, so one level count can posterise into
+    // shadow detail or into highlight detail.
+    c.rgb = floor(clamp(c.rgb + (uBias - 0.5) * 0.4, 0.0, 1.0)*uLevels)/uLevels;
     gl_FragColor = c;
     `),
 
   fx("thermal", "Thermal", "color", "Heat-vision colormap.",
-    [{ key: "amount", label: "Mix", min: 0, max: 1, default: 0.8 }],
+    [{ key: "amount", label: "Mix", min: 0, max: 1, default: 0.8 },
+     { key: "range", label: "Range", min: 0, max: 1, default: 0.5 }],
     `
     vec4 c = texture2D(uTex, vUv);
-    float l = dot(c.rgb, vec3(0.299,0.587,0.114));
+    // Range narrows or widens the temperature window.
+    float l = clamp((dot(c.rgb, vec3(0.299,0.587,0.114)) - 0.5) * mix(0.45, 2.6, uRange) + 0.5, 0.0, 1.0);
     vec3 cold = vec3(0.05,0.0,0.4);
     vec3 mid  = vec3(0.95,0.2,0.6);
     vec3 hot  = vec3(1.0,1.0,0.4);
@@ -352,10 +427,11 @@ export const EFFECTS: EffectDef[] = [
     `),
 
   fx("kaleidoscope", "Kaleidoscope", "geometry", "Mirror-symmetry mandala.",
-    [{ key: "segments", label: "Segments", min: 2, max: 16, default: 6, step: 1 }],
+    [{ key: "segments", label: "Segments", min: 2, max: 16, default: 6 },
+     { key: "spin", label: "Spin", min: 0, max: 1, default: 0.3 }],
     `
     vec2 p = vUv-0.5;
-    float a = atan(p.y,p.x);
+    float a = atan(p.y,p.x) + uSpin * uTime * 0.6;
     float r = length(p);
     float seg = 6.2831853/uSegments;
     a = mod(a, seg);
@@ -365,39 +441,69 @@ export const EFFECTS: EffectDef[] = [
     `),
 
   fx("mirror", "Mirror", "geometry", "Reflect across axis.",
-    [{ key: "axis", label: "Axis", min: 0, max: 1, default: 0, step: 1 }],
+    [{ key: "axis", label: "Axis", min: 0, max: 1, default: 0 },
+     { key: "seam", label: "Seam", min: 0.15, max: 0.85, default: 0.5 }],
     `
     vec2 uv = vUv;
-    if (uAxis < 0.5) uv.x = uv.x < 0.5 ? uv.x*2.0 : (1.0 - uv.x)*2.0;
-    else             uv.y = uv.y < 0.5 ? uv.y*2.0 : (1.0 - uv.y)*2.0;
-    gl_FragColor = texture2D(uTex, uv);
+    // Seam moves the fold off centre, turning a symmetric mirror into an
+    // off-axis one and giving the pad a live second axis.
+    if (uAxis < 0.5) uv.x = uv.x < uSeam ? uv.x/uSeam : (1.0 - uv.x)/(1.0 - uSeam);
+    else             uv.y = uv.y < uSeam ? uv.y/uSeam : (1.0 - uv.y)/(1.0 - uSeam);
+    gl_FragColor = texture2D(uTex, clamp(uv, 0.0, 1.0));
     `),
 
   fx("lensWarp", "Lens Warp", "geometry", "Barrel/pincushion distortion.",
-    [{ key: "amount", label: "Amount", min: -1, max: 1, default: 0.4 }],
+    [{ key: "amount", label: "Amount", min: -1, max: 1, default: 0.45 },
+     { key: "fringe", label: "Fringe", min: 0, max: 1, default: 0.4 }],
     `
     vec2 p = vUv-0.5;
     float r2 = dot(p,p);
-    p *= 1.0 + uAmount*r2*2.0;
-    gl_FragColor = texture2D(uTex, p+0.5);
+    // Real glass disperses as it bends; per-channel fringing is what makes this
+    // read as a lens rather than a plain pinch.
+    float k = 1.0 + uAmount*r2*2.0;
+    vec3 col;
+    col.r = texture2D(uTex, p * (k * (1.0 + uFringe*0.10)) + 0.5).r;
+    col.g = texture2D(uTex, p * k + 0.5).g;
+    col.b = texture2D(uTex, p * (k * (1.0 - uFringe*0.10)) + 0.5).b;
+    gl_FragColor = vec4(col, 1.0);
     `),
 
   fx("twirl", "Twirl", "geometry", "Spiral swirl from center.",
-    [{ key: "amount", label: "Amount", min: -2, max: 2, default: 0.8 }],
+    [{ key: "amount", label: "Amount", min: -2, max: 2, default: 0.9 },
+     { key: "falloff", label: "Falloff", min: 0, max: 1, default: 0.5 }],
     `
     vec2 p = vUv-0.5;
     float r = length(p);
-    float a = atan(p.y,p.x) + uAmount * (1.0 - r) * 3.0;
+    // Falloff sets how fast the twist dies with radius: tight vortex through
+    // to a whole-frame rotation.
+    float a = atan(p.y,p.x) + uAmount * pow(max(0.0, 1.0 - r), mix(0.35, 3.5, uFalloff)) * 3.0;
     gl_FragColor = texture2D(uTex, vec2(cos(a),sin(a))*r + 0.5);
     `),
 
   // ── ATMOSPHERE ────────────────────────────────────────────────────
-  fx("filmGrain", "Film Grain", "atmosphere", "Soft analog grain.",
-    [{ key: "amount", label: "Amount", min: 0, max: 1, default: 0.3 }],
+  fx("filmGrain", "Film Grain", "atmosphere", "Emulsion grain with halation bleeding off the highlights.",
+    [{ key: "amount", label: "Amount", min: 0, max: 1, default: 0.55 },
+     { key: "halation", label: "Halation", min: 0, max: 1, default: 0.5 }],
     `
     vec4 c = texture2D(uTex, vUv);
-    float g = (rand(vUv + uTime) - 0.5) * uAmount * 0.4;
-    gl_FragColor = vec4(c.rgb + g, c.a);
+    float l = dot(c.rgb, vec3(0.299, 0.587, 0.114));
+    // Real grain peaks in the midtones and vanishes in clean black and blown
+    // white. A flat noise add — what this was — is exactly the sort of uniform
+    // veil that gets averaged away the moment anything is stacked on it. It
+    // also only had one param, so the pad's Y axis fell through to opacity.
+    float response = 4.0 * l * (1.0 - l);
+    float n1 = rand(vUv * uResolution + fract(uTime) * 100.0) - 0.5;
+    float n2 = rand(vUv * uResolution * 0.5 + fract(uTime * 1.7) * 57.0) - 0.5;
+    float grain = (n1 * 0.65 + n2 * 0.35) * response;
+    // Grain lives in three emulsion layers, so it is coloured, not monochrome.
+    vec3 chroma = vec3(rand(vUv * uResolution + 1.3),
+                       rand(vUv * uResolution + 7.7),
+                       rand(vUv * uResolution + 3.1)) - 0.5;
+    vec3 col = c.rgb + (grain * 1.6 + chroma * 0.5 * response) * uAmount;
+    // Halation: bright areas bleed a warm ring into the emulsion around them.
+    float hal = max(0.0, dot(discBlur(vUv, 11.0), vec3(0.299, 0.587, 0.114)) - 0.55);
+    col += vec3(1.0, 0.40, 0.20) * hal * uHalation * 1.8;
+    gl_FragColor = vec4(col, c.a);
     `),
 
   fx("bloom", "Bloom", "atmosphere", "Fake luminous halo.",
@@ -416,30 +522,50 @@ export const EFFECTS: EffectDef[] = [
     `),
 
   fx("staticSnow", "Static Snow", "atmosphere", "Dead-channel TV noise.",
-    [{ key: "amount", label: "Amount", min: 0, max: 1, default: 0.3 }],
+    [{ key: "amount", label: "Amount", min: 0, max: 1, default: 0.4 },
+     { key: "coarse", label: "Coarse", min: 0, max: 1, default: 0.3 }],
     `
     vec4 c = texture2D(uTex, vUv);
-    float n = rand(vUv*vec2(1024.,768.) + uTime*100.0);
-    gl_FragColor = vec4(mix(c.rgb, vec3(n), uAmount*0.6), c.a);
+    // Coarse runs the snow from fine sensor noise to chunky dead-channel
+    // blocks — a different texture, not merely more of the same.
+    vec2 grid = mix(vec2(1024.0, 768.0), vec2(90.0, 64.0), uCoarse);
+    float n = rand(floor(vUv*grid) + floor(uTime*24.0));
+    gl_FragColor = vec4(mix(c.rgb, vec3(n), uAmount*0.85), c.a);
     `),
 
-  fx("fog", "Fog", "atmosphere", "Soft volumetric haze.",
-    [{ key: "amount", label: "Amount", min: 0, max: 1, default: 0.4 },
-     { key: "hue", label: "Hue", min: 0, max: 1, default: 0.85 }],
+  fx("fog", "Fog", "atmosphere", "Drifting banks lit from behind, with real depth.",
+    [{ key: "amount", label: "Amount", min: 0, max: 1, default: 0.55 },
+     { key: "hue", label: "Hue", min: 0, max: 1, default: 0.6 }],
     `
-    vec4 c = texture2D(uTex, vUv);
-    float f = noise(vUv*3.0 + uTime*0.1);
-    vec3 haze = hsv2rgb(vec3(uHue, 0.4, 0.95));
-    gl_FragColor = vec4(mix(c.rgb, haze, f*uAmount*0.6), c.a);
+    // Layered drifting banks with light scattering through them, rather than
+    // one flat noise tint — the old version veiled uniformly and disappeared
+    // under any other effect.
+    float t = uTime * 0.06;
+    float n1 = noise(vUv * vec2(3.0, 1.6) + vec2(t, t * 0.3));
+    float n2 = noise(vUv * vec2(7.0, 3.2) - vec2(t * 1.7, t * 0.4));
+    float bank = n1 * 0.65 + n2 * 0.35;
+    // Thickest low in the frame, thinning with height.
+    float depth = smoothstep(1.05, -0.15, vUv.y);
+    float density = clamp(bank * depth * uAmount * 2.1, 0.0, 1.0);
+    // Refract through the fog so it displaces as well as tints; a pure tint is
+    // what made it interchangeable with grain and haze.
+    vec2 uv = vUv + vec2(n1 - 0.5, n2 - 0.5) * density * 0.045;
+    vec3 c = texture2D(uTex, uv).rgb;
+    // Scattering: the bank glows where the frame behind it is bright.
+    float glow = max(0.0, dot(discBlur(vUv, 16.0), vec3(0.299, 0.587, 0.114)) - 0.32);
+    vec3 haze = mix(hsv2rgb(vec3(uHue, 0.35, 0.72)), vec3(1.0, 0.95, 0.86), clamp(glow * 1.8, 0.0, 1.0));
+    gl_FragColor = vec4(mix(c, haze, density), 1.0);
     `),
 
   fx("lightLeak", "Light Leak", "atmosphere", "Vintage edge flares.",
-    [{ key: "amount", label: "Amount", min: 0, max: 1, default: 0.5 }],
+    [{ key: "amount", label: "Amount", min: 0, max: 1, default: 0.55 },
+     { key: "warmth", label: "Warmth", min: 0, max: 1, default: 0.5 }],
     `
     vec4 c = texture2D(uTex, vUv);
     float d = distance(vUv, vec2(0.1 + sin(uTime*0.3)*0.1, 0.5));
-    vec3 leak = vec3(1.0,0.4,0.7) * smoothstep(0.6, 0.0, d);
-    gl_FragColor = vec4(c.rgb + leak*uAmount, c.a);
+    // Warmth runs the leak from a cold flare to a sun-struck orange one.
+    vec3 tint = mix(vec3(0.35, 0.75, 1.0), vec3(1.0, 0.45, 0.15), uWarmth);
+    gl_FragColor = vec4(c.rgb + tint * smoothstep(mix(0.35, 0.95, uWarmth), 0.0, d) * uAmount * 1.5, c.a);
     `),
 
   fx("holoShine", "Holographic Shine", "atmosphere", "Iridescent sweep.",
@@ -520,13 +646,18 @@ export const EFFECTS: EffectDef[] = [
     `),
 
   fx("pixelExplode", "Pixel Explode", "corruption", "Pixels fly outward from center based on luminance.",
-    [{ key: "amount", label: "Amount", min: 0, max: 1, default: 0.5 }],
+    [{ key: "amount", label: "Amount", min: 0, max: 1, default: 0.55 },
+     { key: "shatter", label: "Shatter", min: 0, max: 1, default: 0.4 }],
     `
     vec2 p = vUv - 0.5;
     vec4 base = texture2D(uTex, vUv);
     float l = dot(base.rgb, vec3(0.299,0.587,0.114));
-    vec2 uv = vUv - p * (l - 0.5) * uAmount * 0.6;
-    gl_FragColor = texture2D(uTex, uv);
+    // Shatter breaks the push into blocks, so it reads as fragments flying
+    // apart rather than as a smooth warp.
+    vec2 cell = vec2(mix(6.0, 48.0, uShatter));
+    float bl = dot(texture2D(uTex, floor(vUv * cell) / cell).rgb, vec3(0.299,0.587,0.114));
+    vec2 uv = vUv - p * (mix(l, bl, uShatter) - 0.5) * uAmount * 1.1;
+    gl_FragColor = texture2D(uTex, clamp(uv, 0.0, 1.0));
     `),
 
   // ── ADVANCED COLOR ────────────────────────────────────────────────
@@ -556,12 +687,15 @@ export const EFFECTS: EffectDef[] = [
     `),
 
   fx("infraredDream", "Infrared Dream", "color", "Foliage-style false-color channel swap.",
-    [{ key: "amount", label: "Amount", min: 0, max: 1, default: 0.8 }],
+    [{ key: "amount", label: "Amount", min: 0, max: 1, default: 0.8 },
+     { key: "bloom", label: "Bloom", min: 0, max: 1, default: 0.4 }],
     `
     vec4 c = texture2D(uTex, vUv);
-    vec3 swap = vec3(c.g, c.b*0.6 + c.r*0.4, c.r);
-    swap.r = pow(swap.r, 0.7);
-    gl_FragColor = vec4(mix(c.rgb, swap, uAmount), c.a);
+    vec3 sw = vec3(c.g, c.b*0.6 + c.r*0.4, c.r);
+    sw.r = pow(sw.r, 0.7);
+    // Aerochrome foliage glows; blooming the swapped red sells the false colour.
+    sw += vec3(1.0, 0.35, 0.55) * max(0.0, sw.r - 0.45) * uBloom * 1.6;
+    gl_FragColor = vec4(mix(c.rgb, sw, uAmount), c.a);
     `),
 
   fx("colorQuake", "Color Quake", "color", "Chaotic per-region hue jolts.",
@@ -640,10 +774,11 @@ export const EFFECTS: EffectDef[] = [
 
   fx("displacement", "Displacement Field", "geometry", "Perlin-driven flowing turbulence with curl.",
     [{ key: "amount", label: "Amount", min: 0, max: 1, default: 0.5 },
-     { key: "scale", label: "Scale", min: 1, max: 16, default: 5 },
-     { key: "speed", label: "Speed", min: 0, max: 3, default: 0.6 }],
+     { key: "scale", label: "Scale", min: 1, max: 16, default: 5 }],
     `
-    vec2 p = vUv*uScale + uTime*uSpeed*0.2;
+    // Speed folded into a constant: a third param is unreachable from the pad,
+    // which binds X to params[0] and Y to params[1].
+    vec2 p = vUv*uScale + uTime*0.12;
     float n1 = noise(p);
     float n2 = noise(p + vec2(5.2, 1.3));
     vec2 grad = vec2(noise(p+vec2(0.01,0.0))-n1, noise(p+vec2(0.0,0.01))-n2);
@@ -686,16 +821,31 @@ export const EFFECTS: EffectDef[] = [
     gl_FragColor = mix(texture2D(uTex,vUv), texture2D(uTex,cuv), uAmount);
     `),
 
-  fx("zoomBlur", "Zoom Blur", "geometry", "Radial motion zoom from center.",
-    [{ key: "amount", label: "Amount", min: 0, max: 1, default: 0.5 }],
+  fx("zoomBlur", "Zoom Blur", "geometry", "Motion blur from the centre — radial through to rotational.",
+    [{ key: "amount", label: "Amount", min: 0, max: 1, default: 0.55 },
+     { key: "spin", label: "Spin", min: 0, max: 1, default: 0.25 }],
     `
-    vec2 p = vUv - 0.5;
+    // Absorbed the old separate Spin Blur. A pure rotational smear measured as
+    // a near-duplicate of this, of Frame Smear and of Prism Dispersion, so the
+    // two are now one effect with an axis running radial -> rotational, which
+    // also gives Zoom Blur the second param its pad axis was missing.
+    vec2 mid = vec2(0.5);
+    vec2 p = vUv - mid;
+    float r = length(p);
+    float a0 = atan(p.y, p.x);
     vec4 acc = vec4(0.0);
-    for (int i=0; i<10; i++) {
-      float t = float(i)/10.0;
-      acc += texture2D(uTex, 0.5 + p*(1.0 - t*uAmount*0.3));
+    float w = 0.0;
+    for (int i = 0; i < 10; i++) {
+      float t = float(i) / 10.0;
+      // Radial component pulls in toward the centre, rotational sweeps the arc.
+      float scale = 1.0 - t * uAmount * 0.34 * (1.0 - uSpin);
+      float ang = a0 + (t - 0.5) * uAmount * 1.5 * uSpin;
+      vec2 uv = mid + vec2(cos(ang), sin(ang)) * r * scale;
+      float k = 1.0 - t * 0.45;
+      acc += texture2D(uTex, uv) * k;
+      w += k;
     }
-    gl_FragColor = acc/10.0;
+    gl_FragColor = acc / w;
     `),
 
   fx("perspectiveTilt", "Perspective Tilt", "geometry", "3D rotational tilt with depth distortion.",
@@ -798,12 +948,12 @@ export const EFFECTS: EffectDef[] = [
 
   fx("plasmaField", "Plasma Field", "atmosphere", "Animated plasma overlay — pure psychedelic energy.",
     [{ key: "amount", label: "Amount", min: 0, max: 1, default: 0.5 },
-     { key: "scale", label: "Scale", min: 1, max: 20, default: 6 },
-     { key: "speed", label: "Speed", min: 0, max: 4, default: 1 }],
+     { key: "scale", label: "Scale", min: 1, max: 20, default: 6 }],
     `
     vec4 c = texture2D(uTex, vUv);
     vec2 p = vUv*uScale;
-    float t = uTime*uSpeed;
+    // Speed folded into a constant: a third param is unreachable from the pad.
+    float t = uTime;
     float v = sin(p.x + t) + sin(p.y + t*1.3) + sin((p.x+p.y)*0.7 + t*0.7) + sin(length(p-uScale*0.5)*1.5 + t);
     vec3 plasma = 0.5 + 0.5*cos(v + vec3(0.0, 2.094, 4.188));
     gl_FragColor = vec4(mix(c.rgb, c.rgb*plasma*1.4, uAmount), c.a);
@@ -816,12 +966,17 @@ export const EFFECTS: EffectDef[] = [
     vec4 c = texture2D(uTex, vUv);
     float band = fract(vUv.y - uTime*uSpeed*0.1);
     // The frozen band covered 5% of the frame; widened so it actually sweeps.
-    float freeze = smoothstep(0.22, 0.0, abs(band - 0.5));
+    float freeze = smoothstep(0.34, 0.0, abs(band - 0.5));
     float frost = noise(vUv*60.0 + band*10.0);
     // Displace inside the band too, so it reads as a frozen tear rather than a
     // faint tint.
     vec3 ice = vec3(0.7, 0.9, 1.0) * frost;
-    c = texture2D(uTex, vUv + vec2((frost-0.5)*0.04*freeze, 0.0));
+    c = texture2D(uTex, vUv + vec2((frost-0.5)*0.11*freeze, 0.0));
+    // Inside the band the image crystallises: desaturated, posterised, cold.
+    float fl = dot(c.rgb, vec3(0.299,0.587,0.114));
+    vec3 frozen = mix(vec3(fl), c.rgb, 0.25) * vec3(0.72, 0.86, 1.12);
+    frozen = floor(frozen * 7.0) / 7.0;
+    c.rgb = mix(c.rgb, frozen, freeze * 0.85);
     gl_FragColor = vec4(mix(c.rgb, c.rgb*0.5 + ice, freeze*uAmount), c.a);
     `),
 
@@ -888,14 +1043,14 @@ export const EFFECTS: EffectDef[] = [
     float ring = wave * exp(-r * 2.2);
     float amt = uAmount * (0.35 + uPulse * 0.9);
     vec2 dir = c / max(r, 1e-4);
-    vec2 off = dir * ring * amt * 0.06;
+    vec2 off = dir * ring * amt * 0.16;
     // Split the channels across the wavefront — refraction, not just offset.
     vec3 col = vec3(
       texture2D(uTex, vUv + off * 1.3).r,
       texture2D(uTex, vUv + off).g,
       texture2D(uTex, vUv + off * 0.7).b
     );
-    col += vec3(0.55, 0.75, 1.0) * max(0.0, ring) * amt * 0.55;
+    col += vec3(0.55, 0.75, 1.0) * max(0.0, ring) * amt * 1.15;
     gl_FragColor = vec4(col, 1.0);
     `),
 
@@ -968,7 +1123,10 @@ export const EFFECTS: EffectDef[] = [
 
   fx("prismDispersion", "Prism Dispersion", "color", "Light torn into its spectrum — a diffraction grating over the frame.",
     [{ key: "spread", label: "Spread", min: 0, max: 1, default: 0.45 },
-     { key: "bend", label: "Bend", min: 0, max: 1, default: 0.35 }],
+     // Defaults to the linear grating rather than part-way to the radial halo:
+     // at a bend of 0.35 this measured as a near-duplicate of Zoom Blur, which
+     // owns the radial look.
+     { key: "bend", label: "Bend", min: 0, max: 1, default: 0.12 }],
     `
     vec2 c = vUv - 0.5;
     c.x *= uResolution.x / max(uResolution.y, 1.0);
@@ -980,19 +1138,33 @@ export const EFFECTS: EffectDef[] = [
     // A plain rotation angle would be a dead axis: 0 and 2PI are the same
     // direction, so a full drag would land exactly where it started.
     vec2 dir = normalize(mix(linear, radial, uBend) + vec2(1e-5));
-    float reach = uSpread * mix(0.08, 0.08 + r * 0.16, uBend);
-    vec3 acc = vec3(0.0);
-    vec3 wsum = vec3(0.0);
-    // Nine spectral taps, violet through red, each displaced by its own
-    // "wavelength" — the further the tap, the longer the wavelength.
-    for (int i = 0; i < 9; i++) {
-      float lam = float(i) / 8.0;
-      float t = (lam - 0.5) * 2.0;
-      vec3 w = hsv2rgb(vec3(0.75 - lam * 0.75, 0.9, 1.0));
-      acc += texture2D(uTex, vUv + dir * t * reach).rgb * w;
-      wsum += w;
+    float reach = 0.004 + uSpread * mix(0.05, 0.05 + r * 0.13, uBend);
+    // A grating does not smear the image, it copies it: a sharp zero order
+    // straight through, plus dimmer spectral ghosts either side. Averaging the
+    // taps instead (the old approach) converged to a coloured blur, which
+    // measured as a near-duplicate of Zoom Blur. Keeping the zero order sharp
+    // is what makes this read as a prism and keeps the detail HDR-crisp.
+    vec3 base = texture2D(uTex, vUv).rgb;
+    vec3 ghost = vec3(0.0);
+    vec3 wsum = vec3(1e-3);
+    // Seven spectral orders, violet through red, each displaced by its own
+    // "wavelength" — the longer the wavelength, the further it is bent.
+    for (int i = 0; i < 7; i++) {
+      float lam = float(i) / 6.0;
+      vec3 w = hsv2rgb(vec3(0.72 - lam * 0.72, 1.0, 1.0));
+      float off = mix(0.3, 1.0, lam) * reach;
+      ghost += (texture2D(uTex, vUv + dir * off).rgb
+              + texture2D(uTex, vUv - dir * off).rgb) * w;
+      wsum += w * 2.0;
     }
-    vec3 col = acc / max(wsum, vec3(1e-3));
+    ghost /= wsum;
+    float gl = dot(ghost, vec3(0.299, 0.587, 0.114));
+    // Split the ghost into pure colour fringe and its own brightness: the
+    // fringe paints spectral edges everywhere, the brightness term only spills
+    // out of highlights, the way a real prism throws its rainbow off bright
+    // sources rather than washing the whole frame.
+    vec3 chroma = ghost - gl;
+    vec3 col = base + chroma * (0.9 + uSpread * 1.8) + ghost * gl * gl * uSpread * 1.2;
     // Faint travelling interference fringes sell the grating.
     float fringe = sin(dot(vUv, dir) * 140.0 - uTime * 1.5) * 0.5 + 0.5;
     col *= 1.0 + fringe * uSpread * 0.12;
@@ -1037,15 +1209,17 @@ export const EFFECTS: EffectDef[] = [
     vec2 p = vUv * sc;
     vec2 curl = vec2(noise(p + vec2(0.0, e) + t) - noise(p - vec2(0.0, e) + t),
                     -(noise(p + vec2(e, 0.0) - t) - noise(p - vec2(e, 0.0) - t))) / (2.0 * e);
-    vec2 uv = vUv + curl * uFlow * 0.02;
+    vec2 uv = vUv + curl * uFlow * 0.055;
     // A second advection step lengthens the streamlines into ribbons.
     vec2 p2 = uv * sc;
     vec2 curl2 = vec2(noise(p2 + vec2(0.0, e) + t) - noise(p2 - vec2(0.0, e) + t),
                      -(noise(p2 + vec2(e, 0.0) - t) - noise(p2 - vec2(e, 0.0) - t))) / (2.0 * e);
-    uv += curl2 * uFlow * 0.014;
+    uv += curl2 * uFlow * 0.04;
     vec4 col = texture2D(uTex, uv);
-    float dens = clamp(length(curl) * 0.06, 0.0, 1.0);
-    col.rgb = mix(col.rgb, col.rgb * (1.0 - dens * 0.5) + vec3(0.05, 0.07, 0.12) * dens, uFlow);
+    // Ink density shading along the flow, strong enough to read through a stack.
+    float dens = clamp(length(curl) * 0.14, 0.0, 1.0);
+    vec3 ink = mix(vec3(0.03, 0.05, 0.11), vec3(0.55, 0.16, 0.42), dens);
+    col.rgb = mix(col.rgb, col.rgb * (1.0 - dens * 0.75) + ink * dens * 1.4, uFlow);
     gl_FragColor = col;
     `),
 
@@ -1195,26 +1369,38 @@ export const EFFECTS: EffectDef[] = [
     gl_FragColor = vec4(mix(texture2D(uTex, vUv).rgb, metal, uAmount), 1.0);
     `),
 
-  fx("spinBlur", "Spin Blur", "geometry", "Rotational motion blur around the centre.",
-    [{ key: "amount", label: "Amount", min: 0, max: 1, default: 0.55 },
-     { key: "centre", label: "Offset", min: 0, max: 1, default: 0.5 }],
+  fx("extrude", "Extrude", "geometry", "The frame pushed into 3D relief and viewed off-axis.",
+    [{ key: "amount", label: "Amount", min: 0, max: 1, default: 0.6 },
+     { key: "layers", label: "Depth", min: 0, max: 1, default: 0.5 }],
     `
-    // Distinct from Zoom Blur: this smears ALONG the arc rather than outward.
-    vec2 mid = vec2(0.5, mix(0.2, 0.8, uCentre));
-    vec2 d = vUv - mid;
-    float r = length(d);
-    float a0 = atan(d.y, d.x);
-    float sweep = uAmount * 0.85;
-    vec4 acc = vec4(0.0);
-    float w = 0.0;
-    for (int i = 0; i < 9; i++) {
-      float t = (float(i) / 8.0 - 0.5) * sweep;
-      float k = 1.0 - abs(float(i) / 8.0 - 0.5) * 1.2;
-      float a = a0 + t;
-      acc += texture2D(uTex, mid + vec2(cos(a), sin(a)) * r) * k;
-      w += k;
+    // Luminance as a height field, marched as parallax slices. Unlike Relief
+    // (which only lights a normal map) or Anaglyph (which splits colour), this
+    // physically displaces the frame by depth, so the image reads as extruded
+    // geometry seen from an angle.
+    vec3 L = vec3(0.299, 0.587, 0.114);
+    vec2 view = vec2(0.55, -0.35) * uAmount * 0.16;
+    float steps = mix(4.0, 14.0, uLayers);
+    vec3 col = texture2D(uTex, vUv).rgb;
+    float found = 0.0;
+    // March back along the view ray; the first slice whose height clears the
+    // ray wins, which produces real occlusion between near and far tones.
+    for (int i = 1; i < 15; i++) {
+      if (float(i) > steps) break;
+      float t = float(i) / steps;
+      vec2 uv = vUv + view * t;
+      float h = dot(texture2D(uTex, clamp(uv, 0.0, 1.0)).rgb, L);
+      if (found < 0.5 && h > 1.0 - t * 1.15) {
+        // Shade the extruded wall so the relief has visible sides.
+        vec3 hit = texture2D(uTex, clamp(uv, 0.0, 1.0)).rgb;
+        col = mix(col, hit * (0.45 + 0.75 * (1.0 - t)), uAmount);
+        found = 1.0;
+      }
     }
-    gl_FragColor = acc / w;
+    // Rim light along the extrusion edge.
+    float edge = abs(dot(texture2D(uTex, vUv + view * 0.35).rgb, L)
+                   - dot(texture2D(uTex, vUv).rgb, L));
+    col += vec3(0.55, 0.72, 1.0) * smoothstep(0.06, 0.3, edge) * uAmount * 0.55;
+    gl_FragColor = vec4(col, 1.0);
     `),
 
   fx("moire", "Moire", "geometry", "Two grids beating against each other.",
@@ -1285,8 +1471,11 @@ export const EFFECTS: EffectDef[] = [
       float a = t * 0.06 * uSpread + uTime * 0.04;
       vec2 d = vUv - mid;
       vec2 uv = mid + vec2(d.x * cos(a) - d.y * sin(a), d.x * sin(a) + d.y * cos(a)) / max(0.35, sc);
-      float k = pow(uAmount, t) * 0.85;
-      acc += texture2D(uTex, clamp(uv, 0.0, 1.0)).rgb * k;
+      float k = pow(uAmount, t) * 0.95;
+      // Each echo is tinted round the hue wheel, so trails read as coloured
+      // ghosts rather than as the grey smear Spin Blur and Frame Smear give.
+      vec3 tint = hsv2rgb(vec3(fract(t * 0.13 + uTime * 0.05), 0.65, 1.0));
+      acc += texture2D(uTex, clamp(uv, 0.0, 1.0)).rgb * mix(vec3(1.0), tint, 0.6) * k;
       w += k;
     }
     gl_FragColor = vec4(acc / w, 1.0);
