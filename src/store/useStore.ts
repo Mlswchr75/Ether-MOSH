@@ -26,6 +26,7 @@ import {
 } from "@/engine/artDirector";
 import { generateSeed, rngFromSeed } from "@/engine/seed";
 import { presetToUrl, type PresetPayload } from "@/engine/presetUrl";
+import { exportSetlist, importSetlist, setlistToJson, SETLIST_SLOTS } from "@/engine/setlist";
 import type { AudioMap, Favorite, Intensity, IsolationMode, Layer, Modulator, PaletteProfile, StickerEntry } from "./types";
 import { facingOfTrack, type CameraFacing } from "@/lib/cameraFacing";
 import { DEFAULT_TILE_UNIFORMS, type TileMode, type TileUniforms } from "@/engine/tile";
@@ -248,6 +249,10 @@ type Actions = {
   applyPreset: (payload: PresetPayload | null) => boolean;
   /** Encode the current stack as a shareable link. */
   presetLink: () => string;
+  /** Serialise all nine cues to a portable setlist file. */
+  exportSetlistJson: (name?: string) => string;
+  /** Replace all nine cues from a setlist file. Returns cues loaded, or null. */
+  importSetlistJson: (json: string) => { name: string; count: number } | null;
   removeFavorite: (id: string) => void;
   renameFavorite: (id: string, name: string) => void;
   moshDirected: (layers: import("@/engine/compose").DirectedLayer[]) => void;
@@ -809,6 +814,21 @@ export const useStore = create<State & Actions>((set, get) => ({
       intensity: s.intensity,
       lookId: s.currentLook?.id,
     });
+  },
+
+  exportSetlistJson: (name) => setlistToJson(exportSetlist(get().slots, name)),
+
+  importSetlistJson: (json) => {
+    const parsed = importSetlist(json);
+    if (!parsed) return null;
+    // Fresh ids on load: the same cue can be recalled repeatedly during a set,
+    // and layers sharing an identity break selection and reordering.
+    const slots = parsed.slots.map(layers =>
+      layers ? layers.map(l => ({ ...l, id: newId(), params: { ...l.params }, mods: { ...l.mods }, audioMaps: { ...(l.audioMaps ?? {}) } })) : null,
+    );
+    saveSlotsToStorage(slots);
+    set({ slots, activeSlot: null });
+    return { name: parsed.name, count: slots.filter(s => s && s.length).length };
   },
 
   removeFavorite: (id) => set(st => {

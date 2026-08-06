@@ -33,6 +33,7 @@ import { presetFromUrl, PRESET_PARAM } from "@/engine/presetUrl";
 import { applyOverlayClass, overlayFromUrl } from "@/lib/overlayMode";
 import { DELIVERABLES_BY_ID } from "@/engine/deliverables";
 import { captureDeliverable } from "@/engine/captureDeliverable";
+import { cueFromUrl, setlistFilename } from "@/engine/setlist";
 import { KaossSurface } from "@/components/editor/KaossSurface";
 import { QuadrantSurface } from "@/components/editor/QuadrantSurface";
 import { TrackpadGestures } from "@/components/editor/TrackpadGestures";
@@ -144,6 +145,45 @@ export default function Editor() {
         window.history.replaceState({}, "", url.toString());
       } catch {}
     }
+  }, []);
+
+  /* Cue deep link: ?cue=1..9 recalls a saved slot on load.
+     This is what makes a rig scriptable — a Stream Deck button, a venue kiosk
+     shortcut, or a browser bookmark can each address one cue directly. Runs
+     after the preset effect so an explicit ?p= wins if both are present. */
+  useEffect(() => {
+    const idx = cueFromUrl();
+    if (idx === null) return;
+    const t = window.setTimeout(() => {
+      if (useStore.getState().loadSlot(idx)) toast.success(`Cue ${idx + 1}`);
+      else toast.error(`Cue ${idx + 1} is empty`);
+    }, 80);
+    return () => window.clearTimeout(t);
+  }, []);
+
+  const saveSetlist = useCallback(() => {
+    const json = useStore.getState().exportSetlistJson("MOSH set");
+    const blob = new Blob([json], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = setlistFilename("MOSH set");
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    toast.success("Setlist saved", { description: "Carry it to any machine" });
+  }, []);
+
+  const loadSetlist = useCallback(() => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".json,application/json";
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      const res = useStore.getState().importSetlistJson(await file.text());
+      if (!res) { toast.error("That doesn't look like a MOSH setlist"); return; }
+      toast.success(`Loaded "${res.name}"`, { description: `${res.count} cues ready` });
+    };
+    input.click();
   }, []);
 
   /* Overlay mode: MOSH as a layer inside someone else's compositor.
@@ -570,20 +610,21 @@ export default function Editor() {
     }
   }, []);
 
-  const captureGif = useCallback(async () => {
+  /** Seconds the GIF button captures on a plain tap. Long-press picks another. */
+  const captureGif = useCallback(async (seconds = 7) => {
     if (gifBusy) return;
     if (!paywall.require("Seamless GIF loop")) return;
     const c = getCanvas();
     if (!c) { toast.error("No visualizer to capture"); return; }
     setGifBusy(true);
     setGifProgress(0);
-    // Pause auto-shuffle so the mosh effect stays locked during the 7s window.
+    // Pause auto-shuffle so the mosh effect stays locked for the whole window.
     const prevShuffle = useStore.getState().shuffleSec;
     if (prevShuffle != null) useStore.getState().setShuffleSec(null);
-    const t = toast.loading("Locking mosh · capturing seamless GIF…", { duration: 20_000 });
+    const t = toast.loading(`Locking mosh · capturing ${seconds}s seamless GIF…`, { duration: 30_000 });
     try {
       const result = await captureLoopingGif(c, {
-        durationMs: 7000,
+        durationMs: Math.round(seconds * 1000),
         fps: 12,
         maxWidth: 480,
         onProgress: (phase, p) => {
@@ -591,9 +632,9 @@ export default function Editor() {
           setGifProgress(phase === "capture" ? p * 0.7 : 0.7 + p * 0.3);
         },
       });
-      downloadBlob(result.blob, `mosh-${Date.now()}_loop.gif`);
+      downloadBlob(result.blob, `mosh-${Date.now()}_${seconds}s_loop.gif`);
       const quality = result.loopScore > 0.85 ? "tight loop" : result.loopScore > 0.6 ? "clean loop" : "loop";
-      toast.success(`GIF saved · ${result.frameCount}f · ${quality}`, { id: t });
+      toast.success(`${seconds}s GIF saved · ${result.frameCount}f · ${quality}`, { id: t });
     } catch (e) {
       toast.error("GIF capture failed", { id: t });
     } finally {
@@ -1423,6 +1464,8 @@ export default function Editor() {
         onExport={exportBestStill}
         onCopyPresetLink={copyPresetLink}
         onExportDeliverable={exportDeliverable}
+        onSaveSetlist={saveSetlist}
+        onLoadSetlist={loadSetlist}
         onSavePreset={() => toast.message("Save preset — coming soon")}
         onLoadPreset={() => toast.message("Load preset — coming soon")}
         onLoadImage={() => navigate("/")}

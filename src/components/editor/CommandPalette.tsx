@@ -16,6 +16,10 @@ type Props = {
   onCopyPresetLink: () => void;
   /** Record a platform-ready file (Spotify Canvas, TikTok, …). */
   onExportDeliverable: (specId: string) => void;
+  /** Write all nine cues to a portable file. */
+  onSaveSetlist: () => void;
+  /** Replace all nine cues from a file. */
+  onLoadSetlist: () => void;
   onLoadPreset: () => void;
   onLoadImage: () => void;
 };
@@ -115,6 +119,8 @@ export function CommandPalette(props: Props) {
 
             <CmdGroup heading="Session">
               <CmdItem onSelect={run(props.onCopyPresetLink)} shortcut="⌘L">Copy preset link</CmdItem>
+              <CmdItem onSelect={run(props.onSaveSetlist)}>Save setlist to file…</CmdItem>
+              <CmdItem onSelect={run(props.onLoadSetlist)}>Load setlist from file…</CmdItem>
               <CmdItem onSelect={run(props.onSavePreset)} shortcut="⌘S">Save preset…</CmdItem>
               <CmdItem onSelect={run(props.onLoadPreset)}>Load preset…</CmdItem>
               <CmdItem onSelect={run(props.onExport)} shortcut="⌘E">Export image / video</CmdItem>
