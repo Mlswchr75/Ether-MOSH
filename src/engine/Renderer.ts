@@ -58,6 +58,7 @@ export class MoshRenderer {
   private compositor: THREE.ShaderMaterial;
   private blitMaterial: THREE.ShaderMaterial;
   private sourceFillMaterial: THREE.ShaderMaterial;
+  private finisherMaterial!: THREE.ShaderMaterial;
   private warmupHandle: number | null = null;
   private startTime = performance.now();
   // Tile pass — post-process after the effect stack, before screen blit.
@@ -65,6 +66,11 @@ export class MoshRenderer {
   private rtTile: THREE.WebGLRenderTarget | null = null;
   private _tileMode: TileMode = "none";
   private _tileUniforms: TileUniforms = { ...DEFAULT_TILE_UNIFORMS };
+  // Adaptive HDR intensity (0 = pure passthrough, 1 = full ACES filmic)
+  private _hdrIntensity = 0;
+  // requestVideoFrameCallback handle for precision texture sync
+  private _rvfcVideo: HTMLVideoElement | null = null;
+  private _rvfcId = 0;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -109,6 +115,7 @@ export class MoshRenderer {
     });
 
     // Source pass: "cover" the destination — crop overflow rather than letterbox.
+    // uMirror=1 horizontally flips the source for front-facing cameras (selfie mode).
     this.sourceFillMaterial = new THREE.ShaderMaterial({
       vertexShader: PASSTHROUGH_VERT,
       fragmentShader: `
@@ -118,6 +125,7 @@ export class MoshRenderer {
         uniform vec2 uCover;
         uniform vec2 uResolution;
         uniform float uHdr;
+        uniform float uMirror;
 
         const vec3 LUMA = vec3(0.299, 0.587, 0.114);
 
@@ -135,8 +143,9 @@ export class MoshRenderer {
            and this whole thing rides along in the existing source pass, so the
            HDR treatment costs no extra render target and no extra draw. */
         void main(){
-          vec2 uv = clamp((vUv - 0.5) * uCover + 0.5, 0.0, 1.0);
-          vec3 c = texture2D(uTex, uv).rgb;
+          vec2 uv = (vUv - 0.5) * uCover + 0.5;
+          uv.x = mix(uv.x, 1.0 - uv.x, uMirror);
+          vec3 c = texture2D(uTex, clamp(uv, 0.0, 1.0)).rgb;
 
           if (uHdr <= 0.001) { gl_FragColor = vec4(c, 1.0); return; }
 
@@ -234,6 +243,57 @@ export class MoshRenderer {
         uCover: { value: new THREE.Vector2(1, 1) },
         uResolution: { value: new THREE.Vector2(1, 1) },
         uHdr: { value: 1 },
+        uMirror: { value: 0.0 },
+      },
+      depthTest: false,
+      depthWrite: false,
+    });
+
+    // Adaptive HDR finisher — post-processes the final composited output.
+    // At uHdr=0 it is a pure passthrough.
+    // As uHdr rises, unsharp mask sharpening and ACES filmic tone mapping engage.
+    this.finisherMaterial = new THREE.ShaderMaterial({
+      vertexShader: PASSTHROUGH_VERT,
+      fragmentShader: `
+        precision mediump float;
+        varying vec2 vUv;
+        uniform sampler2D uTex;
+        uniform vec2 uRes;
+        uniform float uHdr;
+
+        vec3 aces(vec3 x) {
+          const float a = 2.51, b = 0.03, c = 2.43, d = 0.59, e = 0.14;
+          return clamp((x*(a*x+b))/(x*(c*x+d)+e), 0.0, 1.0);
+        }
+
+        void main() {
+          vec4 col = texture2D(uTex, vUv);
+
+          // 4-tap cross blur for unsharp mask
+          vec2 px = 1.5 / uRes;
+          vec3 blurred = (
+            texture2D(uTex, vUv + vec2(px.x, 0.0)).rgb +
+            texture2D(uTex, vUv - vec2(px.x, 0.0)).rgb +
+            texture2D(uTex, vUv + vec2(0.0, px.y)).rgb +
+            texture2D(uTex, vUv - vec2(0.0, px.y)).rgb
+          ) * 0.25;
+
+          // Bell-curve sharpening — peaks at mid mosh, keeps edges defined during chaos
+          float sharpAmt = uHdr * (1.0 - uHdr) * 1.4;
+          vec3 sharpened = col.rgb + (col.rgb - blurred) * sharpAmt;
+
+          // ACES filmic tone mapping fades in above 0.25 intensity
+          vec3 tonemapped = aces(sharpened);
+          vec3 result = mix(sharpened, tonemapped, smoothstep(0.25, 0.9, uHdr));
+
+          // At uHdr=0: pure passthrough. Above 0.08: processing fully active.
+          gl_FragColor = vec4(mix(col.rgb, result, smoothstep(0.0, 0.08, uHdr)), col.a);
+        }
+      `,
+      uniforms: {
+        uTex: { value: null },
+        uRes: { value: new THREE.Vector2(1, 1) },
+        uHdr: { value: 0 },
       },
       depthTest: false,
       depthWrite: false,
@@ -273,7 +333,37 @@ export class MoshRenderer {
   /** True when the source canvas/video updates each frame. */
   private perFrameUpdate = false;
 
+  /** Mirror the source horizontally (true for front-facing / selfie cameras). */
+  setSourceMirror(mirror: boolean) {
+    this.sourceFillMaterial.uniforms.uMirror.value = mirror ? 1.0 : 0.0;
+  }
+
+  /** Set the HDR finisher intensity (0 = pure passthrough, 1 = full ACES filmic).
+   *  Call each frame from the render loop with a score derived from active layers. */
+  setHdrIntensity(v: number) {
+    this._hdrIntensity = Math.max(0, Math.min(1, v));
+  }
+
+  private _cancelRvfc() {
+    if (this._rvfcVideo && this._rvfcId) {
+      try { (this._rvfcVideo as any).cancelVideoFrameCallback?.(this._rvfcId); } catch {}
+    }
+    this._rvfcVideo = null;
+    this._rvfcId = 0;
+  }
+
+  private _scheduleRvfc(video: HTMLVideoElement) {
+    this._rvfcId = (video as any).requestVideoFrameCallback((_now: number, _meta: unknown) => {
+      // Upload exactly when the browser has a fresh decoded frame ready — not every RAF.
+      if (this.sourceTex && this._rvfcVideo === video) {
+        this.sourceTex.needsUpdate = true;
+        this._scheduleRvfc(video);
+      }
+    });
+  }
+
   setSourceImage(image: HTMLImageElement) {
+    this._cancelRvfc();
     const w = image.naturalWidth || image.width || 1;
     const h = image.naturalHeight || image.height || 1;
     const canvas = document.createElement("canvas");
@@ -302,6 +392,7 @@ export class MoshRenderer {
 
   /** Use a self-updating Canvas2D buffer (procedural ambient) as the source. */
   setSourceCanvas(canvas: HTMLCanvasElement) {
+    this._cancelRvfc();
     const tex = new THREE.CanvasTexture(canvas);
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.minFilter = THREE.LinearFilter;
@@ -320,12 +411,12 @@ export class MoshRenderer {
     this.scheduleWarmup();
   }
 
-  /** Use a live <video> (camera / MediaStream) as the source. GPU-uploaded
-   *  via THREE.VideoTexture for smooth performance — no Canvas2D readback. */
+  /** Use a live <video> (camera / MediaStream) as the source.
+   *  Uses requestVideoFrameCallback when available for zero-waste texture uploads
+   *  — only uploads when the browser has a fresh decoded frame, not every RAF.
+   *  Falls back to per-frame upload on browsers without rVFC support. */
   setSourceVideo(video: HTMLVideoElement) {
-    const readyWidth = video.videoWidth || (video as HTMLVideoElement & { width?: number }).width || 640;
-    const readyHeight = video.videoHeight || (video as HTMLVideoElement & { height?: number }).height || 480;
-
+    this._cancelRvfc();
     const tex = new THREE.VideoTexture(video);
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.minFilter = THREE.LinearFilter;
@@ -339,8 +430,16 @@ export class MoshRenderer {
 
     this.sourceTex?.dispose();
     this.sourceTex = tex;
-    this.sourceAspect = readyWidth / readyHeight;
-    this.perFrameUpdate = true;
+    const w = video.videoWidth || 16;
+    const h = video.videoHeight || 9;
+    this.sourceAspect = w / h;
+    if ('requestVideoFrameCallback' in video) {
+      this.perFrameUpdate = false;
+      this._rvfcVideo = video;
+      this._scheduleRvfc(video);
+    } else {
+      this.perFrameUpdate = true;
+    }
     this.resize(this.cssWidth, this.cssHeight);
     this.scheduleWarmup();
   }
@@ -537,9 +636,12 @@ export class MoshRenderer {
     this.rtHistB = swap;
     this.historyPrimed = true;
 
-    // Final blit to screen
-    this.blitMaterial.uniforms.uTex.value = finalTex;
-    this.quad.material = this.blitMaterial;
+    // Adaptive HDR finisher → screen blit.
+    // Pure passthrough at _hdrIntensity=0, ACES filmic tone-mapping at 1.
+    this.finisherMaterial.uniforms.uTex.value = finalTex;
+    (this.finisherMaterial.uniforms.uRes.value as THREE.Vector2).set(w, h);
+    this.finisherMaterial.uniforms.uHdr.value = this._hdrIntensity;
+    this.quad.material = this.finisherMaterial;
     this.renderer.setRenderTarget(null);
     this.renderer.render(this.scene, this.camera);
   }
@@ -601,6 +703,7 @@ export class MoshRenderer {
   }
 
   dispose() {
+    this._cancelRvfc();
     if (this.warmupHandle != null) window.clearTimeout(this.warmupHandle);
     this.shaderCache.forEach(e => e.material.dispose());
     this.shaderCache.clear();
@@ -613,6 +716,7 @@ export class MoshRenderer {
     this.compositor.dispose();
     this.blitMaterial.dispose();
     this.sourceFillMaterial.dispose();
+    this.finisherMaterial.dispose();
     this.tileMaterial?.dispose();
     this.rtTile?.dispose();
     try {

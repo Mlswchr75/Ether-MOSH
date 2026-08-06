@@ -56,10 +56,12 @@ export function GlCanvas() {
   const proceduralRef = useRef<ProceduralSource | null>(null);
   const layersRef = useRef(useStore.getState().layers);
   const showBeforeAfterRef = useRef(useStore.getState().showBeforeAfter);
+  const isVideoSourceRef = useRef(!!useStore.getState().videoElement);
   const vrFrameRef = useRef<(() => void) | null>(null);
 
   const imageElement = useStore(s => s.imageElement);
   const videoElement = useStore(s => s.videoElement);
+  const cameraFacing = useStore(s => s.cameraFacing);
   const showBeforeAfter = useStore(s => s.showBeforeAfter);
   const beforeAfterSplit = useStore(s => s.beforeAfterSplit);
   const bpm = useStore(s => s.bpm);
@@ -91,6 +93,11 @@ export function GlCanvas() {
     };
   }, []);
 
+  // Mirror front-facing camera — re-runs whenever the facing changes (e.g. flip button).
+  useEffect(() => {
+    rendererRef.current?.setSourceMirror(cameraFacing === 'user');
+  }, [cameraFacing]);
+
   // Source — priority: live video > still image > procedural ambient.
   useEffect(() => {
     if (!rendererRef.current) return;
@@ -101,6 +108,7 @@ export function GlCanvas() {
       const applyVideo = () => {
         if (cancelled || !rendererRef.current) return;
         rendererRef.current.setSourceVideo(videoElement);
+        rendererRef.current.setSourceMirror(useStore.getState().cameraFacing === 'user');
         rendererRef.current.refreshSourceAspect();
         if (r) rendererRef.current.resize(r.width, r.height);
       };
@@ -266,6 +274,7 @@ export function GlCanvas() {
   useEffect(() => useStore.subscribe((state) => {
     layersRef.current = state.layers;
     showBeforeAfterRef.current = state.showBeforeAfter;
+    isVideoSourceRef.current = !!state.videoElement;
   }), []);
 
   // Render loop with adaptive resolution
@@ -273,7 +282,9 @@ export function GlCanvas() {
     let raf = 0;
     const samples: number[] = [];
     let last = performance.now();
-    let scale = window.innerWidth < 768 ? 0.58 : 0.72;
+    // Camera sources start at a higher quality baseline for true-to-life look.
+    const isMobile = window.innerWidth < 768;
+    let scale = isMobile ? 0.68 : 0.78;
     rendererRef.current?.setRenderScale(scale);
 
     const renderOnce = () => {
@@ -285,12 +296,15 @@ export function GlCanvas() {
       const fps = 1000 / avg;
       (window as any).__aegisFps = fps;
 
-      // Adaptive
-      if (fps < 42 && scale > 0.45) {
-        scale = Math.max(0.45, scale - 0.1);
+      // Adaptive scale — camera allows up to 1.0 (full res), still image caps at 0.9.
+      const isVid = isVideoSourceRef.current;
+      const scaleCeil = isVid ? 1.0 : 0.9;
+      const scaleFloor = isVid ? 0.52 : 0.45;
+      if (fps < 42 && scale > scaleFloor) {
+        scale = Math.max(scaleFloor, scale - 0.1);
         rendererRef.current?.setRenderScale(scale);
-      } else if (fps > 58 && scale < 0.9) {
-        scale = Math.min(0.9, scale + 0.04);
+      } else if (fps > 58 && scale < scaleCeil) {
+        scale = Math.min(scaleCeil, scale + 0.04);
         rendererRef.current?.setRenderScale(scale);
       }
 
@@ -404,6 +418,12 @@ export function GlCanvas() {
           region: l.region ?? null,
         };
       });
+
+      // Mosh intensity score: 0 = bare camera / no effects, 1 = fully cranked.
+      // Drives the adaptive HDR finisher (pure passthrough at 0, ACES filmic at 1).
+      const activeLayers = renderLayers.filter(l => !l.hidden && l.opacity > 0.02);
+      const moshScore = Math.min(1.0, activeLayers.reduce((s, l) => s + l.opacity, 0) / 3.0);
+      rendererRef.current?.setHdrIntensity(moshScore);
 
       rendererRef.current?.render(renderLayers, pulse);
     };
