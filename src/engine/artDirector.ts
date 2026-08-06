@@ -335,6 +335,17 @@ const CRAFT: Record<string, Craft> = {
   plasmaField:     { role: "finish", fidelity: "neutral",   gives: { color: 0.8, light: 0.6 }, cost: 0.4 },
   caustics:         { role: "finish", fidelity: "cinematic", gives: { light: 0.9 }, cost: 0.3, gpu: 2.0 },
   anamorphic:       { role: "finish", fidelity: "cinematic", gives: { light: 0.95 }, cost: 0.25, gpu: 6.5 },
+
+  // Temporal — the only effects that sample uFeedback, so they read as motion
+  // and memory rather than as a filter. All are single-pass and cheap on GPU
+  // (one or two extra texture fetches); their real expense is that they hold
+  // the frame, which is why they carry real detail cost.
+  trailDecay:       { role: "accent", fidelity: "neutral",   gives: { light: 0.6, structure: 0.3 }, cost: 0.45, gpu: 2.4 },
+  motionMomentum:   { role: "accent", fidelity: "neutral",   gives: { structure: 0.7 }, cost: 0.5, gpu: 3.0 },
+  timeDisplace:     { role: "accent", fidelity: "neutral",   gives: { structure: 0.6, color: 0.3 }, cost: 0.5, gpu: 1.8 },
+  // Form, not accent: it re-projects the whole frame rather than decorating it.
+  infiniteZoom:     { role: "form",   fidelity: "cinematic", gives: { structure: 0.9 }, cost: 0.6, gpu: 1.9 },
+  reactionBloom:    { role: "finish", fidelity: "cinematic", gives: { light: 0.85, structure: 0.4 }, cost: 0.4, gpu: 2.6 },
 };
 
 export function craftOf(id: string): Craft | null {

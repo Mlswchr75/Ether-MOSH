@@ -22,8 +22,41 @@ const SIGNATURE_SET = [
 ];
 
 describe("effect registry", () => {
-  it("holds 80 effects", () => {
-    expect(EFFECTS.length).toBe(80);
+  it("holds 85 effects", () => {
+    expect(EFFECTS.length).toBe(85);
+  });
+
+  /** Effects with memory — they sample last frame via uFeedback. */
+  const TEMPORAL_SET = [
+    "trailDecay",
+    "motionMomentum",
+    "infiniteZoom",
+    "timeDisplace",
+    "reactionBloom",
+  ];
+
+  it("exposes uFeedback to every shader", () => {
+    for (const def of EFFECTS) {
+      expect(def.frag, `${def.id}`).toContain("uniform sampler2D uFeedback;");
+    }
+  });
+
+  it("ships the temporal set, and each one actually samples history", () => {
+    for (const id of TEMPORAL_SET) {
+      const def = EFFECTS_BY_ID[id];
+      expect(def, `${id} missing`).toBeTruthy();
+      expect(def.frag, `${id} never reads uFeedback`).toContain("texture2D(uFeedback");
+    }
+  });
+
+  it("keeps feedback gain below unity so nothing can latch on", () => {
+    // A temporal effect that multiplies history by >= 1.0 accumulates without
+    // bound and white-outs the screen. Every decay constant must be < 1.
+    for (const id of TEMPORAL_SET) {
+      const body = EFFECTS_BY_ID[id].frag;
+      const gains = [...body.matchAll(/\*\s*(0?\.\d+|1\.0+)\b/g)].map(m => parseFloat(m[1]));
+      for (const g of gains) expect(g, `${id} gain ${g}`).toBeLessThanOrEqual(1.0);
+    }
   });
 
   it("has no duplicate ids", () => {
