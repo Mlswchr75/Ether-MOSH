@@ -14,6 +14,8 @@ type Props = {
   onSavePreset: () => void;
   /** Copy a shareable link that restores the current stack exactly. */
   onCopyPresetLink: () => void;
+  /** Record a platform-ready file (Spotify Canvas, TikTok, …). */
+  onExportDeliverable: (specId: string) => void;
   onLoadPreset: () => void;
   onLoadImage: () => void;
 };
@@ -116,6 +118,10 @@ export function CommandPalette(props: Props) {
               <CmdItem onSelect={run(props.onSavePreset)} shortcut="⌘S">Save preset…</CmdItem>
               <CmdItem onSelect={run(props.onLoadPreset)}>Load preset…</CmdItem>
               <CmdItem onSelect={run(props.onExport)} shortcut="⌘E">Export image / video</CmdItem>
+              <CmdItem onSelect={run(() => props.onExportDeliverable("spotifyCanvas"))}>Export for Spotify Canvas</CmdItem>
+              <CmdItem onSelect={run(() => props.onExportDeliverable("tiktok"))}>Export for TikTok / Reels</CmdItem>
+              <CmdItem onSelect={run(() => props.onExportDeliverable("square"))}>Export square post</CmdItem>
+              <CmdItem onSelect={run(() => props.onExportDeliverable("loop16x9"))}>Export widescreen loop</CmdItem>
               <CmdItem onSelect={run(clearLayers)}>Reset session</CmdItem>
             </CmdGroup>
           </Command.List>

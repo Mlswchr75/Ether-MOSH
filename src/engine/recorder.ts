@@ -12,25 +12,44 @@ export class CanvasRecorder {
     return typeof MediaRecorder !== "undefined" && typeof HTMLCanvasElement.prototype.captureStream === "function";
   }
 
-  private pickMime(): string {
-    const candidates = [
+  /**
+   * WebM first for general recording — better quality per bit and universally
+   * supported by MediaRecorder.
+   *
+   * `preferMp4` flips the order for platform deliverables. Spotify Canvas
+   * refuses WebM outright, so a technically-better file that gets rejected at
+   * the upload form is the wrong trade. Not every browser can encode MP4, which
+   * is why this is a preference rather than a guarantee — callers validate what
+   * actually came back rather than assuming they got what they asked for.
+   */
+  private pickMime(preferMp4 = false): string {
+    const webm = [
       "video/webm;codecs=vp9",
       "video/webm;codecs=vp8",
       "video/webm",
+    ];
+    const mp4 = [
+      "video/mp4;codecs=avc1.42E01E",
       "video/mp4",
     ];
+    const candidates = preferMp4 ? [...mp4, ...webm] : [...webm, ...mp4];
     for (const c of candidates) {
       if (MediaRecorder.isTypeSupported?.(c)) return c;
     }
     return "video/webm";
   }
 
-  start(canvas: HTMLCanvasElement, fps = 30) {
+  /** What this browser would actually record for a given preference. */
+  static resolveMime(preferMp4 = false): string {
+    return new CanvasRecorder().pickMime(preferMp4);
+  }
+
+  start(canvas: HTMLCanvasElement, fps = 30, opts: { preferMp4?: boolean } = {}) {
     if (this.state === "recording") return;
     if (!CanvasRecorder.isSupported()) throw new Error("Recording not supported in this browser");
 
     const stream = canvas.captureStream(fps);
-    this.mimeType = this.pickMime();
+    this.mimeType = this.pickMime(opts.preferMp4);
     this.chunks = [];
     this.mediaRecorder = new MediaRecorder(stream, {
       mimeType: this.mimeType,

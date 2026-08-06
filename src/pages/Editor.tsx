@@ -31,6 +31,8 @@ import { toast } from "sonner";
 import { shareApp, shareBlob, shareOrDownload, canNativeShare } from "@/lib/share";
 import { presetFromUrl, PRESET_PARAM } from "@/engine/presetUrl";
 import { applyOverlayClass, overlayFromUrl } from "@/lib/overlayMode";
+import { DELIVERABLES_BY_ID } from "@/engine/deliverables";
+import { captureDeliverable } from "@/engine/captureDeliverable";
 import { KaossSurface } from "@/components/editor/KaossSurface";
 import { QuadrantSurface } from "@/components/editor/QuadrantSurface";
 import { TrackpadGestures } from "@/components/editor/TrackpadGestures";
@@ -156,6 +158,46 @@ export default function Editor() {
     if (isOverlay) setHideUI(true);
     return () => applyOverlayClass(false);
   }, [isOverlay]);
+
+  /* Platform deliverables.
+     Records the live canvas into a fixed-shape file and checks it against the
+     platform's rules before the user takes it to an upload form. The check
+     runs on what MediaRecorder actually produced rather than what it was
+     asked for, because browsers substitute codecs silently and the mismatch
+     is otherwise discovered at the rejection. */
+  const exportDeliverable = useCallback(async (specId: string) => {
+    const spec = DELIVERABLES_BY_ID[specId];
+    const canvas = useStore.getState().glCanvas;
+    if (!spec || !canvas) { toast.error("Nothing to export yet"); return; }
+    if (exportBusy) return;
+    setExportBusy(true);
+    setExportProgress(0);
+    const t = toast.loading(`Recording ${spec.name} — ${spec.defaultSec}s…`);
+    try {
+      const res = await captureDeliverable(canvas, spec, {
+        onProgress: (p) => setExportProgress(p),
+      });
+      await shareOrDownload(res.blob, res.filename);
+      toast.dismiss(t);
+      if (res.ok) {
+        toast.success(`${spec.name} ready`, {
+          description: `${res.seconds.toFixed(1)}s · ${spec.width}x${spec.height}`,
+        });
+      } else {
+        // Deliver the file anyway — it is still usable, and often only needs a
+        // format conversion. Saying nothing would be worse than saying "this
+        // will be refused and here is why".
+        const fatal = res.issues.filter(i => i.fatal).map(i => i.message).join(" ");
+        toast.warning(`${spec.name} saved, but needs a fix`, { description: fatal, duration: 12000 });
+      }
+    } catch (err) {
+      toast.dismiss(t);
+      toast.error(err instanceof Error ? err.message : "Export failed");
+    } finally {
+      setExportBusy(false);
+      setExportProgress(0);
+    }
+  }, [exportBusy]);
 
   const copyPresetLink = useCallback(async () => {
     if (!useStore.getState().layers.length) {
@@ -1380,6 +1422,7 @@ export default function Editor() {
         onShowShortcuts={() => setShortcutsOpen(true)}
         onExport={exportBestStill}
         onCopyPresetLink={copyPresetLink}
+        onExportDeliverable={exportDeliverable}
         onSavePreset={() => toast.message("Save preset — coming soon")}
         onLoadPreset={() => toast.message("Load preset — coming soon")}
         onLoadImage={() => navigate("/")}
