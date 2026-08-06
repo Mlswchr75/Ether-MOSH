@@ -19,11 +19,14 @@ import {
   paramsForRole,
   pickForRole,
   roleForQuadrant,
+  rollWildness,
   type FrameBrief,
   type Look,
   type Role,
 } from "@/engine/artDirector";
 import { generateSeed, rngFromSeed } from "@/engine/seed";
+import { presetToUrl, type PresetPayload } from "@/engine/presetUrl";
+import { exportSetlist, importSetlist, setlistToJson, SETLIST_SLOTS } from "@/engine/setlist";
 import type { AudioMap, Favorite, Intensity, IsolationMode, Layer, Modulator, PaletteProfile, StickerEntry } from "./types";
 import { facingOfTrack, type CameraFacing } from "@/lib/cameraFacing";
 import { DEFAULT_TILE_UNIFORMS, type TileMode, type TileUniforms } from "@/engine/tile";
@@ -66,6 +69,21 @@ const CHAOS: Record<Intensity, number> = {
   savage: 0.15,
   nuclear: 0.35,
   interdimensional: 0.6,
+};
+
+/**
+ * Lower bound on how wild a roll may be, per intensity.
+ *
+ * A floor rather than a fixed value: each mosh still rolls its own wildness
+ * with real spread, so even INTERDIMENSIONAL varies tap to tap. Raising the
+ * setting shifts the whole distribution up instead of pinning it, which keeps
+ * every setting worth pressing repeatedly.
+ */
+const WILD_FLOOR: Record<Intensity, number> = {
+  mild: 0,
+  savage: 0.18,
+  nuclear: 0.42,
+  interdimensional: 0.62,
 };
 
 type State = {
@@ -227,9 +245,17 @@ type Actions = {
   setPaletteProfile: (p: PaletteProfile | null) => void;
   saveFavorite: () => void;
   applyFavorite: (id: string) => boolean;
+  /** Apply a preset decoded from a shared link. */
+  applyPreset: (payload: PresetPayload | null) => boolean;
+  /** Encode the current stack as a shareable link. */
+  presetLink: () => string;
+  /** Serialise all nine cues to a portable setlist file. */
+  exportSetlistJson: (name?: string) => string;
+  /** Replace all nine cues from a setlist file. Returns cues loaded, or null. */
+  importSetlistJson: (json: string) => { name: string; count: number } | null;
   removeFavorite: (id: string) => void;
   renameFavorite: (id: string, name: string) => void;
-  moshDirected: (ids: string[]) => void;
+  moshDirected: (layers: import("@/engine/compose").DirectedLayer[]) => void;
   moshStorm: (ids: string[], opts?: { explosive?: boolean; regions?: unknown }) => void;
   addStickerToGallery: (sticker: StickerEntry) => void;
   removeStickerFromGallery: (id: string) => void;
@@ -339,7 +365,15 @@ export const useStore = create<State & Actions>((set, get) => ({
     if (prevStream) { try { prevStream.getTracks().forEach(t => t.stop()); } catch {} }
     const prevVideo = useStore.getState().videoElement;
     if (prevVideo) { try { prevVideo.srcObject = null; } catch {} try { prevVideo.parentNode?.removeChild(prevVideo); } catch {} }
-    set({ imageUrl: url, imageElement: el, videoElement: null, videoStream: null, paletteProfile: null });
+    // cameraFacing must go with the camera. Leaving it set meant that after one
+    // front-camera session every image loaded afterwards stayed mirrored, so
+    // any text in it read backwards.
+    set({
+      imageUrl: url, imageElement: el,
+      videoElement: null, videoStream: null,
+      cameraFacing: null,
+      paletteProfile: null,
+    });
     // Async upscale — runs in a worker so the render loop isn't disturbed.
     // When done, swap in the higher-res element so fullscreen / zoom stays crisp.
     upscaleImage(el).then((hi) => {
@@ -410,7 +444,8 @@ export const useStore = create<State & Actions>((set, get) => ({
       try { s.videoElement.srcObject = null; } catch {}
       try { s.videoElement.parentNode?.removeChild(s.videoElement); } catch {}
     }
-    set({ videoElement: null, videoStream: null });
+    // Facing belongs to the stream that just stopped.
+    set({ videoElement: null, videoStream: null, cameraFacing: null });
   },
   clearImage: () => {
     try { document.documentElement.style.removeProperty("--synth-accent"); } catch {}
@@ -420,7 +455,7 @@ export const useStore = create<State & Actions>((set, get) => ({
       try { s.videoElement.srcObject = null; } catch {}
       try { s.videoElement.parentNode?.removeChild(s.videoElement); } catch {}
     }
-    set({ imageUrl: null, imageElement: null, videoElement: null, videoStream: null, sourceName: null, layers: [], past: [], future: [], paletteProfile: null });
+    set({ imageUrl: null, imageElement: null, videoElement: null, videoStream: null, cameraFacing: null, sourceName: null, layers: [], past: [], future: [], paletteProfile: null });
   },
 
   addLayer: (effectId) => {
@@ -484,6 +519,7 @@ export const useStore = create<State & Actions>((set, get) => ({
     const composition = compose(brief, rand, {
       roleCount: ROLE_COUNT[inten],
       chaos: CHAOS[inten],
+      wildness: rollWildness(rand, WILD_FLOOR[inten]),
       avoidLooks: s.recentLooks,
       avoidEffects: [...s.recentEffects, ...locked.map(l => l.effectId)],
     });
@@ -496,6 +532,7 @@ export const useStore = create<State & Actions>((set, get) => ({
         hidden: false, locked: false,
         blend: cl.blend,
         opacity: cl.opacity,
+        region: cl.region ?? null,
         params: cl.params,
         mods: Object.fromEntries(def.params.map(p => [p.key, null])),
         audioMaps: Object.fromEntries(def.params.map(p => [p.key, null])),
@@ -541,6 +578,9 @@ export const useStore = create<State & Actions>((set, get) => ({
     // Q3 accents, Q4 finishes.
     const role = roleForQuadrant(q);
     const affinity = opts?.targetAffinity ?? skewedAffinity(rand);
+    // Each quadrant re-roll gets its own wildness, so repeatedly tapping one
+    // quadrant sweeps a real range instead of nudging the same effect.
+    const wild = rollWildness(rand, WILD_FLOOR[s.intensity]);
 
     const held = layers
       .slice(0, QUADRANT_COUNT)
@@ -550,6 +590,7 @@ export const useStore = create<State & Actions>((set, get) => ({
     const effectId = pickForRole(role, look, brief, rand, {
       exclude: [layers[q]?.effectId ?? "", ...held, ...(s.quadrantHistory[q] ?? [])].filter(Boolean),
       affinityTarget: affinity,
+      wildness: wild,
     });
     const def = EFFECTS_BY_ID[effectId];
     if (!def) return null;
@@ -568,8 +609,8 @@ export const useStore = create<State & Actions>((set, get) => ({
         effectId: fillId,
         hidden: false, locked: false,
         blend: fillRole === "grade" ? "normal" : blendForRole(fillRole, rand),
-        opacity: opacityForRole(fillRole, look, brief, rand, fillId),
-        params: paramsForRole(fillId, fillRole, look, brief, rand),
+        opacity: opacityForRole(fillRole, look, brief, rand, fillId, { wildness: wild }),
+        params: paramsForRole(fillId, fillRole, look, brief, rand, wild),
         mods: Object.fromEntries(fillDef.params.map(p => [p.key, null])),
         audioMaps: Object.fromEntries(fillDef.params.map(p => [p.key, null])),
       });
@@ -584,8 +625,8 @@ export const useStore = create<State & Actions>((set, get) => ({
       // The grade sits at the bottom fully opaque so the source is never
       // wiped out from underneath the stack.
       blend: role === "grade" ? "normal" : blendForRole(role, rand),
-      opacity: opacityForRole(role, look, brief, rand, effectId),
-      params: paramsForRole(effectId, role, look, brief, rand),
+      opacity: opacityForRole(role, look, brief, rand, effectId, { wildness: wild }),
+      params: paramsForRole(effectId, role, look, brief, rand, wild),
       mods: Object.fromEntries(def.params.map(p => [p.key, null])),
       audioMaps: Object.fromEntries(def.params.map(p => [p.key, null])),
     };
@@ -741,6 +782,55 @@ export const useStore = create<State & Actions>((set, get) => ({
     return true;
   },
 
+  /** Apply a decoded preset link. Returns false if there was nothing usable. */
+  applyPreset: (payload) => {
+    if (!payload?.layers?.length) return false;
+    const s = get();
+    // Fresh ids: the decoder mints its own, but applying the same link twice
+    // must not produce two layers claiming the same identity.
+    const cloned = payload.layers.map(l => ({
+      ...l,
+      id: newId(),
+      params: { ...l.params },
+      mods: { ...l.mods },
+      audioMaps: { ...(l.audioMaps ?? {}) },
+    }));
+    set({
+      past: pushPast(s),
+      future: [],
+      layers: cloned,
+      seed: payload.seed ?? s.seed,
+      intensity: payload.intensity ?? s.intensity,
+    });
+    return true;
+  },
+
+  /** Encode the current stack as a shareable link. */
+  presetLink: () => {
+    const s = get();
+    return presetToUrl({
+      layers: s.layers,
+      seed: s.seed,
+      intensity: s.intensity,
+      lookId: s.currentLook?.id,
+    });
+  },
+
+  exportSetlistJson: (name) => setlistToJson(exportSetlist(get().slots, name)),
+
+  importSetlistJson: (json) => {
+    const parsed = importSetlist(json);
+    if (!parsed) return null;
+    // Fresh ids on load: the same cue can be recalled repeatedly during a set,
+    // and layers sharing an identity break selection and reordering.
+    const slots = parsed.slots.map(layers =>
+      layers ? layers.map(l => ({ ...l, id: newId(), params: { ...l.params }, mods: { ...l.mods }, audioMaps: { ...(l.audioMaps ?? {}) } })) : null,
+    );
+    saveSlotsToStorage(slots);
+    set({ slots, activeSlot: null });
+    return { name: parsed.name, count: slots.filter(s => s && s.length).length };
+  },
+
   removeFavorite: (id) => set(st => {
     const next = st.favorites.filter(f => f.id !== id);
     try { localStorage.setItem("cathedral_favorites_v1", JSON.stringify(next)); } catch {}
@@ -753,21 +843,25 @@ export const useStore = create<State & Actions>((set, get) => ({
     return { favorites: next };
   }),
 
-  moshDirected: (ids) => set(s => {
+  // Takes a fully composed stack. Opacity, blend and region arrive already
+  // decided by the composition grammar and are passed through untouched —
+  // overwriting them here (as this used to, with a flat 0.75–1.0 opacity on
+  // every layer) is exactly what flattened composed stacks back into mud.
+  moshDirected: (directed) => set(s => {
     const seed = generateSeed();
-    const rand = rngFromSeed(seed);
     const locked = s.layers.filter(l => l.locked);
-    const fresh: Layer[] = ids.flatMap((eid, idx) => {
-      const def = EFFECTS_BY_ID[eid];
+    const fresh: Layer[] = directed.flatMap((d) => {
+      const def = EFFECTS_BY_ID[d.effectId];
       if (!def) return [];
       const params: Record<string, number> = {};
       for (const p of def.params) params[p.key] = p.default;
       return [{
         id: newId(),
-        effectId: eid,
+        effectId: d.effectId,
         hidden: false, locked: false,
-        blend: (idx === 0 ? "normal" : SAFE_BLENDS[Math.floor(rand() * SAFE_BLENDS.length)]) as import("@/engine/blend").BlendMode,
-        opacity: idx === 0 ? 1 : 0.75 + rand() * 0.25,
+        blend: d.blend,
+        opacity: d.opacity,
+        region: d.region ?? null,
         params,
         mods: Object.fromEntries(def.params.map(p => [p.key, null])),
         audioMaps: Object.fromEntries(def.params.map(p => [p.key, null])),

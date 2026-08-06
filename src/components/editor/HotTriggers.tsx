@@ -12,7 +12,7 @@ type Props = {
   onToggleRecord: () => void;
   onScreenshot: () => void;
   onFreeze: () => void;
-  onGif: () => void;
+  onGif: (seconds?: number) => void;
   onShare?: () => void;
   onSupport?: () => void;
   gifBusy?: boolean;
@@ -572,27 +572,7 @@ export function HotTriggers({ isRecording, onToggleRecord, onScreenshot, onFreez
           <Camera className="h-4 w-4" strokeWidth={1.5} />
         </HotBtn>
 
-        <button
-          type="button"
-          onClick={() => { if (!gifBusy) onGif(); }}
-          aria-label={gifBusy ? "Capturing GIF loop…" : "Capture 7s seamless GIF"}
-          aria-pressed={gifBusy || undefined}
-          title="Capture 7s seamless GIF loop (G)"
-          data-active={gifBusy || undefined}
-          data-no-longpress
-          disabled={gifBusy}
-          className="hot-trigger relative"
-          style={{ animationDelay: `360ms` }}
-        >
-          <span className="hot-trigger__glitch" aria-hidden><Film className="h-4 w-4" strokeWidth={1.5} /></span>
-          <span className="hot-trigger__ico"><Film className="h-4 w-4" strokeWidth={1.5} /></span>
-          {gifBusy && (
-            <span
-              className="pointer-events-none absolute inset-x-0 bottom-0 h-[2px] bg-[hsl(var(--accent))] origin-left"
-              style={{ transform: `scaleX(${Math.max(0.02, gifProgress ?? 0)})`, transition: "transform 80ms linear" }}
-            />
-          )}
-        </button>
+        <GifButton onGif={onGif} gifBusy={gifBusy} gifProgress={gifProgress} />
 
         {onShare && (
           <HotBtn delay={400} label="Share" onClick={onShare}>
@@ -610,6 +590,117 @@ export function HotTriggers({ isRecording, onToggleRecord, onScreenshot, onFreez
         <div className="pointer-events-none flex items-center gap-1 rounded-sm bg-black/55 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.2em] text-red-400 backdrop-blur-sm">
           <Circle className="h-1.5 w-1.5 fill-current animate-pulse" />
           REC
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+/** Durations offered on a long press. 7s stays the plain-tap default. */
+const GIF_LENGTHS = [3, 5, 7] as const;
+
+/**
+ * GIF trigger with a long-press branch.
+ *
+ * A plain tap keeps doing exactly what it did before — 7s — so the existing
+ * habit is untouched. Holding for half a second reveals the shorter lengths.
+ * Hiding the choice behind a hold rather than adding three buttons keeps the
+ * rail the same width, which matters because it has to fit on a phone.
+ */
+function GifButton({
+  onGif, gifBusy, gifProgress,
+}: { onGif: (seconds?: number) => void; gifBusy?: boolean; gifProgress?: number }) {
+  const [open, setOpen] = useState(false);
+  const timerRef = useRef<number | null>(null);
+  // Set when the hold fires, so the click that follows the release does not
+  // also trigger a capture — pointer and click both arrive on touch.
+  const heldRef = useRef(false);
+
+  const clearTimer = () => {
+    if (timerRef.current !== null) { window.clearTimeout(timerRef.current); timerRef.current = null; }
+  };
+
+  const onPointerDown = () => {
+    if (gifBusy) return;
+    heldRef.current = false;
+    clearTimer();
+    timerRef.current = window.setTimeout(() => {
+      heldRef.current = true;
+      setOpen(true);
+    }, 500);
+  };
+
+  const endHold = () => { clearTimer(); };
+
+  useEffect(() => () => clearTimer(), []);
+
+  // Dismiss on any outside interaction, so the menu cannot strand itself open
+  // over the canvas during a set.
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(false);
+    window.addEventListener("pointerdown", close, { capture: true });
+    window.addEventListener("keydown", close);
+    return () => {
+      window.removeEventListener("pointerdown", close, { capture: true } as any);
+      window.removeEventListener("keydown", close);
+    };
+  }, [open]);
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onPointerDown={onPointerDown}
+        onPointerUp={endHold}
+        onPointerLeave={endHold}
+        onPointerCancel={endHold}
+        onContextMenu={(e) => e.preventDefault()}
+        onClick={() => {
+          if (gifBusy) return;
+          if (heldRef.current) { heldRef.current = false; return; }
+          onGif(7);
+        }}
+        aria-label={gifBusy ? "Capturing GIF loop…" : "Capture seamless GIF — hold for length"}
+        aria-pressed={gifBusy || undefined}
+        aria-expanded={open || undefined}
+        title="Tap: 7s seamless GIF · Hold: choose 3s / 5s / 7s (G)"
+        data-active={(gifBusy || open) || undefined}
+        data-no-longpress
+        disabled={gifBusy}
+        className="hot-trigger relative"
+        style={{ animationDelay: `360ms` }}
+      >
+        <span className="hot-trigger__glitch" aria-hidden><Film className="h-4 w-4" strokeWidth={1.5} /></span>
+        <span className="hot-trigger__ico"><Film className="h-4 w-4" strokeWidth={1.5} /></span>
+        {gifBusy && (
+          <span
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-[2px] bg-[hsl(var(--accent))] origin-left"
+            style={{ transform: `scaleX(${Math.max(0.02, gifProgress ?? 0)})`, transition: "transform 80ms linear" }}
+          />
+        )}
+      </button>
+
+      {open && !gifBusy && (
+        <div
+          className="panel-in-3d absolute right-full top-0 z-50 mr-2 flex items-center gap-1 rounded-sm border border-[hsl(var(--border-default))] bg-black/85 p-1 backdrop-blur-md"
+          role="menu"
+          aria-label="GIF loop length"
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          {GIF_LENGTHS.map((sec) => (
+            <button
+              key={sec}
+              type="button"
+              role="menuitem"
+              data-no-longpress
+              onClick={() => { setOpen(false); onGif(sec); }}
+              className="min-w-[34px] rounded-sm border border-transparent px-2 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-[hsl(var(--text-secondary))] hover:border-[hsl(var(--accent))] hover:text-[hsl(var(--accent))] transition"
+            >
+              {sec}s
+            </button>
+          ))}
         </div>
       )}
     </div>

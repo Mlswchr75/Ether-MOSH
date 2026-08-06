@@ -29,6 +29,11 @@ import { RippleLayer } from "@/components/editor/Ripple";
 import { enterFullscreen, exitFullscreen, hasSeenPerfMode, markPerfModeSeen, useFullscreenSync } from "@/hooks/usePerformanceMode";
 import { toast } from "sonner";
 import { shareApp, shareBlob, shareOrDownload, canNativeShare } from "@/lib/share";
+import { presetFromUrl, PRESET_PARAM } from "@/engine/presetUrl";
+import { applyOverlayClass, overlayFromUrl } from "@/lib/overlayMode";
+import { DELIVERABLES_BY_ID } from "@/engine/deliverables";
+import { captureDeliverable } from "@/engine/captureDeliverable";
+import { cueFromUrl, setlistFilename } from "@/engine/setlist";
 import { KaossSurface } from "@/components/editor/KaossSurface";
 import { QuadrantSurface } from "@/components/editor/QuadrantSurface";
 import { TrackpadGestures } from "@/components/editor/TrackpadGestures";
@@ -122,6 +127,132 @@ export default function Editor() {
   const loadDroppedImage = useCallback(async (file: File) => {
     const ok = await loadImageFile(file);
     if (ok) toast.success("Image loaded — moshing…");
+  }, []);
+
+  /* A preset arriving on the URL.
+     This is what makes a look shareable, bookmarkable as a VJ cue, and usable
+     as an OBS browser source. Applied once on mount and then stripped from the
+     address bar, so a later mosh doesn't leave a stale link behind that no
+     longer describes what is on screen. */
+  useEffect(() => {
+    const payload = presetFromUrl();
+    if (!payload) return;
+    if (useStore.getState().applyPreset(payload)) {
+      toast.success(`Preset loaded — ${payload.layers.length} layers`);
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.delete(PRESET_PARAM);
+        window.history.replaceState({}, "", url.toString());
+      } catch {}
+    }
+  }, []);
+
+  /* Cue deep link: ?cue=1..9 recalls a saved slot on load.
+     This is what makes a rig scriptable — a Stream Deck button, a venue kiosk
+     shortcut, or a browser bookmark can each address one cue directly. Runs
+     after the preset effect so an explicit ?p= wins if both are present. */
+  useEffect(() => {
+    const idx = cueFromUrl();
+    if (idx === null) return;
+    const t = window.setTimeout(() => {
+      if (useStore.getState().loadSlot(idx)) toast.success(`Cue ${idx + 1}`);
+      else toast.error(`Cue ${idx + 1} is empty`);
+    }, 80);
+    return () => window.clearTimeout(t);
+  }, []);
+
+  const saveSetlist = useCallback(() => {
+    const json = useStore.getState().exportSetlistJson("MOSH set");
+    const blob = new Blob([json], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = setlistFilename("MOSH set");
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    toast.success("Setlist saved", { description: "Carry it to any machine" });
+  }, []);
+
+  const loadSetlist = useCallback(() => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".json,application/json";
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      const res = useStore.getState().importSetlistJson(await file.text());
+      if (!res) { toast.error("That doesn't look like a MOSH setlist"); return; }
+      toast.success(`Loaded "${res.name}"`, { description: `${res.count} cues ready` });
+    };
+    input.click();
+  }, []);
+
+  /* Overlay mode: MOSH as a layer inside someone else's compositor.
+     Read from the URL and applied to <html> so CSS can strip every opaque
+     surface. Chrome is force-hidden too — a browser source bakes whatever the
+     page paints into the stream, so a stray panel becomes permanent furniture
+     in the broadcast. */
+  const overlayRef = useRef(overlayFromUrl());
+  const isOverlay = overlayRef.current.mode !== "off";
+  useEffect(() => {
+    applyOverlayClass(isOverlay);
+    if (isOverlay) setHideUI(true);
+    return () => applyOverlayClass(false);
+  }, [isOverlay]);
+
+  /* Platform deliverables.
+     Records the live canvas into a fixed-shape file and checks it against the
+     platform's rules before the user takes it to an upload form. The check
+     runs on what MediaRecorder actually produced rather than what it was
+     asked for, because browsers substitute codecs silently and the mismatch
+     is otherwise discovered at the rejection. */
+  const exportDeliverable = useCallback(async (specId: string) => {
+    const spec = DELIVERABLES_BY_ID[specId];
+    const canvas = useStore.getState().glCanvas;
+    if (!spec || !canvas) { toast.error("Nothing to export yet"); return; }
+    if (exportBusy) return;
+    setExportBusy(true);
+    setExportProgress(0);
+    const t = toast.loading(`Recording ${spec.name} — ${spec.defaultSec}s…`);
+    try {
+      const res = await captureDeliverable(canvas, spec, {
+        onProgress: (p) => setExportProgress(p),
+      });
+      await shareOrDownload(res.blob, res.filename);
+      toast.dismiss(t);
+      if (res.ok) {
+        toast.success(`${spec.name} ready`, {
+          description: `${res.seconds.toFixed(1)}s · ${spec.width}x${spec.height}`,
+        });
+      } else {
+        // Deliver the file anyway — it is still usable, and often only needs a
+        // format conversion. Saying nothing would be worse than saying "this
+        // will be refused and here is why".
+        const fatal = res.issues.filter(i => i.fatal).map(i => i.message).join(" ");
+        toast.warning(`${spec.name} saved, but needs a fix`, { description: fatal, duration: 12000 });
+      }
+    } catch (err) {
+      toast.dismiss(t);
+      toast.error(err instanceof Error ? err.message : "Export failed");
+    } finally {
+      setExportBusy(false);
+      setExportProgress(0);
+    }
+  }, [exportBusy]);
+
+  const copyPresetLink = useCallback(async () => {
+    if (!useStore.getState().layers.length) {
+      toast.error("Nothing to share yet — mosh something first");
+      return;
+    }
+    const link = useStore.getState().presetLink();
+    try {
+      await navigator.clipboard.writeText(link);
+      toast.success("Preset link copied", { description: "Opens this exact look anywhere" });
+    } catch {
+      // Clipboard is permission-gated and blocked outright in some embeds;
+      // showing the link still lets the user copy it by hand.
+      toast.message("Preset link", { description: link, duration: 12000 });
+    }
   }, []);
 
   useEffect(() => {
@@ -369,8 +500,8 @@ export default function Editor() {
 
     const director = new SmartDirector({
       getVideo: () => useStore.getState().videoElement,
-      onMosh: (ids) => {
-        useStore.getState().moshDirected(ids);
+      onMosh: (composed) => {
+        useStore.getState().moshDirected(composed);
         setSmartFlashKey(performance.now());
       },
     });
@@ -479,20 +610,21 @@ export default function Editor() {
     }
   }, []);
 
-  const captureGif = useCallback(async () => {
+  /** Seconds the GIF button captures on a plain tap. Long-press picks another. */
+  const captureGif = useCallback(async (seconds = 7) => {
     if (gifBusy) return;
     if (!paywall.require("Seamless GIF loop")) return;
     const c = getCanvas();
     if (!c) { toast.error("No visualizer to capture"); return; }
     setGifBusy(true);
     setGifProgress(0);
-    // Pause auto-shuffle so the mosh effect stays locked during the 7s window.
+    // Pause auto-shuffle so the mosh effect stays locked for the whole window.
     const prevShuffle = useStore.getState().shuffleSec;
     if (prevShuffle != null) useStore.getState().setShuffleSec(null);
-    const t = toast.loading("Locking mosh · capturing seamless GIF…", { duration: 20_000 });
+    const t = toast.loading(`Locking mosh · capturing ${seconds}s seamless GIF…`, { duration: 30_000 });
     try {
       const result = await captureLoopingGif(c, {
-        durationMs: 7000,
+        durationMs: Math.round(seconds * 1000),
         fps: 12,
         maxWidth: 480,
         onProgress: (phase, p) => {
@@ -500,9 +632,9 @@ export default function Editor() {
           setGifProgress(phase === "capture" ? p * 0.7 : 0.7 + p * 0.3);
         },
       });
-      downloadBlob(result.blob, `mosh-${Date.now()}_loop.gif`);
+      downloadBlob(result.blob, `mosh-${Date.now()}_${seconds}s_loop.gif`);
       const quality = result.loopScore > 0.85 ? "tight loop" : result.loopScore > 0.6 ? "clean loop" : "loop";
-      toast.success(`GIF saved · ${result.frameCount}f · ${quality}`, { id: t });
+      toast.success(`${seconds}s GIF saved · ${result.frameCount}f · ${quality}`, { id: t });
     } catch (e) {
       toast.error("GIF capture failed", { id: t });
     } finally {
@@ -606,6 +738,7 @@ export default function Editor() {
         if (e.key === "z" || e.key === "Z") { e.preventDefault(); if (e.shiftKey) redo(); else undo(); return; }
         if (e.key === "y" || e.key === "Y") { e.preventDefault(); redo(); return; }
         if (e.key === "s" || e.key === "S") { e.preventDefault(); toast.message("Save preset — coming soon"); return; }
+        if (e.key === "l" || e.key === "L") { e.preventDefault(); copyPresetLink(); return; }
         if (e.key === "e" || e.key === "E") { e.preventDefault(); exportBestStill(); return; }
         return; // don't override other browser shortcuts
       }
@@ -999,9 +1132,9 @@ export default function Editor() {
         <div data-tap-fade-target className="absolute inset-0 opacity-100">
           <GlCanvas />
         </div>
-        {!hasSource && <StartCameraOverlay />}
-        <SystemAudioHud visible={systemAudioEnabled} />
-        {hasSource && (
+        {!hasSource && !isOverlay && <StartCameraOverlay />}
+        <SystemAudioHud visible={systemAudioEnabled && !isOverlay} />
+        {hasSource && !isOverlay && (
           <QuadrantSurface onTogglePerf={togglePerf} />
         )}
         <TrackpadGestures
@@ -1014,7 +1147,7 @@ export default function Editor() {
         <SourceTransition trigger={transitionKey} />
         
         {/* TapToBegin removed — StartCameraOverlay is the live-first empty state and TapToBegin's centered button used to intercept clicks meant for "go live". */} 
-        {!isPerformanceMode && (
+        {!isPerformanceMode && !isOverlay && (
           <HotTriggers
             isRecording={isRecording}
             onToggleRecord={toggleRecord}
@@ -1319,7 +1452,7 @@ export default function Editor() {
 
       {shortcutsOpen && <ShortcutsOverlay onClose={() => setShortcutsOpen(false)} />}
 
-      <AboutTrigger hidden={hideUI || isPerformanceMode} />
+      <AboutTrigger hidden={hideUI || isPerformanceMode || isOverlay} />
 
 
       <CommandPalette
@@ -1329,6 +1462,10 @@ export default function Editor() {
         onToggleUI={() => setHideUI(v => !v)}
         onShowShortcuts={() => setShortcutsOpen(true)}
         onExport={exportBestStill}
+        onCopyPresetLink={copyPresetLink}
+        onExportDeliverable={exportDeliverable}
+        onSaveSetlist={saveSetlist}
+        onLoadSetlist={loadSetlist}
         onSavePreset={() => toast.message("Save preset — coming soon")}
         onLoadPreset={() => toast.message("Load preset — coming soon")}
         onLoadImage={() => navigate("/")}

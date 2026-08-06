@@ -9,6 +9,7 @@
 // a 64×36 offscreen canvas.
 
 import { EFFECTS } from "./effects";
+import { composeStack, type DirectedLayer } from "./compose";
 
 export type Mood = {
   motion: number;       // 0..1 short-term frame diff
@@ -102,14 +103,28 @@ const AFFINITY: Record<string, Affinity> = {
   vignette:   { calm: 0.4, dark: 0.5 },
   plasmaField:{ colorful: 0.7, treble: 0.5, chaotic: 0.4 },
   scanFreeze: { calm: 0.6, dark: 0.5, mono: 0.4 },
+
+  // dimension — structural. Weighted toward motion because the depth proxy is
+  // itself motion-derived: a still subject has a soft, unreliable mask, and
+  // these effects are only convincing once there is real separation to exploit.
+  depthShear:      { motion: 1.0, bass: 0.5 },
+  dimensionSplit:  { motion: 0.8, bass: 0.9, chaotic: 0.8 },
+  timeShatter:     { motion: 0.9, chaotic: 1.0, treble: 0.5 },
+  parallaxExplode: { motion: 1.0, bass: 0.8, chaotic: 0.6 },
+  depthEcho:       { motion: 0.9, calm: 0.4 },
+  strataSlice:     { motion: 0.7, chaotic: 0.7, treble: 0.6 },
+  chronoBleed:     { motion: 0.8, colorful: 0.7, treble: 0.6 },
+  volumetricPull:  { motion: 0.8, bass: 0.7, calm: 0.3 },
 };
 
 const KNOWN_IDS = new Set(EFFECTS.map(e => e.id));
 for (const id of Object.keys(AFFINITY)) if (!KNOWN_IDS.has(id)) delete AFFINITY[id];
 
 type DirectorOpts = {
-  /** Called when the director wants to switch to a new stack. */
-  onMosh: (effectIds: string[]) => void;
+  /** Called when the director wants to switch to a new stack. Receives a fully
+   *  composed stack — opacity, blend and region are decided here, not by the
+   *  store, because they are compositional choices rather than defaults. */
+  onMosh: (layers: DirectedLayer[]) => void;
   /** Overlay hook — called with a 0..1 "confidence" spike each time it switches. */
   onSwitchFlash?: (mood: Mood) => void;
   /** Returns the current live video element (may be null). */
@@ -257,13 +272,13 @@ export class SmartDirector {
   }
 
   private pickAndSwitch(confidence: number) {
-    const ids = this.pickEffects();
-    if (!ids.length) return;
-    try { this.opts.onMosh(ids); } catch {}
+    const layers = this.pickEffects();
+    if (!layers.length) return;
+    try { this.opts.onMosh(layers); } catch {}
     try { this.opts.onSwitchFlash({ ...this.mood, sceneChange: Math.max(this.mood.sceneChange, confidence) }); } catch {}
   }
 
-  private pickEffects(): string[] {
+  private pickEffects(): DirectedLayer[] {
     const m = this.mood;
 
     // Convert mood to axis weights (0..1).
@@ -294,48 +309,19 @@ export class SmartDirector {
     }
     scored.sort((a, b) => b.score - a.score);
 
-    // Pick a base (top-scoring, weighted-random among top 5) then complements
-    // from different categories.
-    const rand = Math.random;
+    // Hand the ranking to the composition grammar rather than assembling the
+    // stack here. Scoring answers "which effects suit this moment"; composing
+    // answers "how do they share one frame" — and it was the missing half.
     const catOf = (id: string) => EFFECTS.find(e => e.id === id)?.category ?? "corruption";
-    const topPool = scored.slice(0, 6);
-    const base = weightedPick(topPool, rand);
-    const picks: string[] = [base];
-    const usedCats = new Set<string>([catOf(base)]);
+    const intensity = clip01(Math.max(w.chaotic, w.motion, w.bass));
 
-    // Layer count from energy: calm scenes get 2, wild scenes get up to 4.
-    const layerCount = 2 + Math.round(Math.max(w.chaotic, w.motion, w.bass) * 2);
-
-    for (const s of scored) {
-      if (picks.length >= layerCount) break;
-      if (picks.includes(s.id)) continue;
-      const c = catOf(s.id);
-      // Prefer new categories, but allow reuse after we've spanned all.
-      if (usedCats.has(c) && usedCats.size < 4) continue;
-      // Weighted acceptance so we still get variety, not just top-N.
-      if (rand() < 0.35 + s.score * 0.55) {
-        picks.push(s.id);
-        usedCats.add(c);
-      }
-    }
-    // Guarantee at least one atmosphere layer on very calm/bright scenes so
-    // it feels dreamy instead of raw source.
-    if (w.calm > 0.55 && !picks.some(id => catOf(id) === "atmosphere")) {
-      const atm = scored.find(s => catOf(s.id) === "atmosphere");
-      if (atm) picks[picks.length - 1] = atm.id;
-    }
-    return picks;
+    return composeStack({
+      ranked: scored.slice(0, 24),
+      categoryOf: catOf,
+      intensity,
+      rand: Math.random,
+    });
   }
 }
 
 function clip01(v: number) { return Math.max(0, Math.min(1, v)); }
-
-function weightedPick<T extends { score: number; id: string }>(pool: T[], rand: () => number): string {
-  const total = pool.reduce((s, p) => s + Math.max(0.001, p.score), 0);
-  let r = rand() * total;
-  for (const p of pool) {
-    r -= Math.max(0.001, p.score);
-    if (r <= 0) return p.id;
-  }
-  return pool[0].id;
-}

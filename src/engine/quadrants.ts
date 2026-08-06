@@ -85,6 +85,9 @@ export type EffectTraits = {
  *   - pulsed:    references uPulse
  */
 const DOMINANCE_BY_CATEGORY: Record<EffectCategory, number> = {
+  // Highest of any category: a dimensional effect restructures the frame, so
+  // anything stacked with it is unavoidably reacting to it rather than sharing.
+  dimension: 0.9,
   corruption: 0.8,
   geometry: 0.7,
   color: 0.45,
@@ -121,11 +124,14 @@ export const TRAITS: Record<string, EffectTraits> = Object.fromEntries(
  * How naturally two categories sit together. 1 = same family, low = they fight.
  * Symmetric.
  */
+// Dimension sits closest to geometry — both rearrange where things are — and
+// furthest from atmosphere, which only ever sits on top of what is underneath.
 const CATEGORY_AFFINITY: Record<EffectCategory, Record<EffectCategory, number>> = {
-  corruption: { corruption: 1.0, geometry: 0.55, color: 0.45, atmosphere: 0.3 },
-  geometry:   { corruption: 0.55, geometry: 1.0, color: 0.4, atmosphere: 0.45 },
-  color:      { corruption: 0.45, geometry: 0.4, color: 1.0, atmosphere: 0.6 },
-  atmosphere: { corruption: 0.3, geometry: 0.45, color: 0.6, atmosphere: 1.0 },
+  corruption: { corruption: 1.0, geometry: 0.55, color: 0.45, atmosphere: 0.3, dimension: 0.45 },
+  geometry:   { corruption: 0.55, geometry: 1.0, color: 0.4, atmosphere: 0.45, dimension: 0.70 },
+  color:      { corruption: 0.45, geometry: 0.4, color: 1.0, atmosphere: 0.6, dimension: 0.35 },
+  atmosphere: { corruption: 0.3, geometry: 0.45, color: 0.6, atmosphere: 1.0, dimension: 0.30 },
+  dimension:  { corruption: 0.45, geometry: 0.70, color: 0.35, atmosphere: 0.30, dimension: 1.0 },
 };
 
 /**

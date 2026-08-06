@@ -44,6 +44,9 @@ export type Layer = {
   mods: Record<string, Modulator | null>;
   /** audio reactivity mappings per param key */
   audioMaps?: Record<string, AudioMap | null>;
+  /** Confines the layer to part of the frame (depth gate, bands, shards).
+   *  Null or absent means it covers everything, which is the old behaviour. */
+  region?: import("@/engine/blend").LayerRegion | null;
 };
 
 export type Intensity = "mild" | "savage" | "nuclear" | "interdimensional";

@@ -83,6 +83,32 @@
   * { @apply border-border; }
   html, body, #root { @apply h-full; }
 
+  /* Overlay mode: nothing but the keyed canvas.
+     OBS composites whatever the page paints, so every opaque surface between
+     the canvas and the compositor has to go — including the ones set on <html>
+     and <body>, which are easy to forget and which show up as a solid black
+     rectangle over the user's scene. */
+  html.mosh-overlay,
+  html.mosh-overlay body,
+  html.mosh-overlay #root {
+    background: transparent !important;
+    background-color: transparent !important;
+  }
+  /* Chrome, panels and any backdrop are meaningless in a compositor layer and
+     would be baked into the stream as furniture. */
+  html.mosh-overlay [data-overlay-hide] {
+    display: none !important;
+  }
+  html.mosh-overlay canvas {
+    background: transparent !important;
+  }
+  /* Toasts live outside the editor tree, so gating them in React would mean
+     threading overlay state through the app root. A stream does not want a
+     "preset loaded" notification burned into it either way. */
+  html.mosh-overlay [data-sonner-toaster] {
+    display: none !important;
+  }
+
   body {
     background: hsl(var(--surface-0));
     color: hsl(var(--text-primary));
@@ -732,6 +758,40 @@
     55%      { transform: translate3d(6px,-3px,0); clip-path: inset(5% 0 70% 0); }
     85%      { transform: translate3d(-3px,1px,0); clip-path: inset(60% 0 10% 0); }
   }
+  /* Roaming hero phrase.
+     The wrapper owns position and the in/hold/out life cycle; the .mosh-text
+     child inside it keeps the RGB-split aesthetic. They have to be separate
+     elements because both animate `transform`, and the later animation would
+     otherwise simply win. steps(1) throughout — the snapping between keyframes
+     is what reads as digital corruption rather than as a fade. */
+  .mosh-phrase {
+    position: absolute;
+    white-space: nowrap;
+    will-change: transform, opacity, clip-path;
+    animation: mosh-phrase-life var(--life, 1400ms) steps(1, end) both;
+  }
+  @keyframes mosh-phrase-life {
+    0%   { opacity: 0;   transform: translate3d(-10px, 0, 0);  clip-path: inset(46% 0 46% 0); }
+    4%   { opacity: 1;   transform: translate3d(7px, -2px, 0); clip-path: inset(0 0 74% 0); }
+    8%   { opacity: 0.35;transform: translate3d(-6px, 3px, 0); clip-path: inset(62% 0 10% 0); }
+    11%  { opacity: 1;   transform: translate3d(3px, 0, 0);    clip-path: inset(18% 0 38% 0); }
+    15%  { opacity: 1;   transform: translate3d(0, 0, 0);      clip-path: inset(0 0 0 0); }
+    38%  { opacity: 1;   transform: translate3d(0, 0, 0);      clip-path: inset(0 0 0 0); }
+    41%  { opacity: 0.85;transform: translate3d(-4px, 1px, 0); clip-path: inset(34% 0 44% 0); }
+    44%  { opacity: 1;   transform: translate3d(0, 0, 0);      clip-path: inset(0 0 0 0); }
+    72%  { opacity: 1;   transform: translate3d(0, 0, 0);      clip-path: inset(0 0 0 0); }
+    75%  { opacity: 0.9; transform: translate3d(5px, -1px, 0); clip-path: inset(8% 0 66% 0); }
+    78%  { opacity: 1;   transform: translate3d(0, 0, 0);      clip-path: inset(0 0 0 0); }
+    88%  { opacity: 1;   transform: translate3d(8px, -2px, 0); clip-path: inset(0 0 58% 0); }
+    93%  { opacity: 0.4; transform: translate3d(-11px, 2px, 0);clip-path: inset(72% 0 0 0); }
+    97%  { opacity: 0.7; transform: translate3d(6px, 0, 0);    clip-path: inset(30% 0 40% 0); }
+    100% { opacity: 0;   transform: translate3d(12px, 0, 0);   clip-path: inset(50% 0 50% 0); }
+  }
+  /* Motion here is decorative and heavy — hold one phrase still instead. */
+  @media (prefers-reduced-motion: reduce) {
+    .mosh-phrase { animation: none; opacity: 1; transform: none; clip-path: none; }
+  }
+
   .mosh-icon {
     will-change: transform, filter;
     animation: mosh-icon-bob 3.4s ease-in-out infinite;
