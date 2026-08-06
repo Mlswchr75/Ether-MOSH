@@ -141,7 +141,12 @@ export function seamScore(data: Uint8ClampedArray, w: number, h: number): SeamSc
      The floor stops a perfectly flat image, whose baseline is zero, from
      dividing by nothing and reporting a seam that is not there. */
   const score = (seam: number, base: number) => {
-    const ratio = seam / Math.max(base, 4);
+    // The floor is summed across three channels, so 12 is ~4 per channel —
+    // right at the edge of perceptible and comfortably inside dithering and
+    // PNG quantisation noise. Set lower, a join running through a locally flat
+    // part of the design divides by near-nothing and reports a seam that no eye
+    // could find.
+    const ratio = seam / Math.max(base, 12);
     return Math.max(0, Math.min(1, 1 - Math.max(0, ratio - 1) / 3));
   };
 

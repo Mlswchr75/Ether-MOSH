@@ -2,13 +2,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Helmet } from "react-helmet-async";
-import { Download, ArrowLeft, Shuffle } from "lucide-react";
+import { Download, ArrowLeft, Shuffle, Upload } from "lucide-react";
 import { MoshRenderer } from "@/engine/Renderer";
 import type { RenderLayer } from "@/engine/Renderer";
 import { rngFromSeed } from "@/engine/seed";
 import { drawSeamless } from "@/engine/seamlessSource";
 import { composeForgeStack, type ForgeLayer } from "@/engine/forgeCompose";
-import { seamScore, seamPasses } from "@/engine/tileSafety";
+import { seamScore } from "@/engine/tileSafety";
+import { healToSeamless, renderSizeFor, DEFAULT_HEAL_BAND as DEFAULT_BAND } from "@/engine/seamlessHeal";
 import { EFFECTS_BY_ID } from "@/engine/effects";
 import { toast } from "sonner";
 
@@ -44,8 +45,79 @@ export default function PatternForge() {
   );
   const [exporting, setExporting] = useState(false);
   const [seam, setSeam] = useState<number | null>(null);
+  const [baseImage, setBaseImage] = useState<HTMLImageElement | null>(null);
+  const [baseName, setBaseName] = useState<string | null>(null);
+  /** How much of the generated field sits over an uploaded base, 0..1. */
+  const [overlay, setOverlay] = useState(0.55);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const palette = PALETTES[paletteIdx];
+
+  /**
+   * Paint the source frame. Shared by the preview and the exporter on purpose:
+   * two copies of this drifted apart is exactly how an export stops matching
+   * what the user was looking at when they pressed save.
+   *
+   * With a base image loaded, the generated field composites OVER it at
+   * `overlay` — so the photo's structure survives and the pattern reads as
+   * something done to it, rather than replacing it. At overlay 0 the effect
+   * stack works the image directly; at 1 the image is gone.
+   */
+  const drawSourceFrame = useCallback((
+    ctx: CanvasRenderingContext2D,
+    w: number,
+    h: number,
+    t: number,
+  ) => {
+    if (baseImage) {
+      // Cover-fit so an off-aspect upload fills the square without letterboxing.
+      const iw = baseImage.naturalWidth || baseImage.width;
+      const ih = baseImage.naturalHeight || baseImage.height;
+      const scale = Math.max(w / iw, h / ih);
+      const dw = iw * scale;
+      const dh = ih * scale;
+      ctx.clearRect(0, 0, w, h);
+      ctx.drawImage(baseImage, (w - dw) / 2, (h - dh) / 2, dw, dh);
+      if (overlay > 0.01) {
+        const layer = document.createElement("canvas");
+        layer.width = w; layer.height = h;
+        drawSeamless(layer.getContext("2d")!, w, h, {
+          colors: palette.colors,
+          seed: seed.toString(36),
+          t,
+          complexity: 2 + Math.round(intensity * 4),
+        });
+        ctx.save();
+        ctx.globalAlpha = overlay;
+        // Overlay rather than source-over: it keeps the base image's luminance
+        // structure and tints through it, which is what makes the result read
+        // as the photo reworked instead of the photo hidden.
+        ctx.globalCompositeOperation = "overlay";
+        ctx.drawImage(layer, 0, 0);
+        ctx.restore();
+      }
+      return;
+    }
+    drawSeamless(ctx, w, h, {
+      colors: palette.colors,
+      seed: seed.toString(36),
+      t,
+      complexity: 2 + Math.round(intensity * 4),
+    });
+  }, [baseImage, overlay, palette, seed, intensity]);
+
+  const loadBase = useCallback((file: File) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      setBaseImage(img);
+      setBaseName(file.name);
+      setSeam(null);
+      toast.success("Base image loaded", { description: "Pattern now builds on top of it" });
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); toast.error("Couldn't read that image"); };
+    img.src = url;
+  }, []);
 
   const randomise = useCallback(() => {
     setSeed(Math.floor(Math.random() * 0xFFFFFF));
@@ -107,12 +179,7 @@ export default function PatternForge() {
         return;
       }
 
-      drawSeamless(sctx, src.width, src.height, {
-        colors: palette.colors,
-        seed: seed.toString(36),
-        t,
-        complexity: 2 + Math.round(intensity * 4),
-      });
+      drawSourceFrame(sctx, src.width, src.height, t);
 
       const layers: RenderLayer[] = currentStack.map((l, i) => ({
         id: `forge${i}`,
@@ -135,7 +202,7 @@ export default function PatternForge() {
       canvas.remove();
       rendererRef.current = null;
     };
-  }, [palette, currentStack, seed, seamless, intensity]);
+  }, [currentStack, seamless, drawSourceFrame]);
 
   /**
    * Render the pattern at print resolution, off-screen.
@@ -150,31 +217,25 @@ export default function PatternForge() {
   const exportAt = useCallback(async (size: number) => {
     if (exporting) return;
     setExporting(true);
-    const t = toast.loading(`Rendering ${size}x${size}…`);
+    const t = toast.loading(seamless ? "Finding the cleanest frame…" : `Rendering ${size}x${size}…`);
     let off: HTMLCanvasElement | null = null;
     let r: MoshRenderer | null = null;
     try {
+      // Render oversized: the surplus is the material the heal blends with.
+      const renderSize = seamless ? renderSizeFor(size) : size;
       off = document.createElement("canvas");
-      off.width = size;
-      off.height = size;
+      off.width = renderSize;
+      off.height = renderSize;
       r = new MoshRenderer(off);
 
       const src = document.createElement("canvas");
-      // Source resolution scales with output so the field keeps its detail
-      // instead of being magnified into mush at 4K.
-      src.width = src.height = Math.min(1024, Math.max(256, size / 2));
-      const sctx = src.getContext("2d")!;
-      drawSeamless(sctx, src.width, src.height, {
-        colors: palette.colors,
-        seed: seed.toString(36),
-        t: 0,
-        complexity: 2 + Math.round(intensity * 4),
-      });
+      src.width = src.height = Math.min(1024, Math.max(256, Math.floor(renderSize / 2)));
+      const sctx = src.getContext("2d", { willReadFrequently: true })!;
 
       r.setSourceCanvas(src);
       r.setTileableSampling(seamless);
-      r.setRenderScale(1);          // no internal downscale for a print asset
-      r.resize(size, size);
+      r.setRenderScale(1);
+      r.resize(renderSize, renderSize);
       r.setHdrIntensity(0);
       r.setHdr(0);
 
@@ -186,34 +247,69 @@ export default function PatternForge() {
         blend: l.blend,
         params: l.params,
       }));
-      // Two passes: the first compiles shaders, the second renders with them
-      // warm. A single pass can capture a frame where a shader is still linking.
-      r.render(layers, 0.5);
-      r.render(layers, 0.5);
 
-      // Verify the tile actually closes before calling it a print asset.
-      let score: number | null = null;
-      try {
-        const probe = document.createElement("canvas");
-        const pw = 256;
-        probe.width = probe.height = pw;
-        const pctx = probe.getContext("2d", { willReadFrequently: true })!;
+      // Probe surface, reused across candidates — allocating one per frame at
+      // 4K is most of the cost of the search.
+      const probe = document.createElement("canvas");
+      const pw = 256;
+      probe.width = probe.height = pw;
+      const pctx = probe.getContext("2d", { willReadFrequently: true })!;
+
+      const paint = (time: number) => {
+        drawSourceFrame(sctx, src.width, src.height, time);
+        r!.render(layers, 0.5);
+      };
+
+      /* Search for the best moment rather than capturing the instant of the
+         click.
+
+         Effects animate, so the seam quality genuinely varies frame to frame.
+         The heal will close the join either way — but the frame that needed the
+         LEAST correction has the narrowest visible blend band, so picking it
+         makes the repair harder to see. Bounded to ~1.6s: past that the user is
+         just waiting, and the curve has flattened. */
+      const CANDIDATES = seamless ? 12 : 1;
+      const SPACING_MS = 130;
+      let bestTime = 0;
+      let bestRaw = -1;
+
+      for (let i = 0; i < CANDIDATES; i++) {
+        const time = i * (SPACING_MS / 1000);
+        paint(time);
+        // Twice: the first pass may land while a shader is still linking.
+        if (i === 0) paint(time);
+        if (CANDIDATES === 1) { bestTime = time; break; }
+
         pctx.drawImage(off, 0, 0, pw, pw);
-        const s = seamScore(pctx.getImageData(0, 0, pw, pw).data, pw, pw);
-        score = s.worst;
-        setSeam(score);
-        if (seamless && !seamPasses(s)) {
-          toast.warning("Seam detected", {
-            id: t,
-            description: `Edge match ${(score * 100).toFixed(1)}% — reshuffle for a cleaner tile.`,
-            duration: 9000,
-          });
-        }
-      } catch {
-        /* measurement is advisory; never block the export on it */
+        const raw = seamScore(pctx.getImageData(0, 0, pw, pw).data, pw, pw).worst;
+        if (raw > bestRaw) { bestRaw = raw; bestTime = time; }
+        // Already effectively seamless before any repair — stop early.
+        if (raw > 0.995) break;
+        await new Promise(res => setTimeout(res, 8));
       }
 
-      const blob = await new Promise<Blob | null>(res => off!.toBlob(res, "image/png"));
+      // Re-render the winner, then repair its edges.
+      paint(bestTime);
+      paint(bestTime);
+
+      let finalCanvas: HTMLCanvasElement = off;
+      let band = 0;
+      if (seamless) {
+        const healed = healToSeamless(off, size, DEFAULT_BAND);
+        finalCanvas = healed.canvas;
+        band = healed.band;
+      }
+
+      // Score what is actually being handed over, not what went into the heal.
+      let score: number | null = null;
+      try {
+        pctx.clearRect(0, 0, pw, pw);
+        pctx.drawImage(finalCanvas, 0, 0, pw, pw);
+        score = seamScore(pctx.getImageData(0, 0, pw, pw).data, pw, pw).worst;
+        setSeam(score);
+      } catch { /* advisory only — never block the save */ }
+
+      const blob = await new Promise<Blob | null>(res => finalCanvas.toBlob(res, "image/png"));
       if (!blob) throw new Error("Encoding failed");
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -222,10 +318,22 @@ export default function PatternForge() {
       a.click();
       setTimeout(() => URL.revokeObjectURL(url), 5000);
 
-      if (!seamless || score === null || score >= 0.97) {
-        toast.success(`${size}x${size} exported`, {
+      /* Always saved, always told what you got.
+         The previous version suppressed the success toast when the seam failed,
+         so a file that did download looked like a refusal. */
+      const pct = score !== null ? `${(score * 100).toFixed(1)}%` : "n/a";
+      if (!seamless) {
+        toast.success(`${size}x${size} exported`, { id: t });
+      } else if (score !== null && score < 0.9) {
+        toast.warning(`${size}x${size} saved — edges may show`, {
           id: t,
-          description: seamless && score !== null ? `Seamless · edge match ${(score * 100).toFixed(1)}%` : undefined,
+          description: `Edge match ${pct}. Reshuffle for a cleaner tile, or drop density.`,
+          duration: 10000,
+        });
+      } else {
+        toast.success(`${size}x${size} seamless tile saved`, {
+          id: t,
+          description: `Edge match ${pct} · ${band}px blended`,
         });
       }
     } catch (e) {
@@ -235,7 +343,7 @@ export default function PatternForge() {
       off?.remove();
       setExporting(false);
     }
-  }, [exporting, palette, seed, currentStack, seamless, intensity]);
+  }, [exporting, palette, seed, currentStack, seamless, intensity, drawSourceFrame]);
 
   return (
     <main className="flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground">
@@ -286,7 +394,16 @@ export default function PatternForge() {
 
       <div className="flex flex-1 overflow-hidden">
         {/* Canvas */}
-        <div ref={hostRef} className="relative flex-1 bg-black" />
+        <div
+          ref={hostRef}
+          className="relative flex-1 bg-black"
+          onDragOver={(e) => { e.preventDefault(); }}
+          onDrop={(e) => {
+            e.preventDefault();
+            const f = e.dataTransfer.files?.[0];
+            if (f && f.type.startsWith("image/")) loadBase(f);
+          }}
+        />
 
         {/* Sidebar */}
         <motion.div
@@ -321,6 +438,52 @@ export default function PatternForge() {
             </div>
           </div>
 
+          {/* Base image */}
+          <div>
+            <p className="mb-3 font-mono text-[9px] uppercase tracking-[0.4em] text-foreground/40">
+              base
+            </p>
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              className="flex w-full items-center justify-between px-2 py-1.5 font-mono text-[10px] uppercase tracking-[0.2em] text-foreground/60 transition hover:text-accent"
+            >
+              {baseImage ? "replace image" : "upload image"}
+              <Upload className="h-3 w-3" />
+            </button>
+            {baseName && (
+              <>
+                <p className="mt-1 truncate px-2 font-mono text-[9px] text-accent/70" title={baseName}>
+                  {baseName}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => { setBaseImage(null); setBaseName(null); setSeam(null); }}
+                  className="mt-1 px-2 font-mono text-[9px] uppercase tracking-[0.2em] text-foreground/35 transition hover:text-destructive"
+                >
+                  remove
+                </button>
+                <p className="mb-1 mt-3 px-2 font-mono text-[9px] uppercase tracking-[0.3em] text-foreground/40">
+                  pattern over base
+                </p>
+                <input
+                  type="range" min={0} max={1} step={0.05}
+                  value={overlay}
+                  onChange={(e) => setOverlay(parseFloat(e.target.value))}
+                  className="w-full accent-[hsl(var(--accent))]"
+                  aria-label="Pattern strength over base image"
+                />
+                <p className="mt-1 px-2 font-mono text-[8px] uppercase tracking-[0.15em] text-foreground/30">
+                  {overlay < 0.05 ? "effects rework the image directly" : `${Math.round(overlay * 100)}% pattern`}
+                </p>
+              </>
+            )}
+            <input
+              ref={fileRef} type="file" accept="image/*" hidden
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) loadBase(f); e.target.value = ""; }}
+            />
+          </div>
+
           {/* Seamless */}
           <div>
             <p className="mb-3 font-mono text-[9px] uppercase tracking-[0.4em] text-foreground/40">
@@ -338,7 +501,7 @@ export default function PatternForge() {
             </button>
             {seamless && (
               <p className="mt-1 px-2 font-mono text-[8px] leading-relaxed uppercase tracking-[0.15em] text-foreground/30">
-                pool limited to effects that survive tiling
+pool limited to tile-safe effects · edges healed on export
               </p>
             )}
             {seam !== null && (
