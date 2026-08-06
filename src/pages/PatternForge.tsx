@@ -12,6 +12,11 @@ import { seamScore } from "@/engine/tileSafety";
 import { healToSeamless, renderSizeFor, DEFAULT_HEAL_BAND as DEFAULT_BAND } from "@/engine/seamlessHeal";
 import { EFFECTS_BY_ID } from "@/engine/effects";
 import { toast } from "sonner";
+import { MicAnalyzer } from "@/engine/mic";
+import { captureLoopingGif } from "@/engine/gifCapture";
+import { CanvasRecorder } from "@/engine/recorder";
+import { downloadBlob } from "@/engine/export";
+import { ForgeTriggers } from "@/components/forge/ForgeTriggers";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
 
@@ -50,6 +55,14 @@ export default function PatternForge() {
   /** How much of the generated field sits over an uploaded base, 0..1. */
   const [overlay, setOverlay] = useState(0.55);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const micRef = useRef(new MicAnalyzer());
+  const [micOn, setMicOn] = useState(false);
+  const [gifBusy, setGifBusy] = useState(false);
+  const [gifProgress, setGifProgress] = useState(0);
+  const recorderRef = useRef<CanvasRecorder | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const palette = PALETTES[paletteIdx];
 
@@ -105,6 +118,99 @@ export default function PatternForge() {
       complexity: 2 + Math.round(intensity * 4),
     });
   }, [baseImage, overlay, palette, seed, intensity]);
+
+  const toggleMic = useCallback(async () => {
+    const mic = micRef.current;
+    if (mic.enabled) { mic.stop(); setMicOn(false); return; }
+    try {
+      await mic.start("mic");
+      setMicOn(true);
+      toast.success("Audio reactive", { description: "Pattern now responds to sound" });
+    } catch {
+      toast.error("Mic unavailable — allow access and try again");
+    }
+  }, []);
+  // Release the mic when leaving the page; a hot mic after navigation is both a
+  // battery cost and a privacy surprise.
+  useEffect(() => () => micRef.current.stop(), []);
+
+  const captureGif = useCallback(async (seconds: number) => {
+    const canvas = exportCanvasRef.current;
+    if (!canvas || gifBusy) return;
+    setGifBusy(true);
+    setGifProgress(0);
+    const t = toast.loading(`Capturing ${seconds}s loop…`, { duration: 30_000 });
+    try {
+      const res = await captureLoopingGif(canvas, {
+        durationMs: seconds * 1000,
+        fps: 12,
+        maxWidth: 480,
+        onProgress: (phase, p) => setGifProgress(phase === "capture" ? p * 0.7 : 0.7 + p * 0.3),
+      });
+      downloadBlob(res.blob, `mosh-forge-${seed.toString(16)}-${seconds}s_loop.gif`);
+      const quality = res.loopScore > 0.85 ? "tight loop" : res.loopScore > 0.6 ? "clean loop" : "loop";
+      toast.success(`${seconds}s GIF saved · ${res.frameCount}f · ${quality}`, { id: t });
+    } catch {
+      toast.error("GIF capture failed", { id: t });
+    } finally {
+      setGifBusy(false);
+      setGifProgress(0);
+    }
+  }, [gifBusy, seed]);
+
+  const toggleRecord = useCallback(async () => {
+    const canvas = exportCanvasRef.current;
+    if (!canvas) return;
+    if (recorderRef.current) {
+      try {
+        const blob = await recorderRef.current.stop();
+        downloadBlob(blob, `mosh-forge-${seed.toString(16)}.${recorderRef.current.extension()}`);
+        toast.success("Recording saved");
+      } catch {
+        toast.error("Recording failed");
+      } finally {
+        recorderRef.current = null;
+        setIsRecording(false);
+      }
+      return;
+    }
+    if (!CanvasRecorder.isSupported()) {
+      toast.error("This browser can't record video");
+      return;
+    }
+    try {
+      const rec = new CanvasRecorder();
+      rec.start(canvas, 30);
+      recorderRef.current = rec;
+      setIsRecording(true);
+      toast.message("Recording…", { description: "Tap again to stop and save" });
+    } catch {
+      toast.error("Couldn't start recording");
+    }
+  }, [seed]);
+
+  const toggleFullscreen = useCallback(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    const active = document.fullscreenElement || (document as any).webkitFullscreenElement;
+    if (active) {
+      (document.exitFullscreen?.() ?? Promise.resolve()).catch(() => {});
+    } else {
+      (host.requestFullscreen?.() ?? Promise.resolve()).catch(() => {
+        toast.error("Fullscreen unavailable");
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    const sync = () => setIsFullscreen(!!(document.fullscreenElement || (document as any).webkitFullscreenElement));
+    document.addEventListener("fullscreenchange", sync);
+    document.addEventListener("webkitfullscreenchange", sync as any);
+    return () => {
+      document.removeEventListener("fullscreenchange", sync);
+      document.removeEventListener("webkitfullscreenchange", sync as any);
+    };
+  }, []);
 
   const loadBase = useCallback((file: File) => {
     const url = URL.createObjectURL(file);
@@ -190,7 +296,14 @@ export default function PatternForge() {
         params: l.params,
       }));
 
-      renderer!.render(layers, 0.4 + 0.3 * Math.sin(t * 1.5));
+      /* Pulse drives every uPulse-reactive effect in the stack. With the mic
+         off this is a slow sine so the preview still breathes; with it on the
+         pattern is driven by what the room is actually doing. */
+      const mic = micRef.current;
+      const pulse = mic.enabled
+        ? Math.min(1, mic.level() * 0.75 + mic.bassLevel * 0.45)
+        : 0.4 + 0.3 * Math.sin(t * 1.5);
+      renderer!.render(layers, pulse);
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
@@ -403,7 +516,19 @@ export default function PatternForge() {
             const f = e.dataTransfer.files?.[0];
             if (f && f.type.startsWith("image/")) loadBase(f);
           }}
-        />
+        >
+          <ForgeTriggers
+            micOn={micOn}
+            onToggleMic={toggleMic}
+            onGif={captureGif}
+            gifBusy={gifBusy}
+            gifProgress={gifProgress}
+            isRecording={isRecording}
+            onToggleRecord={toggleRecord}
+            isFullscreen={isFullscreen}
+            onToggleFullscreen={toggleFullscreen}
+          />
+        </div>
 
         {/* Sidebar */}
         <motion.div
