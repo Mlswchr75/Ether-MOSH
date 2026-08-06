@@ -25,6 +25,7 @@ import {
   type Role,
 } from "@/engine/artDirector";
 import { generateSeed, rngFromSeed } from "@/engine/seed";
+import { presetToUrl, type PresetPayload } from "@/engine/presetUrl";
 import type { AudioMap, Favorite, Intensity, IsolationMode, Layer, Modulator, PaletteProfile, StickerEntry } from "./types";
 import { facingOfTrack, type CameraFacing } from "@/lib/cameraFacing";
 import { DEFAULT_TILE_UNIFORMS, type TileMode, type TileUniforms } from "@/engine/tile";
@@ -243,6 +244,10 @@ type Actions = {
   setPaletteProfile: (p: PaletteProfile | null) => void;
   saveFavorite: () => void;
   applyFavorite: (id: string) => boolean;
+  /** Apply a preset decoded from a shared link. */
+  applyPreset: (payload: PresetPayload | null) => boolean;
+  /** Encode the current stack as a shareable link. */
+  presetLink: () => string;
   removeFavorite: (id: string) => void;
   renameFavorite: (id: string, name: string) => void;
   moshDirected: (layers: import("@/engine/compose").DirectedLayer[]) => void;
@@ -770,6 +775,40 @@ export const useStore = create<State & Actions>((set, get) => ({
     const cloned = fav.layers.map(l => ({ ...l, id: newId(), params: { ...l.params }, mods: { ...l.mods }, audioMaps: { ...(l.audioMaps ?? {}) } }));
     set({ past: pushPast(s), future: [], layers: cloned, seed: fav.seed ?? s.seed });
     return true;
+  },
+
+  /** Apply a decoded preset link. Returns false if there was nothing usable. */
+  applyPreset: (payload) => {
+    if (!payload?.layers?.length) return false;
+    const s = get();
+    // Fresh ids: the decoder mints its own, but applying the same link twice
+    // must not produce two layers claiming the same identity.
+    const cloned = payload.layers.map(l => ({
+      ...l,
+      id: newId(),
+      params: { ...l.params },
+      mods: { ...l.mods },
+      audioMaps: { ...(l.audioMaps ?? {}) },
+    }));
+    set({
+      past: pushPast(s),
+      future: [],
+      layers: cloned,
+      seed: payload.seed ?? s.seed,
+      intensity: payload.intensity ?? s.intensity,
+    });
+    return true;
+  },
+
+  /** Encode the current stack as a shareable link. */
+  presetLink: () => {
+    const s = get();
+    return presetToUrl({
+      layers: s.layers,
+      seed: s.seed,
+      intensity: s.intensity,
+      lookId: s.currentLook?.id,
+    });
   },
 
   removeFavorite: (id) => set(st => {

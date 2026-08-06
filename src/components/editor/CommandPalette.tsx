@@ -12,6 +12,8 @@ type Props = {
   onShowShortcuts: () => void;
   onExport: () => void;
   onSavePreset: () => void;
+  /** Copy a shareable link that restores the current stack exactly. */
+  onCopyPresetLink: () => void;
   onLoadPreset: () => void;
   onLoadImage: () => void;
 };
@@ -110,6 +112,7 @@ export function CommandPalette(props: Props) {
             </CmdGroup>
 
             <CmdGroup heading="Session">
+              <CmdItem onSelect={run(props.onCopyPresetLink)} shortcut="⌘L">Copy preset link</CmdItem>
               <CmdItem onSelect={run(props.onSavePreset)} shortcut="⌘S">Save preset…</CmdItem>
               <CmdItem onSelect={run(props.onLoadPreset)}>Load preset…</CmdItem>
               <CmdItem onSelect={run(props.onExport)} shortcut="⌘E">Export image / video</CmdItem>

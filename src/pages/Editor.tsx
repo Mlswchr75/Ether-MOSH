@@ -29,6 +29,7 @@ import { RippleLayer } from "@/components/editor/Ripple";
 import { enterFullscreen, exitFullscreen, hasSeenPerfMode, markPerfModeSeen, useFullscreenSync } from "@/hooks/usePerformanceMode";
 import { toast } from "sonner";
 import { shareApp, shareBlob, shareOrDownload, canNativeShare } from "@/lib/share";
+import { presetFromUrl, PRESET_PARAM } from "@/engine/presetUrl";
 import { KaossSurface } from "@/components/editor/KaossSurface";
 import { QuadrantSurface } from "@/components/editor/QuadrantSurface";
 import { TrackpadGestures } from "@/components/editor/TrackpadGestures";
@@ -122,6 +123,40 @@ export default function Editor() {
   const loadDroppedImage = useCallback(async (file: File) => {
     const ok = await loadImageFile(file);
     if (ok) toast.success("Image loaded — moshing…");
+  }, []);
+
+  /* A preset arriving on the URL.
+     This is what makes a look shareable, bookmarkable as a VJ cue, and usable
+     as an OBS browser source. Applied once on mount and then stripped from the
+     address bar, so a later mosh doesn't leave a stale link behind that no
+     longer describes what is on screen. */
+  useEffect(() => {
+    const payload = presetFromUrl();
+    if (!payload) return;
+    if (useStore.getState().applyPreset(payload)) {
+      toast.success(`Preset loaded — ${payload.layers.length} layers`);
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.delete(PRESET_PARAM);
+        window.history.replaceState({}, "", url.toString());
+      } catch {}
+    }
+  }, []);
+
+  const copyPresetLink = useCallback(async () => {
+    if (!useStore.getState().layers.length) {
+      toast.error("Nothing to share yet — mosh something first");
+      return;
+    }
+    const link = useStore.getState().presetLink();
+    try {
+      await navigator.clipboard.writeText(link);
+      toast.success("Preset link copied", { description: "Opens this exact look anywhere" });
+    } catch {
+      // Clipboard is permission-gated and blocked outright in some embeds;
+      // showing the link still lets the user copy it by hand.
+      toast.message("Preset link", { description: link, duration: 12000 });
+    }
   }, []);
 
   useEffect(() => {
@@ -606,6 +641,7 @@ export default function Editor() {
         if (e.key === "z" || e.key === "Z") { e.preventDefault(); if (e.shiftKey) redo(); else undo(); return; }
         if (e.key === "y" || e.key === "Y") { e.preventDefault(); redo(); return; }
         if (e.key === "s" || e.key === "S") { e.preventDefault(); toast.message("Save preset — coming soon"); return; }
+        if (e.key === "l" || e.key === "L") { e.preventDefault(); copyPresetLink(); return; }
         if (e.key === "e" || e.key === "E") { e.preventDefault(); exportBestStill(); return; }
         return; // don't override other browser shortcuts
       }
@@ -1329,6 +1365,7 @@ export default function Editor() {
         onToggleUI={() => setHideUI(v => !v)}
         onShowShortcuts={() => setShortcutsOpen(true)}
         onExport={exportBestStill}
+        onCopyPresetLink={copyPresetLink}
         onSavePreset={() => toast.message("Save preset — coming soon")}
         onLoadPreset={() => toast.message("Load preset — coming soon")}
         onLoadImage={() => navigate("/")}
