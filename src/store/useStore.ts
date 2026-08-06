@@ -355,7 +355,15 @@ export const useStore = create<State & Actions>((set, get) => ({
     if (prevStream) { try { prevStream.getTracks().forEach(t => t.stop()); } catch {} }
     const prevVideo = useStore.getState().videoElement;
     if (prevVideo) { try { prevVideo.srcObject = null; } catch {} try { prevVideo.parentNode?.removeChild(prevVideo); } catch {} }
-    set({ imageUrl: url, imageElement: el, videoElement: null, videoStream: null, paletteProfile: null });
+    // cameraFacing must go with the camera. Leaving it set meant that after one
+    // front-camera session every image loaded afterwards stayed mirrored, so
+    // any text in it read backwards.
+    set({
+      imageUrl: url, imageElement: el,
+      videoElement: null, videoStream: null,
+      cameraFacing: null,
+      paletteProfile: null,
+    });
     // Async upscale — runs in a worker so the render loop isn't disturbed.
     // When done, swap in the higher-res element so fullscreen / zoom stays crisp.
     upscaleImage(el).then((hi) => {
@@ -426,7 +434,8 @@ export const useStore = create<State & Actions>((set, get) => ({
       try { s.videoElement.srcObject = null; } catch {}
       try { s.videoElement.parentNode?.removeChild(s.videoElement); } catch {}
     }
-    set({ videoElement: null, videoStream: null });
+    // Facing belongs to the stream that just stopped.
+    set({ videoElement: null, videoStream: null, cameraFacing: null });
   },
   clearImage: () => {
     try { document.documentElement.style.removeProperty("--synth-accent"); } catch {}
@@ -436,7 +445,7 @@ export const useStore = create<State & Actions>((set, get) => ({
       try { s.videoElement.srcObject = null; } catch {}
       try { s.videoElement.parentNode?.removeChild(s.videoElement); } catch {}
     }
-    set({ imageUrl: null, imageElement: null, videoElement: null, videoStream: null, sourceName: null, layers: [], past: [], future: [], paletteProfile: null });
+    set({ imageUrl: null, imageElement: null, videoElement: null, videoStream: null, cameraFacing: null, sourceName: null, layers: [], past: [], future: [], paletteProfile: null });
   },
 
   addLayer: (effectId) => {

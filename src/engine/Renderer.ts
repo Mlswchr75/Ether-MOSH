@@ -615,6 +615,10 @@ export class MoshRenderer {
     this.sourceTex = tex;
     this.sourceAspect = w / h;
     this.perFrameUpdate = false;
+    // A still image is never a selfie. Clearing the mirror here rather than
+    // trusting upstream state makes this class of bug impossible: mirroring is
+    // a property of the live camera, so it cannot outlive one.
+    this.setSourceMirror(false);
     this.resize(this.cssWidth, this.cssHeight);
     this.scheduleWarmup();
   }
