@@ -312,6 +312,10 @@ export class MoshRenderer {
         uniform sampler2D uTex;
         uniform vec2 uRes;
         uniform float uHdr;
+        uniform float uOverlay;
+        uniform sampler2D uOverlayDepth;
+        uniform float uOverlayGate;
+        uniform float uOverlaySoft;
 
         vec3 aces(vec3 x) {
           const float a = 2.51, b = 0.03, c = 2.43, d = 0.59, e = 0.14;
@@ -339,13 +343,41 @@ export class MoshRenderer {
           vec3 result = mix(sharpened, tonemapped, smoothstep(0.25, 0.9, uHdr));
 
           // At uHdr=0: pure passthrough. Above 0.08: processing fully active.
-          gl_FragColor = vec4(mix(col.rgb, result, smoothstep(0.0, 0.08, uHdr)), col.a);
+          vec3 rgb = mix(col.rgb, result, smoothstep(0.0, 0.08, uHdr));
+
+          /* Overlay keying.
+
+             Done here rather than earlier because this is the last pass before
+             the screen — keying sooner would let subsequent effects sample and
+             smear the transparency around, which reads as grey fringing rather
+             than as a clean cut.
+
+             1 SUBJECT — alpha from the depth proxy. Keeps the person, drops the
+               room. What a streamer wants composited over gameplay.
+             2 LUMA — alpha from brightness. Blacks vanish, light survives. More
+               robust than subject keying because it depends on nothing being
+               tracked, and it is what most reactive stream overlays actually
+               want: light laid over the scene rather than a cut-out of one. */
+          float a = col.a;
+          if (uOverlay > 0.5 && uOverlay < 1.5) {
+            a *= smoothstep(uOverlayGate - uOverlaySoft, uOverlayGate + uOverlaySoft,
+                            texture2D(uOverlayDepth, vUv).r);
+          } else if (uOverlay >= 1.5) {
+            float l = dot(rgb, vec3(0.299, 0.587, 0.114));
+            a *= smoothstep(uOverlayGate - uOverlaySoft, uOverlayGate + uOverlaySoft, l);
+          }
+
+          gl_FragColor = vec4(rgb, clamp(a, 0.0, 1.0));
         }
       `,
       uniforms: {
         uTex: { value: null },
         uRes: { value: new THREE.Vector2(1, 1) },
         uHdr: { value: 0 },
+        uOverlay: { value: 0 },
+        uOverlayDepth: { value: null },
+        uOverlayGate: { value: 0.4 },
+        uOverlaySoft: { value: 0.18 },
       },
       depthTest: false,
       depthWrite: false,
@@ -571,6 +603,22 @@ export class MoshRenderer {
    *  Call each frame from the render loop with a score derived from active layers. */
   setHdrIntensity(v: number) {
     this._hdrIntensity = Math.max(0, Math.min(1, v));
+  }
+
+  /**
+   * Key the output to transparency so it can be composited over something else
+   * — an OBS scene, a projection, a video track.
+   *
+   * "subject" keys on the depth proxy and keeps the person; "luma" keys on
+   * brightness and keeps the light. Luma is the more dependable of the two
+   * because it relies on nothing being tracked correctly, and for a reactive
+   * overlay it is usually what is actually wanted.
+   */
+  setOverlayMode(mode: "off" | "subject" | "luma", opts: { gate?: number; soft?: number } = {}) {
+    const u = this.finisherMaterial.uniforms;
+    u.uOverlay.value = mode === "subject" ? 1 : mode === "luma" ? 2 : 0;
+    u.uOverlayGate.value = opts.gate ?? (mode === "luma" ? 0.16 : 0.4);
+    u.uOverlaySoft.value = opts.soft ?? (mode === "luma" ? 0.22 : 0.18);
   }
 
   private _cancelRvfc() {
@@ -965,6 +1013,7 @@ export class MoshRenderer {
     this.finisherMaterial.uniforms.uTex.value = finalTex;
     (this.finisherMaterial.uniforms.uRes.value as THREE.Vector2).set(w, h);
     this.finisherMaterial.uniforms.uHdr.value = this._hdrIntensity;
+    this.finisherMaterial.uniforms.uOverlayDepth.value = this.rtDepthA.texture;
     this.quad.material = this.finisherMaterial;
     this.renderer.setRenderTarget(null);
     this.renderer.render(this.scene, this.camera);

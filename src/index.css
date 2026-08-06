@@ -83,6 +83,32 @@
   * { @apply border-border; }
   html, body, #root { @apply h-full; }
 
+  /* Overlay mode: nothing but the keyed canvas.
+     OBS composites whatever the page paints, so every opaque surface between
+     the canvas and the compositor has to go — including the ones set on <html>
+     and <body>, which are easy to forget and which show up as a solid black
+     rectangle over the user's scene. */
+  html.mosh-overlay,
+  html.mosh-overlay body,
+  html.mosh-overlay #root {
+    background: transparent !important;
+    background-color: transparent !important;
+  }
+  /* Chrome, panels and any backdrop are meaningless in a compositor layer and
+     would be baked into the stream as furniture. */
+  html.mosh-overlay [data-overlay-hide] {
+    display: none !important;
+  }
+  html.mosh-overlay canvas {
+    background: transparent !important;
+  }
+  /* Toasts live outside the editor tree, so gating them in React would mean
+     threading overlay state through the app root. A stream does not want a
+     "preset loaded" notification burned into it either way. */
+  html.mosh-overlay [data-sonner-toaster] {
+    display: none !important;
+  }
+
   body {
     background: hsl(var(--surface-0));
     color: hsl(var(--text-primary));

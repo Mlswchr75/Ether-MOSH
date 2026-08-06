@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useStore } from "@/store/useStore";
+import { overlayFromUrl } from "@/lib/overlayMode";
 import { MoshRenderer, type RenderLayer } from "@/engine/Renderer";
 import { evalModulator } from "@/engine/modulators";
 import { BeatClock } from "@/engine/beat";
@@ -58,6 +59,8 @@ export function GlCanvas() {
   const showBeforeAfterRef = useRef(useStore.getState().showBeforeAfter);
   const isVideoSourceRef = useRef(!!useStore.getState().videoElement);
   const vrFrameRef = useRef<(() => void) | null>(null);
+  // Read once from the URL — overlay is a deployment mode, not a live setting.
+  const overlayRef = useRef(overlayFromUrl());
 
   const imageElement = useStore(s => s.imageElement);
   const videoElement = useStore(s => s.videoElement);
@@ -425,6 +428,15 @@ export function GlCanvas() {
       const moshScore = Math.min(1.0, activeLayers.reduce((s, l) => s + l.opacity, 0) / 3.0);
       rendererRef.current?.setHdrIntensity(moshScore);
       rendererRef.current?.setHdr(moshScore);
+      // Re-applied per frame rather than once at setup: the renderer is
+      // recreated on context loss, and a silently un-keyed overlay paints a
+      // black rectangle over the user's whole scene.
+      if (overlayRef.current.mode !== "off") {
+        rendererRef.current?.setOverlayMode(
+          overlayRef.current.mode,
+          { gate: overlayRef.current.gate, soft: overlayRef.current.soft },
+        );
+      }
 
       rendererRef.current?.render(renderLayers, pulse);
     };

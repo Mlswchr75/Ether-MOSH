@@ -30,6 +30,7 @@ import { enterFullscreen, exitFullscreen, hasSeenPerfMode, markPerfModeSeen, use
 import { toast } from "sonner";
 import { shareApp, shareBlob, shareOrDownload, canNativeShare } from "@/lib/share";
 import { presetFromUrl, PRESET_PARAM } from "@/engine/presetUrl";
+import { applyOverlayClass, overlayFromUrl } from "@/lib/overlayMode";
 import { KaossSurface } from "@/components/editor/KaossSurface";
 import { QuadrantSurface } from "@/components/editor/QuadrantSurface";
 import { TrackpadGestures } from "@/components/editor/TrackpadGestures";
@@ -142,6 +143,19 @@ export default function Editor() {
       } catch {}
     }
   }, []);
+
+  /* Overlay mode: MOSH as a layer inside someone else's compositor.
+     Read from the URL and applied to <html> so CSS can strip every opaque
+     surface. Chrome is force-hidden too — a browser source bakes whatever the
+     page paints into the stream, so a stray panel becomes permanent furniture
+     in the broadcast. */
+  const overlayRef = useRef(overlayFromUrl());
+  const isOverlay = overlayRef.current.mode !== "off";
+  useEffect(() => {
+    applyOverlayClass(isOverlay);
+    if (isOverlay) setHideUI(true);
+    return () => applyOverlayClass(false);
+  }, [isOverlay]);
 
   const copyPresetLink = useCallback(async () => {
     if (!useStore.getState().layers.length) {
@@ -1035,9 +1049,9 @@ export default function Editor() {
         <div data-tap-fade-target className="absolute inset-0 opacity-100">
           <GlCanvas />
         </div>
-        {!hasSource && <StartCameraOverlay />}
-        <SystemAudioHud visible={systemAudioEnabled} />
-        {hasSource && (
+        {!hasSource && !isOverlay && <StartCameraOverlay />}
+        <SystemAudioHud visible={systemAudioEnabled && !isOverlay} />
+        {hasSource && !isOverlay && (
           <QuadrantSurface onTogglePerf={togglePerf} />
         )}
         <TrackpadGestures
@@ -1050,7 +1064,7 @@ export default function Editor() {
         <SourceTransition trigger={transitionKey} />
         
         {/* TapToBegin removed — StartCameraOverlay is the live-first empty state and TapToBegin's centered button used to intercept clicks meant for "go live". */} 
-        {!isPerformanceMode && (
+        {!isPerformanceMode && !isOverlay && (
           <HotTriggers
             isRecording={isRecording}
             onToggleRecord={toggleRecord}
@@ -1355,7 +1369,7 @@ export default function Editor() {
 
       {shortcutsOpen && <ShortcutsOverlay onClose={() => setShortcutsOpen(false)} />}
 
-      <AboutTrigger hidden={hideUI || isPerformanceMode} />
+      <AboutTrigger hidden={hideUI || isPerformanceMode || isOverlay} />
 
 
       <CommandPalette
