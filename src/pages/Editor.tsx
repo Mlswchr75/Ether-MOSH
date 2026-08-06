@@ -395,6 +395,20 @@ export default function Editor() {
   }, [shuffleSec, smartOn]);
 
   // ── Reality Storm director (reactive AI warp) ─────────────────────────
+  /**
+   * Clear every effect and show the bare remastered source.
+   *
+   * Dropping the layers isn't enough on its own: auto-shuffle, the Smart
+   * director and the Storm director each re-apply a mosh within seconds, so a
+   * clear that doesn't stop them silently undoes itself.
+   */
+  const clearAllFx = useCallback(() => {
+    useStore.getState().clearAllFx();   // layers + auto-shuffle
+    setSmartOn(false);
+    setStormOn(false);
+    toast.message("FX cleared — remastered source only", { duration: 1800 });
+  }, []);
+
   const [stormOn, setStormOn] = useState(false);
   const [stormFlashKey, setStormFlashKey] = useState(0);
   const stormRef = useRef<StormDirector | null>(null);
@@ -1024,6 +1038,8 @@ export default function Editor() {
             onToggleStorm={toggleStorm}
             isFullscreen={isBrowserFs}
             onToggleFullscreen={toggleFullscreen}
+            onClearFx={clearAllFx}
+            hasFx={layers.length > 0 || shuffleSec != null || smartOn || stormOn}
             onHome={() => {
               if (isRecording) { try { toggleRecord(); } catch {} }
               try { useStore.getState().reset(); } catch {}

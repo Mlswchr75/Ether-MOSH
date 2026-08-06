@@ -271,7 +271,7 @@ function shufflePool<T>(arr: T[], rand: () => number): T[] {
 }
 
 /** Roll on -1..1, pushed away from the middle so rolls commit to a character. */
-function skewedAffinity(rand: () => number): number {
+export function skewedAffinity(rand: () => number): number {
   const u = rand() * 2 - 1;              // -1..1 uniform
   const shaped = Math.sign(u) * Math.pow(Math.abs(u), 0.65); // widen the tails
   return Math.max(-1, Math.min(1, shaped));

@@ -187,15 +187,36 @@ describe("axisTargets", () => {
   });
 
   it("falls back to opacity on Y for single-param effects", () => {
-    const t = axisTargets("hueRotate"); // one param: amount
-    expect(t?.x.key).toBe("amount");
-    expect(t?.y.key).toBeNull();
-    expect(t?.y.label).toBe("Opacity");
+    // Every shipped effect now carries two params, so the fallback is only
+    // reachable through a stand-in. It stays in place for effects added later.
+    const id = "__singleParamProbe";
+    EFFECTS_BY_ID[id] = {
+      id,
+      name: "Probe",
+      category: "color",
+      blurb: "test stand-in",
+      params: [{ key: "amount", label: "Amount", min: 0, max: 1, default: 0.5 }],
+      frag: "void main(){ gl_FragColor = vec4(0.0); }",
+    };
+    try {
+      const t = axisTargets(id);
+      expect(t?.x.key).toBe("amount");
+      expect(t?.y.key).toBeNull();
+      expect(t?.y.label).toBe("Opacity");
+    } finally {
+      delete EFFECTS_BY_ID[id];
+    }
   });
 
-  it("gives every registered effect a usable pad", () => {
+  it("gives every registered effect two named axes", () => {
     for (const id of Object.keys(EFFECTS_BY_ID)) {
-      expect(axisTargets(id), `no axes for ${id}`).not.toBeNull();
+      const t = axisTargets(id);
+      expect(t, `no axes for ${id}`).not.toBeNull();
+      // Both axes drive a real param: no effect leans on the opacity fallback,
+      // so a drag in any direction changes the look rather than just the mix.
+      expect(t?.x.key, `${id} has no X param`).toBeTruthy();
+      expect(t?.y.key, `${id} has no Y param`).toBeTruthy();
+      expect(t?.x.key, `${id} maps both axes to the same param`).not.toBe(t?.y.key);
     }
   });
 });

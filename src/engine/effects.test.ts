@@ -3,6 +3,12 @@ import { EFFECTS, EFFECTS_BY_ID } from "./effects";
 import { axisTargets } from "./quadrants";
 
 /** The effects written for the quadrant instrument. */
+const EXPANSION_SET = [
+  "halftone", "crossHatch", "kuwahara", "anaglyph", "photocopy", "contourMap",
+  "emboss", "moire", "slitScan", "rollingShutter", "echoTrails", "extrude",
+  "caustics", "anamorphic",
+];
+
 const SIGNATURE_SET = [
   "drosteTunnel",
   "shockwave",
@@ -11,11 +17,46 @@ const SIGNATURE_SET = [
   "prismDispersion",
   "neonContour",
   "inkFlow",
+  "filmicTone",
+  ...EXPANSION_SET,
 ];
 
 describe("effect registry", () => {
-  it("holds 65 effects", () => {
-    expect(EFFECTS.length).toBe(65);
+  it("holds 85 effects", () => {
+    expect(EFFECTS.length).toBe(85);
+  });
+
+  /** Effects with memory — they sample last frame via uFeedback. */
+  const TEMPORAL_SET = [
+    "trailDecay",
+    "motionMomentum",
+    "infiniteZoom",
+    "timeDisplace",
+    "reactionBloom",
+  ];
+
+  it("exposes uFeedback to every shader", () => {
+    for (const def of EFFECTS) {
+      expect(def.frag, `${def.id}`).toContain("uniform sampler2D uFeedback;");
+    }
+  });
+
+  it("ships the temporal set, and each one actually samples history", () => {
+    for (const id of TEMPORAL_SET) {
+      const def = EFFECTS_BY_ID[id];
+      expect(def, `${id} missing`).toBeTruthy();
+      expect(def.frag, `${id} never reads uFeedback`).toContain("texture2D(uFeedback");
+    }
+  });
+
+  it("keeps feedback gain below unity so nothing can latch on", () => {
+    // A temporal effect that multiplies history by >= 1.0 accumulates without
+    // bound and white-outs the screen. Every decay constant must be < 1.
+    for (const id of TEMPORAL_SET) {
+      const body = EFFECTS_BY_ID[id].frag;
+      const gains = [...body.matchAll(/\*\s*(0?\.\d+|1\.0+)\b/g)].map(m => parseFloat(m[1]));
+      for (const g of gains) expect(g, `${id} gain ${g}`).toBeLessThanOrEqual(1.0);
+    }
   });
 
   it("has no duplicate ids", () => {
@@ -102,5 +143,38 @@ describe("pulse reactivity", () => {
 
   it.each(["shockwave", "liquidChrome", "neonContour"])("%s reacts to uPulse", (id) => {
     expect(usesPulse(id)).toBe(true);
+  });
+});
+
+describe("effect strength", () => {
+  /**
+   * Params whose maximum switches the effect OFF.
+   *
+   * bloom, pixelSort and vignette all shipped with a threshold or size whose
+   * top value gated the effect out entirely — dragging the pad's Y axis up made
+   * them vanish. These ranges are the fix; widening them again reintroduces it.
+   */
+  it("keeps gating params below the value that disables the effect", () => {
+    const caps: Record<string, { key: string; max: number }> = {
+      bloom:     { key: "threshold", max: 0.8 },
+      pixelSort: { key: "threshold", max: 0.85 },
+      vignette:  { key: "size", max: 0.95 },
+    };
+    for (const [id, cap] of Object.entries(caps)) {
+      const p = EFFECTS_BY_ID[id].params.find(x => x.key === cap.key);
+      expect(p, `${id}.${cap.key}`).toBeDefined();
+      expect(p!.max, `${id}.${cap.key} max`).toBeLessThanOrEqual(cap.max);
+    }
+  });
+
+  it("never sweeps a full 2*PI rotation on any effect's axis", () => {
+    // rgbShift and frameSmear both carried this: 0 and 2*PI are the same
+    // direction, so a full drag landed exactly where it started.
+    for (const def of EFFECTS) {
+      for (const p of def.params) {
+        expect(Math.abs((p.max - p.min) - Math.PI * 2), `${def.id}.${p.key}`)
+          .toBeGreaterThan(0.01);
+      }
+    }
   });
 });

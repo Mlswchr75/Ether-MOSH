@@ -3,14 +3,29 @@ import { EFFECTS, EFFECTS_BY_ID, type EffectCategory } from "@/engine/effects";
 import { BLEND_MODES, type BlendMode } from "@/engine/blend";
 import {
   QUADRANT_COUNT,
-  blendForRelation,
-  rollQuadrantEffect,
+  relationLabel,
+  skewedAffinity,
   type QuadrantIndex,
   type RelationLabel,
 } from "@/engine/quadrants";
+import {
+  LOOKS_BY_ID as LOOKS_LOOKUP,
+  analyzeSource,
+  blendForRole,
+  briefFrom,
+  chooseLook,
+  compose,
+  opacityForRole,
+  paramsForRole,
+  pickForRole,
+  roleForQuadrant,
+  type FrameBrief,
+  type Look,
+  type Role,
+} from "@/engine/artDirector";
 import { generateSeed, rngFromSeed } from "@/engine/seed";
 import type { AudioMap, Favorite, Intensity, IsolationMode, Layer, Modulator, PaletteProfile, StickerEntry } from "./types";
-import type { CameraFacing } from "@/hooks/useCamera";
+import { facingOfTrack, type CameraFacing } from "@/lib/cameraFacing";
 import { DEFAULT_TILE_UNIFORMS, type TileMode, type TileUniforms } from "@/engine/tile";
 import { extractPalette } from "@/engine/imagePalette";
 import { BIOME_LABELS, biomeAccentHex } from "@/engine/imagePalette";
@@ -18,11 +33,23 @@ import { upscaleImage } from "@/engine/upscaler";
 import { toast } from "sonner";
 
 const HISTORY_LIMIT = 20;
-const MOSH_EXCLUDED_EFFECTS = new Set(["bloom", "frameSmear"]);
 /** How many recently-used effects each quadrant refuses to roll again. */
 const QUADRANT_MEMORY = 4;
 /** How many recently-used effects a full mosh avoids reaching for. */
 const MOSH_MEMORY = 8;
+/** How many recent art directions to rotate past before reusing one. */
+const LOOK_MEMORY = 4;
+
+/**
+ * How many parts of the composition each intensity fills.
+ * 2 = grade + finish (a straight remaster), 4 = the full sentence.
+ */
+const ROLE_COUNT: Record<Intensity, number> = {
+  mild: 2,
+  savage: 3,
+  nuclear: 4,
+  interdimensional: 4,
+};
 
 type State = {
   imageUrl: string | null;
@@ -78,8 +105,21 @@ type State = {
   quadrantHistory: string[][];
   /** Recently-used effect ids across full moshes (anti-repetition). */
   recentEffects: string[];
+  /** Recently-used look ids. Rotating the art direction — not just the
+   *  effects — is what keeps consecutive moshes from reading the same. */
+  recentLooks: string[];
+  /** The art direction the current stack was composed under. */
+  currentLook: { id: string; name: string; blurb: string } | null;
+  /** Latest content analysis, for the UI to show what the director saw. */
+  currentBrief: FrameBrief | null;
   /** Last quadrant roll — drives the transient on-canvas readout. */
   lastQuadrantRoll: QuadrantRoll | null;
+  /**
+   * Which voice the next plain tap re-rolls. Tapping cycles GRADE → FORM →
+   * ACCENT → FINISH so the stack evolves one part at a time without the user
+   * having to aim at anything; a full mosh resets it to the grade.
+   */
+  voiceCursor: number;
 };
 
 export type QuadrantRoll = {
@@ -88,6 +128,8 @@ export type QuadrantRoll = {
   effectName: string;
   relation: RelationLabel;
   affinity: number;
+  /** Which part of the composition this quadrant drives. */
+  role: Role;
   /** performance.now() at roll time — used to auto-fade the readout. */
   at: number;
 };
@@ -121,7 +163,20 @@ type Actions = {
    * 1:1. Returns the roll, or null when the target layer is locked.
    */
   moshQuadrant: (q: QuadrantIndex, opts?: { targetAffinity?: number }) => QuadrantRoll | null;
+  /**
+   * Re-roll the next voice in rotation. This is what a plain tap does: no
+   * aiming, no map to memorise, but a smaller and more steerable change than a
+   * full mosh. Skips locked voices; returns null only when every voice is
+   * locked.
+   */
+  moshNext: () => QuadrantRoll | null;
   clearQuadrantRoll: () => void;
+
+  /**
+   * Drop every effect and stop anything that would re-apply one, leaving the
+   * bare HDR-remastered source on screen. Undoable like any other change.
+   */
+  clearAllFx: () => void;
 
   setIntensity: (i: Intensity) => void;
   setBeforeAfter: (open: boolean) => void;
@@ -169,87 +224,7 @@ type Actions = {
 
 const newId = () => Math.random().toString(36).slice(2, 9);
 
-const intensityProfile = (i: Intensity) => {
-  switch (i) {
-    case "mild":             return { count: [1, 1] as [number, number], opacityRange: [0.65, 0.9] as [number, number], range: 0.65, exoticBlendChance: 0.0 };
-    case "savage":           return { count: [2, 3] as [number, number], opacityRange: [0.68, 0.95] as [number, number], range: 0.82, exoticBlendChance: 0.12 };
-    case "nuclear":          return { count: [3, 4] as [number, number], opacityRange: [0.72, 0.98] as [number, number], range: 0.95, exoticBlendChance: 0.22 };
-    case "interdimensional": return { count: [4, 5] as [number, number], opacityRange: [0.78, 1.0] as [number, number], range: 1.0, exoticBlendChance: 0.3 };
-  }
-};
-
-/** Blend modes that READ as effects on top of an image (won't usually wipe to black/white). */
-const SAFE_BLENDS: BlendMode[] = ["normal", "normal", "normal", "screen", "overlay", "hardLight"];
-const EXOTIC_BLENDS: BlendMode[] = ["multiply", "difference", "additive", "screen", "overlay"];
-
-const sampleParam = (
-  rand: () => number,
-  min: number,
-  max: number,
-  defaultV: number,
-  range: number,
-  step?: number,
-) => {
-  const span = (max - min) * range;
-  let v = defaultV + (rand() - 0.5) * span;
-  v = Math.max(min, Math.min(max, v));
-  if (step) v = Math.round(v / step) * step;
-  return v;
-};
-
-/**
- * Choose `count` effects for a full mosh.
- *
- * Three rules keep successive moshes from feeling like the same trick:
- *   1. The category walk is shuffled per mosh instead of following one fixed
- *      order, so stacks don't always read corruption→color→geometry.
- *   2. An effect never appears twice in the same stack.
- *   3. Effects used by recent moshes (`avoid`) are skipped while alternatives
- *      remain, so the same favourites don't resurface every tap.
- */
-function pickEffectsWeighted(rand: () => number, count: number, avoid: string[] = []): string[] {
-  const byCat: Record<EffectCategory, string[]> = {
-    corruption: [], color: [], geometry: [], atmosphere: [],
-  };
-  for (const e of EFFECTS) {
-    if (!MOSH_EXCLUDED_EFFECTS.has(e.id)) byCat[e.category].push(e.id);
-  }
-
-  // A stack wants a backbone of corruption/geometry with colour and
-  // atmosphere on top — shuffle within that shape rather than fixing the order.
-  const walk: EffectCategory[] = shuffle<EffectCategory>(["corruption", "geometry"], rand)
-    .concat(shuffle<EffectCategory>(["color", "atmosphere"], rand))
-    .concat(shuffle<EffectCategory>(["corruption", "color", "geometry", "atmosphere"], rand));
-
-  const stale = new Set(avoid);
-  const used = new Set<string>();
-  const picked: string[] = [];
-
-  for (let i = 0; i < count; i++) {
-    const cat = walk[i % walk.length];
-    // Prefer unused + not-recently-seen; relax each constraint only if the
-    // pool has nothing left to offer.
-    const pool = byCat[cat];
-    const fresh = pool.filter(id => !used.has(id) && !stale.has(id));
-    const unused = pool.filter(id => !used.has(id));
-    const candidates = fresh.length ? fresh : unused.length ? unused : pool;
-    const id = candidates[Math.floor(rand() * candidates.length)];
-    used.add(id);
-    picked.push(id);
-  }
-  return picked;
-}
-
-/** Fisher–Yates against the seeded RNG so shuffles stay reproducible. */
-function shuffle<T>(arr: T[], rand: () => number): T[] {
-  const out = arr.slice();
-  for (let i = out.length - 1; i > 0; i--) {
-    const j = Math.floor(rand() * (i + 1));
-    [out[i], out[j]] = [out[j], out[i]];
-  }
-  return out;
-}
-
+/** A layer at the effect's own defaults — used when the user adds one by hand. */
 function makeLayer(effectId: string, opts: Partial<Layer> = {}): Layer {
   const def = EFFECTS_BY_ID[effectId];
   const params: Record<string, number> = {};
@@ -273,6 +248,25 @@ function makeLayer(effectId: string, opts: Partial<Layer> = {}): Layer {
     ...opts,
   };
 }
+
+/** Blend modes that READ as effects on top of an image (won't usually wipe to black/white). */
+const SAFE_BLENDS: BlendMode[] = ["normal", "normal", "normal", "screen", "overlay", "hardLight"];
+const EXOTIC_BLENDS: BlendMode[] = ["multiply", "difference", "additive", "screen", "overlay"];
+
+const sampleParam = (
+  rand: () => number,
+  min: number,
+  max: number,
+  defaultV: number,
+  range: number,
+  step?: number,
+) => {
+  const span = (max - min) * range;
+  let v = defaultV + (rand() - 0.5) * span;
+  v = Math.max(min, Math.min(max, v));
+  if (step) v = Math.round(v / step) * step;
+  return v;
+};
 
 export const useStore = create<State & Actions>((set, get) => ({
   imageUrl: null,
@@ -313,7 +307,11 @@ export const useStore = create<State & Actions>((set, get) => ({
   stickerGallery: [],
   cameraFacing: null,
   quadrantHistory: Array.from({ length: QUADRANT_COUNT }, () => [] as string[]),
+  voiceCursor: 0,
   recentEffects: [],
+  recentLooks: [],
+  currentLook: null,
+  currentBrief: null,
   lastQuadrantRoll: null,
 
   setGlCanvas: (canvas) => set({ glCanvas: canvas }),
@@ -371,8 +369,13 @@ export const useStore = create<State & Actions>((set, get) => ({
     });
     document.body.appendChild(video);
     try { video.play()?.catch(() => {}); } catch {}
+    // Derive facing from the TRACK, not from the label we passed in. The label
+    // records what we asked for; the track records what we actually got. Trusting
+    // the label let cameraFacing drift out of sync with reality, and since the
+    // flip button computes the next side from it, the toggle could stick.
     const facing: CameraFacing | null =
-      name === "front camera" ? "user" : name === "rear camera" ? "environment" : null;
+      facingOfTrack(stream.getVideoTracks()[0])
+      ?? (name === "front camera" ? "user" : name === "rear camera" ? "environment" : null);
     set({
       imageUrl: null,
       imageElement: null,
@@ -453,58 +456,53 @@ export const useStore = create<State & Actions>((set, get) => ({
 
   mosh: (intensity) => set(s => {
     const inten = intensity ?? s.intensity;
-    const profile = intensityProfile(inten);
     const seed = generateSeed();
     const rand = rngFromSeed(seed);
 
-    const locked = s.layers.filter(l => l.locked);
-    const targetCount = Math.floor(profile.count[0] + rand() * (profile.count[1] - profile.count[0] + 1));
-    // Locked layers are already on screen — treat them as "recently seen" too
-    // so a re-roll doesn't sit an identical effect next to one.
-    const avoid = [...s.recentEffects, ...locked.map(l => l.effectId)];
-    const newEffects = pickEffectsWeighted(rand, targetCount, avoid);
+    // Look at the actual frame first. This is the whole point: the stack is
+    // built for THIS content, not drawn from a hat.
+    const brief = briefFrom(analyzeSource(s.videoElement ?? s.imageElement));
 
-    const fresh: Layer[] = newEffects.map((eid, idx) => {
-      const def = EFFECTS_BY_ID[eid];
-      const params: Record<string, number> = {};
-      for (const p of def.params) {
-        params[p.key] = sampleParam(rand, p.min, p.max, p.default, profile.range, p.step);
-      }
-      // First layer is always 'normal' so we have a base; subsequent layers
-      // pick from safe pool, occasionally exotic. This prevents the stack
-      // from collapsing to black/white at high intensity.
-      let blend: BlendMode;
-      if (idx === 0) {
-        blend = "normal";
-      } else if (rand() < profile.exoticBlendChance) {
-        blend = EXOTIC_BLENDS[Math.floor(rand() * EXOTIC_BLENDS.length)];
-      } else {
-        blend = SAFE_BLENDS[Math.floor(rand() * SAFE_BLENDS.length)];
-      }
-      // First layer always full opacity so the image is visible.
-      const opacity = idx === 0
-        ? 1
-        : profile.opacityRange[0] + rand() * (profile.opacityRange[1] - profile.opacityRange[0]);
+    const locked = s.layers.filter(l => l.locked);
+    const composition = compose(brief, rand, {
+      roleCount: ROLE_COUNT[inten],
+      avoidLooks: s.recentLooks,
+      avoidEffects: [...s.recentEffects, ...locked.map(l => l.effectId)],
+    });
+
+    const fresh: Layer[] = composition.layers.map(cl => {
+      const def = EFFECTS_BY_ID[cl.effectId];
       return {
         id: newId(),
-        effectId: eid,
+        effectId: cl.effectId,
         hidden: false, locked: false,
-        blend, opacity,
-        params,
+        blend: cl.blend,
+        opacity: cl.opacity,
+        params: cl.params,
         mods: Object.fromEntries(def.params.map(p => [p.key, null])),
         audioMaps: Object.fromEntries(def.params.map(p => [p.key, null])),
       };
     });
 
+    const usedIds = composition.layers.map(l => l.effectId);
     return {
       ...s,
       past: pushPast(s), future: [],
       layers: [...locked, ...fresh],
       seed,
-      recentEffects: [...s.recentEffects, ...newEffects].slice(-MOSH_MEMORY),
+      recentEffects: [...s.recentEffects, ...usedIds].slice(-MOSH_MEMORY),
+      recentLooks: [...s.recentLooks, composition.look.id].slice(-LOOK_MEMORY),
+      currentLook: {
+        id: composition.look.id,
+        name: composition.look.name,
+        blurb: composition.look.blurb,
+      },
+      currentBrief: brief,
       // A full mosh replaces every quadrant, so quadrant memory starts over.
       quadrantHistory: Array.from({ length: QUADRANT_COUNT }, () => [] as string[]),
       lastQuadrantRoll: null,
+      // Next tap picks up at the grade again.
+      voiceCursor: 0,
     };
   }),
 
@@ -515,82 +513,76 @@ export const useStore = create<State & Actions>((set, get) => ({
 
     if (layers[q]?.locked) return null;
 
-    // Everything the other quadrants are showing right now.
-    const neighbours = layers
+    const brief = s.currentBrief ?? briefFrom(analyzeSource(s.videoElement ?? s.imageElement));
+    // Keep composing under the stack's existing art direction so a single
+    // quadrant re-roll is a new take on the same idea, not a genre change.
+    const look: Look = (s.currentLook && LOOKS_LOOKUP[s.currentLook.id])
+      ?? chooseLook(brief, rand, s.recentLooks);
+
+    // Each quadrant owns one part of the composition: Q1 grades, Q2 forms,
+    // Q3 accents, Q4 finishes.
+    const role = roleForQuadrant(q);
+    const affinity = opts?.targetAffinity ?? skewedAffinity(rand);
+
+    const held = layers
       .slice(0, QUADRANT_COUNT)
       .map((l, i) => (i === q ? "" : l.effectId))
       .filter(Boolean);
 
-    const roll = rollQuadrantEffect({
-      neighbours,
-      exclude: [layers[q]?.effectId ?? "", ...(s.quadrantHistory[q] ?? [])].filter(Boolean),
-      targetAffinity: opts?.targetAffinity,
-      rand,
+    const effectId = pickForRole(role, look, brief, rand, {
+      exclude: [layers[q]?.effectId ?? "", ...held, ...(s.quadrantHistory[q] ?? [])].filter(Boolean),
+      affinityTarget: affinity,
     });
-
-    const def = EFFECTS_BY_ID[roll.effectId];
+    const def = EFFECTS_BY_ID[effectId];
     if (!def) return null;
 
-    const profile = intensityProfile(s.intensity);
-    const params: Record<string, number> = {};
-    for (const p of def.params) {
-      params[p.key] = sampleParam(rand, p.min, p.max, p.default, profile.range, p.step);
-    }
-
     const next = layers.slice();
-    // Pad the stack so quadrant N always addresses layers[N]. Tapping an empty
-    // quadrant therefore *grows* the stack instead of silently missing.
+    // Pad the stack so quadrant N always addresses layers[N] — and pad it with
+    // the roles those slots are supposed to hold, so the grammar stays intact.
     while (next.length < q) {
-      const fillRoll = rollQuadrantEffect({
-        neighbours: next.map(l => l.effectId),
+      const fillRole = roleForQuadrant(next.length);
+      const fillId = pickForRole(fillRole, look, brief, rand, {
         exclude: next.map(l => l.effectId),
-        rand,
       });
-      const fillDef = EFFECTS_BY_ID[fillRoll.effectId];
-      const fillParams: Record<string, number> = {};
-      for (const p of fillDef.params) {
-        fillParams[p.key] = sampleParam(rand, p.min, p.max, p.default, profile.range, p.step);
-      }
+      const fillDef = EFFECTS_BY_ID[fillId];
       next.push({
         id: newId(),
-        effectId: fillRoll.effectId,
+        effectId: fillId,
         hidden: false, locked: false,
-        blend: blendForRelation(fillRoll.affinity, rand, next.length === 0),
-        opacity: next.length === 0 ? 1 : profile.opacityRange[0] + rand() * (profile.opacityRange[1] - profile.opacityRange[0]),
-        params: fillParams,
+        blend: fillRole === "grade" ? "normal" : blendForRole(fillRole, rand),
+        opacity: opacityForRole(fillRole, look, brief, rand, fillId),
+        params: paramsForRole(fillId, fillRole, look, brief, rand),
         mods: Object.fromEntries(fillDef.params.map(p => [p.key, null])),
         audioMaps: Object.fromEntries(fillDef.params.map(p => [p.key, null])),
       });
     }
 
-    const isBase = q === 0;
     const existing = next[q];
     const layer: Layer = {
       id: existing?.id ?? newId(),
-      effectId: roll.effectId,
+      effectId,
       hidden: false,
       locked: false,
-      // The base layer stays fully opaque and normal-blended so the source is
-      // never wiped out from underneath the stack.
-      blend: blendForRelation(roll.affinity, rand, isBase),
-      opacity: isBase
-        ? 1
-        : profile.opacityRange[0] + rand() * (profile.opacityRange[1] - profile.opacityRange[0]),
-      params,
+      // The grade sits at the bottom fully opaque so the source is never
+      // wiped out from underneath the stack.
+      blend: role === "grade" ? "normal" : blendForRole(role, rand),
+      opacity: opacityForRole(role, look, brief, rand, effectId),
+      params: paramsForRole(effectId, role, look, brief, rand),
       mods: Object.fromEntries(def.params.map(p => [p.key, null])),
       audioMaps: Object.fromEntries(def.params.map(p => [p.key, null])),
     };
     next[q] = layer;
 
     const history = s.quadrantHistory.map(h => h.slice());
-    history[q] = [...(history[q] ?? []), roll.effectId].slice(-QUADRANT_MEMORY);
+    history[q] = [...(history[q] ?? []), effectId].slice(-QUADRANT_MEMORY);
 
     const record: QuadrantRoll = {
       quadrant: q,
-      effectId: roll.effectId,
+      effectId,
       effectName: def.name,
-      relation: roll.relation,
-      affinity: roll.affinity,
+      relation: relationLabel(affinity),
+      affinity,
+      role,
       at: (typeof performance !== "undefined" ? performance.now() : Date.now()),
     };
 
@@ -599,13 +591,52 @@ export const useStore = create<State & Actions>((set, get) => ({
       layers: next,
       selectedLayerId: layer.id,
       quadrantHistory: history,
-      recentEffects: [...s.recentEffects, roll.effectId].slice(-MOSH_MEMORY),
+      recentEffects: [...s.recentEffects, effectId].slice(-MOSH_MEMORY),
+      currentBrief: brief,
+      currentLook: { id: look.id, name: look.name, blurb: look.blurb },
       lastQuadrantRoll: record,
     });
     return record;
   },
 
+  moshNext: () => {
+    const s = get();
+    // Rotate over the voices the stack actually uses, so tapping cycles what is
+    // on screen instead of growing the stack toward four.
+    const count = Math.min(QUADRANT_COUNT, Math.max(1, s.layers.length));
+
+    // Walk forward to the first unlocked voice. Locked voices are the user's
+    // "keep this" vote, so they are stepped over rather than treated as a dead
+    // tap — that is what makes lock-and-keep-tapping feel like steering.
+    for (let step = 0; step < count; step++) {
+      const q = ((s.voiceCursor + step) % count) as QuadrantIndex;
+      if (s.layers[q]?.locked) continue;
+      const roll = get().moshQuadrant(q);
+      if (!roll) continue;
+      set({ voiceCursor: (q + 1) % count });
+      return roll;
+    }
+    return null;
+  },
+
   clearQuadrantRoll: () => set({ lastQuadrantRoll: null }),
+
+  clearAllFx: () => set(s => ({
+    ...s,
+    past: pushPast(s), future: [],
+    layers: [],
+    selectedLayerId: null,
+    // Auto-shuffle would re-mosh within seconds and undo the clear. The Smart
+    // and Storm directors live in the editor's own state, so the caller has to
+    // stop those — see Editor's clearAllFx handler.
+    shuffleSec: null,
+    // Forget the art direction too: the next mosh should start fresh rather
+    // than continue composing under a look the user just cleared away.
+    currentLook: null,
+    quadrantHistory: Array.from({ length: QUADRANT_COUNT }, () => [] as string[]),
+    lastQuadrantRoll: null,
+    voiceCursor: 0,
+  })),
 
   reset: () => set(s => ({ ...s, past: pushPast(s), future: [], layers: [] })),
 
