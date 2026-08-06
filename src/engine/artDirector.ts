@@ -266,6 +266,13 @@ const CRAFT: Record<string, Craft> = {
   bitCrush:        { role: "grade", fidelity: "lofi",      gives: { contrast: 0.4 }, cost: 0.7, replaces: 0.5 },
   scanlines:       { role: "grade", fidelity: "lofi",      gives: {}, cost: 0.35 },
 
+  halftone:         { role: "grade", fidelity: "lofi", gives: { color: 0.4, contrast: 0.6 }, cost: 0.6, gpu: 2.6, replaces: 0.75 },
+  crossHatch:       { role: "grade", fidelity: "lofi", gives: { contrast: 0.8 }, cost: 0.7, replaces: 0.8 },
+  kuwahara:         { role: "grade", fidelity: "cinematic", gives: { }, cost: 0.35, gpu: 10.5, replaces: 0.15 },
+  anaglyph:         { role: "grade", fidelity: "neutral", gives: { color: 0.5 }, cost: 0.25, replaces: 0.35 },
+  photocopy:        { role: "grade", fidelity: "lofi", gives: { contrast: 0.9 }, cost: 0.75, gpu: 6.6, replaces: 0.85 },
+  contourMap:       { role: "grade", fidelity: "neutral", gives: { color: 0.85, contrast: 0.5 }, cost: 0.6, replaces: 0.8 },
+
   // ── FORM ───────────────────────────────────────────────────────────
   melt:            { role: "form", fidelity: "cinematic", gives: { structure: 0.7 }, cost: 0.4 },
   liquidWarp:      { role: "form", fidelity: "cinematic", gives: { structure: 0.8 }, cost: 0.4, gpu: 2.1 },
@@ -288,6 +295,11 @@ const CRAFT: Record<string, Craft> = {
   sliceDrift:      { role: "form", fidelity: "lofi",      gives: { structure: 0.6 }, cost: 0.5 },
   frameSmear:      { role: "form", fidelity: "cinematic", gives: { structure: 0.4 }, cost: 0.5, gpu: 4.6 },
 
+  emboss:           { role: "form", fidelity: "cinematic", gives: { structure: 0.7, contrast: 0.5 }, cost: 0.5, gpu: 2.3 },
+  spinBlur:         { role: "form", fidelity: "cinematic", gives: { structure: 0.6 }, cost: 0.5, gpu: 6.3 },
+  moire:            { role: "form", fidelity: "neutral", gives: { structure: 0.8, color: 0.5 }, cost: 0.55, gpu: 2.0 },
+  slitScan:         { role: "form", fidelity: "neutral", gives: { structure: 0.8 }, cost: 0.5 },
+
   // ── ACCENT ─────────────────────────────────────────────────────────
   shockwave:       { role: "accent", fidelity: "cinematic", gives: { structure: 0.6, light: 0.5 }, cost: 0.3, gpu: 2.0 },
   rgbShift:        { role: "accent", fidelity: "cinematic", gives: { color: 0.5 }, cost: 0.2 },
@@ -305,6 +317,9 @@ const CRAFT: Record<string, Craft> = {
   asciiCollapse:   { role: "accent", fidelity: "lofi",      gives: { structure: 0.6 }, cost: 0.8 },
   staticSnow:      { role: "accent", fidelity: "lofi",      gives: {}, cost: 0.5 },
 
+  rollingShutter:   { role: "accent", fidelity: "neutral", gives: { structure: 0.5 }, cost: 0.4 },
+  echoTrails:       { role: "accent", fidelity: "cinematic", gives: { light: 0.4, structure: 0.4 }, cost: 0.4, gpu: 6.2 },
+
   // ── FINISH ─────────────────────────────────────────────────────────
   bloom:           { role: "finish", fidelity: "cinematic", gives: { light: 1.0 }, cost: 0.2, gpu: 6.4 },
   godRays:         { role: "finish", fidelity: "cinematic", gives: { light: 1.0 }, cost: 0.2, gpu: 5.1 },
@@ -318,6 +333,8 @@ const CRAFT: Record<string, Craft> = {
   filmGrain:       { role: "finish", fidelity: "neutral",   gives: {}, cost: 0.15 },
   neonContour:     { role: "finish", fidelity: "cinematic", gives: { structure: 0.7, light: 0.8 }, cost: 0.45, gpu: 4.0 },
   plasmaField:     { role: "finish", fidelity: "neutral",   gives: { color: 0.8, light: 0.6 }, cost: 0.4 },
+  caustics:         { role: "finish", fidelity: "cinematic", gives: { light: 0.9 }, cost: 0.3, gpu: 2.0 },
+  anamorphic:       { role: "finish", fidelity: "cinematic", gives: { light: 0.95 }, cost: 0.25, gpu: 6.5 },
 };
 
 export function craftOf(id: string): Craft | null {
