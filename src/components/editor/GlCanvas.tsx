@@ -424,6 +424,7 @@ export function GlCanvas() {
       const activeLayers = renderLayers.filter(l => !l.hidden && l.opacity > 0.02);
       const moshScore = Math.min(1.0, activeLayers.reduce((s, l) => s + l.opacity, 0) / 3.0);
       rendererRef.current?.setHdrIntensity(moshScore);
+      rendererRef.current?.setHdr(moshScore);
 
       rendererRef.current?.render(renderLayers, pulse);
     };

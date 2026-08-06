@@ -242,7 +242,7 @@ export class MoshRenderer {
         uTex: { value: null },
         uCover: { value: new THREE.Vector2(1, 1) },
         uResolution: { value: new THREE.Vector2(1, 1) },
-        uHdr: { value: 1 },
+        uHdr: { value: 0 },
         uMirror: { value: 0.0 },
       },
       depthTest: false,
