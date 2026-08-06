@@ -112,6 +112,8 @@ export class MoshRenderer {
   private _tileUniforms: TileUniforms = { ...DEFAULT_TILE_UNIFORMS };
   // Adaptive HDR intensity (0 = pure passthrough, 1 = full ACES filmic)
   private _hdrIntensity = 0;
+  /** Re-applied after every buffer reallocation, which resets wrap modes. */
+  private _tileableSampling = false;
   // requestVideoFrameCallback handle for precision texture sync
   private _rvfcVideo: HTMLVideoElement | null = null;
   private _rvfcId = 0;
@@ -178,8 +180,17 @@ export class MoshRenderer {
         uniform vec2 uResolution;
         uniform float uHdr;
         uniform float uMirror;
+        uniform float uWrap;
 
         const vec3 LUMA = vec3(0.299, 0.587, 0.114);
+
+        /* Edge behaviour, switchable.
+
+           Clamping is correct for a photo: sampling past the border should
+           smear the border pixel. For a tile it is wrong — the sample should
+           continue into the next copy, which is what fract() does. Both live
+           here because the same pass serves a camera frame and a print tile. */
+        vec2 sadj(vec2 p){ return mix(clamp(p, 0.0, 1.0), fract(p), uWrap); }
 
         /* Local tone map — the "HDR remaster" every pixel gets before any effect
            sees it.
@@ -197,7 +208,7 @@ export class MoshRenderer {
         void main(){
           vec2 uv = (vUv - 0.5) * uCover + 0.5;
           uv.x = mix(uv.x, 1.0 - uv.x, uMirror);
-          vec3 c = texture2D(uTex, clamp(uv, 0.0, 1.0)).rgb;
+          vec3 c = texture2D(uTex, sadj(uv)).rgb;
 
           if (uHdr <= 0.001) { gl_FragColor = vec4(c, 1.0); return; }
 
@@ -205,12 +216,12 @@ export class MoshRenderer {
           // shadow lift blends toward, and at 14px that average is a heavy blur
           // — which is what made well-lit skin read as wax rather than as skin.
           vec2 r = 7.0 / uResolution;
-          vec3 t0 = texture2D(uTex, clamp(uv + vec2( 1.000,  0.000)*r, 0.0, 1.0)).rgb;
-          vec3 t1 = texture2D(uTex, clamp(uv + vec2( 0.500,  0.866)*r, 0.0, 1.0)).rgb;
-          vec3 t2 = texture2D(uTex, clamp(uv + vec2(-0.500,  0.866)*r, 0.0, 1.0)).rgb;
-          vec3 t3 = texture2D(uTex, clamp(uv + vec2(-1.000,  0.000)*r, 0.0, 1.0)).rgb;
-          vec3 t4 = texture2D(uTex, clamp(uv + vec2(-0.500, -0.866)*r, 0.0, 1.0)).rgb;
-          vec3 t5 = texture2D(uTex, clamp(uv + vec2( 0.500, -0.866)*r, 0.0, 1.0)).rgb;
+          vec3 t0 = texture2D(uTex, sadj(uv + vec2( 1.000,  0.000)*r)).rgb;
+          vec3 t1 = texture2D(uTex, sadj(uv + vec2( 0.500,  0.866)*r)).rgb;
+          vec3 t2 = texture2D(uTex, sadj(uv + vec2(-0.500,  0.866)*r)).rgb;
+          vec3 t3 = texture2D(uTex, sadj(uv + vec2(-1.000,  0.000)*r)).rgb;
+          vec3 t4 = texture2D(uTex, sadj(uv + vec2(-0.500, -0.866)*r)).rgb;
+          vec3 t5 = texture2D(uTex, sadj(uv + vec2( 0.500, -0.866)*r)).rgb;
           vec3 local = (t0 + t1 + t2 + t3 + t4 + t5) / 6.0;
 
           float l = dot(c, LUMA);
@@ -296,6 +307,7 @@ export class MoshRenderer {
         uResolution: { value: new THREE.Vector2(1, 1) },
         uHdr: { value: 0 },
         uMirror: { value: 0.0 },
+        uWrap: { value: 0.0 },
       },
       depthTest: false,
       depthWrite: false,
@@ -585,6 +597,9 @@ export class MoshRenderer {
     // frame after a resize doesn't sample garbage.
     this.historyPrimed = false;
     this.depthPrimed = false;
+    // Freshly allocated targets default to clamped; a resize must not silently
+    // reintroduce seams into a tile that was already set up.
+    if (this._tileableSampling) this.setTileableSampling(true);
     if (this.rtTile) {
       this.rtTile.dispose();
       this.rtTile = new THREE.WebGLRenderTarget(w, h, opts);
@@ -597,6 +612,45 @@ export class MoshRenderer {
   /** Mirror the source horizontally (true for front-facing / selfie cameras). */
   setSourceMirror(mirror: boolean) {
     this.sourceFillMaterial.uniforms.uMirror.value = mirror ? 1.0 : 0.0;
+  }
+
+  /**
+   * Switch every sampler between clamped and wrapped addressing.
+   *
+   * Clamping is right for a photo or a camera frame: sampling past the edge
+   * should smear the edge pixel, not teleport to the far side. For a tile it is
+   * exactly wrong — an effect that offsets its UV past the boundary should
+   * continue into the neighbouring copy, because that is what the pattern will
+   * actually do when printed. Flipping the wrap mode is what lets ordinary
+   * displacement effects stay seamless rather than having to be rewritten.
+   *
+   * Effects that clamp their own coordinates in the shader bypass this, which
+   * is why tileSafety also excludes them by inspection.
+   */
+  setTileableSampling(on: boolean) {
+    const mode = on ? THREE.RepeatWrapping : THREE.ClampToEdgeWrapping;
+    const targets = [
+      this.rtA, this.rtB, this.rtC,
+      this.rtHistA, this.rtHistB, this.rtTile,
+      ...this.rtRing,
+    ];
+    for (const rt of targets) {
+      if (!rt) continue;
+      rt.texture.wrapS = mode;
+      rt.texture.wrapT = mode;
+      rt.texture.needsUpdate = true;
+    }
+    if (this.sourceTex) {
+      this.sourceTex.wrapS = mode;
+      this.sourceTex.wrapT = mode;
+      this.sourceTex.needsUpdate = true;
+    }
+    this._tileableSampling = on;
+    this.sourceFillMaterial.uniforms.uWrap.value = on ? 1 : 0;
+    // A tile must fill its frame exactly. Cover-cropping to the viewport aspect
+    // would scale the pattern and cut the seam in a different place each resize.
+    if (on) (this.sourceFillMaterial.uniforms.uCover.value as THREE.Vector2).set(1, 1);
+    this.resize(this.cssWidth, this.cssHeight);
   }
 
   /** Set the HDR finisher intensity (0 = pure passthrough, 1 = full ACES filmic).
@@ -751,11 +805,17 @@ export class MoshRenderer {
     this.canvas.style.width = `${drawW}px`;
     this.canvas.style.height = `${drawH}px`;
 
-    const dstA = drawW / Math.max(1, drawH);
-    const srcA = this.sourceAspect || 1;
-    const coverX = Math.min(1, dstA / srcA);
-    const coverY = Math.min(1, srcA / dstA);
-    (this.sourceFillMaterial.uniforms.uCover.value as THREE.Vector2).set(coverX, coverY);
+    // A tile maps 1:1 to its frame. Cover-cropping would rescale the pattern
+    // and move where the seam falls on every resize, so tileable mode opts out.
+    if (this._tileableSampling) {
+      (this.sourceFillMaterial.uniforms.uCover.value as THREE.Vector2).set(1, 1);
+    } else {
+      const dstA = drawW / Math.max(1, drawH);
+      const srcA = this.sourceAspect || 1;
+      const coverX = Math.min(1, dstA / srcA);
+      const coverY = Math.min(1, srcA / dstA);
+      (this.sourceFillMaterial.uniforms.uCover.value as THREE.Vector2).set(coverX, coverY);
+    }
 
     if (this.rtA.width !== pxW || this.rtA.height !== pxH) {
       this.allocTargets(pxW, pxH);
