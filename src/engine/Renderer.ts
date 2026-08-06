@@ -140,7 +140,10 @@ export class MoshRenderer {
 
           if (uHdr <= 0.001) { gl_FragColor = vec4(c, 1.0); return; }
 
-          vec2 r = 14.0 / uResolution;
+          // 7px, not 14. The neighbourhood doubles as the "local average" the
+          // shadow lift blends toward, and at 14px that average is a heavy blur
+          // — which is what made well-lit skin read as wax rather than as skin.
+          vec2 r = 7.0 / uResolution;
           vec3 t0 = texture2D(uTex, clamp(uv + vec2( 1.000,  0.000)*r, 0.0, 1.0)).rgb;
           vec3 t1 = texture2D(uTex, clamp(uv + vec2( 0.500,  0.866)*r, 0.0, 1.0)).rgb;
           vec3 t2 = texture2D(uTex, clamp(uv + vec2(-0.500,  0.866)*r, 0.0, 1.0)).rgb;
@@ -168,9 +171,20 @@ export class MoshRenderer {
 
           // Coring. A low-light frame's small local differences are mostly
           // sensor noise, and amplifying them is what makes a lifted image look
-          // grainy rather than remastered. Fade out everything below ~9% luma
-          // difference and keep genuine edges intact.
-          detail *= smoothstep(0.0, 0.09, abs(detail));
+          // grainy rather than remastered.
+          //
+          // But noise is a LOW-LIGHT problem, and this was applied to every
+          // frame at a flat 9% threshold. Skin texture — pores, fine shading,
+          // stubble — lives almost entirely below 9%, so on a well-lit face it
+          // was not suppressing noise, it was erasing the face. That is the
+          // skin-smoothing half of the uncanny look.
+          //
+          // Scale the threshold with how dark the neighbourhood actually is:
+          // aggressive where there is genuinely noise to kill, near-transparent
+          // in good light where there is not.
+          float darkness = 1.0 - smoothstep(0.0, 0.55, lLocal);
+          float core = mix(0.012, 0.09, darkness);
+          detail *= smoothstep(0.0, core, abs(detail));
           // Cap the overshoot so strong edges don't ring. Without this the
           // amplified difference paints a dark halo around bright subjects,
           // which is the giveaway artefact of naive local tone mapping.
@@ -179,7 +193,6 @@ export class MoshRenderer {
           // Shadow lift: gamma below 1 opens the low end, and the exponent is
           // driven by how dark the NEIGHBOURHOOD is, so a bright subject on a
           // dark ground doesn't get flattened along with the ground.
-          float darkness = 1.0 - smoothstep(0.0, 0.55, lLocal);
           float g = mix(1.0, 0.58, uHdr * darkness);
           float lifted = pow(max(l, 0.0), g);
 
@@ -193,8 +206,14 @@ export class MoshRenderer {
           // Lifting shadows amplifies sensor noise, and noise is exactly what a
           // low-light frame has most of. Pull the darkest areas slightly toward
           // the local average to keep the lift clean.
-          float shadow = 1.0 - smoothstep(0.0, 0.35, max(l, lLocal));
-          vec3 base = mix(c, local, uHdr * min(1.0, darkness * 0.30 + shadow * 0.45));
+          // The local average is a blur, so this term is literal smoothing —
+          // worth it to
+          // keep a lifted shadow clean, ruinous anywhere else. It was reaching
+          // 30% on ordinary mid-tones via the darkness term, which is the other
+          // half of the wax. Restrict it to genuinely dark pixels, where the
+          // lift is actually amplifying noise, and cut the ceiling.
+          float shadow = 1.0 - smoothstep(0.0, 0.28, max(l, lLocal));
+          vec3 base = mix(c, local, uHdr * min(0.5, shadow * 0.40));
 
           // Rescale by luminance ratio so hue and saturation ride along instead
           // of washing out, then push chroma back where the lift stole it.
@@ -202,7 +221,10 @@ export class MoshRenderer {
           // one this ratio would otherwise explode and speckle the edge.
           vec3 outC = base * (outL / max(l, 0.02));
           float outLum = dot(outC, LUMA);
-          outC = mix(vec3(outLum), outC, 1.0 + uHdr * (0.22 + darkness * 0.45));
+          // Chroma push. Restrained in good light: saturated-but-textureless
+          // skin is what tips "smoothed" over into "creepy". The dark-frame
+          // term stays, since a lift genuinely does steal saturation there.
+          outC = mix(vec3(outLum), outC, 1.0 + uHdr * (0.10 + darkness * 0.45));
 
           gl_FragColor = vec4(clamp(outC, 0.0, 1.0), 1.0);
         }
