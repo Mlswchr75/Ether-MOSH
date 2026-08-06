@@ -1,6 +1,13 @@
 import * as THREE from "three";
 import { EFFECTS_BY_ID } from "./effects";
-import { BLEND_INDEX, COMPOSITOR_FRAG, PASSTHROUGH_VERT, type BlendMode } from "./blend";
+import {
+  BLEND_INDEX,
+  COMPOSITOR_FRAG,
+  PASSTHROUGH_VERT,
+  REGION_INDEX,
+  type BlendMode,
+  type LayerRegion,
+} from "./blend";
 import {
   DEFAULT_TILE_UNIFORMS,
   TILE_FREQ_FRAG,
@@ -22,6 +29,8 @@ export type RenderLayer = {
   blend: BlendMode;
   /** map of param key -> value (already modulated for this frame) */
   params: Record<string, number>;
+  /** Confines this layer to part of the frame. Null/absent = whole frame. */
+  region?: LayerRegion | null;
 };
 
 type ShaderEntry = {
@@ -47,6 +56,29 @@ export class MoshRenderer {
   private rtHistB!: THREE.WebGLRenderTarget;
   /** Nothing has been written to history yet — uFeedback reads as black. */
   private historyPrimed = false;
+  /**
+   * Depth proxy. A 0..1 estimate of foreground (1) vs background (0), derived
+   * from motion, saturation and centre bias — no ML, no depth sensor. Ping-ponged
+   * because each frame's estimate accumulates on the last one: that temporal
+   * charge is what keeps a subject who stops moving from dissolving into the room.
+   */
+  private rtDepthA!: THREE.WebGLRenderTarget;
+  private rtDepthB!: THREE.WebGLRenderTarget;
+  /** Last frame's *source* (pre-effects) — motion is only meaningful against this. */
+  private rtSrcPrev!: THREE.WebGLRenderTarget;
+  private depthPrimed = false;
+  private depthMaterial!: THREE.ShaderMaterial;
+  /**
+   * Strided ring of past *output* frames. Unlike rtHistA/B (one frame back), this
+   * reaches back ~250ms so different regions of the image can be shown at
+   * genuinely different moments. Strided — written every Nth frame — so four
+   * buffers cover a quarter-second instead of four frames.
+   */
+  private rtRing: THREE.WebGLRenderTarget[] = [];
+  private ringWrite = 0;
+  private ringCount = 0;
+  private frameCounter = 0;
+  private ringStride = 4;
   private sourceTex: THREE.Texture | null = null;
   private sourceAspect = 1;
   private cssWidth = 1;
@@ -101,8 +133,16 @@ export class MoshRenderer {
       uniforms: {
         uPrev: { value: null },
         uCur: { value: null },
+        uRegionDepth: { value: null },
         uOpacity: { value: 1 },
         uMode: { value: 0 },
+        uRegionMode: { value: 0 },
+        uRegionScale: { value: 1 },
+        uRegionPhase: { value: 0 },
+        uRegionGate: { value: 0.5 },
+        uRegionFeather: { value: 0.12 },
+        uRegionInvert: { value: 0 },
+        uAspect: { value: new THREE.Vector2(1, 1) },
       },
     });
 
@@ -299,6 +339,91 @@ export class MoshRenderer {
       depthWrite: false,
     });
 
+    /* Depth proxy.
+
+       There is no depth sensor and no segmentation model here, and there does
+       not need to be one — a live camera hands over three cues that separate a
+       person from the room behind them almost for free:
+
+         motion — the subject moves, the room does not. By far the strongest
+                  signal, and the only one that is actually about depth.
+         saturation — skin and clothing sit well above the desaturated walls,
+                  ceilings and daylight that make up most backgrounds.
+         centre bias — people frame themselves near the middle.
+
+       None of the three is reliable alone. Motion vanishes the moment someone
+       holds still; saturation is fooled by a colourful poster; centre bias is
+       just a guess. Accumulated over time and diffused over space they agree
+       often enough to carve a usable foreground mask, which is all the effects
+       downstream need to stop treating the frame as one flat sheet. */
+    this.depthMaterial = new THREE.ShaderMaterial({
+      vertexShader: PASSTHROUGH_VERT,
+      fragmentShader: `
+        precision mediump float;
+        varying vec2 vUv;
+        uniform sampler2D uSrc;
+        uniform sampler2D uPrevSrc;
+        uniform sampler2D uPrevDepth;
+        uniform vec2 uResolution;
+        uniform float uPrimed;
+
+        float luma(vec3 c){ return dot(c, vec3(0.299, 0.587, 0.114)); }
+
+        void main(){
+          vec3 c = texture2D(uSrc, vUv).rgb;
+          vec3 p = texture2D(uPrevSrc, vUv).rgb;
+
+          // Motion. Thresholded low enough to catch a slow lean, high enough
+          // that sensor noise in a dim room doesn't light up the whole frame.
+          float motion = smoothstep(0.02, 0.17, abs(luma(c) - luma(p)));
+
+          float mx = max(max(c.r, c.g), c.b);
+          float mn = min(min(c.r, c.g), c.b);
+          float sat = mx < 0.04 ? 0.0 : (mx - mn) / mx;
+
+          // Ellipse, not a circle — frames are wider than they are tall and so
+          // is the region a subject occupies.
+          vec2 d = (vUv - 0.5) * vec2(1.0, 0.70);
+          float centre = 1.0 - smoothstep(0.15, 0.54, length(d));
+
+          // What we would guess with no history at all. Also the floor the
+          // estimate relaxes back to once motion has decayed away.
+          float staticCue = clamp(centre * 0.60 + sat * 0.40, 0.0, 1.0);
+
+          /* Spatial diffusion, done by reading the NEIGHBOURHOOD of last frame's
+             estimate rather than blurring this one. Four taps per frame, but
+             because the result feeds back in every frame the blur compounds —
+             after a handful of frames it is a wide, coherent blob. A real
+             kernel that wide would cost 20+ taps every frame. */
+          vec2 r = 3.0 / uResolution;
+          float prev = (
+            texture2D(uPrevDepth, vUv).r * 0.44 +
+            texture2D(uPrevDepth, vUv + vec2(r.x, 0.0)).r * 0.14 +
+            texture2D(uPrevDepth, vUv - vec2(r.x, 0.0)).r * 0.14 +
+            texture2D(uPrevDepth, vUv + vec2(0.0, r.y)).r * 0.14 +
+            texture2D(uPrevDepth, vUv - vec2(0.0, r.y)).r * 0.14
+          ) * uPrimed;
+
+          // Charge fast, discharge slowly: someone who moves is marked
+          // foreground immediately and stays marked while they hold still.
+          float charged = max(prev * 0.955, motion);
+
+          float depth = clamp(charged * 0.72 + staticCue * 0.42, 0.0, 1.0);
+          depth = mix(staticCue, depth, 0.78);
+          gl_FragColor = vec4(depth, depth, depth, 1.0);
+        }
+      `,
+      uniforms: {
+        uSrc: { value: null },
+        uPrevSrc: { value: null },
+        uPrevDepth: { value: null },
+        uResolution: { value: new THREE.Vector2(1, 1) },
+        uPrimed: { value: 0 },
+      },
+      depthTest: false,
+      depthWrite: false,
+    });
+
     this.allocTargets(2, 2);
   }
 
@@ -308,6 +433,10 @@ export class MoshRenderer {
     this.rtC?.dispose();
     this.rtHistA?.dispose();
     this.rtHistB?.dispose();
+    this.rtDepthA?.dispose();
+    this.rtDepthB?.dispose();
+    this.rtSrcPrev?.dispose();
+    for (const rt of this.rtRing) rt.dispose();
     const opts: THREE.RenderTargetOptions = {
       minFilter: THREE.LinearFilter,
       magFilter: THREE.LinearFilter,
@@ -321,9 +450,27 @@ export class MoshRenderer {
     this.rtC = new THREE.WebGLRenderTarget(w, h, opts);
     this.rtHistA = new THREE.WebGLRenderTarget(w, h, opts);
     this.rtHistB = new THREE.WebGLRenderTarget(w, h, opts);
+
+    // Depth runs at quarter resolution. It is a soft blob mask that gets
+    // diffused anyway, so full-res detail in it would be spent and then blurred
+    // away — and this keeps the extra pass close to free on mobile.
+    const dw = Math.max(2, Math.floor(w * 0.5));
+    const dh = Math.max(2, Math.floor(h * 0.5));
+    this.rtDepthA = new THREE.WebGLRenderTarget(dw, dh, opts);
+    this.rtDepthB = new THREE.WebGLRenderTarget(dw, dh, opts);
+    this.rtSrcPrev = new THREE.WebGLRenderTarget(dw, dh, opts);
+
+    // Ring depth: a phone cannot spare four extra full-size buffers, and the
+    // effect still reads at three.
+    const ringSize = (typeof window !== "undefined" && window.innerWidth < 768) ? 3 : 4;
+    this.rtRing = Array.from({ length: ringSize }, () => new THREE.WebGLRenderTarget(w, h, opts));
+    this.ringWrite = 0;
+    this.ringCount = 0;
+
     // Resized buffers start undefined; treat history as cold so the first
     // frame after a resize doesn't sample garbage.
     this.historyPrimed = false;
+    this.depthPrimed = false;
     if (this.rtTile) {
       this.rtTile.dispose();
       this.rtTile = new THREE.WebGLRenderTarget(w, h, opts);
@@ -522,6 +669,12 @@ export class MoshRenderer {
     const uniforms: Record<string, THREE.IUniform> = {
       uTex: { value: null },
       uFeedback: { value: null },
+      uDepth: { value: null },
+      uHist0: { value: null },
+      uHist1: { value: null },
+      uHist2: { value: null },
+      uHist3: { value: null },
+      uHistDepth: { value: 0 },
       uResolution: { value: new THREE.Vector2(1, 1) },
       uTime: { value: 0 },
       uPulse: { value: 0 },
@@ -571,6 +724,27 @@ export class MoshRenderer {
     this.renderer.setRenderTarget(this.rtA);
     this.renderer.render(this.scene, this.camera);
 
+    // Step 1b — update the depth proxy from the fresh source, then stash the
+    // source for next frame's motion difference. Both run at half res.
+    this.depthMaterial.uniforms.uSrc.value = this.rtA.texture;
+    this.depthMaterial.uniforms.uPrevSrc.value = this.rtSrcPrev.texture;
+    this.depthMaterial.uniforms.uPrevDepth.value = this.rtDepthA.texture;
+    this.depthMaterial.uniforms.uPrimed.value = this.depthPrimed ? 1 : 0;
+    (this.depthMaterial.uniforms.uResolution.value as THREE.Vector2)
+      .set(this.rtDepthA.width, this.rtDepthA.height);
+    this.quad.material = this.depthMaterial;
+    this.renderer.setRenderTarget(this.rtDepthB);
+    this.renderer.render(this.scene, this.camera);
+    const depthSwap = this.rtDepthA;
+    this.rtDepthA = this.rtDepthB;
+    this.rtDepthB = depthSwap;
+    this.depthPrimed = true;
+
+    this.blitMaterial.uniforms.uTex.value = this.rtA.texture;
+    this.quad.material = this.blitMaterial;
+    this.renderer.setRenderTarget(this.rtSrcPrev);
+    this.renderer.render(this.scene, this.camera);
+
     const targets = [this.rtA, this.rtB, this.rtC];
     let read = this.rtA;
 
@@ -587,6 +761,24 @@ export class MoshRenderer {
       // Last frame's finished output. Black until the first frame lands, so
       // feedback effects fade in rather than flashing garbage.
       uni.uFeedback.value = this.historyPrimed ? this.rtHistA.texture : null;
+      uni.uDepth.value = this.rtDepthA.texture;
+      // Ring entries newest-first. Anything past what has actually been written
+      // reads as the newest frame, so a cold ring degrades to "no time offset"
+      // instead of sampling an undefined buffer.
+      const newest = this.ringCount > 0
+        ? this.rtRing[(this.ringWrite - 1 + this.rtRing.length) % this.rtRing.length]
+        : null;
+      for (let k = 0; k < 4; k++) {
+        const slot = `uHist${k}`;
+        if (!(slot in uni)) continue;
+        if (k < this.ringCount) {
+          const idx = (this.ringWrite - 1 - k + this.rtRing.length * 2) % this.rtRing.length;
+          uni[slot].value = this.rtRing[idx].texture;
+        } else {
+          uni[slot].value = newest ? newest.texture : read.texture;
+        }
+      }
+      uni.uHistDepth.value = this.ringCount;
       (uni.uResolution.value as THREE.Vector2).set(w, h);
       uni.uTime.value = time;
       uni.uPulse.value = pulse;
@@ -598,7 +790,12 @@ export class MoshRenderer {
       this.renderer.setRenderTarget(effectTarget);
       this.renderer.render(this.scene, this.camera);
 
-      if (layer.blend === "normal" && layer.opacity >= 0.995) {
+      const region = layer.region && layer.region.mode !== "none" ? layer.region : null;
+
+      // The fast path swaps buffers instead of compositing — which also skips
+      // the region mask, so a confined layer must never take it however opaque
+      // it is.
+      if (!region && layer.blend === "normal" && layer.opacity >= 0.995) {
         read = effectTarget;
         continue;
       }
@@ -607,6 +804,15 @@ export class MoshRenderer {
       this.compositor.uniforms.uCur.value = effectTarget.texture;
       this.compositor.uniforms.uOpacity.value = layer.opacity;
       this.compositor.uniforms.uMode.value = BLEND_INDEX[layer.blend];
+      this.compositor.uniforms.uRegionDepth.value = this.rtDepthA.texture;
+      this.compositor.uniforms.uRegionMode.value = region ? REGION_INDEX[region.mode] : 0;
+      this.compositor.uniforms.uRegionScale.value = region?.scale ?? 1;
+      this.compositor.uniforms.uRegionPhase.value = region?.phase ?? 0;
+      this.compositor.uniforms.uRegionGate.value = region?.gate ?? 0.5;
+      this.compositor.uniforms.uRegionFeather.value = region?.feather ?? 0.12;
+      this.compositor.uniforms.uRegionInvert.value = region?.invert ? 1 : 0;
+      (this.compositor.uniforms.uAspect.value as THREE.Vector2)
+        .set(Math.max(1, w / Math.max(1, h)), 1);
       this.quad.material = this.compositor;
       this.renderer.setRenderTarget(compositeTarget);
       this.renderer.render(this.scene, this.camera);
@@ -635,6 +841,21 @@ export class MoshRenderer {
     this.rtHistA = this.rtHistB;
     this.rtHistB = swap;
     this.historyPrimed = true;
+
+    // --- Time ring write ---
+    // Strided: one slot every `ringStride` frames, so four slots reach back a
+    // quarter second rather than four frames. A four-frame reach is invisible;
+    // a quarter second is the difference between a smear and seeing your own
+    // past self.
+    this.frameCounter++;
+    if (this.frameCounter % this.ringStride === 0 && this.rtRing.length) {
+      this.blitMaterial.uniforms.uTex.value = finalTex;
+      this.quad.material = this.blitMaterial;
+      this.renderer.setRenderTarget(this.rtRing[this.ringWrite]);
+      this.renderer.render(this.scene, this.camera);
+      this.ringWrite = (this.ringWrite + 1) % this.rtRing.length;
+      this.ringCount = Math.min(this.ringCount + 1, this.rtRing.length);
+    }
 
     // Adaptive HDR finisher → screen blit.
     // Pure passthrough at _hdrIntensity=0, ACES filmic tone-mapping at 1.
@@ -712,10 +933,16 @@ export class MoshRenderer {
     this.rtC.dispose();
     this.rtHistA.dispose();
     this.rtHistB.dispose();
+    this.rtDepthA?.dispose();
+    this.rtDepthB?.dispose();
+    this.rtSrcPrev?.dispose();
+    for (const rt of this.rtRing) rt.dispose();
+    this.rtRing = [];
     this.sourceTex?.dispose();
     this.compositor.dispose();
     this.blitMaterial.dispose();
     this.sourceFillMaterial.dispose();
+    this.depthMaterial?.dispose();
     this.finisherMaterial.dispose();
     this.tileMaterial?.dispose();
     this.rtTile?.dispose();

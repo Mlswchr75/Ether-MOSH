@@ -229,7 +229,7 @@ type Actions = {
   applyFavorite: (id: string) => boolean;
   removeFavorite: (id: string) => void;
   renameFavorite: (id: string, name: string) => void;
-  moshDirected: (ids: string[]) => void;
+  moshDirected: (layers: import("@/engine/compose").DirectedLayer[]) => void;
   moshStorm: (ids: string[], opts?: { explosive?: boolean; regions?: unknown }) => void;
   addStickerToGallery: (sticker: StickerEntry) => void;
   removeStickerFromGallery: (id: string) => void;
@@ -496,6 +496,7 @@ export const useStore = create<State & Actions>((set, get) => ({
         hidden: false, locked: false,
         blend: cl.blend,
         opacity: cl.opacity,
+        region: cl.region ?? null,
         params: cl.params,
         mods: Object.fromEntries(def.params.map(p => [p.key, null])),
         audioMaps: Object.fromEntries(def.params.map(p => [p.key, null])),
@@ -753,21 +754,25 @@ export const useStore = create<State & Actions>((set, get) => ({
     return { favorites: next };
   }),
 
-  moshDirected: (ids) => set(s => {
+  // Takes a fully composed stack. Opacity, blend and region arrive already
+  // decided by the composition grammar and are passed through untouched —
+  // overwriting them here (as this used to, with a flat 0.75–1.0 opacity on
+  // every layer) is exactly what flattened composed stacks back into mud.
+  moshDirected: (directed) => set(s => {
     const seed = generateSeed();
-    const rand = rngFromSeed(seed);
     const locked = s.layers.filter(l => l.locked);
-    const fresh: Layer[] = ids.flatMap((eid, idx) => {
-      const def = EFFECTS_BY_ID[eid];
+    const fresh: Layer[] = directed.flatMap((d) => {
+      const def = EFFECTS_BY_ID[d.effectId];
       if (!def) return [];
       const params: Record<string, number> = {};
       for (const p of def.params) params[p.key] = p.default;
       return [{
         id: newId(),
-        effectId: eid,
+        effectId: d.effectId,
         hidden: false, locked: false,
-        blend: (idx === 0 ? "normal" : SAFE_BLENDS[Math.floor(rand() * SAFE_BLENDS.length)]) as import("@/engine/blend").BlendMode,
-        opacity: idx === 0 ? 1 : 0.75 + rand() * 0.25,
+        blend: d.blend,
+        opacity: d.opacity,
+        region: d.region ?? null,
         params,
         mods: Object.fromEntries(def.params.map(p => [p.key, null])),
         audioMaps: Object.fromEntries(def.params.map(p => [p.key, null])),

@@ -22,8 +22,8 @@ const SIGNATURE_SET = [
 ];
 
 describe("effect registry", () => {
-  it("holds 89 effects", () => {
-    expect(EFFECTS.length).toBe(89);
+  it("holds 97 effects", () => {
+    expect(EFFECTS.length).toBe(97);
   });
 
   /** Effects with memory — they sample last frame via uFeedback. */
@@ -62,6 +62,41 @@ describe("effect registry", () => {
   it("has no duplicate ids", () => {
     const ids = EFFECTS.map(e => e.id);
     expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  /**
+   * The dimensional set is the only group that reads structure — the depth
+   * proxy and the time ring — rather than just transforming the flat frame.
+   * An effect that lands in this category without touching either is a plain
+   * screen-space filter wearing the label, which is exactly the thing the
+   * category exists to distinguish itself from.
+   */
+  const DIMENSIONAL_SET = [
+    "depthShear", "dimensionSplit", "timeShatter", "parallaxExplode",
+    "depthEcho", "strataSlice", "chronoBleed", "volumetricPull",
+  ];
+
+  it("ships the dimensional set", () => {
+    for (const id of DIMENSIONAL_SET) {
+      expect(EFFECTS_BY_ID[id], `${id} missing`).toBeTruthy();
+      expect(EFFECTS_BY_ID[id].category, `${id} category`).toBe("dimension");
+    }
+  });
+
+  it("makes every dimensional effect read depth or time", () => {
+    for (const id of DIMENSIONAL_SET) {
+      const body = EFFECTS_BY_ID[id].frag;
+      const main = body.slice(body.indexOf("void main(){"));
+      const reads = /\bdepthAt\s*\(/.test(main) || /\btimeAt\s*\(/.test(main);
+      expect(reads, `${id} reads neither depth nor the time ring`).toBe(true);
+    }
+  });
+
+  it("exposes the depth proxy and time ring to every shader", () => {
+    for (const def of EFFECTS) {
+      expect(def.frag, `${def.id}`).toContain("uniform sampler2D uDepth;");
+      expect(def.frag, `${def.id}`).toContain("uniform sampler2D uHist0;");
+    }
   });
 
   it("declares every param uniform its shader body references", () => {

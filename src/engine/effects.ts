@@ -7,7 +7,16 @@ export type ParamSchema = {
   step?: number;
 };
 
-export type EffectCategory = "corruption" | "color" | "geometry" | "atmosphere";
+/**
+ * `dimension` is not just another bucket of filters. Every other category
+ * transforms the frame as a single flat sheet; these read the depth proxy and
+ * the time ring, so they can move the subject independently of the room, or
+ * show two parts of the image at two different moments. They are the only
+ * effects that add structure rather than surface, which is why the director
+ * treats one of them as the load-bearing layer in a stack instead of just
+ * another ingredient.
+ */
+export type EffectCategory = "corruption" | "color" | "geometry" | "atmosphere" | "dimension";
 
 export type EffectDef = {
   id: string;
@@ -35,9 +44,33 @@ uniform sampler2D uTex;
 // Black on the first frame and after a resize, so always fade it in rather
 // than assuming it holds something.
 uniform sampler2D uFeedback;
+/* Foreground/background estimate, 1 = subject, 0 = the room behind them.
+   Soft and blobby by construction — treat it as a gradient to displace along,
+   not as a hard cut-out. See the depth pass in Renderer.ts for how it is built. */
+uniform sampler2D uDepth;
+/* Strided ring of past output frames, newest first, reaching back ~250ms.
+   Sample through timeAt() rather than directly so a cold ring degrades cleanly. */
+uniform sampler2D uHist0;
+uniform sampler2D uHist1;
+uniform sampler2D uHist2;
+uniform sampler2D uHist3;
+uniform float uHistDepth;
 uniform vec2 uResolution;
 uniform float uTime;
 uniform float uPulse;
+
+float depthAt(vec2 uv){ return texture2D(uDepth, clamp(uv, 0.0, 1.0)).r; }
+
+/* Sample the output as it was 'age' ago — 0 is the most recent retained frame,
+   1 is the far end of the ring. Interpolates between adjacent slots so a moving
+   age sweeps continuously through time instead of stepping between snapshots. */
+vec3 timeAt(vec2 uv, float age){
+  vec2 c = clamp(uv, 0.0, 1.0);
+  float a = clamp(age, 0.0, 1.0) * 3.0;
+  if (a < 1.0) return mix(texture2D(uHist0, c).rgb, texture2D(uHist1, c).rgb, a);
+  if (a < 2.0) return mix(texture2D(uHist1, c).rgb, texture2D(uHist2, c).rgb, a - 1.0);
+  return mix(texture2D(uHist2, c).rgb, texture2D(uHist3, c).rgb, a - 2.0);
+}
 
 float rand(vec2 c){return fract(sin(dot(c,vec2(12.9898,78.233)))*43758.5453);}
 float noise(vec2 p){
@@ -1694,6 +1727,153 @@ export const EFFECTS: EffectDef[] = [
     grown *= mix(0.90, 0.985, uDecay);
     gl_FragColor = vec4(max(cur.rgb * 0.85, grown), cur.a);
     `),
+
+  // ── DIMENSIONAL ───────────────────────────────────────────────────
+  // The only effects that know the image contains a subject standing in a
+  // room, and that the room existed a moment ago as well as now. Everything
+  // above this line treats the frame as one flat sheet of pixels; these read
+  // uDepth and the time ring, so they can pull the two apart.
+
+  fx("depthShear", "Depth Shear", "dimension", "You and the room behind you slide in opposite directions. The frame stops being flat.",
+    [{ key: "amount", label: "Separation", min: 0, max: 1, default: 0.5 },
+     { key: "angle", label: "Angle", min: 0, max: 1, default: 0.0 },
+     { key: "pivot", label: "Pivot Depth", min: 0, max: 1, default: 0.45 }],
+    `
+    float d = depthAt(vUv);
+    // Signed around the pivot: everything nearer than the pivot travels one
+    // way, everything further travels the other. A single-sided push would
+    // only smear the subject; the opposition is what reads as separation.
+    float signedD = (d - uPivot) * 2.0;
+    float a = uAngle * 6.2831853;
+    vec2 dir = vec2(cos(a), sin(a));
+    vec2 off = dir * signedD * uAmount * (0.16 + uPulse * 0.10);
+    gl_FragColor = vec4(texture2D(uTex, clamp(vUv - off, 0.0, 1.0)).rgb, 1.0);
+    `),
+
+  fx("dimensionSplit", "Dimension Split", "dimension", "A seam tears across reality and the two halves pull apart at different depths, light bleeding from the rift.",
+    [{ key: "amount", label: "Rip", min: 0, max: 1, default: 0.55 },
+     { key: "seam", label: "Seam", min: 0, max: 1, default: 0.5 },
+     { key: "angle", label: "Angle", min: 0, max: 1, default: 0.0 },
+     { key: "glow", label: "Rift Glow", min: 0, max: 1, default: 0.5 }],
+    `
+    float a = uAngle * 3.14159265;
+    vec2 n = vec2(cos(a), sin(a));
+    // Signed distance from the seam line through the frame centre.
+    float t = dot(vUv - 0.5, n) - (uSeam - 0.5);
+    float side = t < 0.0 ? -1.0 : 1.0;
+
+    float d = depthAt(vUv);
+    // Depth scales the pull, so the subject travels further through the rift
+    // than the wall does — the tear has volume rather than being a flat cut.
+    float push = side * uAmount * (0.035 + d * 0.16);
+    vec2 uv = clamp(vUv - n * push, 0.0, 1.0);
+    vec3 c = texture2D(uTex, uv).rgb;
+
+    // Rift edge: exposure blows out where the two halves separated, which is
+    // what sells it as light escaping from behind the image.
+    float edge = exp(-abs(t) * (34.0 - uGlow * 22.0));
+    c += edge * uGlow * (0.55 + uPulse * 0.45) * vec3(0.75, 0.86, 1.0);
+    gl_FragColor = vec4(c, 1.0);
+    `),
+
+  fx("timeShatter", "Time Shatter", "dimension", "The image breaks into shards and every shard is showing a different moment. Your head arrives before your shoulders.",
+    [{ key: "cells", label: "Shards", min: 2, max: 26, default: 9, step: 1 },
+     { key: "spread", label: "Time Spread", min: 0, max: 1, default: 0.7 },
+     { key: "slip", label: "Slip", min: 0, max: 1, default: 0.3 }],
+    `
+    vec2 p = vUv * max(2.0, uCells);
+    // Skew before flooring: square cells read as a grid, skewed cells read as
+    // broken glass.
+    p += vec2(p.y * 0.58, p.x * 0.26);
+    vec2 cell = floor(p);
+    float h = rand(cell);
+    float h2 = rand(cell + 31.7);
+
+    // Each shard gets its own age, so the frame is showing several different
+    // moments at once rather than one uniformly delayed one.
+    float age = h * uSpread;
+    // A small positional slip per shard so the plate looks displaced as well
+    // as desynchronised.
+    vec2 slip = (vec2(h, h2) - 0.5) * uSlip * 0.05;
+    gl_FragColor = vec4(timeAt(vUv + slip, age), 1.0);
+    `),
+
+  fx("parallaxExplode", "Parallax Explode", "dimension", "Near things fly outward faster than far things. The room turns inside out around you.",
+    [{ key: "amount", label: "Thrust", min: 0, max: 1, default: 0.5 },
+     { key: "curve", label: "Falloff", min: 0, max: 1, default: 0.5 }],
+    `
+    float d = depthAt(vUv);
+    vec2 dir = vUv - 0.5;
+    // Depth raised to a variable power: at low curve everything moves together
+    // (a plain zoom), at high curve only the nearest surfaces launch.
+    float w = pow(clamp(d, 0.0, 1.0), 0.4 + uCurve * 2.6);
+    vec2 off = dir * w * uAmount * (0.42 + uPulse * 0.5);
+    gl_FragColor = vec4(texture2D(uTex, clamp(vUv - off, 0.0, 1.0)).rgb, 1.0);
+    `),
+
+  fx("depthEcho", "Depth Echo", "dimension", "Only you leave ghosts. The room behind you stays perfectly still and perfectly sharp.",
+    [{ key: "reach", label: "Reach", min: 0, max: 1, default: 0.6 },
+     { key: "strength", label: "Strength", min: 0, max: 1, default: 0.7 },
+     { key: "gate", label: "Depth Gate", min: 0, max: 1, default: 0.42 }],
+    `
+    vec3 cur = texture2D(uTex, vUv).rgb;
+    float d = depthAt(vUv);
+    // Three points along the ring rather than one, so the trail is a continuous
+    // wake instead of a single detached copy.
+    vec3 past = timeAt(vUv, uReach * 0.34) * 0.5
+              + timeAt(vUv, uReach * 0.67) * 0.3
+              + timeAt(vUv, uReach) * 0.2;
+    float g = smoothstep(uGate - 0.16, uGate + 0.16, d);
+    vec3 echo = max(cur, past * uStrength);
+    gl_FragColor = vec4(mix(cur, echo, g), 1.0);
+    `),
+
+  fx("strataSlice", "Strata", "dimension", "Horizontal strata, each one running on its own clock and sliding by its own depth. Time becomes a place.",
+    [{ key: "bands", label: "Strata", min: 2, max: 40, default: 14, step: 1 },
+     { key: "timeSpread", label: "Time Spread", min: 0, max: 1, default: 0.6 },
+     { key: "slide", label: "Slide", min: 0, max: 1, default: 0.4 }],
+    `
+    float band = floor(vUv.y * max(2.0, uBands));
+    float h = rand(vec2(band, 4.2));
+    float age = fract(h * 3.31) * uTimeSpread;
+    float d = depthAt(vUv);
+    // Depth drives the lateral slide, so a band across the subject travels
+    // further than the band above it crossing only wall.
+    vec2 uv = vUv;
+    uv.x += (h - 0.5) * uSlide * 0.24 * (0.25 + d);
+    gl_FragColor = vec4(timeAt(uv, age), 1.0);
+    `),
+
+  fx("chronoBleed", "Chrono Bleed", "dimension", "Red, green and blue arrive from three different moments — colour separated across time instead of space.",
+    [{ key: "spread", label: "Spread", min: 0, max: 1, default: 0.5 },
+     { key: "depthBias", label: "Depth Bias", min: 0, max: 1, default: 0.6 }],
+    `
+    float d = depthAt(vUv);
+    // Bias the spread by depth so the subject desynchronises hardest while the
+    // background stays close to now — the separation reads as depth, not noise.
+    float s = uSpread * mix(1.0, 0.25 + d * 1.15, uDepthBias);
+    float r = timeAt(vUv, s).r;
+    float g = timeAt(vUv, s * 0.45).g;
+    float b = texture2D(uTex, vUv).b;
+    gl_FragColor = vec4(r, g, b, 1.0);
+    `),
+
+  fx("volumetricPull", "Volumetric Pull", "dimension", "The subject stretches toward the lens while the room falls away behind. Depth as a physical force.",
+    [{ key: "amount", label: "Pull", min: 0, max: 1, default: 0.5 },
+     { key: "swirl", label: "Swirl", min: 0, max: 1, default: 0.25 }],
+    `
+    float d = depthAt(vUv);
+    vec2 rel = vUv - 0.5;
+    // Per-pixel zoom driven by depth: near surfaces magnify, far ones recede,
+    // which is the monocular cue the brain reads as approach.
+    float z = 1.0 - (d - 0.35) * uAmount * 0.55;
+    // Depth-proportional rotation adds the twist that keeps it from reading as
+    // a plain vignette zoom.
+    float ang = (d - 0.35) * uSwirl * 1.6 * (0.6 + uPulse * 0.8);
+    float ca = cos(ang), sa = sin(ang);
+    rel = mat2(ca, -sa, sa, ca) * rel * z;
+    gl_FragColor = vec4(texture2D(uTex, clamp(rel + 0.5, 0.0, 1.0)).rgb, 1.0);
+    `),
 ];
 
 export const EFFECTS_BY_ID: Record<string, EffectDef> = Object.fromEntries(EFFECTS.map(e => [e.id, e]));
@@ -1703,4 +1883,5 @@ export const CATEGORY_LABELS: Record<EffectCategory, string> = {
   color: "Color Chaos",
   geometry: "Geometry",
   atmosphere: "Atmosphere",
+  dimension: "Dimensional",
 };

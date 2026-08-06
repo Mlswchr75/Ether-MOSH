@@ -20,7 +20,7 @@
  * leaves the grammar intact.
  */
 import { EFFECTS, EFFECTS_BY_ID } from "./effects";
-import type { BlendMode } from "./blend";
+import type { BlendMode, LayerRegion } from "./blend";
 
 /* ────────────────────────────────────────────────────────────────────────
    1. Looking at the content
@@ -354,6 +354,22 @@ const CRAFT: Record<string, Craft> = {
   // Form, not accent: it re-projects the whole frame rather than decorating it.
   infiniteZoom:     { role: "form",   fidelity: "cinematic", gives: { structure: 0.9 }, cost: 0.6, gpu: 1.9 },
   reactionBloom:    { role: "finish", fidelity: "cinematic", gives: { light: 0.85, structure: 0.4 }, cost: 0.4, gpu: 2.6 },
+
+  // ── DIMENSIONAL ────────────────────────────────────────────────────
+  // All `form`, and deliberately the strongest structure values in the table.
+  // Every other form effect re-projects one flat sheet; these move the subject
+  // independently of the room behind them, or show two parts of the frame at
+  // two different moments. That is a different kind of claim on the image, so
+  // they carry high cost — the director should spend a whole stack's structure
+  // budget on one of them rather than stacking two.
+  depthShear:      { role: "form", fidelity: "cinematic", gives: { structure: 1.0 }, cost: 0.6, gpu: 1.4 },
+  dimensionSplit:  { role: "form", fidelity: "cinematic", gives: { structure: 1.0, light: 0.5 }, cost: 0.7, gpu: 1.6 },
+  timeShatter:     { role: "form", fidelity: "neutral",   gives: { structure: 1.0 }, cost: 0.75, gpu: 2.8 },
+  parallaxExplode: { role: "form", fidelity: "cinematic", gives: { structure: 0.95 }, cost: 0.6, gpu: 1.4 },
+  depthEcho:       { role: "form", fidelity: "cinematic", gives: { structure: 0.7, light: 0.5 }, cost: 0.55, gpu: 3.4 },
+  strataSlice:     { role: "form", fidelity: "neutral",   gives: { structure: 0.95 }, cost: 0.7, gpu: 2.6 },
+  chronoBleed:     { role: "form", fidelity: "cinematic", gives: { structure: 0.7, color: 0.7 }, cost: 0.55, gpu: 2.4 },
+  volumetricPull:  { role: "form", fidelity: "cinematic", gives: { structure: 0.9 }, cost: 0.6, gpu: 1.5 },
 };
 
 export function craftOf(id: string): Craft | null {
@@ -460,6 +476,37 @@ export const LOOKS: Look[] = [
              accent: ["datamosh", "blockShift", "compressionTears"], finish: ["filmGrain", "vignette", "fog"] },
     suits: { density: 0.5, needsRestraint: -0.3, contrast: 0.3 }, drive: 0.75,
   },
+
+  /* The dimensional looks.
+     These exist to give the director a reason to reach for the depth proxy and
+     the time ring. Their grade and finish picks are deliberately restrained —
+     a form effect that is pulling the subject out of the room needs the rest of
+     the stack to stay out of its way, or the separation it just carved gets
+     painted back over. */
+  {
+    id: "riftPlane", name: "RIFT PLANE", blurb: "You and the room stop sharing one space.",
+    picks: { grade: ["filmicTone", "duotone", "liquidChrome"],
+             form: ["dimensionSplit", "depthShear", "volumetricPull"],
+             accent: ["rgbShift", "shockwave", "bufferEcho"],
+             finish: ["vignette", "godRays", "anamorphic"] },
+    suits: { contrast: 0.4, needsContrast: 0.3, density: 0.3 }, drive: 0.7,
+  },
+  {
+    id: "chronoFracture", name: "CHRONO FRACTURE", blurb: "Every shard of the frame on its own clock.",
+    picks: { grade: ["filmicTone", "chromaPulse", "voltage"],
+             form: ["timeShatter", "strataSlice", "chronoBleed"],
+             accent: ["jitter", "rgbShift", "scanFreeze"],
+             finish: ["filmGrain", "vignette", "bloom"] },
+    suits: { density: 0.5, needsColor: 0.3 }, drive: 0.8,
+  },
+  {
+    id: "eventHorizon", name: "EVENT HORIZON", blurb: "The near world tears outward and leaves ghosts.",
+    picks: { grade: ["infraredDream", "thermal", "filmicTone"],
+             form: ["parallaxExplode", "depthEcho", "volumetricPull"],
+             accent: ["echoTrails", "bufferEcho", "shockwave"],
+             finish: ["godRays", "dreamGlow", "anamorphic"] },
+    suits: { brightness: -0.3, needsLift: 0.4, needsColor: 0.4 }, drive: 0.75,
+  },
 ];
 
 export const LOOKS_BY_ID: Record<string, Look> = Object.fromEntries(LOOKS.map(l => [l.id, l]));
@@ -501,6 +548,9 @@ export type ComposedLayer = {
   params: Record<string, number>;
   opacity: number;
   blend: BlendMode;
+  /** Confines the layer to part of the frame. Set when the form layer is
+   *  dimensional, so the subject and the room get different treatments. */
+  region?: LayerRegion | null;
 };
 
 export type Composition = {
@@ -782,6 +832,9 @@ export function compose(
   let budget = Math.min(COST_BUDGET + extraRoles * 0.3, 2.4);
   let gpu = Math.min(GPU_BUDGET + extraRoles * 4, 28);
   const layers: ComposedLayer[] = [];
+  // Set when a dimensional form layer claims one side of the depth split; the
+  // accent that follows takes the other side.
+  let splitPair: { form: LayerRegion; accent: LayerRegion } | null = null;
 
   for (const role of roles) {
     // The rule-break. Never applied to the grade: it is the tonal foundation
@@ -793,6 +846,31 @@ export function compose(
     used.add(id);
     budget -= CRAFT[id]?.cost ?? 0.3;
     gpu -= gpuCostOf(id);
+
+    /* Depth split.
+
+       When the form layer is dimensional it can already separate the subject
+       from the room — but applying the accent flat across the whole frame
+       paints that separation straight back over. Gating the form to one side
+       and the accent to the other means the two halves of the image are
+       visibly running different treatments, which is the difference between
+       an effect that happens *to* a picture and one that happens *inside* it.
+
+       Only ever on the form/accent pair: the grade is the tonal foundation and
+       must stay whole, and a regioned finish just looks like a mistake. */
+    let region: LayerRegion | null = null;
+    if (role === "form" && EFFECTS_BY_ID[id]?.category === "dimension" && rand() < 0.55) {
+      const subjectFirst = rand() < 0.5;
+      const gate = 0.34 + rand() * 0.18;
+      splitPair = {
+        form: { mode: subjectFirst ? "foreground" : "background", gate, feather: 0.14 },
+        accent: { mode: subjectFirst ? "background" : "foreground", gate, feather: 0.14 },
+      };
+      region = splitPair.form;
+    } else if (role === "accent" && splitPair) {
+      region = splitPair.accent;
+    }
+
     layers.push({
       effectId: id,
       role,
@@ -801,6 +879,7 @@ export function compose(
       // The grade always composites normally — it's a tonal foundation, and an
       // exotic blend at the bottom of the stack can wipe the frame to black.
       blend: role === "grade" ? "normal" : blendForRole(role, rand),
+      region,
     });
   }
 

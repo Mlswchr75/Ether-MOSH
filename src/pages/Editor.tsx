@@ -369,8 +369,8 @@ export default function Editor() {
 
     const director = new SmartDirector({
       getVideo: () => useStore.getState().videoElement,
-      onMosh: (ids) => {
-        useStore.getState().moshDirected(ids);
+      onMosh: (composed) => {
+        useStore.getState().moshDirected(composed);
         setSmartFlashKey(performance.now());
       },
     });
