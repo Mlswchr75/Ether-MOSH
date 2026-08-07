@@ -143,7 +143,7 @@ const GuideFreeVJSoftware = () => (
             top. Save the ones that feel right as presets for later.
           </li>
           <li>
-            <strong>Turn on Reality Storm</strong> for hands-free, AI-driven reactivity that pops
+            <strong>Turn on Journey mode</strong> for hands-free, AI-driven reactivity that pops
             on the beat while you focus on manual controls.
           </li>
           <li>
@@ -174,7 +174,7 @@ const GuideFreeVJSoftware = () => (
           MOSH is <Link to="/" className="text-accent hover:underline">free to start</Link>. When
           you're ready for the full kit, the one-time{" "}
           <Link to="/pricing" className="text-accent hover:underline">Supporter upgrade</Link>{" "}
-          unlocks the Smart AI director and cloud-saved presets so your setlist follows you across
+          unlocks Journey mode and cloud-saved presets so your setlist follows you across
           gigs.
         </p>
       </section>

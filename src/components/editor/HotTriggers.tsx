@@ -1,4 +1,4 @@
-import { Mic, MicOff, Circle, Square, Sparkles, Scissors, Snowflake, Camera, Shuffle, Star, Play, Pencil, Trash2, X, Film, Brain, Lock, Share2, Tornado, Maximize2, Minimize2, Gem, Home, SwitchCamera, Crosshair, Eraser } from "lucide-react";
+import { Mic, MicOff, Circle, Square, Sparkles, Scissors, Snowflake, Camera, Shuffle, Star, Play, Pencil, Trash2, X, Film, Lock, Share2, Compass, Maximize2, Minimize2, Gem, Home, SwitchCamera, Crosshair, Eraser } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useStore } from "@/store/useStore";
 import { requestCameraStream, type CameraFacing } from "@/hooks/useCamera";
@@ -18,11 +18,9 @@ type Props = {
   gifBusy?: boolean;
   gifProgress?: number; // 0..1
   onMicFlash?: (on: boolean) => void;
-  smartOn?: boolean;
-  onToggleSmart?: () => void;
-  smartLocked?: boolean;
-  stormOn?: boolean;
-  onToggleStorm?: () => void;
+  journeyOn?: boolean;
+  onToggleJourney?: () => void;
+  journeyLocked?: boolean;
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;
   onHome?: () => void;
@@ -72,7 +70,7 @@ function HotBtn({
  * Floating cluster of "moshing" cute icons over the visualizer.
  * The DOM overlay is outside <canvas>, so canvas.captureStream() never records these.
  */
-export function HotTriggers({ isRecording, onToggleRecord, onScreenshot, onFreeze, onGif, onShare, onSupport, gifBusy, gifProgress, onMicFlash, smartOn, onToggleSmart, smartLocked, stormOn, onToggleStorm, isFullscreen, onToggleFullscreen, onHome, onClearFx, hasFx, dimmed }: Props) {
+export function HotTriggers({ isRecording, onToggleRecord, onScreenshot, onFreeze, onGif, onShare, onSupport, gifBusy, gifProgress, onMicFlash, journeyOn, onToggleJourney, journeyLocked, isFullscreen, onToggleFullscreen, onHome, onClearFx, hasFx, dimmed }: Props) {
   const micEnabled = useStore(s => s.micEnabled);
   const setMicEnabled = useStore(s => s.setMicEnabled);
   const mosh = useStore(s => s.mosh);
@@ -361,46 +359,35 @@ export function HotTriggers({ isRecording, onToggleRecord, onScreenshot, onFreez
           </button>
         )}
 
-        {onToggleSmart && (
+        {/* Journey — Smart and Storm combined into one director.
+
+            They were two buttons doing halves of the same job: Smart chose what
+            suited the moment but never touched it again until the next switch;
+            Storm never chose well but never let the frame sit still. Journey
+            runs Smart's judgement on a slow unpredictable clock and Storm's
+            interference on a fast bounded one. */}
+        {onToggleJourney && (
           <button
             type="button"
-            onClick={onToggleSmart}
-            aria-label={smartLocked ? "Smart AI (supporter unlock)" : (smartOn ? "Smart AI on" : "Smart AI off")}
-            aria-pressed={smartOn || undefined}
-            title={smartLocked ? "Smart AI · supporter unlock (I)" : (smartOn ? "Smart AI on · reading motion & sound (I)" : "Smart AI · reads motion & sound (I)")}
-            data-active={smartOn || undefined}
+            onClick={onToggleJourney}
+            aria-label={journeyLocked ? "Journey (supporter unlock)" : (journeyOn ? "Journey mode on" : "Journey mode off")}
+            aria-pressed={journeyOn || undefined}
+            title={journeyLocked
+              ? "Journey · supporter unlock (I)"
+              : (journeyOn ? "Journey on · directing itself from motion & sound (I)" : "Journey · sit back, it directs itself (I)")}
+            data-active={journeyOn || undefined}
             data-no-longpress
             className="hot-trigger relative"
             style={{ animationDelay: `195ms` }}
           >
-            <span className="hot-trigger__glitch" aria-hidden><Brain className="h-4 w-4" strokeWidth={1.5} /></span>
-            <span className="hot-trigger__ico"><Brain className="h-4 w-4" strokeWidth={1.5} /></span>
-            {smartLocked && (
+            <span className="hot-trigger__glitch" aria-hidden><Compass className="h-4 w-4" strokeWidth={1.5} /></span>
+            <span className="hot-trigger__ico"><Compass className="h-4 w-4" strokeWidth={1.5} /></span>
+            {journeyLocked && (
               <span className="pointer-events-none absolute -bottom-1 -right-1 rounded-sm bg-black/70 p-[1px] text-[hsl(var(--accent))]">
                 <Lock className="h-2 w-2" strokeWidth={2} />
               </span>
             )}
-            {smartOn && !smartLocked && (
-              <span className="pointer-events-none absolute inset-0 rounded-md ring-1 ring-[hsl(var(--accent))]/60 animate-pulse" />
-            )}
-          </button>
-        )}
-
-        {onToggleStorm && (
-          <button
-            type="button"
-            onClick={onToggleStorm}
-            aria-label={stormOn ? "Reality Storm on" : "Reality Storm off"}
-            aria-pressed={stormOn || undefined}
-            title={stormOn ? "Reality Storm on · reacting to motion & sound" : "Reality Storm · reactive AI warp"}
-            data-active={stormOn || undefined}
-            data-no-longpress
-            className="hot-trigger relative"
-            style={{ animationDelay: `205ms` }}
-          >
-            <span className="hot-trigger__glitch" aria-hidden><Tornado className="h-4 w-4" strokeWidth={1.5} /></span>
-            <span className="hot-trigger__ico"><Tornado className="h-4 w-4" strokeWidth={1.5} /></span>
-            {stormOn && (
+            {journeyOn && !journeyLocked && (
               <span className="pointer-events-none absolute inset-0 rounded-md ring-1 ring-[hsl(var(--accent))]/60 animate-pulse" />
             )}
           </button>
