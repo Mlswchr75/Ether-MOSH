@@ -597,43 +597,24 @@ export function HotTriggers({ isRecording, onToggleRecord, onScreenshot, onFreez
 }
 
 
-/** Durations offered on a long press. 7s stays the plain-tap default. */
+/** Loop lengths offered when the GIF trigger is tapped. */
 const GIF_LENGTHS = [3, 5, 7] as const;
 
 /**
- * GIF trigger with a long-press branch.
+ * GIF trigger.
  *
- * A plain tap keeps doing exactly what it did before — 7s — so the existing
- * habit is untouched. Holding for half a second reveals the shorter lengths.
- * Hiding the choice behind a hold rather than adding three buttons keeps the
- * rail the same width, which matters because it has to fit on a phone.
+ * A tap always opens the length menu; there is no default capture. Hiding the
+ * choice behind a press-and-hold made it undiscoverable — the control looked
+ * identical whether or not the options existed, so most people never found
+ * them. Two taps that are both obvious beat one tap plus a hidden gesture.
+ *
+ * Dropping the hold also removes the timer, the held-flag, and the guard
+ * against the click that follows a touch release firing a second capture.
  */
 function GifButton({
   onGif, gifBusy, gifProgress,
 }: { onGif: (seconds?: number) => void; gifBusy?: boolean; gifProgress?: number }) {
   const [open, setOpen] = useState(false);
-  const timerRef = useRef<number | null>(null);
-  // Set when the hold fires, so the click that follows the release does not
-  // also trigger a capture — pointer and click both arrive on touch.
-  const heldRef = useRef(false);
-
-  const clearTimer = () => {
-    if (timerRef.current !== null) { window.clearTimeout(timerRef.current); timerRef.current = null; }
-  };
-
-  const onPointerDown = () => {
-    if (gifBusy) return;
-    heldRef.current = false;
-    clearTimer();
-    timerRef.current = window.setTimeout(() => {
-      heldRef.current = true;
-      setOpen(true);
-    }, 500);
-  };
-
-  const endHold = () => { clearTimer(); };
-
-  useEffect(() => () => clearTimer(), []);
 
   // Dismiss on any outside interaction, so the menu cannot strand itself open
   // over the canvas during a set.
@@ -648,24 +629,19 @@ function GifButton({
     };
   }, [open]);
 
+  useEffect(() => { if (gifBusy) setOpen(false); }, [gifBusy]);
+
   return (
     <div className="relative">
       <button
         type="button"
-        onPointerDown={onPointerDown}
-        onPointerUp={endHold}
-        onPointerLeave={endHold}
-        onPointerCancel={endHold}
-        onContextMenu={(e) => e.preventDefault()}
-        onClick={() => {
-          if (gifBusy) return;
-          if (heldRef.current) { heldRef.current = false; return; }
-          onGif(7);
-        }}
-        aria-label={gifBusy ? "Capturing GIF loop…" : "Capture seamless GIF — hold for length"}
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={() => { if (!gifBusy) setOpen(o => !o); }}
+        aria-label={gifBusy ? "Capturing GIF loop…" : "Capture seamless GIF loop"}
         aria-pressed={gifBusy || undefined}
         aria-expanded={open || undefined}
-        title="Tap: 7s seamless GIF · Hold: choose 3s / 5s / 7s (G)"
+        aria-haspopup="menu"
+        title="Seamless GIF loop — choose 3s / 5s / 7s (G)"
         data-active={(gifBusy || open) || undefined}
         data-no-longpress
         disabled={gifBusy}
