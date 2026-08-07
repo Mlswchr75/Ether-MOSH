@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Mic, MicOff, Film, Circle, Square, Maximize2, Minimize2 } from "lucide-react";
 
 /**
@@ -10,7 +10,7 @@ import { Mic, MicOff, Film, Circle, Square, Maximize2, Minimize2 } from "lucide-
  * places.
  */
 
-/** Durations offered on a long press. 7s stays the plain-tap default. */
+/** Loop lengths offered when the GIF trigger is tapped. */
 const GIF_LENGTHS = [3, 5, 7] as const;
 
 type Props = {
@@ -61,15 +61,6 @@ export function ForgeTriggers({
   isFullscreen, onToggleFullscreen,
 }: Props) {
   const [gifOpen, setGifOpen] = useState(false);
-  const timerRef = useRef<number | null>(null);
-  // Set when the hold fires, so the click that follows the release does not
-  // also start a capture — pointer and click both arrive on touch.
-  const heldRef = useRef(false);
-
-  const clearTimer = () => {
-    if (timerRef.current !== null) { window.clearTimeout(timerRef.current); timerRef.current = null; }
-  };
-  useEffect(() => () => clearTimer(), []);
 
   useEffect(() => {
     if (!gifOpen) return;
@@ -82,15 +73,9 @@ export function ForgeTriggers({
     };
   }, [gifOpen]);
 
-  const onGifDown = useCallback(() => {
-    if (gifBusy) return;
-    heldRef.current = false;
-    clearTimer();
-    timerRef.current = window.setTimeout(() => {
-      heldRef.current = true;
-      setGifOpen(true);
-    }, 500);
-  }, [gifBusy]);
+  // A capture in flight must close the menu; leaving it open over a running
+  // progress bar invites a second tap that cannot be honoured.
+  useEffect(() => { if (gifBusy) setGifOpen(false); }, [gifBusy]);
 
   return (
     <div className="pointer-events-auto absolute right-3 top-3 z-20 flex flex-col gap-1.5">
@@ -103,24 +88,17 @@ export function ForgeTriggers({
         {micOn ? <Mic className="h-4 w-4" strokeWidth={1.5} /> : <MicOff className="h-4 w-4" strokeWidth={1.5} />}
       </Btn>
 
-      {/* GIF, with the same tap/hold contract as the editor. */}
+      {/* GIF. One tap opens the length menu — same contract as the editor. */}
       <div className="relative">
         <button
           type="button"
-          onPointerDown={onGifDown}
-          onPointerUp={clearTimer}
-          onPointerLeave={clearTimer}
-          onPointerCancel={clearTimer}
-          onContextMenu={(e) => e.preventDefault()}
-          onClick={() => {
-            if (gifBusy) return;
-            if (heldRef.current) { heldRef.current = false; return; }
-            onGif(7);
-          }}
-          aria-label={gifBusy ? "Capturing GIF loop…" : "Capture looping GIF — hold to choose length"}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={() => { if (!gifBusy) setGifOpen(o => !o); }}
+          aria-label={gifBusy ? "Capturing GIF loop…" : "Capture looping GIF"}
           aria-pressed={gifBusy || undefined}
           aria-expanded={gifOpen || undefined}
-          title="Tap: 7s looping GIF · Hold: 3s / 5s / 7s"
+          aria-haspopup="menu"
+          title="Looping GIF — choose 3s / 5s / 7s"
           data-active={(gifBusy || gifOpen) || undefined}
           data-no-longpress
           disabled={gifBusy}
