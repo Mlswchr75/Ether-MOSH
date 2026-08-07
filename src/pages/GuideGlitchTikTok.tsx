@@ -135,7 +135,7 @@ const GuideGlitchTikTok = () => (
             scanline. Keep it to 2–3 effects for a clean look.
           </li>
           <li>
-            <strong>Turn on Reality Storm</strong> so glitches fire automatically on the beat if
+            <strong>Turn on Journey mode</strong> so glitches fire automatically on the beat if
             you're playing music.
           </li>
           <li>
@@ -163,7 +163,7 @@ const GuideGlitchTikTok = () => (
           audio reactivity, and no watermark — all{" "}
           <Link to="/" className="text-accent hover:underline">free in your browser</Link>. The
           optional <Link to="/pricing" className="text-accent hover:underline">Supporter upgrade</Link>{" "}
-          adds the Smart AI director and cloud-saved presets so your signature glitch is one tap
+          adds Journey mode and cloud-saved presets so your signature glitch is one tap
           away every time.
         </p>
       </section>

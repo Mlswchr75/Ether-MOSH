@@ -167,7 +167,7 @@ const GuideDatamoshVideo = () => (
           runs in-browser on your GPU, and gives you real-time datamosh instead of a slow render.
           The optional{" "}
           <Link to="/pricing" className="text-accent hover:underline">Supporter upgrade</Link>{" "}
-          unlocks the Smart AI director and cloud-saved presets for even faster workflows.
+          unlocks Journey mode and cloud-saved presets for even faster workflows.
         </p>
       </section>
 

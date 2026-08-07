@@ -279,8 +279,21 @@ export class SmartDirector {
   }
 
   private pickEffects(): DirectedLayer[] {
-    const m = this.mood;
+    return composeFromMood(this.mood, Math.random);
+  }
+}
 
+/**
+ * Rank every effect against a mood.
+ *
+ * Exported so the Journey director can borrow the judgement without inheriting
+ * this class's timing — combining the two modes means sharing what each is
+ * actually good at, and what Smart is good at is deciding *what suits the
+ * moment*. Duplicating this table into a second director is how the two would
+ * start disagreeing about the same room.
+ */
+export function rankEffects(m: Mood): { id: string; score: number }[] {
+  {
     // Convert mood to axis weights (0..1).
     const w = {
       bass:     clip01(m.bass * 0.85 + (m.energy * 0.15)),
@@ -308,20 +321,40 @@ export class SmartDirector {
       scored.push({ id, score: s / denom });
     }
     scored.sort((a, b) => b.score - a.score);
-
-    // Hand the ranking to the composition grammar rather than assembling the
-    // stack here. Scoring answers "which effects suit this moment"; composing
-    // answers "how do they share one frame" — and it was the missing half.
-    const catOf = (id: string) => EFFECTS.find(e => e.id === id)?.category ?? "corruption";
-    const intensity = clip01(Math.max(w.chaotic, w.motion, w.bass));
-
-    return composeStack({
-      ranked: scored.slice(0, 24),
-      categoryOf: catOf,
-      intensity,
-      rand: Math.random,
-    });
+    return scored;
   }
+}
+
+/** How hard a mood is pushing, 0..1 — the intensity the composer is handed. */
+export function moodIntensity(m: Mood): number {
+  return clip01(Math.max(
+    Math.max(m.sceneChange * 1.5, m.bass * 0.6, m.motion * 0.5),
+    clip01(m.motion * 0.5 + m.motionAvg * 0.4 + m.sceneChange * 0.5),
+    clip01(m.bass * 0.85 + m.energy * 0.15),
+  ));
+}
+
+export const categoryOfEffect = (id: string) =>
+  EFFECTS.find(e => e.id === id)?.category ?? "corruption";
+
+/**
+ * Mood → a composed stack.
+ *
+ * Scoring answers "which effects suit this moment"; the composition grammar
+ * answers "how do they share one frame". Keeping them separate is what stopped
+ * the director emitting five load-bearing layers at once.
+ */
+export function composeFromMood(
+  m: Mood,
+  rand: () => number = Math.random,
+  intensityOverride?: number,
+): DirectedLayer[] {
+  return composeStack({
+    ranked: rankEffects(m).slice(0, 24),
+    categoryOf: categoryOfEffect,
+    intensity: intensityOverride ?? moodIntensity(m),
+    rand,
+  });
 }
 
 function clip01(v: number) { return Math.max(0, Math.min(1, v)); }
