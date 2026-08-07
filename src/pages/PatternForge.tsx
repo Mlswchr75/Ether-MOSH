@@ -18,6 +18,7 @@ import { captureLoopingGif } from "@/engine/gifCapture";
 import { CanvasRecorder } from "@/engine/recorder";
 import { downloadBlob } from "@/engine/export";
 import { ForgeTriggers } from "@/components/forge/ForgeTriggers";
+import { ForgeJourney, type JourneyMove, type JourneyState, type Section } from "@/engine/forgeJourney";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
 
@@ -65,6 +66,16 @@ export default function PatternForge() {
   /** Latest bands, read by the source painter so the imagery itself reacts. */
   const bandsRef = useRef({ bass: 0, mid: 0, treble: 0, overall: 0, beat: 0 });
   const [micOn, setMicOn] = useState(false);
+
+  /* Auto-shuffle and the journey director, which are mutually exclusive: one
+     switches on a clock, the other decides for itself, and running both means
+     neither is in charge. */
+  const [shuffleSec, setShuffleSec] = useState<number | null>(null);
+  const [journeyOn, setJourneyOn] = useState(false);
+  const [journeyState, setJourneyState] = useState<JourneyState | null>(null);
+  const journeyRef = useRef<ForgeJourney | null>(null);
+  const journeySectionRef = useRef<Section>("intro");
+
   const [gifBusy, setGifBusy] = useState(false);
   const [gifProgress, setGifProgress] = useState(0);
   const recorderRef = useRef<CanvasRecorder | null>(null);
@@ -72,6 +83,17 @@ export default function PatternForge() {
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   const palette = PALETTES[paletteIdx];
+
+  /* The render loop reads these through refs rather than closing over the
+     state.
+
+     They used to be effect dependencies, which meant every shuffle disposed the
+     MoshRenderer and built a new one — a full GL context teardown, visible as a
+     black flash. Tolerable when shuffling was a manual button press; not
+     tolerable at all once a timer or the journey director is firing it every
+     few seconds. The renderer now lives as long as the page does. */
+  const stackRef = useRef<ForgeLayer[]>(currentStack);
+  useEffect(() => { stackRef.current = currentStack; }, [currentStack]);
 
   /**
    * Paint the source frame. Shared by the preview and the exporter on purpose:
@@ -134,6 +156,9 @@ export default function PatternForge() {
       complexity: reactiveComplexity,
     });
   }, [baseImage, overlay, palette, seed, intensity]);
+
+  const drawRef = useRef(drawSourceFrame);
+  useEffect(() => { drawRef.current = drawSourceFrame; }, [drawSourceFrame]);
 
   const toggleMic = useCallback(async () => {
     const mic = micRef.current;
@@ -255,6 +280,93 @@ export default function PatternForge() {
     setSeam(null);
   }, [seamless]);
 
+  /* Auto-shuffle. Held in a ref so changing the interval doesn't restart the
+     countdown from a stale closure over `randomise`. */
+  const randomiseRef = useRef(randomise);
+  useEffect(() => { randomiseRef.current = randomise; }, [randomise]);
+
+  useEffect(() => {
+    if (shuffleSec == null) return;
+    const id = window.setInterval(() => randomiseRef.current(), shuffleSec * 1000);
+    return () => window.clearInterval(id);
+  }, [shuffleSec]);
+
+  /* ── Journey mode ────────────────────────────────────────────────────
+     The director owns what plays and when. Everything it decides — how strong,
+     which families of effect, how long to hold — comes back through `onMove`;
+     this page's only job is to apply it and to keep the tiling constraint,
+     which the director has no business overriding. */
+  const applyMove = useCallback((move: JourneyMove, st: JourneyState) => {
+    setCurrentStack(composeForgeStack({
+      rand: Math.random,
+      seamless,
+      intensity: move.intensity,
+      categoryBias: move.bias,
+    }));
+    setSeam(null);
+
+    /* A section change is a bigger event than a switch inside one, so it also
+       moves the ground: a new seed rebuilds the underlying field and the
+       palette turns over. Doing this on every move would mean nothing ever
+       held long enough to be recognised. */
+    if (st.section !== journeySectionRef.current) {
+      journeySectionRef.current = st.section;
+      setSeed(Math.floor(Math.random() * 0xFFFFFF));
+      setPaletteIdx(i => (i + 1 + Math.floor(Math.random() * (PALETTES.length - 1))) % PALETTES.length);
+    }
+  }, [seamless]);
+
+  const applyMoveRef = useRef(applyMove);
+  useEffect(() => { applyMoveRef.current = applyMove; }, [applyMove]);
+
+  useEffect(() => {
+    if (!journeyOn) { setJourneyState(null); return; }
+
+    const journey = new ForgeJourney({
+      getCanvas: () => exportCanvasRef.current,
+      // Only hand over a live mic. Passing a stopped one would have the
+      // director reading zeroes and confidently reporting silence.
+      getMic: () => (micRef.current.enabled ? micRef.current : null),
+      onMove: (move, st) => applyMoveRef.current(move, st),
+      onState: setJourneyState,
+    });
+    journeyRef.current = journey;
+    journey.start();
+    return () => {
+      journey.stop();
+      journeyRef.current = null;
+    };
+  }, [journeyOn]);
+
+  const toggleJourney = useCallback(async () => {
+    if (journeyOn) { setJourneyOn(false); return; }
+    setShuffleSec(null);
+
+    /* The mode is about following the music, so switching it on is the moment
+       to ask for the mic — this handler runs inside the user gesture, which is
+       the only place the browser will grant it. It still runs without: with no
+       audio it reads the frame alone and paces itself slowly, which is a
+       reasonable ambient mode rather than a failure. */
+    if (!micRef.current.enabled) {
+      try {
+        await micRef.current.start("mic");
+        setMicOn(true);
+      } catch {
+        toast.message("Journey started without audio", {
+          description: "Allow the mic to have it follow the music",
+        });
+      }
+    }
+    setJourneyOn(true);
+  }, [journeyOn]);
+
+  // Picking an interval by hand is a statement that you want the clock, not the
+  // director — so it stands down rather than fighting over the stack.
+  const chooseShuffle = useCallback((sec: number | null) => {
+    setShuffleSec(sec);
+    if (sec != null) setJourneyOn(false);
+  }, []);
+
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
@@ -302,9 +414,9 @@ export default function PatternForge() {
         return;
       }
 
-      drawSourceFrame(sctx, src.width, src.height, t);
+      drawRef.current(sctx, src.width, src.height, t);
 
-      const layers: RenderLayer[] = currentStack.map((l, i) => ({
+      const layers: RenderLayer[] = stackRef.current.map((l, i) => ({
         id: `forge${i}`,
         effectId: l.effectId,
         hidden: false,
@@ -360,7 +472,7 @@ export default function PatternForge() {
       canvas.remove();
       rendererRef.current = null;
     };
-  }, [currentStack, seamless, drawSourceFrame]);
+  }, [seamless]);
 
   /**
    * Render the pattern at print resolution, off-screen.
@@ -572,7 +684,30 @@ export default function PatternForge() {
             onToggleRecord={toggleRecord}
             isFullscreen={isFullscreen}
             onToggleFullscreen={toggleFullscreen}
+            shuffleSec={shuffleSec}
+            onShuffleSec={chooseShuffle}
+            journeyOn={journeyOn}
+            onToggleJourney={toggleJourney}
           />
+
+          {/* Journey readout. An unattended director that never says what it is
+              doing is indistinguishable from a broken one, so it reports the
+              measurements it acted on rather than just a status light. */}
+          {journeyOn && journeyState && (
+            <div className="pointer-events-none absolute bottom-3 left-3 z-20 max-w-[min(22rem,60vw)] rounded-sm border border-[hsl(var(--border-default))] bg-black/70 px-3 py-2 backdrop-blur-md">
+              <p className="font-mono text-[9px] uppercase tracking-[0.3em] text-[hsl(var(--accent))]">
+                journey · {journeyState.section}
+              </p>
+              <p className="mt-1 font-mono text-[10px] leading-relaxed text-foreground/70">
+                {micOn ? journeyState.reading.label : "no audio — pacing from the image alone"}
+              </p>
+              <p className="mt-1 font-mono text-[9px] leading-relaxed text-foreground/40">
+                load {Math.round(journeyState.frame.load * 100)}%
+                {journeyState.move ? ` · amount ${Math.round(journeyState.move.intensity * 100)}%` : ""}
+                {` · next ${(journeyState.nextInMs / 1000).toFixed(1)}s`}
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Sidebar */}

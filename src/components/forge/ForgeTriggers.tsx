@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Mic, MicOff, Film, Circle, Square, Maximize2, Minimize2 } from "lucide-react";
+import { Mic, MicOff, Film, Circle, Square, Maximize2, Minimize2, Shuffle, Sparkles } from "lucide-react";
 
 /**
  * Forge's trigger rail — the same controls the editor has, against Forge's own
@@ -13,6 +13,18 @@ import { Mic, MicOff, Film, Circle, Square, Maximize2, Minimize2 } from "lucide-
 /** Loop lengths offered when the GIF trigger is tapped. */
 const GIF_LENGTHS = [3, 5, 7] as const;
 
+/** Auto-shuffle intervals. Same ladder as the visualiser's, so the control
+ *  means the same thing in both places. */
+const SHUFFLE_OPTIONS: { sec: number; label: string }[] = [
+  { sec: 3, label: "3s" },
+  { sec: 15, label: "15s" },
+  { sec: 30, label: "30s" },
+  { sec: 60, label: "1m" },
+  { sec: 300, label: "5m" },
+  { sec: 600, label: "10m" },
+  { sec: 1800, label: "30m" },
+];
+
 type Props = {
   micOn: boolean;
   onToggleMic: () => void;
@@ -23,6 +35,11 @@ type Props = {
   onToggleRecord: () => void;
   isFullscreen: boolean;
   onToggleFullscreen: () => void;
+  /** null = off. */
+  shuffleSec: number | null;
+  onShuffleSec: (sec: number | null) => void;
+  journeyOn: boolean;
+  onToggleJourney: () => void;
 };
 
 function Btn({
@@ -59,19 +76,22 @@ export function ForgeTriggers({
   onGif, gifBusy, gifProgress,
   isRecording, onToggleRecord,
   isFullscreen, onToggleFullscreen,
+  shuffleSec, onShuffleSec,
+  journeyOn, onToggleJourney,
 }: Props) {
   const [gifOpen, setGifOpen] = useState(false);
+  const [shuffleOpen, setShuffleOpen] = useState(false);
 
   useEffect(() => {
-    if (!gifOpen) return;
-    const close = () => setGifOpen(false);
+    if (!gifOpen && !shuffleOpen) return;
+    const close = () => { setGifOpen(false); setShuffleOpen(false); };
     window.addEventListener("pointerdown", close, { capture: true });
     window.addEventListener("keydown", close);
     return () => {
       window.removeEventListener("pointerdown", close, { capture: true } as any);
       window.removeEventListener("keydown", close);
     };
-  }, [gifOpen]);
+  }, [gifOpen, shuffleOpen]);
 
   // A capture in flight must close the menu; leaving it open over a running
   // progress bar invites a second tap that cannot be honoured.
@@ -87,6 +107,84 @@ export function ForgeTriggers({
       >
         {micOn ? <Mic className="h-4 w-4" strokeWidth={1.5} /> : <MicOff className="h-4 w-4" strokeWidth={1.5} />}
       </Btn>
+
+      {/* Journey — the auto-director. Listed above shuffle because turning it
+          on supersedes the interval, and adjacency makes that legible. */}
+      <Btn
+        label={journeyOn ? "Journey mode on" : "Journey mode — reads the room and directs itself"}
+        active={journeyOn}
+        onClick={onToggleJourney}
+        delay={40}
+      >
+        <Sparkles className="h-4 w-4" strokeWidth={1.5} />
+      </Btn>
+
+      {/* Auto-shuffle. One tap opens the interval menu, same as the GIF
+          control — the editor's hold-to-reveal was undiscoverable and this
+          page shouldn't repeat it. */}
+      <div className="relative">
+        <button
+          type="button"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={() => setShuffleOpen(o => !o)}
+          aria-label={shuffleSec ? `Auto-shuffle every ${shuffleSec}s` : "Auto-shuffle off"}
+          aria-pressed={shuffleSec != null}
+          aria-expanded={shuffleOpen || undefined}
+          aria-haspopup="menu"
+          title="Auto-shuffle — choose an interval"
+          data-active={(shuffleSec != null || shuffleOpen) || undefined}
+          data-no-longpress
+          className="hot-trigger relative"
+          style={{ animationDelay: "80ms" }}
+        >
+          <span className="hot-trigger__glitch" aria-hidden><Shuffle className="h-4 w-4" strokeWidth={1.5} /></span>
+          <span className="hot-trigger__ico"><Shuffle className="h-4 w-4" strokeWidth={1.5} /></span>
+          {shuffleSec != null && (
+            <span className="pointer-events-none absolute -bottom-0.5 right-0.5 font-mono text-[7px] leading-none text-[hsl(var(--accent))]">
+              {SHUFFLE_OPTIONS.find(o => o.sec === shuffleSec)?.label ?? `${shuffleSec}s`}
+            </span>
+          )}
+        </button>
+
+        {shuffleOpen && (
+          <div
+            className="panel-in-3d absolute right-full top-0 z-50 mr-2 flex items-center gap-1 rounded-sm border border-[hsl(var(--border-default))] bg-black/85 p-1 backdrop-blur-md"
+            role="menu"
+            aria-label="Auto-shuffle interval"
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              role="menuitem"
+              data-no-longpress
+              onClick={() => { setShuffleOpen(false); onShuffleSec(null); }}
+              className={`min-w-[34px] rounded-sm border px-2 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] transition ${
+                shuffleSec == null
+                  ? "border-[hsl(var(--accent))] text-[hsl(var(--accent))]"
+                  : "border-transparent text-[hsl(var(--text-secondary))] hover:border-[hsl(var(--accent))] hover:text-[hsl(var(--accent))]"
+              }`}
+            >
+              off
+            </button>
+            {SHUFFLE_OPTIONS.map(opt => (
+              <button
+                key={opt.sec}
+                type="button"
+                role="menuitem"
+                data-no-longpress
+                onClick={() => { setShuffleOpen(false); onShuffleSec(opt.sec); }}
+                className={`min-w-[34px] rounded-sm border px-2 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] transition ${
+                  shuffleSec === opt.sec
+                    ? "border-[hsl(var(--accent))] text-[hsl(var(--accent))]"
+                    : "border-transparent text-[hsl(var(--text-secondary))] hover:border-[hsl(var(--accent))] hover:text-[hsl(var(--accent))]"
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* GIF. One tap opens the length menu — same contract as the editor. */}
       <div className="relative">
