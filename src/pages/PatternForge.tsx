@@ -13,6 +13,7 @@ import { healToSeamless, renderSizeFor, DEFAULT_HEAL_BAND as DEFAULT_BAND } from
 import { EFFECTS_BY_ID } from "@/engine/effects";
 import { toast } from "sonner";
 import { MicAnalyzer } from "@/engine/mic";
+import { applyAudio, bandsFrom, stepBeat } from "@/engine/audioMapping";
 import { captureLoopingGif } from "@/engine/gifCapture";
 import { CanvasRecorder } from "@/engine/recorder";
 import { downloadBlob } from "@/engine/export";
@@ -57,6 +58,12 @@ export default function PatternForge() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const micRef = useRef(new MicAnalyzer());
+  /** Per-param smoothing, held across frames so values glide instead of jumping. */
+  const audioSmoothRef = useRef<Map<string, number>>(new Map());
+  const beatRef = useRef({ envelope: 0, average: 0 });
+  const lastMsRef = useRef(performance.now());
+  /** Latest bands, read by the source painter so the imagery itself reacts. */
+  const bandsRef = useRef({ bass: 0, mid: 0, treble: 0, overall: 0, beat: 0 });
   const [micOn, setMicOn] = useState(false);
   const [gifBusy, setGifBusy] = useState(false);
   const [gifProgress, setGifProgress] = useState(0);
@@ -111,11 +118,20 @@ export default function PatternForge() {
       }
       return;
     }
+    /* Audio shapes the imagery, not only the effects on top of it.
+       Forge generates its own source, so treble adding field complexity and a
+       kick shoving the phase forward means the pattern is genuinely being
+       composed by the music rather than merely filtered by it. Bounded so a
+       loud room cannot push complexity past what the generator handles. */
+    const b = bandsRef.current;
+    const reactiveComplexity = Math.min(6, 2 + Math.round(intensity * 4 + b.treble * 2));
+    const beatKick = b.beat * 1.4;
+
     drawSeamless(ctx, w, h, {
       colors: palette.colors,
       seed: seed.toString(36),
-      t,
-      complexity: 2 + Math.round(intensity * 4),
+      t: t + beatKick,
+      complexity: reactiveComplexity,
     });
   }, [baseImage, overlay, palette, seed, intensity]);
 
@@ -277,7 +293,8 @@ export default function PatternForge() {
     const start = performance.now();
 
     const loop = () => {
-      const t = (performance.now() - start) / 1000;
+      const nowMs = performance.now();
+      const t = (nowMs - start) / 1000;
 
       // Guard against zero-dimension canvas initialization frames
       if (host.clientWidth === 0 || host.clientHeight === 0) {
@@ -296,13 +313,41 @@ export default function PatternForge() {
         params: l.params,
       }));
 
-      /* Pulse drives every uPulse-reactive effect in the stack. With the mic
-         off this is a slow sine so the preview still breathes; with it on the
-         pattern is driven by what the room is actually doing. */
+      /* Audio drives the stack the same way it drives the visualiser.
+         Passing a scalar pulse alone was the bug: only the handful of effects
+         that read uPulse in main() responded, so with the mic on most stacks
+         looked identical to mic off. Every parameter now listens to a band. */
       const mic = micRef.current;
-      const pulse = mic.enabled
-        ? Math.min(1, mic.level() * 0.75 + mic.bassLevel * 0.45)
-        : 0.4 + 0.3 * Math.sin(t * 1.5);
+      const dt = Math.max(0.001, Math.min(0.1, (nowMs - lastMsRef.current) / 1000));
+      lastMsRef.current = nowMs;
+
+      let pulse: number;
+      if (mic.enabled) {
+        beatRef.current = stepBeat(mic.level(), beatRef.current, dt);
+        const bands = bandsFrom(mic, beatRef.current.envelope);
+        bandsRef.current = bands;
+        pulse = Math.min(1, bands.overall * 0.7 + bands.beat * 0.6);
+
+        const smooth = audioSmoothRef.current;
+        for (const layer of layers) {
+          const def = EFFECTS_BY_ID[layer.effectId];
+          if (!def) continue;
+          const tuned: Record<string, number> = {};
+          for (const p of def.params) {
+            const range = p.max - p.min;
+            const v = applyAudio(
+              layer.params[p.key] ?? p.default,
+              p.key, range, bands, smooth, `${layer.id}:${p.key}`,
+            );
+            tuned[p.key] = Math.max(p.min, Math.min(p.max, v));
+          }
+          layer.params = tuned;
+        }
+      } else {
+        bandsRef.current = { bass: 0, mid: 0, treble: 0, overall: 0, beat: 0 };
+        pulse = 0.4 + 0.3 * Math.sin(t * 1.5);
+      }
+
       renderer!.render(layers, pulse);
       raf = requestAnimationFrame(loop);
     };
