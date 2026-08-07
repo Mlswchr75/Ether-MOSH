@@ -11,7 +11,7 @@
  * automatically available here, and params come from each effect's own declared
  * ranges rather than invented numbers that may not match the shader.
  */
-import { EFFECTS_BY_ID } from "./effects";
+import { EFFECTS_BY_ID, type EffectCategory } from "./effects";
 import { tileSafeEffects, tileVerdict } from "./tileSafety";
 import type { BlendMode } from "./blend";
 
@@ -31,7 +31,47 @@ export type ForgeOpts = {
   seamless: boolean;
   /** 0..1 — layer count and how far params travel from their defaults. */
   intensity?: number;
+  /**
+   * Relative draw weight per category, for a director that has an opinion.
+   * A missing or zero-ish category is made rare rather than impossible: a mode
+   * that can only ever emit one kind of image is exactly what the plain shuffle
+   * already felt like.
+   */
+  categoryBias?: Partial<Record<EffectCategory, number>>;
 };
+
+/** Floor under any bias weight, so nothing is ever fully locked out. */
+const MIN_WEIGHT = 0.05;
+
+/**
+ * Draw `count` distinct ids, weighted.
+ *
+ * Weighted sampling *without replacement*: each pick removes its entry and the
+ * total is recomputed, so a heavily-weighted category can't win every slot and
+ * produce a stack of near-duplicates.
+ */
+function weightedDraw(
+  ids: string[],
+  weightOf: (id: string) => number,
+  count: number,
+  rand: () => number,
+): string[] {
+  const pool = ids.map(id => ({ id, w: Math.max(MIN_WEIGHT, weightOf(id)) }));
+  const out: string[] = [];
+  for (let k = 0; k < count && pool.length; k++) {
+    let total = 0;
+    for (const p of pool) total += p.w;
+    let r = rand() * total;
+    let idx = pool.length - 1;
+    for (let i = 0; i < pool.length; i++) {
+      r -= pool[i].w;
+      if (r <= 0) { idx = i; break; }
+    }
+    out.push(pool[idx].id);
+    pool.splice(idx, 1);
+  }
+  return out;
+}
 
 /**
  * Build a stack.
@@ -50,12 +90,23 @@ export function composeForgeStack(opts: ForgeOpts): ForgeLayer[] {
 
   const count = Math.min(pool.length, 2 + Math.round(rand() * (1 + intensity * 3)));
 
-  // Fisher-Yates over a copy: a random comparator is a biased shuffle, and with
-  // a pool this size the bias is visible as certain effects rarely appearing.
-  const bag = pool.slice();
-  for (let i = bag.length - 1; i > 0; i--) {
-    const j = Math.floor(rand() * (i + 1));
-    [bag[i], bag[j]] = [bag[j], bag[i]];
+  const bias = opts.categoryBias;
+  let bag: string[];
+  if (bias) {
+    bag = weightedDraw(
+      pool,
+      id => bias[EFFECTS_BY_ID[id]?.category ?? "corruption"] ?? MIN_WEIGHT,
+      count,
+      rand,
+    );
+  } else {
+    // Fisher-Yates over a copy: a random comparator is a biased shuffle, and with
+    // a pool this size the bias is visible as certain effects rarely appearing.
+    bag = pool.slice();
+    for (let i = bag.length - 1; i > 0; i--) {
+      const j = Math.floor(rand() * (i + 1));
+      [bag[i], bag[j]] = [bag[j], bag[i]];
+    }
   }
 
   const out: ForgeLayer[] = [];
