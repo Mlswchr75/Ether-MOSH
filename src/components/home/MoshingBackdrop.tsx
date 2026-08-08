@@ -27,14 +27,18 @@ function fillParams(effectId: string, given: Record<string, number>): Record<str
   return given; // resolver in Renderer falls back to defaults for missing keys
 }
 
-export const MoshingBackdrop = () => {
+interface MoshingBackdropProps {
+  onFileUpload?: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onStartCamera?: () => void;
+}
+
+export const MoshingBackdrop = ({ onFileUpload, onStartCamera }: MoshingBackdropProps) => {
   const hostRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
 
-    // Safety check: ensure host has dimensions before building WebGL canvas
     if (host.clientWidth === 0 || host.clientHeight === 0) {
       // Let container settle dimensions before mounting canvas
     }
@@ -44,7 +48,6 @@ export const MoshingBackdrop = () => {
     canvas.style.inset = "0";
     host.appendChild(canvas);
 
-    // Procedural source: soft drifting color field on a small 2D canvas.
     const src = document.createElement("canvas");
     src.width = 320;
     src.height = 200;
@@ -59,13 +62,12 @@ export const MoshingBackdrop = () => {
     try {
       renderer = new MoshRenderer(canvas);
     } catch {
-      // WebGL unavailable — leave the static gradient background
       if (canvas.parentNode) host.removeChild(canvas);
       return;
     }
 
     renderer.setSourceCanvas(src);
-    renderer.setRenderScale(0.5); // backdrop can be soft; save the GPU for /edit
+    renderer.setRenderScale(0.5);
 
     const resize = () => {
       if (renderer && host.clientWidth > 0 && host.clientHeight > 0) {
@@ -94,7 +96,7 @@ export const MoshingBackdrop = () => {
       g.addColorStop(1, `hsl(${h2} 85% 30%)`);
       sctx.fillStyle = g;
       sctx.fillRect(0, 0, src.width, src.height);
-      // drifting blobs give the effects structure to chew on
+
       for (let i = 0; i < 5; i++) {
         const x = (0.5 + 0.42 * Math.sin(t * (0.23 + i * 0.11) + i * 2.1)) * src.width;
         const y = (0.5 + 0.42 * Math.cos(t * (0.31 + i * 0.07) + i * 1.3)) * src.height;
@@ -155,5 +157,68 @@ export const MoshingBackdrop = () => {
     };
   }, []);
 
-  return <div ref={hostRef} className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,hsl(266_40%_12%),hsl(266_24%_5%))]" />;
+  const handleCameraClick = () => {
+    if (onStartCamera) {
+      onStartCamera();
+    } else {
+      window.location.href = "/editor?source=camera";
+    }
+  };
+
+  return (
+    <div ref={hostRef} className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,hsl(266_40%_12%),hsl(266_24%_5%))] flex items-center justify-center">
+      
+      {/* INTERACTIVE HERO OVERLAY */}
+      <div className="relative z-10 flex flex-col items-center justify-center pointer-events-auto">
+
+        {/* TOP TEXT: Starts above the Camera Icon (shifted right) */}
+        <div className="text-xs font-mono tracking-widest text-[#ff2a8d] translate-x-14 mb-3 uppercase drop-shadow-[0_0_8px_rgba(255,42,141,0.6)]">
+          GO LIVE WITH CAMERA →
+        </div>
+
+        {/* CENTER BUTTONS: Upload Box & Camera Box Side-by-Side */}
+        <div className="flex items-center justify-center gap-6 my-2">
+          
+          {/* Left Icon: Upload Arrow Box */}
+          <label 
+            htmlFor="backdrop-file-upload" 
+            className="w-20 h-20 border-2 border-[#ff2a8d] bg-black/60 rounded-lg flex items-center justify-center cursor-pointer hover:scale-105 transition-all shadow-[0_0_15px_rgba(255,42,141,0.4)] hover:shadow-[0_0_25px_rgba(255,42,141,0.8)]"
+            title="Upload Image"
+          >
+            <svg className="w-9 h-9 stroke-[#ff2a8d]" fill="none" viewBox="0 0 24 24" strokeWidth="2">
+              <path d="M12 19V5M5 12l7-7 7 7"/>
+            </svg>
+            <input 
+              id="backdrop-file-upload" 
+              type="file" 
+              accept="image/*" 
+              onChange={onFileUpload} 
+              className="hidden" 
+            />
+          </label>
+
+          {/* Right Icon: Camera Icon Box (Initiates Live Camera Feed) */}
+          <button 
+            type="button"
+            onClick={handleCameraClick}
+            className="w-20 h-20 border-2 border-[#ff2a8d] bg-black/60 rounded-lg flex items-center justify-center cursor-pointer hover:scale-105 transition-all shadow-[0_0_15px_rgba(255,42,141,0.4)] hover:shadow-[0_0_25px_rgba(255,42,141,0.8)]"
+            title="Start Live Camera Feed"
+          >
+            <svg className="w-9 h-9 stroke-[#ff2a8d]" fill="none" viewBox="0 0 24 24" strokeWidth="2">
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+              <circle cx="12" cy="13" r="4"/>
+            </svg>
+          </button>
+
+        </div>
+
+        {/* BOTTOM TEXT: Shifted left ~2 tab spaces (-translate-x-16) */}
+        <h1 className="text-4xl md:text-6xl font-black text-white -translate-x-16 mt-4 tracking-tighter drop-shadow-[0_0_20px_rgba(255,255,255,0.8)]">
+          DROP AN IMAGE
+        </h1>
+
+      </div>
+
+    </div>
+  );
 };
