@@ -18,7 +18,7 @@ const FEATURES_FREE = [
 
 const FEATURES_UNLOCK = [
   "Everything in free",
-  "Smart AI director (auto-picks moshes to the beat)",
+  "Journey mode (directs itself from motion & sound)",
   "Seamless GIF loop capture (7-second perfect loops)",
   "Unlimited recording length (free is capped at 15s)",
   "Full-resolution screenshot exports (free is capped at 720p)",

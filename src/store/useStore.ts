@@ -257,6 +257,7 @@ type Actions = {
   renameFavorite: (id: string, name: string) => void;
   moshDirected: (layers: import("@/engine/compose").DirectedLayer[]) => void;
   moshStorm: (ids: string[], opts?: { explosive?: boolean; regions?: unknown }) => void;
+  disrupt: (spec: DisruptSpec) => void;
   addStickerToGallery: (sticker: StickerEntry) => void;
   removeStickerFromGallery: (id: string) => void;
   setStickerMode: (b: boolean) => void;
@@ -289,6 +290,35 @@ function makeLayer(effectId: string, opts: Partial<Layer> = {}): Layer {
     mods,
     audioMaps,
     ...opts,
+  };
+}
+
+/**
+ * An alteration to the current arrangement, as opposed to a replacement of it.
+ * `violence` is 0..1 and scales how far parameters are thrown.
+ */
+export type DisruptSpec = {
+  kind: "churn" | "blend" | "swap" | "region";
+  violence?: number;
+  /** Required for `swap` — the effect to drop in. */
+  effectId?: string;
+};
+
+/** Region modes worth masking an accent with. `none` is excluded because it is
+ *  the absence of a region, and re-masking to nothing is not a disruption. */
+const DISRUPT_REGIONS: import("@/engine/blend").RegionMode[] =
+  ["hbands", "vbands", "radial", "shards", "foreground", "background"];
+
+function randomRegion(rand: () => number, violence: number): import("@/engine/blend").LayerRegion {
+  return {
+    mode: DISRUPT_REGIONS[Math.floor(rand() * DISRUPT_REGIONS.length)],
+    scale: 2 + rand() * (2 + violence * 10),
+    phase: rand() * 6.283,
+    gate: 0.3 + rand() * 0.4,
+    // Harder edges at higher violence: a soft mask at full throw reads as haze
+    // rather than as the frame being cut into.
+    feather: Math.max(0.02, 0.35 - violence * 0.3) * (0.5 + rand()),
+    invert: rand() < 0.5,
   };
 }
 
@@ -892,7 +922,99 @@ export const useStore = create<State & Actions>((set, get) => ({
         audioMaps: Object.fromEntries(def.params.map(p => [p.key, null])),
       }];
     });
-    return { ...s, past: pushPast(s), future: [], layers: [...locked, ...fresh], seed };
+
+    /* Storm calls this ~12.5 times a second, and it used to push an undo
+       snapshot every single time — so with HISTORY_LIMIT at 20, one and a half
+       seconds of Storm silently erased the user's entire undo history.
+
+       A snapshot is only worth taking when the *arrangement* changes. Storm
+       re-rolls parameters constantly but changes its effect ids every 5–60s,
+       and that is the moment worth being able to return to. */
+    const changed =
+      s.layers.length !== fresh.length + locked.length ||
+      fresh.some((l, i) => s.layers[locked.length + i]?.effectId !== l.effectId);
+
+    return {
+      ...s,
+      past: changed ? pushPast(s) : s.past,
+      future: changed ? [] : s.future,
+      layers: [...locked, ...fresh],
+      seed,
+    };
+  }),
+
+  /**
+   * Alter the arrangement in place, without replacing it.
+   *
+   * This is Storm's accidental behaviour made deliberate. Storm looked as good
+   * as it did because the effect *identity* held steady while every parameter
+   * was thrown twelve times a second: structure the eye can hold onto, detail
+   * that never settles. The difference here is that the violence is a dial and
+   * the caller decides when to turn it, rather than it being pinned at 90% of
+   * every parameter's full range forever.
+   *
+   * Deliberately does NOT push undo history — these fire several times a second
+   * during a surge, and that is exactly what destroyed it before. Layer ids and
+   * effect ids are preserved so the renderer keeps its compiled programs and
+   * the UI doesn't flicker its selection.
+   */
+  disrupt: (spec) => set(s => {
+    if (!s.layers.length) return s;
+    const rand = rngFromSeed(generateSeed());
+    const violence = Math.max(0, Math.min(1, spec.violence ?? 0.5));
+
+    const layers = s.layers.map((l, idx) => {
+      // A locked layer is the user's explicit statement that it stays put.
+      if (l.locked) return l;
+      const def = EFFECTS_BY_ID[l.effectId];
+      if (!def) return l;
+
+      switch (spec.kind) {
+        case "churn": {
+          const params: Record<string, number> = { ...l.params };
+          for (const p of def.params) {
+            // Throw from the *current* value, not the default: churning back
+            // toward the default every time would pull the look to the middle
+            // and undo the drift that makes a long run interesting.
+            params[p.key] = sampleParam(rand, p.min, p.max, l.params[p.key] ?? p.default, violence, p.step);
+          }
+          return { ...l, params };
+        }
+        case "blend":
+          // The base layer composites normally — an exotic blend at the bottom
+          // has nothing underneath to blend with.
+          return idx === 0
+            ? l
+            : { ...l, blend: EXOTIC_BLENDS[Math.floor(rand() * EXOTIC_BLENDS.length)] };
+        case "region":
+          return idx === 0 ? l : { ...l, region: randomRegion(rand, violence) };
+        default:
+          return l;
+      }
+    });
+
+    if (spec.kind !== "swap") return { ...s, layers };
+
+    /* Swap replaces exactly one unlocked layer. Changing one voice in an
+       arrangement reads as a development; changing all of them reads as a cut,
+       which is what the composition clock is for. */
+    const swappable = layers.map((l, i) => ({ l, i })).filter(x => !x.l.locked);
+    if (!swappable.length || !spec.effectId || !EFFECTS_BY_ID[spec.effectId]) return { ...s, layers };
+    const target = swappable[Math.floor(rand() * swappable.length)];
+    const def = EFFECTS_BY_ID[spec.effectId];
+    const params: Record<string, number> = {};
+    for (const p of def.params) {
+      params[p.key] = sampleParam(rand, p.min, p.max, p.default, 0.5 + violence * 0.5, p.step);
+    }
+    const next = layers.slice();
+    next[target.i] = {
+      ...target.l,
+      effectId: spec.effectId,
+      params,
+      mods: Object.fromEntries(def.params.map(p => [p.key, null])),
+      audioMaps: Object.fromEntries(def.params.map(p => [p.key, null])),
+    };
+    return { ...s, layers: next };
   }),
 
   addStickerToGallery: (sticker) => set(s => ({ stickerGallery: [...s.stickerGallery, sticker] })),
