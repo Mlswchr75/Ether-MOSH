@@ -188,6 +188,21 @@
     if (window.BrutalistQuickView) return Promise.resolve(window.BrutalistQuickView);
     if (qvPending) return qvPending;
 
+    function getSafeAssetUrl(raw) {
+      if (!raw) return null;
+      try {
+        var u = new URL(raw, window.location.href);
+        var isHttp = u.protocol === 'http:' || u.protocol === 'https:';
+        if (!isHttp) return null;
+        if (u.origin !== window.location.origin) return null;
+        return u.href;
+      } catch (e) {
+        return null;
+      }
+    }
+
+    var css = getSafeAssetUrl(bar.getAttribute('data-qv-css'));
+    var js  = getSafeAssetUrl(bar.getAttribute('data-qv-js'));
     var css = toSafeAssetUrl(bar.getAttribute('data-qv-css'));
     var js  = toSafeAssetUrl(bar.getAttribute('data-qv-js'));
     if (!js) return Promise.reject(new Error('no quick view asset'));
