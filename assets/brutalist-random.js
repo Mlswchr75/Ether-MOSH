@@ -422,9 +422,12 @@
     };
 
     let images = [];
-    try { images = JSON.parse(dataEl.textContent.trim()); } catch (_) { images = []; }
-    if (!Array.isArray(images)) return;
-    images = images.map(toSafeImageUrl).filter(Boolean);
+    try {
+      const parsed = JSON.parse(dataEl.textContent.trim());
+      images = Array.isArray(parsed) ? parsed.map(toSafeImageUrl).filter(Boolean) : [];
+    } catch (_) {
+      images = [];
+    }
     if (images.length < 2) return;
 
     let preloaded = false;
