@@ -50,8 +50,9 @@ import { HotTriggers } from "@/components/editor/HotTriggers";
 import { AccountChip } from "@/components/AccountChip";
 import { usePaywall } from "@/hooks/usePaywall";
 import { useCloudFavorites } from "@/hooks/useCloudFavorites";
-import { SmartDirector } from "@/engine/smartDirector";
-import { StormDirector } from "@/engine/stormDirector";
+import { JourneyDirector, type JourneyDirectorState } from "@/engine/journeyDirector";
+import type { JourneyMic } from "@/engine/journeyCore";
+import { EFFECTS } from "@/engine/effects";
 import { useIdleHide } from "@/hooks/useIdleHide";
 
 // Unified one-screen control rack — no tabs.
@@ -476,100 +477,92 @@ export default function Editor() {
     };
   }, [shuffleSec]);
 
-  // ── Smart AI director (supporter feature) ─────────────────────────────
-  // Offline, no network. Reads camera motion + audio bands and picks
-  // moshes that fit the current vibe. Turns off auto-shuffle while active.
-  const [smartOn, setSmartOn] = useState(false);
-  const [smartFlashKey, setSmartFlashKey] = useState(0);
-  const smartRef = useRef<SmartDirector | null>(null);
-  const smartPrevShuffleRef = useRef<number | null>(null);
+  // ── Journey director (supporter feature) ─────────────────────────────
+  /* Smart and Storm, combined. Offline, no network.
 
-  const toggleSmart = useCallback(() => {
+     They were halves of one idea. Smart read the room well but then left the
+     arrangement completely untouched until its next switch, so between switches
+     the screen was static. Storm never chose well — it drew from three
+     hand-listed pools — but it never let the frame sit still, because it was
+     re-rolling every parameter twelve times a second. That constant re-roll,
+     under a stack whose effect identity held for 5–60 seconds, is why Storm
+     looked better than anything else in the app.
+
+     Journey runs Smart's judgement on the slow clock and Storm's interference
+     on the fast one, and the fast one is bounded so nothing is ever left alone
+     for more than ten seconds. */
+  const [journeyOn, setJourneyOn] = useState(false);
+  const [journeyFlashKey, setJourneyFlashKey] = useState(0);
+  const [journeyState, setJourneyState] = useState<JourneyDirectorState | null>(null);
+  const journeyRef = useRef<JourneyDirector | null>(null);
+  const journeyPrevShuffleRef = useRef<number | null>(null);
+
+  const toggleJourney = useCallback(() => {
     if (!paywall.isSupporter) {
-      paywall.require("Smart AI director");
+      paywall.require("Journey mode");
       return;
     }
-    setSmartOn(v => !v);
+    setJourneyOn(v => !v);
   }, [paywall]);
 
   useEffect(() => {
-    if (!smartOn) return;
+    if (!journeyOn) { setJourneyState(null); return; }
     // Suspend auto-shuffle for the duration; restore on exit.
-    smartPrevShuffleRef.current = useStore.getState().shuffleSec;
-    if (smartPrevShuffleRef.current != null) useStore.getState().setShuffleSec(null);
+    journeyPrevShuffleRef.current = useStore.getState().shuffleSec;
+    if (journeyPrevShuffleRef.current != null) useStore.getState().setShuffleSec(null);
 
-    const director = new SmartDirector({
+    const director = new JourneyDirector({
       getVideo: () => useStore.getState().videoElement,
-      onMosh: (composed) => {
-        useStore.getState().moshDirected(composed);
-        setSmartFlashKey(performance.now());
+      getMic: () => {
+        // Published by GlCanvas, which owns the analyser and drives it from the
+        // render loop. Only handed over when live — a stopped analyser reads as
+        // zeroes, which the director would confidently report as silence.
+        const m = (window as any).__aegisMic as JourneyMic | undefined;
+        return m && m.enabled ? m : null;
       },
+      onCompose: (layers) => {
+        useStore.getState().moshDirected(layers);
+        setJourneyFlashKey(performance.now());
+      },
+      onDisrupt: (d) => {
+        /* A swap needs an effect to drop in, and the director deliberately
+           doesn't know the registry — it decides *that* something should
+           change, not *what*. Picking here keeps the two concerns apart. */
+        if (d.kind === "swap") {
+          const pick = EFFECTS[Math.floor(Math.random() * EFFECTS.length)];
+          useStore.getState().disrupt({ kind: "swap", violence: d.violence, effectId: pick?.id });
+          return;
+        }
+        if (d.kind === "surge") return; // the burst arrives as churn ticks
+        useStore.getState().disrupt({ kind: d.kind, violence: d.violence });
+      },
+      onState: setJourneyState,
     });
-    smartRef.current = director;
+    journeyRef.current = director;
     director.start();
 
     return () => {
       director.stop();
-      smartRef.current = null;
-      // Restore prior auto-shuffle if it wasn't touched while smart mode ran.
+      journeyRef.current = null;
+      // Restore prior auto-shuffle if it wasn't touched while journey ran.
       const cur = useStore.getState().shuffleSec;
-      if (cur == null && smartPrevShuffleRef.current != null) {
-        useStore.getState().setShuffleSec(smartPrevShuffleRef.current);
+      if (cur == null && journeyPrevShuffleRef.current != null) {
+        useStore.getState().setShuffleSec(journeyPrevShuffleRef.current);
       }
-      smartPrevShuffleRef.current = null;
+      journeyPrevShuffleRef.current = null;
     };
-  }, [smartOn]);
+  }, [journeyOn]);
 
-  // If the user manually re-enables auto-shuffle, gracefully step out of smart mode.
+  // If the user manually re-enables auto-shuffle, gracefully step out.
   useEffect(() => {
-    if (smartOn && shuffleSec != null) setSmartOn(false);
-  }, [shuffleSec, smartOn]);
+    if (journeyOn && shuffleSec != null) setJourneyOn(false);
+  }, [shuffleSec, journeyOn]);
 
-  // ── Reality Storm director (reactive AI warp) ─────────────────────────
-  /**
-   * Clear every effect and show the bare remastered source.
-   *
-   * Dropping the layers isn't enough on its own: auto-shuffle, the Smart
-   * director and the Storm director each re-apply a mosh within seconds, so a
-   * clear that doesn't stop them silently undoes itself.
-   */
   const clearAllFx = useCallback(() => {
     useStore.getState().clearAllFx();   // layers + auto-shuffle
-    setSmartOn(false);
-    setStormOn(false);
+    setJourneyOn(false);
     toast.message("FX cleared — remastered source only", { duration: 1800 });
   }, []);
-
-  const [stormOn, setStormOn] = useState(false);
-  const [stormFlashKey, setStormFlashKey] = useState(0);
-  const stormRef = useRef<StormDirector | null>(null);
-
-  const toggleStorm = useCallback(() => { setStormOn(v => !v); }, []);
-
-  useEffect(() => {
-    if (!stormOn) return;
-    if (useStore.getState().shuffleSec != null) useStore.getState().setShuffleSec(null);
-    setSmartOn(false);
-
-    const storm = new StormDirector({
-      getVideo: () => useStore.getState().videoElement,
-      onStorm: (ids, o) => {
-        useStore.getState().moshStorm(ids, { explosive: o.explosive, regions: o.regions });
-        setStormFlashKey(performance.now());
-      },
-      onTimeWarp: () => { try { timeController.triggerFreeze(320); } catch {} },
-    });
-    stormRef.current = storm;
-    storm.start();
-
-    return () => { storm.stop(); stormRef.current = null; };
-  }, [stormOn]);
-
-  useEffect(() => {
-    if (stormOn && (smartOn || shuffleSec != null)) setStormOn(false);
-  }, [smartOn, shuffleSec, stormOn]);
-
-
 
   const takeScreenshot = async () => {
     const c = getCanvas();
@@ -830,10 +823,10 @@ export default function Editor() {
         captureGif();
         return;
       }
-      // I => Smart AI director (supporter unlock)
+      // I => Journey director (supporter unlock)
       if (!e.shiftKey && (e.key === "i" || e.key === "I")) {
         e.preventDefault();
-        toggleSmart();
+        toggleJourney();
         return;
       }
 
@@ -1164,15 +1157,13 @@ export default function Editor() {
               setIconFlash({ icon: "freeze", label: "Freeze", key: performance.now() });
             }}
             onMicFlash={(on) => setMicFlash({ on, key: performance.now() })}
-            smartOn={smartOn}
-            smartLocked={!paywall.isSupporter}
-            onToggleSmart={toggleSmart}
-            stormOn={stormOn}
-            onToggleStorm={toggleStorm}
+            journeyOn={journeyOn}
+            journeyLocked={!paywall.isSupporter}
+            onToggleJourney={toggleJourney}
             isFullscreen={isBrowserFs}
             onToggleFullscreen={toggleFullscreen}
             onClearFx={clearAllFx}
-            hasFx={layers.length > 0 || shuffleSec != null || smartOn || stormOn}
+            hasFx={layers.length > 0 || shuffleSec != null || journeyOn}
             onHome={() => {
               if (isRecording) { try { toggleRecord(); } catch {} }
               try { useStore.getState().reset(); } catch {}
@@ -1183,9 +1174,9 @@ export default function Editor() {
             dimmed={idleHidden}
           />
         )}
-        {stormOn && (
+        {journeyOn && (
           <div
-            key={stormFlashKey}
+            key={journeyFlashKey}
             aria-hidden
             className="pointer-events-none absolute inset-0 z-20 animate-[smartFlash_420ms_ease-out_forwards]"
             style={{
@@ -1193,6 +1184,25 @@ export default function Editor() {
               mixBlendMode: "screen",
             }}
           />
+        )}
+
+        {/* Journey readout. Hidden in performance mode — a projector wall is
+            not the place for telemetry — but otherwise present, because an
+            unattended director that never says what it is doing is
+            indistinguishable from a broken one. */}
+        {journeyOn && journeyState && !isPerformanceMode && !hideUI && (
+          <div className="pointer-events-none absolute bottom-3 left-3 z-30 max-w-[min(22rem,60vw)] rounded-sm border border-[hsl(var(--border-default))] bg-black/70 px-3 py-2 backdrop-blur-md">
+            <p className="font-mono text-[9px] uppercase tracking-[0.3em] text-[hsl(var(--accent))]">
+              journey · {journeyState.section}
+            </p>
+            <p className="mt-1 font-mono text-[10px] leading-relaxed text-white/70">
+              {micEnabled ? journeyState.reading.label : "no audio — pacing from motion alone"}
+            </p>
+            <p className="mt-1 font-mono text-[9px] leading-relaxed text-white/40">
+              {journeyState.lastDisruption?.reason ?? "settling"}
+              {` · next ${(journeyState.nextDisruptMs / 1000).toFixed(1)}s`}
+            </p>
+          </div>
         )}
         {!isPerformanceMode && !hideUI && (
           <div className={`absolute top-3 right-3 z-40 pointer-events-auto transition-opacity duration-500 ${idleHidden ? "opacity-0 pointer-events-none" : "opacity-100"}`}>

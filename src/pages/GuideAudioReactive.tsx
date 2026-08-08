@@ -42,7 +42,7 @@ const faqs: { q: string; a: string }[] = [
   },
   {
     q: "Is MOSH really free?",
-    a: "Yes — the full visual instrument is free. An optional one-time Supporter upgrade adds the Smart AI director and cloud-saved presets.",
+    a: "Yes — the full visual instrument is free. An optional one-time Supporter upgrade adds Journey mode and cloud-saved presets.",
   },
 ];
 
@@ -134,7 +134,7 @@ const GuideAudioReactive = () => (
             RGB shift, liquid warp, and a color effect). Each layer reacts to the audio.
           </li>
           <li>
-            <strong>Turn on Reality Storm mode</strong> for hands-free, AI-driven reactivity that
+            <strong>Turn on Journey mode</strong> for hands-free, AI-driven reactivity that
             fires bursts on the beat and responds to your movement.
           </li>
           <li>
@@ -183,7 +183,7 @@ const GuideAudioReactive = () => (
           <Link to="/" className="text-accent hover:underline">start creating</Link>, works on
           mobile, and lets you record and share in a couple taps. The optional{" "}
           <Link to="/pricing" className="text-accent hover:underline">Supporter upgrade</Link>{" "}
-          unlocks the Smart AI director and cloud-saved presets.
+          unlocks Journey mode and cloud-saved presets.
         </p>
       </section>
 

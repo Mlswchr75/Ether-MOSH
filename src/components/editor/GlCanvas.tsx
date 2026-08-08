@@ -317,6 +317,12 @@ export function GlCanvas() {
       const mic = micRef.current;
       (window as any).__aegisMicLevel = micPulse;
       (window as any).__aegisAudioBands = mic.bands;
+      /* The analyser itself, for directors that need the raw bands and the
+         onset timestamp rather than the derived `sources` map. Published rather
+         than passed because the mic is owned here, inside the render loop that
+         drives it — handing the instance up through props would invite a second
+         caller into `level()`, which is not a getter and would steal beats. */
+      (window as any).__aegisMic = mic;
       const sources: Record<string, number> = {
         bass: mic.bassLevel,
         sub: mic.subLevel,
