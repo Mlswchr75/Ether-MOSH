@@ -172,23 +172,70 @@
 
   var qvPending = null;
 
+  function toSafeAssetUrl(raw) {
+    if (!raw) return '';
+    try {
+      var parsed = new URL(String(raw), window.location.href);
+      // Allow same-origin relative/absolute URLs and https assets.
+      if (parsed.origin === window.location.origin || parsed.protocol === 'https:') {
+        return parsed.href;
+      }
+    } catch (e) {}
+    return '';
+  }
+
   function ensureQuickView() {
     if (window.BrutalistQuickView) return Promise.resolve(window.BrutalistQuickView);
     if (qvPending) return qvPending;
 
-    var css = bar.getAttribute('data-qv-css');
-    var js  = bar.getAttribute('data-qv-js');
+    function getSafeAssetUrl(raw) {
+      if (!raw) return null;
+      try {
+        var u = new URL(raw, window.location.href);
+        var isHttp = u.protocol === 'http:' || u.protocol === 'https:';
+        if (!isHttp) return null;
+        if (u.origin !== window.location.origin) return null;
+        return u.href;
+      } catch (e) {
+        return null;
+      }
+    }
+
+    var css = getSafeAssetUrl(bar.getAttribute('data-qv-css'));
+    var js  = getSafeAssetUrl(bar.getAttribute('data-qv-js'));
+    var css = toSafeAssetUrl(bar.getAttribute('data-qv-css'));
+    var js  = toSafeAssetUrl(bar.getAttribute('data-qv-js'));
     if (!js) return Promise.reject(new Error('no quick view asset'));
 
-    if (css && !document.querySelector('link[href="' + css + '"]')) {
-      var link = document.createElement('link');
-      link.rel = 'stylesheet';
-      link.href = css;
-      document.head.appendChild(link);
+    if (css) {
+      var hasCss = Array.prototype.some.call(
+        document.querySelectorAll('link[rel="stylesheet"]'),
+        function (node) {
+          var href = node.getAttribute('href');
+          if (!href) return false;
+          try { return new URL(href, window.location.href).href === css; }
+          catch (e) { return false; }
+        }
+      );
+      if (!hasCss) {
+        var link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = css;
+        document.head.appendChild(link);
+      }
     }
 
     qvPending = new Promise(function (resolve, reject) {
-      var existing = document.querySelector('script[src="' + js + '"]');
+      var existing = null;
+      var scripts = document.querySelectorAll('script[src]');
+      for (var i = 0; i < scripts.length; i++) {
+        try {
+          if (new URL(scripts[i].getAttribute('src'), window.location.href).href === js) {
+            existing = scripts[i];
+            break;
+          }
+        } catch (e) {}
+      }
       if (existing) {
         existing.addEventListener('load', function () { resolve(window.BrutalistQuickView); });
         existing.addEventListener('error', reject);
