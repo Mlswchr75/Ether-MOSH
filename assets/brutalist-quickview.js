@@ -484,7 +484,7 @@
     var gallery = state.root && state.root.querySelector("[data-br-qv-gallery]");
     if (!v || !gallery || !v.featured_image || !v.featured_image.src) return;
     var key = String(v.featured_image.src).split("?")[0];
-    var target = gallery.querySelector('[data-src-key="' + key.replace(/"/g, '\\"') + '"]');
+    var target = gallery.querySelector('[data-src-key="' + CSS.escape(key) + '"]');
     if (target) gallery.scrollTo({ top: target.offsetTop - gallery.offsetTop, behavior: "smooth" });
   }
 
