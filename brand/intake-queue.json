@@ -1,0 +1,114 @@
+{
+  "generated": "2026-07-25",
+  "store": "aestheticrebellion.store",
+  "purpose": "Products that entered the catalog raw and never received brand treatment. Each fails BRAND_VOICE.md 'Never ship'. These are the newest products in the catalog, which makes this an intake leak rather than a one-time cleanup.",
+  "detection": {
+    "BEST_DETECTOR": "variant weight == 0 while requiresShipping == true, OR productType is empty. This is far more sensitive than the copy-based checks below and should be run first.",
+    "primary": "product has zero tags, or only 'shoptok'",
+    "secondary": "description contains any of: 'mockup generator', 'Thread Color: black or white', 'Non-custom fabrics are made of polyester', 'EU representative'",
+    "tertiary": "product belongs to no collection other than 'All Products'",
+    "provider_fingerprint": "Yoycol SKUs carry an 'ADS-' prefix (see provider-audit/MASTER_SUMMARY.json)"
+  },
+  "SCOPE_CORRECTION_2026_07_25": {
+    "what_was_understated": "The eight products in `queue` below were found using the copy-based criteria (no tags, supplier boilerplate, no collection). A later sweep across all 521 products using weight==0 found 41 affected products, not 8 — roughly five times the recorded scope.",
+    "why_the_first_pass_missed_them": "33 of the 41 had full brand-voice copy and complete tag sets, so they never tripped the copy-based filters. They were still shipped with weight 0 and no productType. Examples: dockyard-dusk-borg-fleece-coat, channel-static-hoodie, sherbet-spiral-fleece-coat, exotic-bloom-boho-duster-jacket.",
+    "consequences_found": [
+      "weight 0 sent malformed input to carrier-calculated DHL/FedEx rates for the International market — not merely inaccurate rates, an invalid rate request",
+      "empty productType blocks smart-collection membership entirely: Accessories, Home & Living, Guys, Girls and Youth all match on TYPE, so untyped products could only ever appear in 'All Products'"
+    ],
+    "remediation_applied_2026_07_25": {
+      "weights": "presumed weights set on all 41 products (178 variants) derived from stated fabric specs — 310gsm cotton 1.5lb, 300gsm poly waffle 0.95lb, 140gsm shell 0.7lb, 210gsm polo 0.55lb, bucket hats 0.25lb, fleece coats 2.0-2.2lb, canvas sneakers 2.0lb, framed canvas 2.5lb. THESE ARE ESTIMATES, not Yoycol measured figures. Overwrite with real values when available.",
+      "product_types": "productType set on all 41, chosen to match existing smart-collection rules rather than invented. Verified immediate joins: Canvas Wall Art -> Home & Living, Skirt -> Girls, Neck Gaiter -> Accessories, Beach Towel -> Home & Living.",
+      "judgement_calls_to_review": [
+        "blue-hour-collage-cooling-sports-towel typed 'Beach Towel' — it is a cooling sports towel; 'Beach Towel' was the closest existing type that reaches a browsable collection",
+        "night-circuit-balaclava typed 'Neck Gaiter' — balaclava is not in the Accessories rule list; Neck Gaiter is the nearest match",
+        "pirates-primary-splash-briefs typed 'Boxer Shorts' to match the Guys collection rule"
+      ]
+    },
+    "lesson": "Copy quality and data completeness are independent failure modes. A product can have excellent brand-voice copy and still be structurally broken. Sweep on structured fields (weight, productType, requiresShipping), not on prose."
+  },
+  "CORRECTION_2026_07_25": {
+    "what_was_wrong": "An earlier version of this file claimed two 'duplicate_clusters' — three near-identical Lantern Pants and two windproof jackets — and recommended archiving three of them. That was WRONG and would have destroyed four real designs.",
+    "why_it_was_wrong": "The conclusion was drawn from identical product titles. The titles are identical only because all five still carry the raw supplier title that was never rewritten. The products themselves are distinct designs.",
+    "the_evidence": "Yoycol SKU format is ADS-[GARMENT]-[DESIGN]-[HEX]-[SIZE]. Within each cluster the GARMENT code matches but the DESIGN code differs, and each product has a different featured image.",
+    "lantern_pants_design_codes": ["P68KT", "P68L5", "P68LB"],
+    "jacket_design_codes": ["P5VFJ (price 50.00)", "P64WH (price 57.10)"],
+    "correct_remedy": "Do NOT archive or merge any of them. Give each a distinct brand-voice title per BRAND_VOICE.md, then tag and assign collections. Identical titles are the defect; the products are fine.",
+    "lesson": "Never infer duplication from title alone on a POD catalog. Compare SKU design codes and featured images first."
+  },
+  "false_positives_do_not_touch": {
+    "reason": "Free-text search for 'Yoycol' returns 36 products, but the well-tagged ones are clean brand copy. Search matches something not customer-visible. Verify the description body before editing.",
+    "verified_clean": [
+      "exotic-bloom-boho-duster-jacket",
+      "dockyard-dusk-borg-fleece-coat",
+      "channel-static-hoodie"
+    ],
+    "intentional_supplier_tags": "Vibe-Checked Vectors SVG downloads tag 'printify svg' / 'printful design' on purpose — their buyers are POD sellers. 11 products. Leave alone."
+  },
+  "resolved": [
+    {
+      "product": "all-over-print-unisex-lantern-pants-2",
+      "issue": "purchasable phantom variant: title 'default / default', sku null, price 0.00, availableForSale true, and it was the FIRST variant so it was the likely default selection on the product page",
+      "impact": "a customer could have checked out $65.72 pants for $0.00, on a variant with no SKU that could never be fulfilled",
+      "fixed": "variant 49440334708963 deleted 2026-07-25; product went from 9 variants to 8, all real",
+      "sweep": "a store-wide query for products with any $0.00 variant returned this product only — no other instances"
+    }
+  ],
+  "queue": [
+    {
+      "id": "gid://shopify/Product/9528488984803",
+      "handle": "all-over-print-unisex-pullover-hoodie-310gsm-cotton-3",
+      "title": "All-Over Print Unisex Pullover Hoodie | 310GSM Cotton",
+      "defects": ["yoycol_mockup_generator", "raw_size_table", "eu_representative_block", "tags_only_shoptok", "no_collection"]
+    },
+    {
+      "id": "gid://shopify/Product/9572682924259",
+      "handle": "baseball-cap-with-flat-brim",
+      "title": "Flat Brim Baseball Cap — All-Over Print Adjustable",
+      "defects": ["yoycol_mockup_generator", "no_tags", "no_collection", "generic_title"]
+    },
+    {
+      "id": "gid://shopify/Product/9572769497315",
+      "handle": "all-over-print-mens-hooded-zipper-windproof-jacket",
+      "title": "Men's Windproof Hooded Jacket — All-Over Print Full-Zip Shell",
+      "design_code": "P5VFJ",
+      "price": "50.00",
+      "defects": ["yoycol_mockup_generator", "no_tags", "no_collection"]
+    },
+    {
+      "id": "gid://shopify/Product/9574164168931",
+      "handle": "all-over-print-mens-hooded-zipper-windproof-jacket-1",
+      "title": "All-Over Print Men's Hooded Zipper Windproof Jacket",
+      "design_code": "P64WH",
+      "price": "57.10",
+      "defects": ["yoycol_mockup_generator", "no_tags", "no_collection", "generic_title_collides_with_P5VFJ"]
+    },
+    {
+      "id": "gid://shopify/Product/9574842368227",
+      "handle": "all-over-print-unisex-lantern-pants",
+      "title": "All-Over Print Unisex Lantern Pants",
+      "design_code": "P68KT",
+      "defects": ["yoycol_mockup_generator", "no_tags", "no_collection", "generic_title_collides_with_P68L5_and_P68LB"]
+    },
+    {
+      "id": "gid://shopify/Product/9574844924131",
+      "handle": "all-over-print-unisex-lantern-pants-1",
+      "title": "All-Over Print Unisex Lantern Pants",
+      "design_code": "P68L5",
+      "defects": ["yoycol_mockup_generator", "no_tags", "no_collection", "generic_title_collides_with_P68KT_and_P68LB"]
+    },
+    {
+      "id": "gid://shopify/Product/9574845513955",
+      "handle": "all-over-print-unisex-lantern-pants-2",
+      "title": "All-Over Print Unisex Lantern Pants",
+      "design_code": "P68LB",
+      "defects": ["yoycol_mockup_generator", "no_tags", "no_collection", "generic_title_collides_with_P68KT_and_P68L5"]
+    },
+    {
+      "id": "gid://shopify/Product/9575026950371",
+      "handle": "mens-black-sole-canvas-shoes",
+      "title": "Men's Black Sole Canvas Shoes",
+      "defects": ["yoycol_mockup_generator", "raw_size_table", "no_tags", "no_collection", "generic_title"]
+    }
+  ]
+}
