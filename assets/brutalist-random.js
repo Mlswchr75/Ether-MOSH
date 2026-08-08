@@ -410,9 +410,25 @@
     const dataEl = card.querySelector("[data-br-images]");
     if (!frame || !img || !dataEl) return;
 
+    const toSafeImageUrl = (value) => {
+      if (typeof value !== "string") return null;
+      const trimmed = value.trim();
+      if (!trimmed) return null;
+      try {
+        const u = new URL(trimmed, window.location.href);
+        if (u.protocol === "http:" || u.protocol === "https:") return u.href;
+      } catch (_) {}
+      return null;
+    };
+
     let images = [];
-    try { images = JSON.parse(dataEl.textContent.trim()); } catch (_) { images = []; }
-    if (!Array.isArray(images) || images.length < 2) return;
+    try {
+      const parsed = JSON.parse(dataEl.textContent.trim());
+      images = Array.isArray(parsed) ? parsed.map(toSafeImageUrl).filter(Boolean) : [];
+    } catch (_) {
+      images = [];
+    }
+    if (images.length < 2) return;
 
     let preloaded = false;
     const preloadedImages = [];
