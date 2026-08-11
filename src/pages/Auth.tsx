@@ -4,6 +4,7 @@ import { Helmet } from "react-helmet-async";
 import { ArrowLeft, Mail } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { buildAuthCallbackUrl, sanitizeNextPath } from "@/lib/authRedirect";
 
 
 // NOTE: Netlify build intentionally does NOT use Lovable's Apple/Google OAuth
@@ -16,10 +17,9 @@ import { supabase } from "@/integrations/supabase/client";
 // as long as the origin is in the Supabase redirect allowlist. That keeps this
 // build free of any Lovable dependency.
 //
-// Identity is keyed on the Google `sub`, which is stable per Google account
-// across OAuth clients — so users who originally signed up through Lovable's
-// broker resolve to the same auth.users row, and their entitlements (keyed on
-// user_id) carry over untouched.
+// Both deployments authenticate against the same Supabase project. Supabase
+// can therefore resolve the verified Google/email identity to the same
+// auth.users row, while entitlements remain keyed on that shared user ID.
 
 type Mode = "signin" | "signup";
 type Busy = null | "email" | "google";
@@ -27,8 +27,7 @@ type Busy = null | "email" | "google";
 export default function Auth() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
-  const rawNext = params.get("next") || "/";
-  const next = rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "/";
+  const next = sanitizeNextPath(params.get("next"));
   const [mode, setMode] = useState<Mode>("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -49,7 +48,9 @@ export default function Auth() {
         const { error } = await supabase.auth.signUp({
           email,
           password,
-          options: { emailRedirectTo: window.location.origin + next },
+          options: {
+            emailRedirectTo: buildAuthCallbackUrl(window.location.origin, next),
+          },
         });
         if (error) throw error;
         toast.success("Check your email to confirm, then sign in.");
@@ -78,30 +79,13 @@ export default function Auth() {
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: window.location.origin + next,
+          redirectTo: buildAuthCallbackUrl(window.location.origin, next),
           skipBrowserRedirect: true,
         },
       });
       if (error) throw error;
       if (!data?.url) throw new Error("no redirect url returned");
 
-      // A configured provider answers /authorize with a 302 to Google, which
-      // redirect:"manual" reports as an opaque response. An unconfigured one
-      // answers with a CORS-readable 400. Anything inconclusive (offline,
-      // blocked) falls through to the normal redirect rather than blocking.
-      let configured = true;
-      try {
-        const probe = await fetch(data.url, { redirect: "manual" });
-        if (probe.type === "cors" && probe.status >= 400) configured = false;
-      } catch {
-        /* inconclusive — continue */
-      }
-
-      if (!configured) {
-        toast.error("google sign-in isn't enabled yet — use email below");
-        setBusy(null);
-        return;
-      }
       window.location.assign(data.url);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "google sign-in failed");

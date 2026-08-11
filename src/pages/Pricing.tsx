@@ -72,7 +72,7 @@ export default function Pricing() {
           <p className="mx-auto mt-4 max-w-md font-mono text-xs leading-relaxed text-foreground/55">
             MOSH is free to use. One small payment unlocks video export and the full
             feature set — no subscription. Sign-in required so your unlock follows you
-            to any device or browser, including ether-mosh.lovable.app.
+            to any device or browser using the same account.
           </p>
         </motion.div>
 
@@ -180,7 +180,7 @@ export default function Pricing() {
         >
           <h2 className="font-mono text-[10px] uppercase tracking-[0.4em] text-foreground/40">faq</h2>
           {[
-            { q: "Do I need an account?", a: "Yes — a quick free account keeps your unlock synced across devices and both mosh.lovable.app and mosh.netlify.app." },
+            { q: "Do I need an account?", a: "Yes — a quick free account keeps your unlock synced across devices and both Ether-MOSH deployments during the transition." },
             { q: "What browsers are supported?", a: "Chrome, Firefox, Edge, and Safari on desktop. Chrome and Safari on mobile. WebGL is required; the App will tell you if your browser isn't supported." },
             { q: "Will I get future updates?", a: "Yes. The one-time payment includes all future updates to MOSH — new effects, features, and improvements." },
             { q: "Is there a refund policy?", a: "Yes. 14-day no-questions-asked refund. See our refund policy for details." },
