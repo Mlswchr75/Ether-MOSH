@@ -14,6 +14,7 @@ const Privacy = lazy(() => import("./pages/Privacy.tsx"));
 const Pricing = lazy(() => import("./pages/Pricing.tsx"));
 const Refund = lazy(() => import("./pages/Refund.tsx"));
 const Auth = lazy(() => import("./pages/Auth.tsx"));
+const AuthCallback = lazy(() => import("./pages/AuthCallback.tsx"));
 const Checkout = lazy(() => import("./pages/Checkout.tsx"));
 const Account = lazy(() => import("./pages/Account.tsx"));
 const Favorites = lazy(() => import("./pages/Favorites.tsx"));
@@ -47,6 +48,7 @@ const App = () => (
             <Route path="/refund" element={<Refund />} />
             <Route path="/refunds" element={<Refund />} />
             <Route path="/auth" element={<Auth />} />
+            <Route path="/auth/callback" element={<AuthCallback />} />
             <Route path="/checkout" element={<Checkout />} />
             <Route path="/account" element={<Account />} />
             <Route path="/favorites" element={<Favorites />} />

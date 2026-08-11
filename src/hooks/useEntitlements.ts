@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { getPaymentsEnvironmentSafe } from "@/lib/stripe";
 import { useAuth } from "./useAuth";
+import { resolveEntitlementQuery } from "@/lib/entitlements";
 
 // Provider-neutral environment gate. Matches what the payments webhook writes.
 function getPaymentsEnvironment(): "live" | "sandbox" {
@@ -23,6 +24,7 @@ interface EntitlementsState {
   hasTipped: boolean;
   hasAnyPurchase: boolean;
   loading: boolean;
+  error: string | null;
   refresh: () => Promise<void>;
 }
 
@@ -31,6 +33,7 @@ export function useEntitlements(): EntitlementsState {
   const [isSupporter, setIsSupporter] = useState(false);
   const [hasTipped, setHasTipped] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     // TEMP: payments setup in progress — treat everyone as a supporter.
@@ -38,29 +41,33 @@ export function useEntitlements(): EntitlementsState {
       setIsSupporter(true);
       setHasTipped(false);
       setLoading(false);
+      setError(null);
       return;
     }
     if (!user) {
       setIsSupporter(false);
       setHasTipped(false);
       setLoading(false);
+      setError(null);
       return;
     }
     setLoading(true);
     const env = getPaymentsEnvironment();
     const owner = isOwnerEmail(user.email);
+    setError(null);
     try {
-      const { data } = await supabase
+      const result = await supabase
         .from("entitlements")
         .select("product_id")
         .eq("user_id", user.id)
         .eq("environment", env);
-      const ids = new Set((data ?? []).map((r) => r.product_id));
-      setIsSupporter(ids.has("mosh_supporter") || owner);
-      setHasTipped(ids.has("mosh_tip") || owner);
-    } catch {
+      const access = resolveEntitlementQuery(result, owner);
+      setIsSupporter(access.isSupporter);
+      setHasTipped(access.hasTipped);
+    } catch (cause) {
       setIsSupporter(owner);
       setHasTipped(owner);
+      setError(cause instanceof Error ? cause.message : "Unable to load purchases");
     } finally {
       setLoading(false);
     }
@@ -91,5 +98,5 @@ export function useEntitlements(): EntitlementsState {
     };
   }, [user, load]);
 
-  return { isSupporter, hasTipped, hasAnyPurchase: isSupporter || hasTipped, loading, refresh: load };
+  return { isSupporter, hasTipped, hasAnyPurchase: isSupporter || hasTipped, loading, error, refresh: load };
 }

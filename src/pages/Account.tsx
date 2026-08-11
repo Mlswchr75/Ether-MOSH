@@ -6,9 +6,10 @@ import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 import { useEntitlements } from "@/hooks/useEntitlements";
 import { supabase } from "@/integrations/supabase/client";
+import { getPaymentsEnvironmentSafe } from "@/lib/stripe";
 
 function getPaymentsEnvironment(): "live" | "sandbox" {
-  return import.meta.env.VITE_PAYMENTS_LIVE === "true" ? "live" : "sandbox";
+  return getPaymentsEnvironmentSafe();
 }
 
 interface EntitlementRow {
@@ -23,7 +24,7 @@ const productLabel = (id: string) =>
 
 const Account = () => {
   const { user, signOut } = useAuth();
-  const { isSupporter, loading: entLoading } = useEntitlements();
+  const { isSupporter, loading: entLoading, error: entitlementError } = useEntitlements();
   const [rows, setRows] = useState<EntitlementRow[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -129,6 +130,11 @@ const Account = () => {
               ))}
             </ul>
           )}
+          {entitlementError ? (
+            <p role="alert" className="mt-3 text-xs text-destructive">
+              Purchase status could not be refreshed: {entitlementError}
+            </p>
+          ) : null}
           <p className="mt-3 text-xs text-foreground/50">
             Invoices, receipts, and refund requests are handled by our Merchant of Record,{" "}
             <a href="https://stripe.com" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">Stripe</a>.{" "}

@@ -38,6 +38,20 @@ function renderAt(path: string) {
 }
 
 describe("public feature routes", () => {
+  it("renders the dedicated auth callback instead of the 404 page", async () => {
+    renderAt("/auth/callback");
+
+    expect(await screen.findByText(/finishing sign-in/i)).not.toBeNull();
+    expect(screen.queryByText("404")).toBeNull();
+  });
+
+  it("sends signed-out checkout visitors through the working sign-in page", async () => {
+    renderAt("/checkout?price=mosh_supporter_once");
+
+    expect(await screen.findByText(/sign in to/i)).not.toBeNull();
+    expect(screen.queryByText("404")).toBeNull();
+  });
+
   it("renders the guides index instead of the 404 page", async () => {
     renderAt("/guides");
 

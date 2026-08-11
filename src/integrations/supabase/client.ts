@@ -51,13 +51,9 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABL
     storageKey: 'mosh-auth',
     persistSession: true,
     autoRefreshToken: true,
-    /**
-     * Parse the OAuth result out of the URL on load. This is what actually
-     * turns a Google redirect into a stored session — without it the redirect
-     * lands, nothing is saved, and the app looks signed out immediately.
-     * It defaults to true, but it is load-bearing enough to state.
-     */
-    detectSessionInUrl: true,
+    // The dedicated /auth/callback route exchanges PKCE codes explicitly.
+    // Keeping automatic URL detection off prevents a second exchange racing it.
+    detectSessionInUrl: false,
     /**
      * PKCE rather than implicit.
      *
