@@ -5,7 +5,7 @@ const FRAGMENTS = [
   "signal acquired",
   "buffer overrun — embraced",
   "destruction is design",
-  "58 shaders idle",
+  "105 shaders idle",
   "beat sync armed",
   "gpu: hungry",
   "reality: optional",

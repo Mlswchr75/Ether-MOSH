@@ -2,11 +2,11 @@ import { Helmet } from "react-helmet-async";
 import { Link } from "react-router-dom";
 import LegalLayout, { LegalH2 } from "@/components/LegalLayout";
 
-const canonical = "https://ether-mosh.lovable.app/guides/audio-reactive-music-videos";
+const canonical = "https://ether-mosh.netlify.app/guides/audio-reactive-music-videos";
 const title = "How to Make an Audio-Reactive Music Visualizer Video (Free)";
 const description =
   "Learn how to create audio-reactive music videos for TikTok, Reels & YouTube — no software. Turn any song into a live glitch visualizer with MOSH, free in your browser.";
-const ogImage = "https://ether-mosh.lovable.app/og-image.jpg";
+const ogImage = "https://ether-mosh.netlify.app/og-image.png";
 
 const articleJsonLd = {
   "@context": "https://schema.org",
@@ -130,7 +130,7 @@ const GuideAudioReactive = () => (
             This is what makes the visuals react to sound.
           </li>
           <li>
-            <strong>Pick your effects</strong> — stack a few of the 59 GPU effects (try datamosh,
+            <strong>Pick your effects</strong> — stack a few of the 105 GPU effects (try datamosh,
             RGB shift, liquid warp, and a color effect). Each layer reacts to the audio.
           </li>
           <li>

@@ -2,11 +2,11 @@ import { Helmet } from "react-helmet-async";
 import { Link } from "react-router-dom";
 import LegalLayout, { LegalH2 } from "@/components/LegalLayout";
 
-const canonical = "https://ether-mosh.lovable.app/guides/free-vj-software-browser";
+const canonical = "https://ether-mosh.netlify.app/guides/free-vj-software-browser";
 const title = "Free VJ Software: Make Live Visuals in Your Browser";
 const description =
   "Looking for free VJ software? MOSH runs live, audio-reactive visuals in your browser — no download. Perfect for gigs, parties, and live streams.";
-const ogImage = "https://ether-mosh.lovable.app/og-image.jpg";
+const ogImage = "https://ether-mosh.netlify.app/og-image.png";
 
 const articleJsonLd = {
   "@context": "https://schema.org",

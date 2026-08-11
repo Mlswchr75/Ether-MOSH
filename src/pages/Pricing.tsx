@@ -8,7 +8,7 @@ import { useEntitlements } from "@/hooks/useEntitlements";
 const EASE = [0.22, 1, 0.36, 1] as const;
 
 const FEATURES_FREE = [
-  "58 GPU shader effects",
+  "105 GPU shader effects",
   "Live camera source (front / rear / webcam)",
   "Drag-and-drop or paste any image",
   "Beat sync + mic reactivity",

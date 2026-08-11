@@ -2,11 +2,11 @@ import { Helmet } from "react-helmet-async";
 import { Link } from "react-router-dom";
 import LegalLayout, { LegalH2 } from "@/components/LegalLayout";
 
-const canonical = "https://ether-mosh.lovable.app/guides/how-to-datamosh-a-video";
+const canonical = "https://ether-mosh.netlify.app/guides/how-to-datamosh-a-video";
 const title = "How to Datamosh a Video Online (Free, No Software)";
 const description =
   "Learn how to datamosh a video for free in your browser — no plugins or After Effects. Create the classic datamosh glitch effect in seconds with MOSH.";
-const ogImage = "https://ether-mosh.lovable.app/og-image.jpg";
+const ogImage = "https://ether-mosh.netlify.app/og-image.png";
 
 const articleJsonLd = {
   "@context": "https://schema.org",
