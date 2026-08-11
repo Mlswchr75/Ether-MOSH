@@ -1062,10 +1062,10 @@ export default function Editor() {
       <Helmet>
         <title>Editor — MOSH</title>
         <meta name="description" content="Stack GPU effects, map audio to parameters, and perform live in the MOSH visual editor." />
-        <link rel="canonical" href="https://ether-mosh.lovable.app/edit" />
+        <link rel="canonical" href="https://ether-mosh.netlify.app/edit" />
         <meta property="og:title" content="MOSH Editor — Real-time visual instrument" />
-        <meta property="og:description" content="Stack 59 GPU effects, sync to audio, export stills and video." />
-        <meta property="og:url" content="https://ether-mosh.lovable.app/edit" />
+        <meta property="og:description" content="Stack 105 GPU effects, sync to audio, export stills and video." />
+        <meta property="og:url" content="https://ether-mosh.netlify.app/edit" />
       </Helmet>
       <h1 className="sr-only">MOSH Editor</h1>
       {/* Canvas — fills the viewport by default. All menu UI lives below the fold. */}
@@ -1498,4 +1498,3 @@ export default function Editor() {
     </main>
   );
 }
-

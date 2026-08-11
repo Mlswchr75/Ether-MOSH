@@ -47,7 +47,7 @@ const Account = () => {
       <Helmet>
         <title>Account — MOSH</title>
         <meta name="description" content="Manage your MOSH account and review your Supporter unlock and tips." />
-        <link rel="canonical" href="https://ether-mosh.lovable.app/account" />
+        <link rel="canonical" href="https://ether-mosh.netlify.app/account" />
       </Helmet>
 
       <header className="relative z-10 flex items-center justify-between px-5 pt-6">

@@ -2,7 +2,7 @@ import { Helmet } from "react-helmet-async";
 import { Link } from "react-router-dom";
 import LegalLayout, { LegalH2 } from "@/components/LegalLayout";
 
-const canonical = "https://ether-mosh.lovable.app/guides/make-music-video";
+const canonical = "https://ether-mosh.netlify.app/guides/make-music-video";
 const title = "How to Make an Audio-Reactive Music Video";
 const description =
   "Step-by-step guide to creating audio-reactive music visualizers for YouTube, TikTok, and Reels using MOSH's glitch instrument, live effects, and recording tools.";

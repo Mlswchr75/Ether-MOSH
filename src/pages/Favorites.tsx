@@ -22,7 +22,7 @@ export default function Favorites() {
       <Helmet>
         <title>Favorites · MOSH</title>
         <meta name="description" content="Your saved mosh effects — tap a thumbnail to reload it into the visualizer." />
-        <link rel="canonical" href="https://ether-mosh.lovable.app/favorites" />
+        <link rel="canonical" href="https://ether-mosh.netlify.app/favorites" />
         <meta name="robots" content="noindex" />
       </Helmet>
       <main className="min-h-dvh bg-background text-foreground">

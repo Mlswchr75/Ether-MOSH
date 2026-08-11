@@ -15,6 +15,16 @@ const Pricing = lazy(() => import("./pages/Pricing.tsx"));
 const Refund = lazy(() => import("./pages/Refund.tsx"));
 const Auth = lazy(() => import("./pages/Auth.tsx"));
 const Checkout = lazy(() => import("./pages/Checkout.tsx"));
+const Account = lazy(() => import("./pages/Account.tsx"));
+const Favorites = lazy(() => import("./pages/Favorites.tsx"));
+const Contact = lazy(() => import("./pages/Contact.tsx"));
+const OAuthConsent = lazy(() => import("./pages/OAuthConsent.tsx"));
+const GuidesIndex = lazy(() => import("./pages/GuidesIndex.tsx"));
+const GuideAudioReactive = lazy(() => import("./pages/GuideAudioReactive.tsx"));
+const GuideMakeMusicVideo = lazy(() => import("./pages/GuideMakeMusicVideo.tsx"));
+const GuideDatamoshVideo = lazy(() => import("./pages/GuideDatamoshVideo.tsx"));
+const GuideFreeVJSoftware = lazy(() => import("./pages/GuideFreeVJSoftware.tsx"));
+const GuideGlitchTikTok = lazy(() => import("./pages/GuideGlitchTikTok.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 
 const queryClient = new QueryClient();
@@ -35,8 +45,19 @@ const App = () => (
             <Route path="/privacy" element={<Privacy />} />
             <Route path="/pricing" element={<Pricing />} />
             <Route path="/refund" element={<Refund />} />
+            <Route path="/refunds" element={<Refund />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/checkout" element={<Checkout />} />
+            <Route path="/account" element={<Account />} />
+            <Route path="/favorites" element={<Favorites />} />
+            <Route path="/contact" element={<Contact />} />
+            <Route path="/oauth/consent" element={<OAuthConsent />} />
+            <Route path="/guides" element={<GuidesIndex />} />
+            <Route path="/guides/audio-reactive-music-videos" element={<GuideAudioReactive />} />
+            <Route path="/guides/make-music-video" element={<GuideMakeMusicVideo />} />
+            <Route path="/guides/how-to-datamosh-a-video" element={<GuideDatamoshVideo />} />
+            <Route path="/guides/free-vj-software-browser" element={<GuideFreeVJSoftware />} />
+            <Route path="/guides/glitch-effect-video-tiktok" element={<GuideGlitchTikTok />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

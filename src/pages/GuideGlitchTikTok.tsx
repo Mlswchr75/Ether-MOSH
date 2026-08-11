@@ -2,11 +2,11 @@ import { Helmet } from "react-helmet-async";
 import { Link } from "react-router-dom";
 import LegalLayout, { LegalH2 } from "@/components/LegalLayout";
 
-const canonical = "https://ether-mosh.lovable.app/guides/glitch-effect-video-tiktok";
+const canonical = "https://ether-mosh.netlify.app/guides/glitch-effect-video-tiktok";
 const title = "How to Make Glitch Effect Videos for TikTok (Free)";
 const description =
   "Make viral glitch effect videos for TikTok & Reels free — no app to download. Add RGB glitch, datamosh, and distortion to your clips with MOSH in your browser.";
-const ogImage = "https://ether-mosh.lovable.app/og-image.jpg";
+const ogImage = "https://ether-mosh.netlify.app/og-image.png";
 
 const articleJsonLd = {
   "@context": "https://schema.org",
@@ -159,7 +159,7 @@ const GuideGlitchTikTok = () => (
       <section>
         <LegalH2>Why MOSH beats a glitch filter app</LegalH2>
         <p className="mt-3">
-          Filter apps give you one canned look. MOSH gives you 59 stackable GPU effects, live
+          Filter apps give you one canned look. MOSH gives you 105 stackable GPU effects, live
           audio reactivity, and no watermark — all{" "}
           <Link to="/" className="text-accent hover:underline">free in your browser</Link>. The
           optional <Link to="/pricing" className="text-accent hover:underline">Supporter upgrade</Link>{" "}
