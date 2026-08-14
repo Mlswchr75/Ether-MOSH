@@ -1046,8 +1046,8 @@ export const EFFECTS: EffectDef[] = [
     `),
 
   // ── SIGNATURE SET ─────────────────────────────────────────────────
-  // Built for the quadrant instrument. Every effect below takes exactly
-  // TWO continuous params, because a quadrant drag binds X to params[0]
+  // Built for the semantic role instrument. Every effect below takes exactly
+  // TWO continuous params, because a canvas drag binds X to params[0]
   // and Y to params[1] — a third param would be unreachable by gesture and
   // a single one would push Y onto layer opacity. No `step` either: a
   // stepped param visibly snaps under a finger. Several read uPulse so
@@ -2009,7 +2009,7 @@ export const EFFECTS: EffectDef[] = [
     gl_FragColor = vec4(texture2D(uTex, clamp(uv + 0.5, 0.0, 1.0)).rgb, 1.0);
     `),
 
-  fx("volumetricShaft", "God Rays", "atmosphere", "Light shafts cast outward from the brightest points, with dust hanging in them.",
+  fx("volumetricShaft", "Volumetric Shaft", "atmosphere", "Light shafts cast outward from the brightest points, with dust hanging in them.",
     [{ key: "amount", label: "Shafts", min: 0, max: 1, default: 0.55 },
      { key: "reach", label: "Reach", min: 0, max: 1, default: 0.5 },
      { key: "warmth", label: "Warmth", min: 0, max: 1, default: 0.45 }],

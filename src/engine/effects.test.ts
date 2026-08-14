@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { EFFECTS, EFFECTS_BY_ID } from "./effects";
 import { axisTargets } from "./quadrants";
 
-/** The effects written for the quadrant instrument. */
+/** The effects written for the canvas gesture instrument. */
 const EXPANSION_SET = [
   "halftone", "crossHatch", "kuwahara", "anaglyph", "photocopy", "contourMap",
   "emboss", "moire", "slitScan", "rollingShutter", "echoTrails", "extrude",
@@ -62,6 +62,11 @@ describe("effect registry", () => {
   it("has no duplicate ids", () => {
     const ids = EFFECTS.map(e => e.id);
     expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("has no duplicate display names", () => {
+    const names = EFFECTS.map(e => e.name);
+    expect(new Set(names).size).toBe(names.length);
   });
 
   /**

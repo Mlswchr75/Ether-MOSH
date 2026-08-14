@@ -125,6 +125,14 @@ export default function Editor() {
   useFullscreenSync();
 
   const idleHidden = useIdleHide(5000);
+  const focusTune = useCallback((layerId: string) => {
+    useStore.getState().selectLayer(layerId);
+    setHideUI(false);
+    requestAnimationFrame(() => {
+      document.querySelector<HTMLElement>("[data-tune-panel]")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }, []);
   const loadDroppedImage = useCallback(async (file: File) => {
     const ok = await loadImageFile(file);
     if (ok) toast.success("Image loaded — moshing…");
@@ -1128,7 +1136,7 @@ export default function Editor() {
         {!hasSource && !isOverlay && <StartCameraOverlay />}
         <SystemAudioHud visible={systemAudioEnabled && !isOverlay} />
         {hasSource && !isOverlay && (
-          <QuadrantSurface onTogglePerf={togglePerf} />
+          <QuadrantSurface onTogglePerf={togglePerf} onTune={focusTune} />
         )}
         <TrackpadGestures
           targetRef={canvasContainerRef}
@@ -1441,7 +1449,7 @@ export default function Editor() {
               <ShufflePanel />
               <FxPicker />
             </section>
-            <section>
+            <section data-tune-panel>
               <div className="section-header">
                 <h2>Tune</h2><div className="rule" />
                 <span className="badge">arrows · ←↑↓→</span>

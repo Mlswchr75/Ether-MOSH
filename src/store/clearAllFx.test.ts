@@ -15,8 +15,7 @@ describe("clearAllFx", () => {
       past: [],
       future: [],
       currentLook: null,
-      lastQuadrantRoll: null,
-      quadrantHistory: [[], [], [], []],
+      lastRoleRoll: null,
     });
   });
 
@@ -41,8 +40,7 @@ describe("clearAllFx", () => {
 
     useStore.getState().clearAllFx();
     expect(useStore.getState().currentLook).toBeNull();
-    expect(useStore.getState().lastQuadrantRoll).toBeNull();
-    expect(useStore.getState().quadrantHistory.every(h => h.length === 0)).toBe(true);
+    expect(useStore.getState().lastRoleRoll).toBeNull();
   });
 
   it("is undoable like any other change", () => {

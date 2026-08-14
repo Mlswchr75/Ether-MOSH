@@ -2,23 +2,18 @@ import { create } from "zustand";
 import { EFFECTS, EFFECTS_BY_ID, type EffectCategory } from "@/engine/effects";
 import { BLEND_MODES, type BlendMode } from "@/engine/blend";
 import {
-  QUADRANT_COUNT,
   relationLabel,
   skewedAffinity,
-  type QuadrantIndex,
   type RelationLabel,
 } from "@/engine/quadrants";
 import {
   LOOKS_BY_ID as LOOKS_LOOKUP,
   analyzeSource,
-  blendForRole,
   briefFrom,
   chooseLook,
   compose,
-  opacityForRole,
-  paramsForRole,
-  pickForRole,
-  roleForQuadrant,
+  composeRoleLayer,
+  poolForRole,
   rollWildness,
   type FrameBrief,
   type Look,
@@ -26,6 +21,14 @@ import {
 } from "@/engine/artDirector";
 import { generateSeed, rngFromSeed } from "@/engine/seed";
 import { presetToUrl, type PresetPayload } from "@/engine/presetUrl";
+import {
+  groupLayersByRole,
+  nextAvailableRole,
+  normalizeLayerRoles,
+  ROLE_ORDER,
+  roleForEffect,
+  resolveLayerRole,
+} from "@/engine/effectRoles";
 import { exportSetlist, importSetlist, setlistToJson, SETLIST_SLOTS } from "@/engine/setlist";
 import type { AudioMap, Favorite, Intensity, IsolationMode, Layer, Modulator, PaletteProfile, StickerEntry } from "./types";
 import { facingOfTrack, type CameraFacing } from "@/lib/cameraFacing";
@@ -36,8 +39,6 @@ import { upscaleImage } from "@/engine/upscaler";
 import { toast } from "sonner";
 
 const HISTORY_LIMIT = 20;
-/** How many recently-used effects each quadrant refuses to roll again. */
-const QUADRANT_MEMORY = 4;
 /** How many recently-used effects a full mosh avoids reaching for. */
 const MOSH_MEMORY = 8;
 /** How many recent art directions to rotate past before reusing one. */
@@ -136,8 +137,6 @@ type State = {
   stickerGallery: StickerEntry[];
   /** Which camera is active ('user' = front, 'environment' = rear). */
   cameraFacing: CameraFacing | null;
-  /** Per-quadrant ring of recently-rolled effect ids (anti-repetition). */
-  quadrantHistory: string[][];
   /** Recently-used effect ids across full moshes (anti-repetition). */
   recentEffects: string[];
   /** Recently-used look ids. Rotating the art direction — not just the
@@ -147,25 +146,23 @@ type State = {
   currentLook: { id: string; name: string; blurb: string } | null;
   /** Latest content analysis, for the UI to show what the director saw. */
   currentBrief: FrameBrief | null;
-  /** Last quadrant roll — drives the transient on-canvas readout. */
-  lastQuadrantRoll: QuadrantRoll | null;
-  /**
-   * Which voice the next plain tap re-rolls. Tapping cycles GRADE → FORM →
-   * ACCENT → FINISH so the stack evolves one part at a time without the user
-   * having to aim at anything; a full mosh resets it to the grade.
-   */
-  voiceCursor: number;
+  /** Last semantic-role roll — drives the transient on-canvas readout. */
+  lastRoleRoll: RoleRoll | null;
+  /** The semantic role targeted by the next clean canvas tap. */
+  roleCursor: Role;
+  /** The role whose controls are open. Empty roles may be selected. */
+  selectedRole: Role | null;
+  /** Remembered active layer per semantic role. */
+  selectedRoleLayers: Partial<Record<Role, string>>;
 };
 
-export type QuadrantRoll = {
-  quadrant: QuadrantIndex;
+export type RoleRoll = {
+  role: Role;
+  layerId: string;
   effectId: string;
   effectName: string;
   relation: RelationLabel;
   affinity: number;
-  /** Which part of the composition this quadrant drives. */
-  role: Role;
-  /** performance.now() at roll time — used to auto-fade the readout. */
   at: number;
 };
 
@@ -188,24 +185,16 @@ type Actions = {
   setModulator: (id: string, key: string, mod: Modulator | null) => void;
   setAudioMap: (id: string, key: string, map: AudioMap | null) => void;
   selectLayer: (id: string | null) => void;
+  selectRole: (role: Role) => void;
+  selectRoleLayer: (role: Role, layerId: string) => void;
+  rerollRole: (role?: Role, layerId?: string) => RoleRoll | null;
+  addRole: (role: Role) => RoleRoll | null;
 
   mosh: (intensity?: Intensity) => void;
   reset: () => void;
 
-  /**
-   * Re-roll a single quadrant against whatever the other three hold. Pads the
-   * stack when the quadrant is still empty so the quadrant↔layer map stays
-   * 1:1. Returns the roll, or null when the target layer is locked.
-   */
-  moshQuadrant: (q: QuadrantIndex, opts?: { targetAffinity?: number }) => QuadrantRoll | null;
-  /**
-   * Re-roll the next voice in rotation. This is what a plain tap does: no
-   * aiming, no map to memorise, but a smaller and more steerable change than a
-   * full mosh. Skips locked voices; returns null only when every voice is
-   * locked.
-   */
-  moshNext: () => QuadrantRoll | null;
-  clearQuadrantRoll: () => void;
+  /** Re-roll the next unlocked semantic role. */
+  moshNext: () => RoleRoll | null;
 
   /**
    * Drop every effect and stop anything that would re-apply one, leaving the
@@ -282,6 +271,7 @@ function makeLayer(effectId: string, opts: Partial<Layer> = {}): Layer {
   return {
     id: newId(),
     effectId,
+    role: roleForEffect(effectId) ?? undefined,
     hidden: false,
     locked: false,
     opacity: 1,
@@ -379,13 +369,14 @@ export const useStore = create<State & Actions>((set, get) => ({
   stickerMode: false,
   stickerGallery: [],
   cameraFacing: null,
-  quadrantHistory: Array.from({ length: QUADRANT_COUNT }, () => [] as string[]),
-  voiceCursor: 0,
+  roleCursor: "grade",
+  selectedRole: null,
+  selectedRoleLayers: {},
   recentEffects: [],
   recentLooks: [],
   currentLook: null,
   currentBrief: null,
-  lastQuadrantRoll: null,
+  lastRoleRoll: null,
 
   setGlCanvas: (canvas) => set({ glCanvas: canvas }),
 
@@ -485,19 +476,26 @@ export const useStore = create<State & Actions>((set, get) => ({
       try { s.videoElement.srcObject = null; } catch {}
       try { s.videoElement.parentNode?.removeChild(s.videoElement); } catch {}
     }
-    set({ imageUrl: null, imageElement: null, videoElement: null, videoStream: null, cameraFacing: null, sourceName: null, layers: [], past: [], future: [], paletteProfile: null });
+    set({
+      imageUrl: null, imageElement: null, videoElement: null, videoStream: null,
+      cameraFacing: null, sourceName: null, layers: [], past: [], future: [], paletteProfile: null,
+      ...resetRoleSelection([]),
+    });
   },
 
   addLayer: (effectId) => {
     const l = makeLayer(effectId);
-    set(s => ({ past: pushPast(s), future: [], layers: [...s.layers, l], selectedLayerId: l.id }));
+    set(s => ({
+      past: pushPast(s), future: [], layers: [...s.layers, l], selectedLayerId: l.id,
+      selectedRole: l.role ?? s.selectedRole,
+      selectedRoleLayers: l.role ? { ...s.selectedRoleLayers, [l.role]: l.id } : s.selectedRoleLayers,
+    }));
   },
 
-  removeLayer: (id) => set(s => ({
-    past: pushPast(s), future: [],
-    layers: s.layers.filter(l => l.id !== id),
-    selectedLayerId: s.selectedLayerId === id ? null : s.selectedLayerId,
-  })),
+  removeLayer: (id) => set(s => {
+    const layers = s.layers.filter(l => l.id !== id);
+    return { past: pushPast(s), future: [], layers, ...repairRoleSelection(layers, s.selectedRole, s.selectedRoleLayers) };
+  }),
 
   duplicateLayer: (id) => set(s => {
     const l = s.layers.find(x => x.id === id);
@@ -520,7 +518,10 @@ export const useStore = create<State & Actions>((set, get) => ({
   }),
 
   toggleHidden: (id) => set(s => ({ layers: mapLayer(s.layers, id, l => ({ ...l, hidden: !l.hidden })) })),
-  toggleLocked: (id) => set(s => ({ layers: mapLayer(s.layers, id, l => ({ ...l, locked: !l.locked })) })),
+  toggleLocked: (id) => set(s => {
+    if (!s.layers.some(layer => layer.id === id)) return s;
+    return { past: pushPast(s), future: [], layers: mapLayer(s.layers, id, l => ({ ...l, locked: !l.locked })) };
+  }),
   setOpacity: (id, opacity) => set(s => ({ layers: mapLayer(s.layers, id, l => ({ ...l, opacity })) })),
   setBlend: (id, blend) => set(s => ({ layers: mapLayer(s.layers, id, l => ({ ...l, blend })) })),
   setParam: (id, key, value) => set(s => ({
@@ -534,7 +535,39 @@ export const useStore = create<State & Actions>((set, get) => ({
     past: pushPast(s), future: [],
     layers: mapLayer(s.layers, id, l => ({ ...l, audioMaps: { ...(l.audioMaps ?? {}), [key]: map } })),
   })),
-  selectLayer: (id) => set({ selectedLayerId: id }),
+  selectLayer: (id) => set(s => {
+    const layer = s.layers.find(item => item.id === id);
+    if (!layer) return { selectedLayerId: id };
+    const role = resolveLayerRole(layer, s.layers.indexOf(layer));
+    return {
+      selectedLayerId: id,
+      selectedRole: role,
+      selectedRoleLayers: { ...s.selectedRoleLayers, [role]: id },
+    };
+  }),
+  selectRole: (role) => set(s => {
+    const group = groupLayersByRole(s.layers)[role];
+    const rememberedId = s.selectedRoleLayers[role];
+    const selected = group.find(layer => layer.id === rememberedId) ?? group[0] ?? null;
+    return {
+      selectedRole: role,
+      roleCursor: role,
+      selectedLayerId: selected?.id ?? null,
+      selectedRoleLayers: selected
+        ? { ...s.selectedRoleLayers, [role]: selected.id }
+        : s.selectedRoleLayers,
+    };
+  }),
+  selectRoleLayer: (role, layerId) => set(s => {
+    const group = groupLayersByRole(s.layers)[role];
+    if (!group.some(layer => layer.id === layerId)) return s;
+    return {
+      selectedRole: role,
+      selectedLayerId: layerId,
+      roleCursor: role,
+      selectedRoleLayers: { ...s.selectedRoleLayers, [role]: layerId },
+    };
+  }),
 
   mosh: (intensity) => set(s => {
     const inten = intensity ?? s.intensity;
@@ -559,6 +592,7 @@ export const useStore = create<State & Actions>((set, get) => ({
       return {
         id: newId(),
         effectId: cl.effectId,
+        role: cl.role,
         hidden: false, locked: false,
         blend: cl.blend,
         opacity: cl.opacity,
@@ -570,10 +604,12 @@ export const useStore = create<State & Actions>((set, get) => ({
     });
 
     const usedIds = composition.layers.map(l => l.effectId);
+    const layers = [...locked, ...fresh];
+    const selection = resetRoleSelection(layers);
     return {
       ...s,
       past: pushPast(s), future: [],
-      layers: [...locked, ...fresh],
+      layers,
       seed,
       recentEffects: [...s.recentEffects, ...usedIds].slice(-MOSH_MEMORY),
       recentLooks: [...s.recentLooks, composition.look.id].slice(-LOOK_MEMORY),
@@ -583,132 +619,139 @@ export const useStore = create<State & Actions>((set, get) => ({
         blurb: composition.look.blurb,
       },
       currentBrief: brief,
-      // A full mosh replaces every quadrant, so quadrant memory starts over.
-      quadrantHistory: Array.from({ length: QUADRANT_COUNT }, () => [] as string[]),
-      lastQuadrantRoll: null,
-      // Next tap picks up at the grade again.
-      voiceCursor: 0,
+      lastRoleRoll: null,
+      ...selection,
     };
   }),
 
-  moshQuadrant: (q, opts) => {
+  rerollRole: (requestedRole, requestedLayerId) => {
     const s = get();
+    const role = requestedRole ?? s.selectedRole ?? s.roleCursor;
+    const group = groupLayersByRole(s.layers)[role];
+    const rememberedId = s.selectedRoleLayers[role];
+    const explicitTarget = requestedLayerId ? group.find(layer => layer.id === requestedLayerId) : undefined;
+    const rememberedTarget = rememberedId ? group.find(layer => layer.id === rememberedId) : undefined;
+    const target = explicitTarget
+      ?? rememberedTarget
+      ?? group.find(layer => !layer.locked);
+    if (!target || target.locked) return null;
+
+    const excluded = s.layers.filter(layer => layer.id !== target.id).map(layer => layer.effectId).concat(target.effectId);
+    if (!poolForRole(role).some(effectId => !excluded.includes(effectId))) return null;
+
     const rand = rngFromSeed(generateSeed());
-    const layers = s.layers;
-
-    if (layers[q]?.locked) return null;
-
     const brief = s.currentBrief ?? briefFrom(analyzeSource(s.videoElement ?? s.imageElement));
-    // Keep composing under the stack's existing art direction so a single
-    // quadrant re-roll is a new take on the same idea, not a genre change.
     const look: Look = (s.currentLook && LOOKS_LOOKUP[s.currentLook.id])
       ?? chooseLook(brief, rand, s.recentLooks);
-
-    // Each quadrant owns one part of the composition: Q1 grades, Q2 forms,
-    // Q3 accents, Q4 finishes.
-    const role = roleForQuadrant(q);
-    const affinity = opts?.targetAffinity ?? skewedAffinity(rand);
-    // Each quadrant re-roll gets its own wildness, so repeatedly tapping one
-    // quadrant sweeps a real range instead of nudging the same effect.
-    const wild = rollWildness(rand, WILD_FLOOR[s.intensity]);
-
-    const held = layers
-      .slice(0, QUADRANT_COUNT)
-      .map((l, i) => (i === q ? "" : l.effectId))
-      .filter(Boolean);
-
-    const effectId = pickForRole(role, look, brief, rand, {
-      exclude: [layers[q]?.effectId ?? "", ...held, ...(s.quadrantHistory[q] ?? [])].filter(Boolean),
+    const affinity = skewedAffinity(rand);
+    const wildness = rollWildness(rand, WILD_FLOOR[s.intensity]);
+    const composed = composeRoleLayer(role, look, brief, rand, {
+      exclude: excluded,
       affinityTarget: affinity,
-      wildness: wild,
+      wildness,
+      existingRegion: target.region ?? null,
     });
-    const def = EFFECTS_BY_ID[effectId];
+    if (!composed) return null;
+    const def = EFFECTS_BY_ID[composed.effectId];
     if (!def) return null;
 
-    const next = layers.slice();
-    // Pad the stack so quadrant N always addresses layers[N] — and pad it with
-    // the roles those slots are supposed to hold, so the grammar stays intact.
-    while (next.length < q) {
-      const fillRole = roleForQuadrant(next.length);
-      const fillId = pickForRole(fillRole, look, brief, rand, {
-        exclude: next.map(l => l.effectId),
-      });
-      const fillDef = EFFECTS_BY_ID[fillId];
-      next.push({
-        id: newId(),
-        effectId: fillId,
-        hidden: false, locked: false,
-        blend: fillRole === "grade" ? "normal" : blendForRole(fillRole, rand),
-        opacity: opacityForRole(fillRole, look, brief, rand, fillId, { wildness: wild }),
-        params: paramsForRole(fillId, fillRole, look, brief, rand, wild),
-        mods: Object.fromEntries(fillDef.params.map(p => [p.key, null])),
-        audioMaps: Object.fromEntries(fillDef.params.map(p => [p.key, null])),
-      });
-    }
-
-    const existing = next[q];
-    const layer: Layer = {
-      id: existing?.id ?? newId(),
-      effectId,
-      hidden: false,
-      locked: false,
-      // The grade sits at the bottom fully opaque so the source is never
-      // wiped out from underneath the stack.
-      blend: role === "grade" ? "normal" : blendForRole(role, rand),
-      opacity: opacityForRole(role, look, brief, rand, effectId, { wildness: wild }),
-      params: paramsForRole(effectId, role, look, brief, rand, wild),
-      mods: Object.fromEntries(def.params.map(p => [p.key, null])),
-      audioMaps: Object.fromEntries(def.params.map(p => [p.key, null])),
-    };
-    next[q] = layer;
-
-    const history = s.quadrantHistory.map(h => h.slice());
-    history[q] = [...(history[q] ?? []), effectId].slice(-QUADRANT_MEMORY);
-
-    const record: QuadrantRoll = {
-      quadrant: q,
-      effectId,
+    const nextLayers = s.layers.map(layer => layer.id !== target.id ? layer : {
+      ...layer,
+      effectId: composed.effectId,
+      role,
+      blend: composed.blend,
+      opacity: composed.opacity,
+      region: composed.region ?? null,
+      params: composed.params,
+      mods: Object.fromEntries(def.params.map(param => [param.key, null])),
+      audioMaps: Object.fromEntries(def.params.map(param => [param.key, null])),
+    });
+    const record: RoleRoll = {
+      role,
+      layerId: target.id,
+      effectId: composed.effectId,
       effectName: def.name,
       relation: relationLabel(affinity),
       affinity,
-      role,
-      at: (typeof performance !== "undefined" ? performance.now() : Date.now()),
+      at: typeof performance !== "undefined" ? performance.now() : Date.now(),
     };
-
+    const nextRole = nextAvailableRole(nextLayers, role) ?? role;
     set({
-      past: pushPast(s), future: [],
-      layers: next,
-      selectedLayerId: layer.id,
-      quadrantHistory: history,
-      recentEffects: [...s.recentEffects, effectId].slice(-MOSH_MEMORY),
+      past: pushPast(s), future: [], layers: nextLayers,
+      selectedLayerId: target.id,
+      selectedRole: role,
+      selectedRoleLayers: { ...s.selectedRoleLayers, [role]: target.id },
+      roleCursor: nextRole,
+      recentEffects: [...s.recentEffects, composed.effectId].slice(-MOSH_MEMORY),
       currentBrief: brief,
       currentLook: { id: look.id, name: look.name, blurb: look.blurb },
-      lastQuadrantRoll: record,
+      lastRoleRoll: record,
+    });
+    return record;
+  },
+
+  addRole: (role) => {
+    const s = get();
+    if (groupLayersByRole(s.layers)[role].length) return null;
+    const rand = rngFromSeed(generateSeed());
+    const brief = s.currentBrief ?? briefFrom(analyzeSource(s.videoElement ?? s.imageElement));
+    const look: Look = (s.currentLook && LOOKS_LOOKUP[s.currentLook.id])
+      ?? chooseLook(brief, rand, s.recentLooks);
+    const affinity = skewedAffinity(rand);
+    const composed = composeRoleLayer(role, look, brief, rand, {
+      exclude: s.layers.map(layer => layer.effectId),
+      affinityTarget: affinity,
+      wildness: rollWildness(rand, WILD_FLOOR[s.intensity]),
+      existingRegion: null,
+    });
+    if (!composed) return null;
+    const def = EFFECTS_BY_ID[composed.effectId];
+    if (!def) return null;
+    const layer: Layer = {
+      id: newId(), effectId: composed.effectId, role,
+      hidden: false, locked: false, blend: composed.blend, opacity: composed.opacity,
+      region: null, params: composed.params,
+      mods: Object.fromEntries(def.params.map(param => [param.key, null])),
+      audioMaps: Object.fromEntries(def.params.map(param => [param.key, null])),
+    };
+    const groups = groupLayersByRole(s.layers);
+    const roleIndex = ROLE_ORDER.indexOf(role);
+    const previous = ROLE_ORDER.slice(0, roleIndex).flatMap(previousRole => groups[previousRole]);
+    const later = ROLE_ORDER.slice(roleIndex + 1).flatMap(nextRole => groups[nextRole]);
+    const afterPrevious = previous.length
+      ? s.layers.lastIndexOf(previous[previous.length - 1]) + 1
+      : -1;
+    const beforeLater = later.length ? s.layers.indexOf(later[0]) : s.layers.length;
+    const index = afterPrevious >= 0 ? afterPrevious : beforeLater;
+    const layers = s.layers.slice();
+    layers.splice(index, 0, layer);
+    const record: RoleRoll = {
+      role, layerId: layer.id, effectId: layer.effectId, effectName: def.name,
+      relation: relationLabel(affinity), affinity,
+      at: typeof performance !== "undefined" ? performance.now() : Date.now(),
+    };
+    set({
+      past: pushPast(s), future: [], layers,
+      selectedLayerId: layer.id, selectedRole: role,
+      selectedRoleLayers: { ...s.selectedRoleLayers, [role]: layer.id },
+      roleCursor: nextAvailableRole(layers, role) ?? role,
+      recentEffects: [...s.recentEffects, layer.effectId].slice(-MOSH_MEMORY),
+      currentBrief: brief,
+      currentLook: { id: look.id, name: look.name, blurb: look.blurb },
+      lastRoleRoll: record,
     });
     return record;
   },
 
   moshNext: () => {
     const s = get();
-    // Rotate over the voices the stack actually uses, so tapping cycles what is
-    // on screen instead of growing the stack toward four.
-    const count = Math.min(QUADRANT_COUNT, Math.max(1, s.layers.length));
-
-    // Walk forward to the first unlocked voice. Locked voices are the user's
-    // "keep this" vote, so they are stepped over rather than treated as a dead
-    // tap — that is what makes lock-and-keep-tapping feel like steering.
-    for (let step = 0; step < count; step++) {
-      const q = ((s.voiceCursor + step) % count) as QuadrantIndex;
-      if (s.layers[q]?.locked) continue;
-      const roll = get().moshQuadrant(q);
-      if (!roll) continue;
-      set({ voiceCursor: (q + 1) % count });
-      return roll;
-    }
-    return null;
+    const role = nextAvailableRole(s.layers, s.roleCursor, { includeCurrent: true });
+    if (!role) return null;
+    if (role !== s.roleCursor) set({ roleCursor: role });
+    const layerId = groupLayersByRole(s.layers)[role].find(layer => !layer.locked)?.id;
+    if (!layerId) return null;
+    return get().rerollRole(role, layerId);
   },
-
-  clearQuadrantRoll: () => set({ lastQuadrantRoll: null }),
 
   clearAllFx: () => set(s => ({
     ...s,
@@ -722,12 +765,13 @@ export const useStore = create<State & Actions>((set, get) => ({
     // Forget the art direction too: the next mosh should start fresh rather
     // than continue composing under a look the user just cleared away.
     currentLook: null,
-    quadrantHistory: Array.from({ length: QUADRANT_COUNT }, () => [] as string[]),
-    lastQuadrantRoll: null,
-    voiceCursor: 0,
+    lastRoleRoll: null,
+    selectedRole: null,
+    selectedRoleLayers: {},
+    roleCursor: "grade",
   })),
 
-  reset: () => set(s => ({ ...s, past: pushPast(s), future: [], layers: [] })),
+  reset: () => set(s => ({ ...s, past: pushPast(s), future: [], layers: [], ...resetRoleSelection([]) })),
 
   setIntensity: (i) => set({ intensity: i }),
   setBeforeAfter: (open) => set({ showBeforeAfter: open }),
@@ -749,12 +793,18 @@ export const useStore = create<State & Actions>((set, get) => ({
   undo: () => set(s => {
     if (!s.past.length) return s;
     const prev = s.past[s.past.length - 1];
-    return { ...s, layers: prev, past: s.past.slice(0, -1), future: [s.layers, ...s.future].slice(0, HISTORY_LIMIT) };
+    return {
+      ...s, layers: prev, past: s.past.slice(0, -1), future: [s.layers, ...s.future].slice(0, HISTORY_LIMIT),
+      ...repairRoleSelection(prev, s.selectedRole, s.selectedRoleLayers),
+    };
   }),
   redo: () => set(s => {
     if (!s.future.length) return s;
     const next = s.future[0];
-    return { ...s, layers: next, past: [...s.past, s.layers].slice(-HISTORY_LIMIT), future: s.future.slice(1) };
+    return {
+      ...s, layers: next, past: [...s.past, s.layers].slice(-HISTORY_LIMIT), future: s.future.slice(1),
+      ...repairRoleSelection(next, s.selectedRole, s.selectedRoleLayers),
+    };
   }),
 
   saveSlot: (i) => set(s => {
@@ -769,12 +819,12 @@ export const useStore = create<State & Actions>((set, get) => ({
     const s = get();
     const slot = s.slots[i];
     if (!slot) return false;
-    const cloned = slot.map(l => ({ ...l, id: newId(), params: { ...l.params }, mods: { ...l.mods }, audioMaps: { ...(l.audioMaps ?? {}) } }));
-    set({ ...s, past: pushPast(s), future: [], layers: cloned, activeSlot: i, selectedLayerId: null });
+    const cloned = normalizeLayerRoles(slot).map(l => ({ ...l, id: newId(), params: { ...l.params }, mods: { ...l.mods }, audioMaps: { ...(l.audioMaps ?? {}) } }));
+    set({ ...s, past: pushPast(s), future: [], layers: cloned, activeSlot: i, ...repairRoleSelection(cloned, s.selectedRole, s.selectedRoleLayers) });
     return true;
   },
   rerollSeed: () => set({ seed: generateSeed() }),
-  clearLayers: () => set(s => ({ ...s, past: pushPast(s), future: [], layers: [], selectedLayerId: null })),
+  clearLayers: () => set(s => ({ ...s, past: pushPast(s), future: [], layers: [], ...resetRoleSelection([]) })),
   removeTopLayer: () => set(s => {
     if (!s.layers.length) return s;
     return { ...s, past: pushPast(s), future: [], layers: s.layers.slice(0, -1) };
@@ -807,8 +857,8 @@ export const useStore = create<State & Actions>((set, get) => ({
     const s = get();
     const fav = s.favorites.find(f => f.id === id);
     if (!fav) return false;
-    const cloned = fav.layers.map(l => ({ ...l, id: newId(), params: { ...l.params }, mods: { ...l.mods }, audioMaps: { ...(l.audioMaps ?? {}) } }));
-    set({ past: pushPast(s), future: [], layers: cloned, seed: fav.seed ?? s.seed });
+    const cloned = normalizeLayerRoles(fav.layers).map(l => ({ ...l, id: newId(), params: { ...l.params }, mods: { ...l.mods }, audioMaps: { ...(l.audioMaps ?? {}) } }));
+    set({ past: pushPast(s), future: [], layers: cloned, seed: fav.seed ?? s.seed, ...repairRoleSelection(cloned, s.selectedRole, s.selectedRoleLayers) });
     return true;
   },
 
@@ -818,7 +868,7 @@ export const useStore = create<State & Actions>((set, get) => ({
     const s = get();
     // Fresh ids: the decoder mints its own, but applying the same link twice
     // must not produce two layers claiming the same identity.
-    const cloned = payload.layers.map(l => ({
+    const cloned = normalizeLayerRoles(payload.layers).map(l => ({
       ...l,
       id: newId(),
       params: { ...l.params },
@@ -831,6 +881,7 @@ export const useStore = create<State & Actions>((set, get) => ({
       layers: cloned,
       seed: payload.seed ?? s.seed,
       intensity: payload.intensity ?? s.intensity,
+      ...repairRoleSelection(cloned, s.selectedRole, s.selectedRoleLayers),
     });
     return true;
   },
@@ -854,7 +905,7 @@ export const useStore = create<State & Actions>((set, get) => ({
     // Fresh ids on load: the same cue can be recalled repeatedly during a set,
     // and layers sharing an identity break selection and reordering.
     const slots = parsed.slots.map(layers =>
-      layers ? layers.map(l => ({ ...l, id: newId(), params: { ...l.params }, mods: { ...l.mods }, audioMaps: { ...(l.audioMaps ?? {}) } })) : null,
+      layers ? normalizeLayerRoles(layers).map(l => ({ ...l, id: newId(), params: { ...l.params }, mods: { ...l.mods }, audioMaps: { ...(l.audioMaps ?? {}) } })) : null,
     );
     saveSlotsToStorage(slots);
     set({ slots, activeSlot: null });
@@ -888,6 +939,7 @@ export const useStore = create<State & Actions>((set, get) => ({
       return [{
         id: newId(),
         effectId: d.effectId,
+        role: roleForEffect(d.effectId) ?? undefined,
         hidden: false, locked: false,
         blend: d.blend,
         opacity: d.opacity,
@@ -897,7 +949,8 @@ export const useStore = create<State & Actions>((set, get) => ({
         audioMaps: Object.fromEntries(def.params.map(p => [p.key, null])),
       }];
     });
-    return { ...s, past: pushPast(s), future: [], layers: [...locked, ...fresh], seed };
+    const layers = [...locked, ...fresh];
+    return { ...s, past: pushPast(s), future: [], layers, seed, ...resetRoleSelection(layers) };
   }),
 
   moshStorm: (ids) => set(s => {
@@ -914,6 +967,7 @@ export const useStore = create<State & Actions>((set, get) => ({
       return [{
         id: newId(),
         effectId: eid,
+        role: roleForEffect(eid) ?? undefined,
         hidden: false, locked: false,
         blend: (idx === 0 ? "normal" : EXOTIC_BLENDS[Math.floor(rand() * EXOTIC_BLENDS.length)]) as import("@/engine/blend").BlendMode,
         opacity: idx === 0 ? 1 : 0.7 + rand() * 0.3,
@@ -934,12 +988,14 @@ export const useStore = create<State & Actions>((set, get) => ({
       s.layers.length !== fresh.length + locked.length ||
       fresh.some((l, i) => s.layers[locked.length + i]?.effectId !== l.effectId);
 
+    const layers = [...locked, ...fresh];
     return {
       ...s,
       past: changed ? pushPast(s) : s.past,
       future: changed ? [] : s.future,
-      layers: [...locked, ...fresh],
+      layers,
       seed,
+      ...repairRoleSelection(layers, s.selectedRole, s.selectedRoleLayers),
     };
   }),
 
@@ -1032,11 +1088,54 @@ function pushPast(s: State): Layer[][] {
   return [...s.past, s.layers].slice(-HISTORY_LIMIT);
 }
 
+function resetRoleSelection(layers: Layer[]) {
+  const groups = groupLayersByRole(layers);
+  const selectedRole = ROLE_ORDER.find(role => groups[role].some(layer => !layer.locked))
+    ?? ROLE_ORDER.find(role => groups[role].length)
+    ?? null;
+  const selectedLayerId = selectedRole
+    ? (groups[selectedRole].find(layer => !layer.locked) ?? groups[selectedRole][0])?.id ?? null
+    : null;
+  return {
+    selectedRole,
+    selectedLayerId,
+    selectedRoleLayers: selectedRole && selectedLayerId ? { [selectedRole]: selectedLayerId } : {},
+    roleCursor: selectedRole ?? "grade",
+  };
+}
+
+function repairRoleSelection(
+  layers: Layer[],
+  selectedRole: Role | null,
+  selectedRoleLayers: Partial<Record<Role, string>>,
+) {
+  const groups = groupLayersByRole(layers);
+  const role = selectedRole && groups[selectedRole].length
+    ? selectedRole
+    : ROLE_ORDER.find(candidate => groups[candidate].length) ?? null;
+  if (!role) return resetRoleSelection(layers);
+  const remembered = selectedRoleLayers[role];
+  const selectedLayerId = groups[role].some(layer => layer.id === remembered)
+    ? remembered!
+    : groups[role][0].id;
+  return {
+    selectedRole: role,
+    selectedLayerId,
+    selectedRoleLayers: { ...selectedRoleLayers, [role]: selectedLayerId },
+    roleCursor: nextAvailableRole(layers, role, { includeCurrent: true }) ?? role,
+  };
+}
+
 function loadFavoritesFromStorage(): Favorite[] {
   if (typeof localStorage === "undefined") return [];
   try {
     const raw = localStorage.getItem("cathedral_favorites_v1");
-    if (raw) return JSON.parse(raw) as Favorite[];
+    if (raw) {
+      const favorites = JSON.parse(raw) as Favorite[];
+      return Array.isArray(favorites)
+        ? favorites.map(favorite => ({ ...favorite, layers: normalizeLayerRoles(favorite.layers) }))
+        : [];
+    }
   } catch {}
   return [];
 }
@@ -1047,7 +1146,10 @@ function loadSlotsFromStorage(): Array<Layer[] | null> {
   for (let i = 0; i < 9; i++) {
     try {
       const raw = localStorage.getItem(`cathedral_slot_${i + 1}`);
-      if (raw) out[i] = JSON.parse(raw) as Layer[];
+      if (raw) {
+        const layers = JSON.parse(raw) as Layer[];
+        if (Array.isArray(layers)) out[i] = normalizeLayerRoles(layers);
+      }
     } catch {}
   }
   return out;

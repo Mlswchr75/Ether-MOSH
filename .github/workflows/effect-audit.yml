@@ -1,0 +1,49 @@
+name: Effect audit
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - codex/role-controls-effect-audit
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install headless WebGL system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes build-essential xvfb xauth libgl1-mesa-dri libgl1-mesa-dev libglu1-mesa-dev libglew-dev libxi-dev libxext-dev pkg-config
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Verify workflow contract
+        run: node scripts/check-effect-audit-workflow.mjs
+
+      - name: Run complete effect audit
+        run: |
+          mkdir -p logs/effect-audit
+          set -o pipefail
+          xvfb-run -a -e logs/effect-audit/xvfb.log -s "-screen 0 1280x1024x24 -ac +extension GLX +render -noreset" npm run audit:effects -- --out-dir docs/effect-audit 2>&1 | tee logs/effect-audit/audit.log
+
+      - name: Upload effect-audit evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: effect-audit-${{ github.run_id }}
+          if-no-files-found: warn
+          path: |
+            docs/effect-audit/2026-08-14-results.json
+            docs/effect-audit/2026-08-14-contact-sheet.png
+            docs/effect-audit/frames/**
+            logs/effect-audit/**

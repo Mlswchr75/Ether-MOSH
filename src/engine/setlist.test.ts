@@ -59,6 +59,16 @@ describe("setlist round trip", () => {
     expect(back.slots[0]![1].opacity).toBeCloseTo(0.4, 2);
   });
 
+  it("preserves explicit grade and finish roles through export and import", () => {
+    const slots: (Layer[] | null)[] = new Array(SETLIST_SLOTS).fill(null);
+    slots[0] = [layerOf("filmicTone"), layerOf("bloom")];
+    slots[0][0].role = "grade";
+    slots[0][1].role = "finish";
+
+    const back = importSetlist(setlistToJson(exportSetlist(slots)))!;
+    expect(back.slots[0]!.map(layer => layer.role)).toEqual(["grade", "finish"]);
+  });
+
   it("handles a completely empty rig", () => {
     const back = importSetlist(setlistToJson(exportSetlist(new Array(SETLIST_SLOTS).fill(null))))!;
     expect(back.slots.every(s => s === null)).toBe(true);
