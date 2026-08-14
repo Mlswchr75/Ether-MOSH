@@ -7,6 +7,20 @@ const workflow = await readFile(workflowPath, "utf8");
 
 assert.doesNotThrow(() => assertEffectAuditWorkflowContract(workflow));
 
+const nativeDependencyCheck = "        run: node scripts/check-native-audit-dependency.mjs";
+const requiredStepMutations = [
+  ["native dependency contract check", workflow.replace(`\n${nativeDependencyCheck}`, "")],
+  ["optional dependency omission", workflow.replace("run: npm ci", "run: npm ci --omit=optional")],
+];
+
+for (const [name, invalidWorkflow] of requiredStepMutations) {
+  assert.throws(
+    () => assertEffectAuditWorkflowContract(invalidWorkflow),
+    /Effect-audit workflow contract missing/,
+    `${name} mutation must fail`,
+  );
+}
+
 const branch = "      - codex/role-controls-effect-audit";
 const invalidTriggers = [
   ["main", workflow.replace(branch, "      - main")],

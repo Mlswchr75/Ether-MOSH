@@ -32,7 +32,8 @@ function assertTriggerContract(document) {
 const required = [
   ["Ubuntu runner", /runs-on:\s*ubuntu-latest/],
   ["Node 22 setup", /node-version:\s*["']?22["']?/],
-  ["exact lockfile install", /npm ci/],
+  ["default optional-dependency lockfile install", /^\s*run:\s*npm ci\s*$/m],
+  ["native audit dependency contract", /^\s*run:\s*node scripts\/check-native-audit-dependency\.mjs\s*$/m],
   ["Xvfb installation", /apt-get install[^\n]*\bxvfb\b/],
   ["Xvfb authentication helper", /apt-get install[^\n]*\bxauth\b/],
   ["readiness-safe Xvfb execution", /xvfb-run\s+-a/],
@@ -54,6 +55,12 @@ export function assertEffectAuditWorkflowContract(workflow) {
   const missing = required.filter(([, pattern]) => !pattern.test(workflow)).map(([name]) => name);
   if (missing.length > 0) {
     throw new Error(`Effect-audit workflow contract missing: ${missing.join(", ")}`);
+  }
+
+  const installStep = workflow.indexOf("run: npm ci");
+  const nativeDependencyCheck = workflow.indexOf("run: node scripts/check-native-audit-dependency.mjs");
+  if (nativeDependencyCheck <= installStep) {
+    throw new Error("Effect-audit workflow contract failed: native dependency check must run after npm ci.");
   }
 }
 
