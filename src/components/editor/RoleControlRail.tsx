@@ -214,7 +214,7 @@ function RoleControlStrip({
               aria-pressed={activeLayer?.id === layer.id}
               onPointerDown={event => event.stopPropagation()}
               onClick={() => onSelectLayer(layer.id)}
-              className={`shrink-0 rounded-sm border px-2 py-1 font-mono text-[9px] ${activeLayer?.id === layer.id ? "border-[hsl(var(--accent))] text-white" : "border-white/15 text-white/60"}`}
+              className={`min-h-10 shrink-0 rounded-sm border px-2 py-1 font-mono text-[9px] ${activeLayer?.id === layer.id ? "border-[hsl(var(--accent))] text-white" : "border-white/15 text-white/60"}`}
             >
               {EFFECTS_BY_ID[layer.effectId]?.name ?? layer.effectId}
               {layer.locked && " (locked)"}
@@ -224,14 +224,14 @@ function RoleControlStrip({
       )}
       <div className="mt-2 flex flex-wrap gap-1">
         {layers.length === 0 ? (
-          <button type="button" disabled={!hasSource} onPointerDown={event => event.stopPropagation()} onClick={onAdd} className="min-h-8 rounded-sm border border-white/20 px-2 font-mono text-[9px] uppercase disabled:cursor-not-allowed disabled:opacity-40">
+          <button type="button" disabled={!hasSource} onPointerDown={event => event.stopPropagation()} onClick={onAdd} className="min-h-10 rounded-sm border border-white/20 px-2 font-mono text-[9px] uppercase disabled:cursor-not-allowed disabled:opacity-40">
             <Plus aria-hidden className="mr-1 inline size-3" />Add
           </button>
         ) : (
           <>
-            <button type="button" disabled={!hasSource} onPointerDown={event => event.stopPropagation()} onClick={onReroll} className="min-h-8 rounded-sm border border-white/20 px-2 font-mono text-[9px] uppercase disabled:cursor-not-allowed disabled:opacity-40">Reroll</button>
-            <button type="button" disabled={!hasSource} onPointerDown={event => event.stopPropagation()} onClick={onToggleLock} className="min-h-8 rounded-sm border border-white/20 px-2 font-mono text-[9px] uppercase disabled:cursor-not-allowed disabled:opacity-40">{activeLayer?.locked ? "Unlock" : "Lock"}</button>
-            <button type="button" disabled={!hasSource} onPointerDown={event => event.stopPropagation()} onClick={onTune} className="min-h-8 rounded-sm border border-white/20 px-2 font-mono text-[9px] uppercase disabled:cursor-not-allowed disabled:opacity-40">Tune</button>
+            <button type="button" disabled={!hasSource} onPointerDown={event => event.stopPropagation()} onClick={onReroll} className="min-h-10 rounded-sm border border-white/20 px-2 font-mono text-[9px] uppercase disabled:cursor-not-allowed disabled:opacity-40">Reroll</button>
+            <button type="button" disabled={!hasSource} onPointerDown={event => event.stopPropagation()} onClick={onToggleLock} className="min-h-10 rounded-sm border border-white/20 px-2 font-mono text-[9px] uppercase disabled:cursor-not-allowed disabled:opacity-40">{activeLayer?.locked ? "Unlock" : "Lock"}</button>
+            <button type="button" disabled={!hasSource} onPointerDown={event => event.stopPropagation()} onClick={onTune} className="min-h-10 rounded-sm border border-white/20 px-2 font-mono text-[9px] uppercase disabled:cursor-not-allowed disabled:opacity-40">Tune</button>
           </>
         )}
       </div>

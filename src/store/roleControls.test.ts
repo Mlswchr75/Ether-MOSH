@@ -19,6 +19,8 @@ const roleStore = () => useStore.getState() as unknown as {
   moshNext: () => { role: "grade" | "form" | "accent" | "finish"; layerId: string } | null;
   mosh: (intensity?: "mild" | "savage" | "nuclear" | "interdimensional") => void;
   toggleLocked: (id: string) => void;
+  duplicateLayer: (id: string) => void;
+  removeTopLayer: () => void;
   undo: () => void;
   applyPreset: (payload: { layers: Layer[] }) => boolean;
 };
@@ -215,6 +217,38 @@ describe("role-aware effect controls", () => {
 
     expect(roleStore().past).toHaveLength(pastBefore + 1);
     expect(roleStore().future).toEqual([]);
+  });
+
+  it("makes a duplicated layer the coherent selection for its semantic role", () => {
+    const store = roleStore();
+    store.mosh("nuclear");
+    const target = groupLayersByRole(roleStore().layers).accent[1];
+
+    store.selectRoleLayer("accent", target.id);
+    store.duplicateLayer(target.id);
+
+    const duplicate = roleStore().layers[roleStore().layers.findIndex(layer => layer.id === target.id) + 1];
+    expect(duplicate.id).not.toBe(target.id);
+    expect(duplicate.effectId).toBe(target.effectId);
+    expect(roleStore().selectedLayerId).toBe(duplicate.id);
+    expect(roleStore().selectedRole).toBe("accent");
+    expect(roleStore().selectedRoleLayers.accent).toBe(duplicate.id);
+  });
+
+  it("repairs selection after removing the selected top layer without retaining stale IDs", () => {
+    const store = roleStore();
+    store.mosh("mild");
+    const removed = roleStore().layers.at(-1)!;
+    store.selectRoleLayer("finish", removed.id);
+
+    store.removeTopLayer();
+
+    const state = roleStore();
+    expect(state.layers.some(layer => layer.id === removed.id)).toBe(false);
+    expect(state.selectedRole).toBe("grade");
+    expect(state.selectedLayerId).toBe(state.layers[0].id);
+    expect(state.selectedRoleLayers.grade).toBe(state.layers[0].id);
+    expect(Object.values(state.selectedRoleLayers)).not.toContain(removed.id);
   });
 
   it("repairs stale selected layer IDs after undo, preset loading, and a full mosh", () => {

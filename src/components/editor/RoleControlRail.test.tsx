@@ -54,6 +54,31 @@ describe("RoleControlRail", () => {
     expect(screen.getByRole("button", { name: /Glow.*Finish/i })).not.toBeNull();
   });
 
+  it("keeps role, effect, and action targets at least 40 CSS pixels tall", () => {
+    render(<RoleControlRail onTune={() => {}} />);
+
+    for (const button of [
+      screen.getByRole("button", { name: /Color.*Grade/i }),
+      screen.getByRole("button", { name: /Warp.*Form/i }),
+      screen.getByRole("button", { name: /Glitch.*Accent/i }),
+      screen.getByRole("button", { name: /Glow.*Finish/i }),
+      screen.getByRole("button", { name: "Reroll" }),
+      screen.getByRole("button", { name: "Lock" }),
+      screen.getByRole("button", { name: "Tune" }),
+    ]) {
+      expect(button.classList.contains("min-h-10")).toBe(true);
+    }
+
+    fireEvent.click(screen.getByRole("button", { name: /Glitch.*Accent/i }));
+    for (const layer of groupLayersByRole(useStore.getState().layers).accent) {
+      expect(screen.getByRole("button", { name: EFFECTS_BY_ID[layer.effectId].name }).classList.contains("min-h-10")).toBe(true);
+    }
+
+    act(() => useStore.getState().mosh("mild"));
+    fireEvent.click(screen.getByRole("button", { name: /Warp.*Form.*empty/i }));
+    expect(screen.getByRole("button", { name: "Add" }).classList.contains("min-h-10")).toBe(true);
+  });
+
   it("selects Glow without changing layers and opens its explanation", () => {
     render(<RoleControlRail onTune={() => {}} />);
     const before = structuredClone(useStore.getState().layers);

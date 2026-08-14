@@ -504,7 +504,16 @@ export const useStore = create<State & Actions>((set, get) => ({
     const idx = s.layers.findIndex(x => x.id === id);
     const next = [...s.layers];
     next.splice(idx + 1, 0, copy);
-    return { ...s, past: pushPast(s), future: [], layers: next, selectedLayerId: copy.id };
+    const role = resolveLayerRole(copy, idx + 1);
+    return {
+      ...s,
+      past: pushPast(s),
+      future: [],
+      layers: next,
+      selectedLayerId: copy.id,
+      selectedRole: role,
+      selectedRoleLayers: { ...s.selectedRoleLayers, [role]: copy.id },
+    };
   }),
 
   reorderLayer: (id, dir) => set(s => {
@@ -827,7 +836,14 @@ export const useStore = create<State & Actions>((set, get) => ({
   clearLayers: () => set(s => ({ ...s, past: pushPast(s), future: [], layers: [], ...resetRoleSelection([]) })),
   removeTopLayer: () => set(s => {
     if (!s.layers.length) return s;
-    return { ...s, past: pushPast(s), future: [], layers: s.layers.slice(0, -1) };
+    const layers = s.layers.slice(0, -1);
+    return {
+      ...s,
+      past: pushPast(s),
+      future: [],
+      layers,
+      ...repairRoleSelection(layers, s.selectedRole, s.selectedRoleLayers),
+    };
   }),
   setLastTouchedParam: (p) => set({ lastTouchedParam: p }),
   setShowFps: (b) => set({ showFps: b }),
@@ -1110,18 +1126,23 @@ function repairRoleSelection(
   selectedRoleLayers: Partial<Record<Role, string>>,
 ) {
   const groups = groupLayersByRole(layers);
+  const validRoleLayers = ROLE_ORDER.reduce<Partial<Record<Role, string>>>((remembered, candidate) => {
+    const layerId = selectedRoleLayers[candidate];
+    if (layerId && groups[candidate].some(layer => layer.id === layerId)) remembered[candidate] = layerId;
+    return remembered;
+  }, {});
   const role = selectedRole && groups[selectedRole].length
     ? selectedRole
     : ROLE_ORDER.find(candidate => groups[candidate].length) ?? null;
   if (!role) return resetRoleSelection(layers);
-  const remembered = selectedRoleLayers[role];
+  const remembered = validRoleLayers[role];
   const selectedLayerId = groups[role].some(layer => layer.id === remembered)
     ? remembered!
     : groups[role][0].id;
   return {
     selectedRole: role,
     selectedLayerId,
-    selectedRoleLayers: { ...selectedRoleLayers, [role]: selectedLayerId },
+    selectedRoleLayers: { ...validRoleLayers, [role]: selectedLayerId },
     roleCursor: nextAvailableRole(layers, role, { includeCurrent: true }) ?? role,
   };
 }

@@ -33,6 +33,9 @@ jobs:
       - name: Verify workflow contract
         run: node scripts/check-effect-audit-workflow.mjs
 
+      - name: Test workflow contract mutations
+        run: node --test scripts/check-effect-audit-workflow.test.mjs
+
       - name: Run complete effect audit
         run: |
           mkdir -p logs/effect-audit

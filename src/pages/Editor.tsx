@@ -36,6 +36,7 @@ import { captureDeliverable } from "@/engine/captureDeliverable";
 import { cueFromUrl, setlistFilename } from "@/engine/setlist";
 import { KaossSurface } from "@/components/editor/KaossSurface";
 import { QuadrantSurface } from "@/components/editor/QuadrantSurface";
+import { RoleControlRail } from "@/components/editor/RoleControlRail";
 import { TrackpadGestures } from "@/components/editor/TrackpadGestures";
 import { toggleSystemAudio } from "@/engine/systemAudio";
 import { loadImageFile, loadImageFromClipboard } from "@/lib/sourceLoader";
@@ -1134,6 +1135,7 @@ export default function Editor() {
           <GlCanvas />
         </div>
         {!hasSource && !isOverlay && <StartCameraOverlay />}
+        {!hasSource && !isOverlay && <RoleControlRail onTune={focusTune} />}
         <SystemAudioHud visible={systemAudioEnabled && !isOverlay} />
         {hasSource && !isOverlay && (
           <QuadrantSurface onTogglePerf={togglePerf} onTune={focusTune} />

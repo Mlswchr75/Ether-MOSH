@@ -1,7 +1,7 @@
 # Role Control Rail Design
 
-**Date:** 2026-08-14  
-**Status:** Approved design; implementation pending  
+**Date:** 2026-08-14
+**Status:** Approved design; implementation pending
 **Surface:** MOSH editor canvas overlay and effect-stack state
 
 ## Problem
