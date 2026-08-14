@@ -792,6 +792,25 @@
     .mosh-phrase { animation: none; opacity: 1; transform: none; clip-path: none; }
   }
 
+  /* Hero word swap. Short and violent: the headline is replaced, not faded,
+     so the new word arrives looking like a decoded frame. Wrapper-only, for
+     the same reason .mosh-phrase is — .mosh-text below it owns transform. */
+  .mosh-hero-swap {
+    will-change: transform, opacity, clip-path;
+    animation: mosh-hero-swap-in 460ms steps(1, end) both;
+  }
+  @keyframes mosh-hero-swap-in {
+    0%   { opacity: 0;    transform: translate3d(-14px, 0, 0); clip-path: inset(44% 0 44% 0); }
+    18%  { opacity: 1;    transform: translate3d(9px, -3px, 0); clip-path: inset(0 0 68% 0); }
+    34%  { opacity: 0.35; transform: translate3d(-7px, 3px, 0); clip-path: inset(58% 0 8% 0); }
+    52%  { opacity: 1;    transform: translate3d(4px, 0, 0);    clip-path: inset(14% 0 34% 0); }
+    70%  { opacity: 0.8;  transform: translate3d(-3px, 1px, 0); clip-path: inset(30% 0 44% 0); }
+    100% { opacity: 1;    transform: translate3d(0, 0, 0);      clip-path: inset(0 0 0 0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .mosh-hero-swap { animation: none; opacity: 1; transform: none; clip-path: none; }
+  }
+
   .mosh-icon {
     will-change: transform, filter;
     animation: mosh-icon-bob 3.4s ease-in-out infinite;

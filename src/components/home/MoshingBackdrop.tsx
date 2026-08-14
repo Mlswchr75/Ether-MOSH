@@ -27,12 +27,7 @@ function fillParams(effectId: string, given: Record<string, number>): Record<str
   return given; // resolver in Renderer falls back to defaults for missing keys
 }
 
-interface MoshingBackdropProps {
-  onFileUpload?: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  onStartCamera?: () => void;
-}
-
-export const MoshingBackdrop = ({ onFileUpload, onStartCamera }: MoshingBackdropProps) => {
+export const MoshingBackdrop = () => {
   const hostRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -157,68 +152,14 @@ export const MoshingBackdrop = ({ onFileUpload, onStartCamera }: MoshingBackdrop
     };
   }, []);
 
-  const handleCameraClick = () => {
-    if (onStartCamera) {
-      onStartCamera();
-    } else {
-      window.location.href = "/editor?source=camera";
-    }
-  };
-
+  // Backdrop only. The hero copy and its controls belong to the page, which is
+  // the single owner of everything the visitor reads or clicks — duplicating
+  // them here is what put two "DROP AN IMAGE" headlines and two upload icons on
+  // top of each other.
   return (
-    <div ref={hostRef} className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,hsl(266_40%_12%),hsl(266_24%_5%))] flex items-center justify-center">
-      
-      {/* INTERACTIVE HERO OVERLAY */}
-      <div className="relative z-10 flex flex-col items-center justify-center pointer-events-auto">
-
-        {/* TOP TEXT: Starts above the Camera Icon (shifted right) */}
-        <div className="text-xs font-mono tracking-widest text-[#ff2a8d] translate-x-14 mb-3 uppercase drop-shadow-[0_0_8px_rgba(255,42,141,0.6)]">
-          GO LIVE WITH CAMERA →
-        </div>
-
-        {/* CENTER BUTTONS: Upload Box & Camera Box Side-by-Side */}
-        <div className="flex items-center justify-center gap-6 my-2">
-          
-          {/* Left Icon: Upload Arrow Box */}
-          <label 
-            htmlFor="backdrop-file-upload" 
-            className="w-20 h-20 border-2 border-[#ff2a8d] bg-black/60 rounded-lg flex items-center justify-center cursor-pointer hover:scale-105 transition-all shadow-[0_0_15px_rgba(255,42,141,0.4)] hover:shadow-[0_0_25px_rgba(255,42,141,0.8)]"
-            title="Upload Image"
-          >
-            <svg className="w-9 h-9 stroke-[#ff2a8d]" fill="none" viewBox="0 0 24 24" strokeWidth="2">
-              <path d="M12 19V5M5 12l7-7 7 7"/>
-            </svg>
-            <input 
-              id="backdrop-file-upload" 
-              type="file" 
-              accept="image/*" 
-              onChange={onFileUpload} 
-              className="hidden" 
-            />
-          </label>
-
-          {/* Right Icon: Camera Icon Box (Initiates Live Camera Feed) */}
-          <button 
-            type="button"
-            onClick={handleCameraClick}
-            className="w-20 h-20 border-2 border-[#ff2a8d] bg-black/60 rounded-lg flex items-center justify-center cursor-pointer hover:scale-105 transition-all shadow-[0_0_15px_rgba(255,42,141,0.4)] hover:shadow-[0_0_25px_rgba(255,42,141,0.8)]"
-            title="Start Live Camera Feed"
-          >
-            <svg className="w-9 h-9 stroke-[#ff2a8d]" fill="none" viewBox="0 0 24 24" strokeWidth="2">
-              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
-              <circle cx="12" cy="13" r="4"/>
-            </svg>
-          </button>
-
-        </div>
-
-        {/* BOTTOM TEXT: Shifted left ~2 tab spaces (-translate-x-16) */}
-        <h1 className="text-4xl md:text-6xl font-black text-white -translate-x-16 mt-4 tracking-tighter drop-shadow-[0_0_20px_rgba(255,255,255,0.8)]">
-          DROP AN IMAGE
-        </h1>
-
-      </div>
-
-    </div>
+    <div
+      ref={hostRef}
+      className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,hsl(266_40%_12%),hsl(266_24%_5%))]"
+    />
   );
 };

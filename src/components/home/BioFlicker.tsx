@@ -1,5 +1,6 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useState } from "react";
+import { KEEP_OUT } from "./GlitchWordField";
 
 const FRAGMENTS = [
   "signal acquired",
@@ -35,20 +36,29 @@ export const BioFlicker = () => {
 
   return (
     <div className="pointer-events-none absolute inset-0 z-10" aria-hidden="true">
-      <AnimatePresence mode="wait">
-        {visible && (
-          <motion.span
-            key={idx}
-            initial={{ opacity: 0, x: -10, skewX: -8 }}
-            animate={{ opacity: 1, x: 0, skewX: 0 }}
-            exit={{ opacity: 0, x: 10, skewX: 8 }}
-            transition={{ duration: 0.15, ease: "easeOut" }}
-            className="absolute left-[8%] top-[62%] font-mono text-[10px] uppercase tracking-[0.35em] text-accent/70"
-          >
-            {FRAGMENTS[idx]}
-          </motion.span>
-        )}
-      </AnimatePresence>
+      {/* The band is reserved permanently, not just while a fragment is up:
+          the fragments come and go, and a word field that only avoided the
+          visible ones would place a word into the gap right before the next
+          fragment flickered in on top of it. */}
+      <div
+        {...KEEP_OUT}
+        className="absolute left-[8%] top-[62%] h-[14px] w-[26ch] max-w-[42vw]"
+      >
+        <AnimatePresence mode="wait">
+          {visible && (
+            <motion.span
+              key={idx}
+              initial={{ opacity: 0, x: -10, skewX: -8 }}
+              animate={{ opacity: 1, x: 0, skewX: 0 }}
+              exit={{ opacity: 0, x: 10, skewX: 8 }}
+              transition={{ duration: 0.15, ease: "easeOut" }}
+              className="absolute left-0 top-0 whitespace-nowrap font-mono text-[10px] uppercase tracking-[0.35em] text-accent/70"
+            >
+              {FRAGMENTS[idx]}
+            </motion.span>
+          )}
+        </AnimatePresence>
+      </div>
     </div>
   );
 };

@@ -1,10 +1,16 @@
 import { motion } from "framer-motion";
+import { KEEP_OUT } from "./GlitchWordField";
 
-/** Collage-style corner markings — crop marks, coordinates, registration dots. */
+/** Collage-style corner markings — crop marks, coordinates, registration dots.
+ *
+ *  Each mark reserves its own box so the word field routes around it; they are
+ *  small and fixed, and a word landing across a crop mark reads as a mistake
+ *  rather than as collage. */
 export const QuadrantDecor = () => (
   <div className="pointer-events-none absolute inset-0 z-10" aria-hidden="true">
     {/* top-left crop mark */}
     <motion.div
+      {...KEEP_OUT}
       initial={{ opacity: 0, scaleX: 0, scaleY: 0 }}
       animate={{ opacity: 1, scaleX: 1, scaleY: 1 }}
       transition={{ duration: 0.5, delay: 1.8, ease: [0.22, 1, 0.36, 1] }}
@@ -13,6 +19,7 @@ export const QuadrantDecor = () => (
     />
     {/* top-right coordinates */}
     <motion.div
+      {...KEEP_OUT}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.8, delay: 2.05 }}
@@ -22,6 +29,7 @@ export const QuadrantDecor = () => (
     </motion.div>
     {/* bottom-left registration dot */}
     <motion.div
+      {...KEEP_OUT}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.6, delay: 2.1 }}
@@ -32,6 +40,7 @@ export const QuadrantDecor = () => (
     </motion.div>
     {/* bottom-right crop mark */}
     <motion.div
+      {...KEEP_OUT}
       initial={{ opacity: 0, scaleX: 0, scaleY: 0 }}
       animate={{ opacity: 1, scaleX: 1, scaleY: 1 }}
       transition={{ duration: 0.5, delay: 1.9, ease: [0.22, 1, 0.36, 1] }}

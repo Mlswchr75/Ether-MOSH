@@ -4,6 +4,7 @@
  * then opens the store page in a new tab.
  */
 import { CAROUSEL_IMAGES } from "@/data/carouselImages";
+import { KEEP_OUT } from "@/components/home/GlitchWordField";
 
 type Props = {
   onSelect: (src: string, productUrl: string) => void;
@@ -17,7 +18,7 @@ const PICKS = [
 ];
 
 const DemoCarousel = ({ onSelect }: Props) => (
-  <div className="pointer-events-auto absolute bottom-16 left-1/2 z-20 -translate-x-1/2">
+  <div {...KEEP_OUT} className="pointer-events-auto absolute bottom-16 left-1/2 z-20 -translate-x-1/2">
     <div className="flex items-center gap-3">
       <span className="hidden font-mono text-[9px] uppercase tracking-[0.3em] text-foreground/40 sm:block">
         or mosh a demo →
