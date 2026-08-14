@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { EFFECTS, EFFECTS_BY_ID } from "./effects";
+import { EFFECTS, EFFECTS_BY_ID, EFFECT_SAMPLER_NAMES } from "./effects";
 import { axisTargets } from "./quadrants";
 
 /** The effects written for the canvas gesture instrument. */
@@ -97,10 +97,23 @@ describe("effect registry", () => {
     }
   });
 
-  it("exposes the depth proxy and time ring to every shader", () => {
+  it("exposes the namespaced depth proxy and time ring to every shader", () => {
     for (const def of EFFECTS) {
-      expect(def.frag, `${def.id}`).toContain("uniform sampler2D uDepth;");
+      expect(def.frag, `${def.id}`).toContain("uniform sampler2D uDepthTex;");
       expect(def.frag, `${def.id}`).toContain("uniform sampler2D uHist0;");
+    }
+  });
+
+  it("reserves common sampler uniforms so saved scalar param keys cannot collide", () => {
+    for (const def of EFFECTS) {
+      for (const param of def.params) {
+        const uniform = `u${param.key[0].toUpperCase()}${param.key.slice(1)}`;
+        expect(EFFECT_SAMPLER_NAMES, `${def.id}.${param.key}`).not.toContain(uniform);
+      }
+    }
+    for (const def of EFFECTS) {
+      expect(def.frag, `${def.id} depth helper`).toContain("texture2D(uDepthTex");
+      expect(def.frag, `${def.id} flow helper`).toContain("texture2D(uFlowTex");
     }
   });
 

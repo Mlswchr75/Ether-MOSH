@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { EFFECTS } from "./effects";
+import { EFFECTS, EFFECT_SAMPLER_NAMES } from "./effects";
 import { EFFECT_AUDIT_THRESHOLDS, measureEffectFrame } from "./effectAudit";
 import {
   AUDIT_CONTACT_SHEET,
@@ -127,7 +127,8 @@ describe("effect audit harness", () => {
     const fake = fakeGl();
     bindAuditUniforms(fake.gl, {} as WebGLProgram, EFFECTS[0], Array.from({ length: 8 }, () => ({} as WebGLTexture)), 0.7, 0.65);
 
-    expect(fake.uniform1i.map(([location]) => location)).toEqual(AUDIT_SAMPLER_NAMES);
+    expect(AUDIT_SAMPLER_NAMES).toEqual(EFFECT_SAMPLER_NAMES);
+    expect(fake.uniform1i.map(([location]) => location)).toEqual(EFFECT_SAMPLER_NAMES);
     expect(fake.uniform1f).toEqual(expect.arrayContaining(EFFECTS[0].params.map((param) => [
       `u${param.key[0].toUpperCase()}${param.key.slice(1)}`,
       param.default,

@@ -865,8 +865,8 @@ export class MoshRenderer {
     const uniforms: Record<string, THREE.IUniform> = {
       uTex: { value: null },
       uFeedback: { value: null },
-      uDepth: { value: null },
-      uFlow: { value: null },
+      uDepthTex: { value: null },
+      uFlowTex: { value: null },
       uHist0: { value: null },
       uHist1: { value: null },
       uHist2: { value: null },
@@ -973,8 +973,8 @@ export class MoshRenderer {
       // Last frame's finished output. Black until the first frame lands, so
       // feedback effects fade in rather than flashing garbage.
       uni.uFeedback.value = this.historyPrimed ? this.rtHistA.texture : null;
-      uni.uDepth.value = this.rtDepthA.texture;
-      uni.uFlow.value = this.rtFlowA.texture;
+      uni.uDepthTex.value = this.rtDepthA.texture;
+      uni.uFlowTex.value = this.rtFlowA.texture;
       // Ring entries newest-first. Anything past what has actually been written
       // reads as the newest frame, so a cold ring degrades to "no time offset"
       // instead of sampling an undefined buffer.

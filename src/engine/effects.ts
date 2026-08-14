@@ -36,6 +36,12 @@ export type EffectDef = {
   frag: string;
 };
 
+/** Common texture uniforms reserved by every effect shader. Keep scalar params
+ * outside this namespace so their saved keys remain valid GLSL uniforms. */
+export const EFFECT_SAMPLER_NAMES = [
+  "uTex", "uFeedback", "uDepthTex", "uFlowTex", "uHist0", "uHist1", "uHist2", "uHist3",
+] as const;
+
 const COMMON_HEADER = /* glsl */ `
 precision mediump float;
 varying vec2 vUv;
@@ -47,7 +53,7 @@ uniform sampler2D uFeedback;
 /* Foreground/background estimate, 1 = subject, 0 = the room behind them.
    Soft and blobby by construction — treat it as a gradient to displace along,
    not as a hard cut-out. See the depth pass in Renderer.ts for how it is built. */
-uniform sampler2D uDepth;
+uniform sampler2D uDepthTex;
 /* Strided ring of past output frames, newest first, reaching back ~250ms.
    Sample through timeAt() rather than directly so a cold ring degrades cleanly. */
 uniform sampler2D uHist0;
@@ -63,10 +69,10 @@ uniform float uPulse;
    travelling, magnitude roughly proportional to speed. Recovers motion
    perpendicular to edges only (the aperture problem) — irrelevant here, since
    it is used to drag pixels around rather than to measure anything. */
-uniform sampler2D uFlow;
+uniform sampler2D uFlowTex;
 
-float depthAt(vec2 uv){ return texture2D(uDepth, clamp(uv, 0.0, 1.0)).r; }
-vec2 flowAt(vec2 uv){ return texture2D(uFlow, clamp(uv, 0.0, 1.0)).rg * 2.0 - 1.0; }
+float depthAt(vec2 uv){ return texture2D(uDepthTex, clamp(uv, 0.0, 1.0)).r; }
+vec2 flowAt(vec2 uv){ return texture2D(uFlowTex, clamp(uv, 0.0, 1.0)).rg * 2.0 - 1.0; }
 
 /* Sample the output as it was 'age' ago — 0 is the most recent retained frame,
    1 is the far end of the ring. Interpolates between adjacent slots so a moving
@@ -1739,7 +1745,7 @@ export const EFFECTS: EffectDef[] = [
   // The only effects that know the image contains a subject standing in a
   // room, and that the room existed a moment ago as well as now. Everything
   // above this line treats the frame as one flat sheet of pixels; these read
-  // uDepth and the time ring, so they can pull the two apart.
+  // uDepthTex and the time ring, so they can pull the two apart.
 
   fx("depthShear", "Depth Shear", "dimension", "You and the room behind you slide in opposite directions. The frame stops being flat.",
     [{ key: "amount", label: "Separation", min: 0, max: 1, default: 0.5 },
@@ -1866,7 +1872,7 @@ export const EFFECTS: EffectDef[] = [
     `),
 
   // ── FLOW & OPTICS ─────────────────────────────────────────────────
-  // The flow set reads uFlow, so their distortion follows whatever is actually
+  // The flow set reads uFlowTex, so their distortion follows whatever is actually
   // moving in frame instead of a fixed axis — wave your hand and the image
   // deforms along your hand. The optics set models real lens and glass
   // behaviour, where the wow comes from the artefact being physically correct

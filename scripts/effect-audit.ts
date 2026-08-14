@@ -2,7 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { EFFECTS, type EffectDef } from "../src/engine/effects";
+import { EFFECTS, EFFECT_SAMPLER_NAMES, type EffectDef } from "../src/engine/effects";
 import {
   EFFECT_AUDIT_THRESHOLDS,
   measureEffectFrame,
@@ -18,7 +18,7 @@ const HEIGHT = 144;
 const REPORT_DATE = "2026-08-14";
 const SAMPLE_TIMES = [0, 0.7, 1.4] as const;
 const SAMPLE_PULSES = [0, 0.65, 1] as const;
-export const AUDIT_SAMPLER_NAMES = ["uTex", "uFeedback", "uDepth", "uFlow", "uHist0", "uHist1", "uHist2", "uHist3"] as const;
+export const AUDIT_SAMPLER_NAMES = EFFECT_SAMPLER_NAMES;
 // Three.js injects these declarations before PASSTHROUGH_VERT in production;
 // raw WebGL1 needs the identical declarations written explicitly.
 const AUDIT_PASSTHROUGH_VERT = "attribute vec3 position;\nattribute vec2 uv;\n" + PASSTHROUGH_VERT;
