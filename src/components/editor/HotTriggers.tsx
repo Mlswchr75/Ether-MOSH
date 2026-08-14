@@ -608,10 +608,14 @@ function GifButton({
   useEffect(() => {
     if (!open) return;
     const close = () => setOpen(false);
-    window.addEventListener("pointerdown", close, { capture: true });
+    // Bubble on purpose: the trigger and menu stop pointerdown propagation so
+    // an inside tap can finish as a click before the menu is unmounted. A
+    // capture-phase listener runs first and used to delete the timing button
+    // mid-gesture, so onGif was never called.
+    window.addEventListener("pointerdown", close);
     window.addEventListener("keydown", close);
     return () => {
-      window.removeEventListener("pointerdown", close, { capture: true } as any);
+      window.removeEventListener("pointerdown", close);
       window.removeEventListener("keydown", close);
     };
   }, [open]);
