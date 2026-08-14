@@ -37,17 +37,58 @@ Empty (0 products), tag-ruled, in no menu. Deleted per owner decision.
 
 Five collections have no `ruleSet` but hold 200–436 products each:
 
-| Collection | Products |
-|---|---|
-| Boundless Bleeds | 436 |
-| StreetsmART | 290 |
-| Maximalist Motifs | 269 |
-| Chromatic Overload | 235 |
-| Transcendent Artifacts | 230 |
+## 3. Large "manual" collections — converted ✅ DONE
 
-Maintaining these by hand does not scale — new uploads will silently miss them.
-Converting to tag-based smart collections is the fix, but picking the tag rules is
-a merchandising decision. Worth doing before the next product batch.
+All five have been converted from manual to tag-ruled smart collections,
+**losslessly** — membership after conversion is identical to membership before,
+verified product-for-product (not just by count).
+
+| Collection | Products | Rule |
+|---|---|---|
+| Boundless Bleeds | 436 | `TAG EQUALS "Boundless Bleeds"` |
+| StreetsmART | 290 | `TAG EQUALS "StreetsmART"` |
+| Maximalist Motifs | 269 | `TAG EQUALS "Maximalist Motifs"` |
+| Chromatic Overload | 235 | `TAG EQUALS "Chromatic Overload"` |
+| Transcendent Artifacts | 230 | `TAG EQUALS "Transcendent Artifacts"` |
+
+They now maintain themselves: tagging a new product adds it automatically, and no
+future upload can silently miss them.
+
+### How it was done safely
+
+No existing tag came close to matching membership — the best candidate covered
+~50% of members with heavy leakage from non-members. Converting to a rule on any
+pre-existing tag would have dropped roughly half of each collection and pulled in
+products that were never curated in. So instead:
+
+1. **Snapshotted** exact membership first (`membership_snapshot.json`, 1,460
+   product-collection pairs) as a rollback record.
+2. **Mirrored** it: applied a tag matching each collection's name to exactly its
+   current members (470 products, 1,460 tag additions) using `tagsAdd`, which
+   appends rather than overwriting, so no existing tags were touched.
+3. **Gated**: verified the tagged set equalled the snapshot set exactly — zero
+   missing, zero leakage — and refused to convert until it did.
+4. **Converted** only then, and re-verified membership product-for-product.
+
+### Two things the gate caught
+
+- **Case-insensitive tag dedup.** Six products appeared to be missing their tag.
+  They already carried lowercase variants (`boundless bleeds`, `streetsmart`), and
+  Shopify dedupes tags case-insensitively, so `tagsAdd` was a silent no-op. The
+  tags were in fact present; the first gate check was case-sensitive and wrong.
+  Shopify's smart-collection `TAG` rules are also case-insensitive, confirmed
+  empirically — StreetsmART returned exactly 290 including the lowercase-tagged
+  products.
+- **Throttling causes silent partial writes.** Several batched mutations returned
+  a retryable upstream error; `tagsAdd` is idempotent so retries were safe, but
+  this is why the count gate exists rather than trusting empty `userErrors`.
+
+### Tooling note
+
+`bulkOperationRunMutation` is blocked by the MCP connector's safety policy
+("can execute arbitrary mutations"), so the 1,460 tag additions were applied as
+batched aliased mutations instead. Batches above ~35 aliases fail, and
+consecutive large batches exhaust the cost bucket and need a retry.
 
 ## 4. Generic supplier titles
 

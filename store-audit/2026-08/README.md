@@ -115,6 +115,12 @@ real print names, not a deduplication problem.
   `Radical Optimist` with `tagsAdd`, and the collection converted from manual to a
   smart collection ruled on that tag — so it now maintains itself.
 - **`meme-ohs` deleted** (0 products, in no menu) per owner decision.
+- **All five large "manual" collections converted to tag-ruled smart collections**
+  — Boundless Bleeds (436), StreetsmART (290), Maximalist Motifs (269), Chromatic
+  Overload (235), Transcendent Artifacts (230). Done losslessly: membership was
+  snapshotted, mirrored onto a per-collection tag across 470 products / 1,460 tag
+  additions, gated on exact parity, and only then converted. Post-conversion
+  membership is identical product-for-product. They now maintain themselves.
 - Nav state corrected: **Infinite Echo is not in the main menu at all** (the
   handoff said it was). Nav left unchanged.
 
