@@ -1,7 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Helmet } from "react-helmet-async";
-import { Upload } from "lucide-react";
+import { Camera, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
 import { useStore } from "@/store/useStore";
@@ -13,6 +13,8 @@ import { AboutTrigger } from "@/components/AboutOverlay";
 import { BioFlicker } from "@/components/home/BioFlicker";
 import { RebellionNudge } from "@/components/home/RebellionNudge";
 import { QuadrantDecor } from "@/components/home/QuadrantDecor";
+import { GlitchWordField, KEEP_OUT } from "@/components/home/GlitchWordField";
+import { HeroWord, HERO_ANCHOR } from "@/components/home/HeroWord";
 
 const DemoCarousel = lazy(() => import("@/components/DemoCarousel"));
 
@@ -23,6 +25,10 @@ const Index = () => {
   const setVideoSource = useStore(s => s.setVideoSource);
   const fileRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
+
+  // Whatever the hero is currently shouting. The word field takes it so the
+  // same word is never on screen twice.
+  const [heroWord, setHeroWord] = useState<string>(HERO_ANCHOR);
 
   const loadFile = useCallback(async (file: File) => {
     const ok = await loadImageFile(file);
@@ -119,129 +125,82 @@ const Index = () => {
         {/* Bio fragments flickering across the visualizer */}
         <BioFlicker />
 
-        {/* Text overlay — moshed headline + scattered subtle hints */}
+        {/* Text overlay — the page's single hero. Everything else on screen is
+            the word field, which places itself around this block. */}
         <div className="pointer-events-none absolute inset-0 z-10">
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-6 px-6 text-center">
-            {/* Upload icon — entrance via wrapper; CSS animations on inner div are independent */}
-            <motion.div
-              initial={{ scale: 0.55, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ type: "spring", stiffness: 260, damping: 22, delay: 0.5 }}
-            >
-              <div
-                className="relative flex h-24 w-24 items-center justify-center rounded-full border border-primary/70 bg-background/30 text-primary backdrop-blur-[2px] animate-pulse-soft mosh-icon"
-                style={{
-                  boxShadow: "0 0 60px hsl(var(--primary) / 0.55), inset 0 0 24px hsl(var(--accent) / 0.25)",
-                  mixBlendMode: "screen",
-                }}
+          <div className="absolute inset-0 flex flex-col items-center justify-center px-6 text-center">
+            {/* The keep-out is this inner cluster, which shrink-wraps its
+                contents — marking the full-bleed parent would reserve the
+                whole page and leave the field nowhere to land. */}
+            <div {...KEEP_OUT} className="flex flex-col items-center gap-6">
+              {/* Upload + camera — entrance via wrapper; CSS animations on the
+                  inner elements are independent */}
+              <motion.div
+                initial={{ scale: 0.55, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ type: "spring", stiffness: 260, damping: 22, delay: 0.5 }}
+                className="pointer-events-auto flex items-center gap-5"
               >
-                <Upload className="h-10 w-10 mosh-glitch" aria-hidden="true" />
-              </div>
-            </motion.div>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); openPicker(); }}
+                  aria-label="Upload an image"
+                  className="relative flex h-24 w-24 items-center justify-center rounded-full border border-primary/70 bg-background/30 text-primary backdrop-blur-[2px] animate-pulse-soft mosh-icon transition hover:scale-105"
+                  style={{
+                    boxShadow: "0 0 60px hsl(var(--primary) / 0.55), inset 0 0 24px hsl(var(--accent) / 0.25)",
+                  }}
+                >
+                  <Upload className="h-10 w-10 mosh-glitch" aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  onClick={handleGoLive}
+                  aria-label="Go live with your camera"
+                  className="relative flex h-16 w-16 items-center justify-center rounded-full border border-accent/70 bg-background/30 text-accent backdrop-blur-[2px] transition hover:scale-105"
+                  style={{ boxShadow: "0 0 40px hsl(var(--accent) / 0.45)" }}
+                >
+                  <Camera className="h-7 w-7" aria-hidden="true" />
+                </button>
+              </motion.div>
 
-            {/* Headline — wrapper handles entrance; inner mosh-text keeps its CSS glitch */}
-            <motion.div
-              initial={{ y: 28, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              transition={{ duration: 0.6, delay: 0.78, ease: EASE_SNAP }}
-            >
-              <div
-                aria-hidden="true"
-                className="mosh-text font-sans text-[9vw] leading-[0.9] font-bold tracking-tighter sm:text-5xl md:text-6xl lg:text-7xl"
-                data-text="DROP AN IMAGE"
+              {/* Headline — wrapper handles entrance; HeroWord owns the swap
+                  and the RGB split beneath it */}
+              <motion.div
+                initial={{ y: 28, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ duration: 0.6, delay: 0.78, ease: EASE_SNAP }}
               >
-                DROP AN IMAGE
-              </div>
-            </motion.div>
+                <HeroWord onWordChange={setHeroWord} />
+              </motion.div>
 
-            <motion.p
-              initial={{ y: 18, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              transition={{ duration: 0.5, delay: 1.08, ease: EASE_SNAP }}
-              className="max-w-xl font-mono text-xs uppercase tracking-[0.25em] text-foreground/70"
-            >
-              MOSH is a real-time, audio-reactive visual instrument. Load any image, stack 105 GPU effects, sync to your music, and export stills or video — all in your browser.
-            </motion.p>
+              <motion.p
+                initial={{ y: 18, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ duration: 0.5, delay: 1.08, ease: EASE_SNAP }}
+                className="max-w-xl font-mono text-xs uppercase tracking-[0.25em] text-foreground/70"
+              >
+                MOSH is a real-time, audio-reactive visual instrument. Load any image, stack 105 GPU effects, sync to your music, and export stills or video — all in your browser.
+              </motion.p>
 
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.5, delay: 1.32 }}
-              className="font-mono text-xs uppercase tracking-[0.35em] text-foreground/80"
-            >
-              click anywhere · drag · paste · jpg · png · svg
-            </motion.div>
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.5, delay: 1.32 }}
+                className="font-mono text-xs uppercase tracking-[0.35em] text-foreground/80"
+              >
+                click anywhere · drag · paste · jpg · png · svg
+              </motion.div>
+            </div>
           </div>
 
-          {/* Scattered subtle hints — staggered fade-in; rotation handled by Tailwind (no transform conflict) */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.5, delay: 1.46 }}
-            className="absolute top-[10%] left-[6%] font-mono text-[10px] uppercase tracking-[0.3em] text-foreground/40 rotate-[-6deg]"
-          >
-            paste
-          </motion.div>
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.5, delay: 1.54 }}
-            className="absolute top-[14%] right-[8%] font-mono text-[10px] uppercase tracking-[0.3em] text-foreground/40 rotate-[4deg]"
-          >
-            upload
-          </motion.div>
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.5, delay: 1.62 }}
-            className="absolute bottom-[18%] left-[10%] font-mono text-[11px] uppercase tracking-[0.3em] text-foreground/45 rotate-[-3deg]"
-          >
-            drag · in · your · design
-          </motion.div>
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.5, delay: 1.7 }}
-            className="absolute bottom-[14%] right-[6%] font-mono text-[11px] uppercase tracking-[0.3em] text-foreground/45 rotate-[2deg]"
-          >
-            mosh your own
-          </motion.div>
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.5, delay: 1.78 }}
-            className="absolute top-[42%] left-[3%] hidden font-mono text-[10px] uppercase tracking-[0.3em] text-foreground/35 md:block [writing-mode:vertical-rl] rotate-180"
-          >
-            browse
-          </motion.div>
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.5, delay: 1.86 }}
-            className="absolute top-[42%] right-[3%] hidden font-mono text-[10px] uppercase tracking-[0.3em] text-foreground/35 md:block [writing-mode:vertical-rl]"
-          >
-            warp · anything
-          </motion.div>
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.5, delay: 1.94 }}
-            className="absolute top-[28%] left-[22%] hidden font-mono text-[9px] uppercase tracking-[0.35em] text-foreground/30 rotate-[-2deg] md:block"
-          >
-            jpg / png / svg
-          </motion.div>
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.5, delay: 2.02 }}
-            className="absolute bottom-[32%] right-[20%] hidden font-mono text-[9px] uppercase tracking-[0.35em] text-foreground/30 rotate-[3deg] md:block"
-          >
-            tap to begin
-          </motion.div>
+          {/* Every other word on screen. The field owns all of them so it can
+              guarantee they never overlap each other or the reserved UI. */}
+          <GlitchWordField exclude={heroWord} />
         </div>
 
         {/* Top-left brand + install */}
         <motion.div
+          {...KEEP_OUT}
           initial={{ y: -32, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ duration: 0.55, delay: 0.2, ease: EASE_SNAP }}
@@ -275,6 +234,7 @@ const Index = () => {
 
         {/* Bottom credit */}
         <motion.div
+          {...KEEP_OUT}
           initial={{ y: 30, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ duration: 0.55, delay: 0.3, ease: EASE_SNAP }}
