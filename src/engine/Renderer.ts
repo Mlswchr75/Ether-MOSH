@@ -112,6 +112,8 @@ export class MoshRenderer {
   private _tileUniforms: TileUniforms = { ...DEFAULT_TILE_UNIFORMS };
   // Adaptive HDR intensity (0 = pure passthrough, 1 = full ACES filmic)
   private _hdrIntensity = 0;
+  /** Optional final target used by immersive VR instead of the flat canvas. */
+  private xrTarget: THREE.WebGLRenderTarget | null = null;
   /** Re-applied after every buffer reallocation, which resets wrap modes. */
   private _tileableSampling = false;
   // requestVideoFrameCallback handle for precision texture sync
@@ -892,7 +894,7 @@ export class MoshRenderer {
   /** Render a frame with the supplied layer stack. `pulse` is 0..1 beat envelope. */
   render(layers: RenderLayer[], pulse = 0) {
     if (!this.sourceTex) {
-      this.renderer.setRenderTarget(null);
+      this.renderer.setRenderTarget(this.xrTarget);
       this.renderer.clear();
       return;
     }
@@ -1075,8 +1077,13 @@ export class MoshRenderer {
     this.finisherMaterial.uniforms.uHdr.value = this._hdrIntensity;
     this.finisherMaterial.uniforms.uOverlayDepth.value = this.rtDepthA.texture;
     this.quad.material = this.finisherMaterial;
-    this.renderer.setRenderTarget(null);
+    this.renderer.setRenderTarget(this.xrTarget);
     this.renderer.render(this.scene, this.camera);
+  }
+
+  /** Redirect the final composited frame for immersive playback. */
+  setXrTarget(target: THREE.WebGLRenderTarget | null): void {
+    this.xrTarget = target;
   }
 
   setTile(mode: TileMode, uniforms: Partial<TileUniforms> = {}): void {

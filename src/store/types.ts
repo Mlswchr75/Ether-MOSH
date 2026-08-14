@@ -57,6 +57,8 @@ export type Favorite = {
   layers: Layer[];
   seed?: string;
   createdAt?: string;
+  /** Optional preview retained by legacy/cloud favorite payloads. */
+  thumb?: string;
 };
 
 export type Snapshot = {

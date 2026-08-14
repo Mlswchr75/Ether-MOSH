@@ -506,7 +506,7 @@ export function HotTriggers({ isRecording, onToggleRecord, onScreenshot, onFreez
                             type="button"
                             onClick={() => { applyFavorite(f.id); setFavOpen(false); }}
                             className="flex-1 min-w-0 truncate text-left font-mono text-[10px] uppercase tracking-[0.12em] text-white/85 hover:text-[hsl(var(--accent))]"
-                            title={`${f.layers.length} layers · ${new Date(f.createdAt).toLocaleString()}`}
+                            title={`${f.layers.length} layers · ${f.createdAt ? new Date(f.createdAt).toLocaleString() : "saved preset"}`}
                           >
                             <span className="truncate">{f.name}</span>
                             <span className="ml-1 text-white/35">·{f.layers.length}L</span>

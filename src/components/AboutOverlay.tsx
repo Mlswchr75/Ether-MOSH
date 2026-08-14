@@ -4,7 +4,11 @@ import { useEffect, useState } from "react";
  * "?" trigger + full-screen about overlay. Kept dependency-free (no dialog
  * lib) so it works identically inside the home dropzone button.
  */
-export const AboutTrigger = () => {
+type AboutTriggerProps = {
+  hidden?: boolean;
+};
+
+export const AboutTrigger = ({ hidden = false }: AboutTriggerProps) => {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
@@ -13,6 +17,8 @@ export const AboutTrigger = () => {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
+
+  if (hidden) return null;
 
   return (
     <>
