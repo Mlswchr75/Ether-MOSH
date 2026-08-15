@@ -29,10 +29,11 @@ const FRAMES_MIN = 14;
 const FRAMES_MAX = 20;
 
 /**
- * Strip rotations in degrees. Paired with `sign` these cover all eight
- * headings: horizontal, vertical, and both diagonals in both directions.
+ * Strip rotations in degrees. Paired with `sign` these cover varied
+ * headings: horizontal, vertical, multiple diagonals, and oblique angles
+ * for corner-to-corner and edge movements.
  */
-const ANGLES = [0, 90, 34, -34] as const;
+const ANGLES = [0, 90, 45, -45, 22, -22, 67, -67, 28, -28] as const;
 
 export type ReelPhase = "gap" | "in" | "hold" | "out";
 
@@ -69,9 +70,9 @@ export function planReel(pool: readonly DemoFrame[], id: number, rand: Rand = Ma
     angle: pick(rand, ANGLES),
     sign: rand() < 0.5 ? -1 : 1,
     // The strip runs far longer than the viewport, so it bleeds off both ends
-    // wherever it is centred; this offset is what moves it around the screen.
-    cx: between(rand, 22, 78),
-    cy: between(rand, 22, 78),
+    // wherever it is centred; this offset ranges from edges to full screen coverage.
+    cx: between(rand, 5, 95),
+    cy: between(rand, 5, 95),
     speed: between(rand, SPEED_MIN, SPEED_MAX),
     lifetimeMs: between(rand, LIFETIME_MIN_MS, LIFETIME_MAX_MS),
   };

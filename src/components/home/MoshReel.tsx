@@ -12,8 +12,8 @@ import { sizedSrc, type DemoFrame } from "@/data/demoReel";
 import type { ReelPhase, ReelPlan } from "./useReelDirector";
 
 /** Frame box in px. The track length is derived from this, not measured. */
-const FRAME_W = 148;
-const FRAME_H = 111;
+const FRAME_W = 220;
+const FRAME_H = 165;
 const FRAME_GAP = 10;
 const PITCH = FRAME_W + FRAME_GAP;
 

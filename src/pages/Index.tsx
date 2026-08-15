@@ -341,8 +341,7 @@ const Index = () => {
           }}
           className="reel-hint pointer-events-auto absolute bottom-[4.5rem] left-1/2 z-20 -translate-x-1/2 whitespace-nowrap font-mono text-[11px] uppercase tracking-[0.3em] text-foreground/70 transition-colors hover:text-accent"
         >
-          scroll <span className="reel-hint-arrow inline-block">→</span> or{" "}
-          <span className="reel-hint-arrow inline-block">↓</span> · 500+ demo frames to mosh
+          scroll to see demos <span className="reel-hint-arrow inline-block">↓</span>
         </motion.button>
 
         <RebellionNudge />
