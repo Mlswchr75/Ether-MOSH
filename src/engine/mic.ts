@@ -39,13 +39,41 @@ export class MicAnalyzer {
   private beatPending = false;
   lastBeatAt = 0;
 
+  private bandMean(start: number, end: number): number {
+    const from = Math.max(0, Math.min(this.bands.length, start));
+    const to = Math.max(from + 1, Math.min(this.bands.length, end));
+    let sum = 0;
+    for (let i = from; i < to; i++) sum += this.bands[i];
+    return sum / Math.max(1, to - from);
+  }
+
+  /** Named spectrum regions consumed by the smart director. */
+  get subLevel() { return this.bandMean(0, 2); }
+  get kickLevel() { return this.bandMean(1, 4); }
+  get lowMidLevel() { return this.bandMean(4, 8); }
+  get highMidLevel() { return this.bandMean(8, 12); }
+  get presenceLevel() { return this.bandMean(12, 18); }
+  get energyLevel() { return this.overallLevel; }
+  get centroidLevel() {
+    let weighted = 0;
+    let energy = 0;
+    const maxIndex = Math.max(1, this.bands.length - 1);
+    for (let i = 0; i < this.bands.length; i++) {
+      weighted += this.bands[i] * (i / maxIndex);
+      energy += this.bands[i];
+    }
+    return energy > 0 ? weighted / energy : 0.4;
+  }
+
   consumeBeat(): boolean {
     if (this.beatPending) { this.beatPending = false; return true; }
     return false;
   }
 
   isSupported() {
-    return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && (window.AudioContext || (window as any).webkitAudioContext));
+    const mediaDevices = navigator.mediaDevices;
+    const AudioContextCtor = window.AudioContext || (window as any).webkitAudioContext;
+    return typeof mediaDevices?.getUserMedia === "function" && typeof AudioContextCtor === "function";
   }
 
   isSystemAudioSupported() {

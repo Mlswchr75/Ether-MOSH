@@ -1,18 +1,18 @@
 /**
- * QuadrantSurface — the canvas as a four-voice visual instrument.
+ * QuadrantSurface — the canvas as a semantic-role visual instrument.
  *
  * Tapping deliberately has no geography. An earlier version mapped each corner
- * to one voice, which put a decision in front of the gesture that used to be
+ * to one layer, which put a decision in front of the gesture that used to be
  * pure play: you had to know the map, and aim, before anything happened. Now
  * position only matters once you are already dragging, where it is continuous
  * and self-evident:
  *
- *   TAP anywhere  → re-rolls the NEXT voice in rotation (grade → form → accent
+ *   TAP anywhere  → re-rolls the NEXT role in rotation (grade → form → accent
  *                   → finish), so repeated taps evolve the look a part at a
- *                   time instead of replacing it wholesale. Locked voices are
+ *                   time instead of replacing it wholesale. Locked roles are
  *                   skipped, which is how you steer: keep what you like, keep
  *                   tapping, and the rest rearranges around it.
- *   DRAG anywhere → invisible XY pad over the voice you last rolled. Horizontal
+ *   DRAG anywhere → invisible XY pad over the selected layer. Horizontal
  *                   sweeps its primary param, vertical its secondary (up =
  *                   more). The values written are the same ones the Tune menu
  *                   edits, so the sliders track the finger.
@@ -21,28 +21,28 @@
  * obvious affordance for it, and the editor owns a 750ms canvas hold for the
  * menu rack — putting a second hold on this surface would fire both.
  *
- * Nothing is painted over the canvas except a brief readout and the voice rail,
+ * Nothing is painted over the canvas except a brief readout and the role rail,
  * and both live outside <canvas> so captureStream() never records them.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useStore } from "@/store/useStore";
 import { useKaossStore } from "@/store/kaossStore";
 import { EFFECTS_BY_ID } from "@/engine/effects";
-import { ROLE_LABELS, roleForQuadrant } from "@/engine/artDirector";
+import type { Role } from "@/engine/artDirector";
+import { ROLE_COPY, groupLayersByRole, resolveLayerRole } from "@/engine/effectRoles";
+import { RoleControlRail } from "@/components/editor/RoleControlRail";
 import {
-  QUADRANT_SHORT,
   applyAxisDelta,
   axisTargets,
   type AxisTarget,
-  type QuadrantIndex,
 } from "@/engine/quadrants";
 
-/** Movement past this fraction of a quadrant switches a tap into a drag. */
+/** Movement past this fraction of the canvas switches a tap into a drag. */
 const DRAG_THRESHOLD = 0.06;
 /**
  * A press longer than this is not a tap. The editor binds its own 750ms hold on
  * the canvas (the menu rack), so the bound has to sit below that or lifting out
- * of a rack hold would also roll a voice.
+ * of a rack hold would also roll a role.
  */
 const TAP_MS = 400;
 /** How long the readout lingers after the finger lifts. */
@@ -52,11 +52,10 @@ const PINCH_RATIO = 1.25;
 
 type Drag = {
   pointerId: number;
-  quadrant: QuadrantIndex;
+  role?: Role;
   /**
-   * Start position in FULL-CANVAS space, 0..1 — not quadrant-local. Deltas
-   * measured here stay continuous when a finger crosses a midline; re-deriving
-   * quadrant-local coords mid-drag would make the value jump.
+   * Start position in full-canvas space, 0..1. Deltas measured here stay
+   * continuous when a finger crosses a midline.
    */
   startX: number;
   startY: number;
@@ -70,43 +69,42 @@ type Drag = {
 };
 
 type Readout = {
-  quadrant: QuadrantIndex;
+  role?: Role;
   effectName: string;
   xLabel: string; xValue: number;
   yLabel: string; yValue: number;
   /** Set for a re-roll rather than a param sweep. */
   relation?: string;
-  /** Which part of the composition this quadrant drives (GRADE/FORM/…). */
-  role?: string;
   /** The art direction the stack is composed under. */
   look?: string;
+  /** Plain-language feedback for a gesture with no layer target. */
+  message?: string;
   at: number;
 };
 
 type Props = {
-  /** Fires after a tap re-rolls a voice, with that voice's index. */
-  onRoll?: (q: QuadrantIndex) => void;
+  /** Fires after a tap re-rolls a semantic role. */
+  onRoll?: (role: Role) => void;
   /** Two-finger pinch — kept here so a single surface owns every canvas gesture. */
   onTogglePerf?: () => void;
+  /** Opens the existing Tune panel for the chosen effect layer. */
+  onTune?: (layerId: string) => void;
 };
 
-export function QuadrantSurface({ onRoll, onTogglePerf }: Props) {
+export function QuadrantSurface({ onRoll, onTogglePerf, onTune = () => {} }: Props) {
   const kaossOn = useKaossStore(s => s.instrumentEnabled);
   const showBeforeAfter = useStore(s => s.showBeforeAfter);
   const isolationMode = useStore(s => s.isolationMode);
   const stickerMode = useStore(s => s.stickerMode);
-  const layers = useStore(s => s.layers);
-  const voiceCursor = useStore(s => s.voiceCursor);
   const moshNext = useStore(s => s.moshNext);
 
   const wrapRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<Drag | null>(null);
   const [readout, setReadout] = useState<Readout | null>(null);
-  const [activeQuadrant, setActiveQuadrant] = useState<QuadrantIndex | null>(null);
   const readoutTimer = useRef<number | null>(null);
 
   // Live pointers, so a second finger can be recognised as a pinch rather than
-  // being mistaken for a second quadrant gesture.
+  // being mistaken for a second role gesture.
   const pointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
   const pinchBaseRef = useRef<number | null>(null);
   const pinchFiredRef = useRef(false);
@@ -131,18 +129,29 @@ export function QuadrantSurface({ onRoll, onTogglePerf }: Props) {
   }, []);
 
   /**
-   * The voice a drag drives: whichever one was rolled most recently, falling
-   * back to the top of the stack. Control follows attention rather than the
-   * finger's address, so there is nothing to aim at.
+   * Resolve the layer a drag drives without treating stack position as meaning.
+   * A chip selection is exact; otherwise use the remembered layer for the open
+   * role, then the first unlocked layer for the role cursor.
    */
-  const activeVoice = useCallback(() => {
+  const activeLayer = () => {
     const s = useStore.getState();
-    const slots = s.layers.slice(0, 4);
-    const sel = slots.findIndex(l => l.id === s.selectedLayerId);
-    const idx = sel >= 0 ? sel : slots.length - 1;
-    if (idx < 0) return null;
-    return { index: idx as QuadrantIndex, layer: slots[idx] };
-  }, []);
+    const selected = s.selectedLayerId
+      ? s.layers.find(layer => layer.id === s.selectedLayerId)
+      : undefined;
+    if (selected) {
+      return { layer: selected, role: resolveLayerRole(selected, s.layers.indexOf(selected)) };
+    }
+
+    const rememberedRole = s.selectedRole ?? s.roleCursor;
+    const rememberedId = s.selectedRoleLayers[rememberedRole];
+    const remembered = rememberedId
+      ? s.layers.find(layer => layer.id === rememberedId)
+      : undefined;
+    if (remembered) return { layer: remembered, role: rememberedRole };
+
+    const fallback = groupLayersByRole(s.layers)[s.roleCursor].find(layer => !layer.locked);
+    return fallback ? { layer: fallback, role: s.roleCursor } : null;
+  };
 
   const norm = (e: React.PointerEvent | PointerEvent) => {
     const el = wrapRef.current;
@@ -161,11 +170,10 @@ export function QuadrantSurface({ onRoll, onTogglePerf }: Props) {
 
     pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
-    // A second finger turns the gesture into a pinch — abandon any quadrant
+    // A second finger turns the gesture into a pinch — abandon any role
     // drag in progress so a two-finger zoom never sweeps a parameter.
     if (pointersRef.current.size >= 2) {
       dragRef.current = null;
-      setActiveQuadrant(null);
       pinchBaseRef.current = pinchDistance();
       pinchFiredRef.current = false;
       e.preventDefault();
@@ -173,18 +181,15 @@ export function QuadrantSurface({ onRoll, onTogglePerf }: Props) {
     }
 
     const { x, y } = norm(e);
-    // A drag sculpts the voice in play, wherever the finger landed.
-    const voice = activeVoice();
-    const q = (voice?.index ?? 0) as QuadrantIndex;
-    const layer = voice?.layer;
+    // A drag sculpts the selected semantic layer, wherever the finger landed.
+    const target = activeLayer();
+    const layer = target?.layer;
 
-    setActiveQuadrant(q);
-
-    // An empty or locked voice has no pad to drive — the lift still rolls.
+    // An empty or locked role has no pad to drive — the lift still rolls.
     const targets = layer ? axisTargets(layer.effectId) : null;
     dragRef.current = {
       pointerId: e.pointerId,
-      quadrant: q,
+      role: target?.role,
       startX: x,
       startY: y,
       startedAt: performance.now(),
@@ -222,9 +227,9 @@ export function QuadrantSurface({ onRoll, onTogglePerf }: Props) {
     if (!d || d.pointerId !== e.pointerId) return;
 
     const { x, y } = norm(e);
-    // Canvas-space delta, doubled so one quadrant's width of travel (0.5 of the
-    // canvas) sweeps a full parameter range. Continuous across the midlines, so
-    // a finger that strays out of its quadrant keeps driving the same voice.
+    // Canvas-space delta, doubled so half the canvas's width of travel sweeps a
+    // full parameter range. Continuous across midlines, so the selected layer
+    // stays stable wherever the finger travels.
     const dx = (x - d.startX) * 2;
     const dy = (y - d.startY) * 2;
 
@@ -244,7 +249,7 @@ export function QuadrantSurface({ onRoll, onTogglePerf }: Props) {
     else store.setOpacity(layer.id, nextY);
 
     showReadout({
-      quadrant: d.quadrant,
+      role: d.role,
       effectName: effectNameOf(layer.effectId),
       xLabel: d.targets.x.label, xValue: nextX,
       yLabel: d.targets.y.label, yValue: nextY,
@@ -266,7 +271,6 @@ export function QuadrantSurface({ onRoll, onTogglePerf }: Props) {
     const d = dragRef.current;
     if (!d || d.pointerId !== e.pointerId) return;
     dragRef.current = null;
-    setActiveQuadrant(null);
 
     // The lift that ends a pinch must not also re-roll.
     if (wasPinch) return;
@@ -277,28 +281,25 @@ export function QuadrantSurface({ onRoll, onTogglePerf }: Props) {
 
     const roll = moshNext();
     if (!roll) {
-      // Every voice locked — say so rather than looking broken.
-      const layer = useStore.getState().layers[0];
+      // Every role is locked — say so rather than looking broken.
       showReadout({
-        quadrant: 0,
-        effectName: layer ? effectNameOf(layer.effectId) : "stack",
+        effectName: "",
         xLabel: "", xValue: 0, yLabel: "", yValue: 0,
-        relation: "all locked",
+        message: "all roles locked",
         at: performance.now(),
       });
       return;
     }
 
     showReadout({
-      quadrant: roll.quadrant,
+      role: roll.role,
       effectName: roll.effectName,
       xLabel: "", xValue: 0, yLabel: "", yValue: 0,
       relation: roll.relation,
-      role: ROLE_LABELS[roll.role],
       look: useStore.getState().currentLook?.name,
       at: performance.now(),
     });
-    onRoll?.(roll.quadrant);
+    onRoll?.(roll.role);
   };
 
   const onPointerCancel = (e: React.PointerEvent) => {
@@ -307,7 +308,6 @@ export function QuadrantSurface({ onRoll, onTogglePerf }: Props) {
     if (pointersRef.current.size === 0) pinchFiredRef.current = false;
     const d = dragRef.current;
     if (d && d.pointerId === e.pointerId) dragRef.current = null;
-    setActiveQuadrant(null);
   };
 
   if (!active) return null;
@@ -322,9 +322,9 @@ export function QuadrantSurface({ onRoll, onTogglePerf }: Props) {
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerCancel}
       onContextMenu={(e) => e.preventDefault()}
-      aria-label="Visual instrument — tap to re-roll the next voice, hold to re-roll everything, drag to sweep the current voice's parameters"
+      aria-label="Visual instrument — tap to re-roll the next role, hold to re-roll everything, drag to sweep the selected role's parameters"
     >
-      <VoiceRail active={activeQuadrant} layers={layers} cursor={voiceCursor} />
+      <RoleControlRail onTune={onTune} />
       {readout && <QuadrantReadout r={readout} />}
     </div>
   );
@@ -342,106 +342,47 @@ function effectNameOf(id: string): string {
    Overlays
    ────────────────────────────────────────────────────────────────────── */
 
-/**
- * The voice rail — four pips naming the parts of the composition, with the one
- * the next tap will re-roll lit up.
- *
- * This replaced an on-canvas quadrant cross-hair. Those guides had to teach a
- * map before the first tap could be aimed; the rail only has to be glanced at,
- * and it answers the one question the new model leaves open — "what changes if
- * I tap now?" A pip the user has locked reads dimmer and struck through, so the
- * skip is visible rather than mysterious.
- */
-function VoiceRail({
-  active, layers, cursor,
-}: {
-  active: QuadrantIndex | null;
-  layers: ReturnType<typeof useStore.getState>["layers"];
-  cursor: number;
-}) {
-  const count = Math.min(4, Math.max(1, layers.length));
-  // Which pip the next tap actually lands on, locks stepped over.
-  let next = cursor % count;
-  for (let step = 0; step < count; step++) {
-    const q = (cursor + step) % count;
-    if (!layers[q]?.locked) { next = q; break; }
-  }
-
-  return (
-    <div className="pointer-events-none absolute inset-x-0 top-3 flex justify-center gap-1.5" aria-hidden>
-      {([0, 1, 2, 3] as QuadrantIndex[]).map(q => {
-        const layer = layers[q];
-        const filled = !!layer;
-        const isNext = filled && q === next;
-        const isActive = active === q;
-        return (
-          <span
-            key={q}
-            className="rounded-sm px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-[0.18em] transition-all duration-200"
-            style={{
-              background: isNext ? "hsl(var(--accent) / 0.16)" : "hsl(0 0% 0% / 0.35)",
-              color: !filled
-                ? "hsl(0 0% 100% / 0.12)"
-                : layer?.locked
-                  ? "hsl(0 0% 100% / 0.25)"
-                  : isNext || isActive
-                    ? "hsl(var(--accent))"
-                    : "hsl(0 0% 100% / 0.4)",
-              textDecoration: layer?.locked ? "line-through" : "none",
-              boxShadow: isNext ? "inset 0 0 0 1px hsl(var(--accent) / 0.45)" : "none",
-            }}
-          >
-            {ROLE_LABELS[roleForQuadrant(q)]}
-          </span>
-        );
-      })}
-    </div>
-  );
-}
-
 /** Kaoss-style LED readout — what you just did, in one line. */
 function QuadrantReadout({ r }: { r: Readout }) {
   return (
-    <div data-quadrant-readout className="pointer-events-none absolute bottom-4 left-1/2 z-10 -translate-x-1/2 animate-in fade-in slide-in-from-bottom-1 duration-150">
+    <div data-role-readout className="pointer-events-none absolute bottom-4 left-1/2 z-10 -translate-x-1/2 animate-in fade-in slide-in-from-bottom-1 duration-150">
       <div className="flex items-center gap-2 whitespace-nowrap rounded-sm border border-white/10 bg-black/70 px-2.5 py-1 backdrop-blur-md">
-        <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-[hsl(var(--accent))]">
-          {QUADRANT_SHORT[r.quadrant]}
-        </span>
-        <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-white/85">
-          {r.effectName}
-        </span>
-        {r.relation ? (
-          <>
-            {r.role && (
-              <>
-                <span className="font-mono text-[9px] text-white/30">/</span>
-                <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-white/45">
-                  {r.role}
-                </span>
-              </>
-            )}
-            <span className="font-mono text-[9px] text-white/30">/</span>
-            <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-white/60">
-              {r.relation}
-            </span>
-            {r.look && (
-              <>
-                <span className="font-mono text-[9px] text-white/30">·</span>
-                <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-[hsl(var(--accent))]/80">
-                  {r.look}
-                </span>
-              </>
-            )}
-          </>
+        {r.message ? (
+          <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-white/70">{r.message}</span>
         ) : (
           <>
-            <span className="font-mono text-[9px] text-white/30">/</span>
-            <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-white/60">
-              {r.xLabel} {fmt(r.xValue)}
+            <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-[hsl(var(--accent))]">
+              {r.role ? ROLE_COPY[r.role].label : "ROLE"}
             </span>
-            <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-white/60">
-              {r.yLabel} {fmt(r.yValue)}
+            <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-white/85">
+              {r.effectName}
             </span>
+            {r.relation ? (
+              <>
+                <span className="font-mono text-[9px] text-white/30">·</span>
+                <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-white/60">
+                  {r.relation}
+                </span>
+                {r.look && (
+                  <>
+                    <span className="font-mono text-[9px] text-white/30">·</span>
+                    <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-[hsl(var(--accent))]/80">
+                      {r.look}
+                    </span>
+                  </>
+                )}
+              </>
+            ) : (
+              <>
+                <span className="font-mono text-[9px] text-white/30">/</span>
+                <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-white/60">
+                  {r.xLabel} {fmt(r.xValue)}
+                </span>
+                <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-white/60">
+                  {r.yLabel} {fmt(r.yValue)}
+                </span>
+              </>
+            )}
           </>
         )}
       </div>

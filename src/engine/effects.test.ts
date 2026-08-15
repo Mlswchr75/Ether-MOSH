@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { EFFECTS, EFFECTS_BY_ID } from "./effects";
+import { EFFECTS, EFFECTS_BY_ID, EFFECT_SAMPLER_NAMES } from "./effects";
 import { axisTargets } from "./quadrants";
 
-/** The effects written for the quadrant instrument. */
+/** The effects written for the canvas gesture instrument. */
 const EXPANSION_SET = [
   "halftone", "crossHatch", "kuwahara", "anaglyph", "photocopy", "contourMap",
   "emboss", "moire", "slitScan", "rollingShutter", "echoTrails", "extrude",
@@ -64,6 +64,11 @@ describe("effect registry", () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
+  it("has no duplicate display names", () => {
+    const names = EFFECTS.map(e => e.name);
+    expect(new Set(names).size).toBe(names.length);
+  });
+
   /**
    * The dimensional set is the only group that reads structure — the depth
    * proxy and the time ring — rather than just transforming the flat frame.
@@ -92,10 +97,23 @@ describe("effect registry", () => {
     }
   });
 
-  it("exposes the depth proxy and time ring to every shader", () => {
+  it("exposes the namespaced depth proxy and time ring to every shader", () => {
     for (const def of EFFECTS) {
-      expect(def.frag, `${def.id}`).toContain("uniform sampler2D uDepth;");
+      expect(def.frag, `${def.id}`).toContain("uniform sampler2D uDepthTex;");
       expect(def.frag, `${def.id}`).toContain("uniform sampler2D uHist0;");
+    }
+  });
+
+  it("reserves common sampler uniforms so saved scalar param keys cannot collide", () => {
+    for (const def of EFFECTS) {
+      for (const param of def.params) {
+        const uniform = `u${param.key[0].toUpperCase()}${param.key.slice(1)}`;
+        expect(EFFECT_SAMPLER_NAMES, `${def.id}.${param.key}`).not.toContain(uniform);
+      }
+    }
+    for (const def of EFFECTS) {
+      expect(def.frag, `${def.id} depth helper`).toContain("texture2D(uDepthTex");
+      expect(def.frag, `${def.id} flow helper`).toContain("texture2D(uFlowTex");
     }
   });
 

@@ -36,6 +36,7 @@ import { captureDeliverable } from "@/engine/captureDeliverable";
 import { cueFromUrl, setlistFilename } from "@/engine/setlist";
 import { KaossSurface } from "@/components/editor/KaossSurface";
 import { QuadrantSurface } from "@/components/editor/QuadrantSurface";
+import { RoleControlRail } from "@/components/editor/RoleControlRail";
 import { TrackpadGestures } from "@/components/editor/TrackpadGestures";
 import { toggleSystemAudio } from "@/engine/systemAudio";
 import { loadImageFile, loadImageFromClipboard } from "@/lib/sourceLoader";
@@ -125,6 +126,14 @@ export default function Editor() {
   useFullscreenSync();
 
   const idleHidden = useIdleHide(5000);
+  const focusTune = useCallback((layerId: string) => {
+    useStore.getState().selectLayer(layerId);
+    setHideUI(false);
+    requestAnimationFrame(() => {
+      document.querySelector<HTMLElement>("[data-tune-panel]")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }, []);
   const loadDroppedImage = useCallback(async (file: File) => {
     const ok = await loadImageFile(file);
     if (ok) toast.success("Image loaded — moshing…");
@@ -1126,9 +1135,10 @@ export default function Editor() {
           <GlCanvas />
         </div>
         {!hasSource && !isOverlay && <StartCameraOverlay />}
+        {!hasSource && !isOverlay && <RoleControlRail onTune={focusTune} />}
         <SystemAudioHud visible={systemAudioEnabled && !isOverlay} />
         {hasSource && !isOverlay && (
-          <QuadrantSurface onTogglePerf={togglePerf} />
+          <QuadrantSurface onTogglePerf={togglePerf} onTune={focusTune} />
         )}
         <TrackpadGestures
           targetRef={canvasContainerRef}
@@ -1441,7 +1451,7 @@ export default function Editor() {
               <ShufflePanel />
               <FxPicker />
             </section>
-            <section>
+            <section data-tune-panel>
               <div className="section-header">
                 <h2>Tune</h2><div className="rule" />
                 <span className="badge">arrows · ←↑↓→</span>

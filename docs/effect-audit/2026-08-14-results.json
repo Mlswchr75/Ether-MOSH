@@ -1,0 +1,1837 @@
+{
+  "date": "2026-08-14",
+  "registry": {
+    "total": 105,
+    "uniqueIds": 105,
+    "uniqueNames": 105
+  },
+  "selected": 105,
+  "environment": {
+    "node": "v22.23.2",
+    "platform": "linux",
+    "glVersion": "WebGL 1.0 stack-gl 8.1.6",
+    "renderer": "ANGLE",
+    "vendor": "stack-gl"
+  },
+  "dimensions": {
+    "width": 256,
+    "height": 144
+  },
+  "samples": [
+    {
+      "time": 0,
+      "pulse": 0
+    },
+    {
+      "time": 0.7,
+      "pulse": 0.65
+    },
+    {
+      "time": 1.4,
+      "pulse": 1
+    }
+  ],
+  "thresholds": {
+    "changedPixelDelta": 12,
+    "blankAlphaCoverage": 0.01,
+    "blankLuminance": 0.00392156862745098,
+    "inertMeanAbsoluteDelta": 0.003,
+    "inertChangedPixelRatio": 0.01
+  },
+  "summary": {
+    "total": 105,
+    "pass": 105,
+    "compile-fail": 0,
+    "webgl-fail": 0,
+    "blank": 0,
+    "inert": 0,
+    "failed": 0
+  },
+  "results": [
+    {
+      "id": "pixelSort",
+      "name": "Pixel Sort",
+      "category": "corruption",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.06318001231163761,
+        "changedPixelRatio": 0.3630913628472222,
+        "luminanceMean": 0.4874736559393542,
+        "luminanceVariance": 0.036646400727919776,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 1456.605259
+    },
+    {
+      "id": "datamosh",
+      "name": "Datamosh",
+      "category": "corruption",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.07362848640613653,
+        "changedPixelRatio": 0.3883192274305556,
+        "luminanceMean": 0.5244122134990707,
+        "luminanceVariance": 0.04356266981177992,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 54.34618000000046
+    },
+    {
+      "id": "blockShift",
+      "name": "Block Shift",
+      "category": "corruption",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.05556215107570806,
+        "changedPixelRatio": 0.2525227864583333,
+        "luminanceMean": 0.5080846700324756,
+        "luminanceVariance": 0.040029151524553275,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 46.72745500000019
+    },
+    {
+      "id": "compressionTears",
+      "name": "Compression Tears",
+      "category": "corruption",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.16218242215867829,
+        "changedPixelRatio": 0.8096516927083334,
+        "luminanceMean": 0.5446011383442151,
+        "luminanceVariance": 0.0503853467073917,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 51.757878000000346
+    },
+    {
+      "id": "jitter",
+      "name": "Jitter",
+      "category": "corruption",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.061887644959604214,
+        "changedPixelRatio": 0.5029839409722222,
+        "luminanceMean": 0.5094536016007759,
+        "luminanceVariance": 0.03499046660099436,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 69.92204500000025
+    },
+    {
+      "id": "scanBreak",
+      "name": "Scan Break",
+      "category": "corruption",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.06817292744644154,
+        "changedPixelRatio": 0.2245551215277778,
+        "luminanceMean": 0.5438119957830855,
+        "luminanceVariance": 0.0459921184353565,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 52.03889900000013
+    },
+    {
+      "id": "frameSmear",
+      "name": "Frame Smear",
+      "category": "corruption",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.07603319177786856,
+        "changedPixelRatio": 0.7000325520833334,
+        "luminanceMean": 0.5188311990017243,
+        "luminanceVariance": 0.026174598652228154,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 79.16359699999975
+    },
+    {
+      "id": "sliceDrift",
+      "name": "Slice Drift",
+      "category": "corruption",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.09313058846223675,
+        "changedPixelRatio": 0.6071234809027778,
+        "luminanceMean": 0.5080846700324699,
+        "luminanceVariance": 0.04002915152455566,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 47.80724999999984
+    },
+    {
+      "id": "bufferEcho",
+      "name": "Buffer Echo",
+      "category": "corruption",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.2066615817333878,
+        "changedPixelRatio": 0.9440104166666666,
+        "luminanceMean": 0.7433315528407256,
+        "luminanceVariance": 0.05153753424432028,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 57.23299700000007
+    },
+    {
+      "id": "rgbShift",
+      "name": "RGB Shift",
+      "category": "color",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.14082527687000726,
+        "changedPixelRatio": 0.8566080729166666,
+        "luminanceMean": 0.558109556759774,
+        "luminanceVariance": 0.03998773155770474,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 45.518245999999635
+    },
+    {
+      "id": "hueRotate",
+      "name": "Hue Rotate",
+      "category": "color",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.31762851335557374,
+        "changedPixelRatio": 0.9982367621527778,
+        "luminanceMean": 0.4851047066907576,
+        "luminanceVariance": 0.05133225340043521,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 98.64220800000021
+    },
+    {
+      "id": "solarize",
+      "name": "Solarize",
+      "category": "color",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.1974262578295207,
+        "changedPixelRatio": 0.9962022569444444,
+        "luminanceMean": 0.33263866651350155,
+        "luminanceVariance": 0.007025850443624443,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 36.136766000000534
+    },
+    {
+      "id": "rainbowMap",
+      "name": "Rainbow Map",
+      "category": "color",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.3551430873275236,
+        "changedPixelRatio": 1,
+        "luminanceMean": 0.4848557525062098,
+        "luminanceVariance": 0.02088102007617912,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 39.32736300000033
+    },
+    {
+      "id": "vhsBleed",
+      "name": "VHS Bleed",
+      "category": "color",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.07914234125363108,
+        "changedPixelRatio": 0.8265516493055556,
+        "luminanceMean": 0.4750830791079365,
+        "luminanceVariance": 0.03446733723915063,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 112.12222900000052
+    },
+    {
+      "id": "scanlines",
+      "name": "CRT Scanlines",
+      "category": "color",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.13545662984522513,
+        "changedPixelRatio": 0.7929958767361112,
+        "luminanceMean": 0.38183663322099953,
+        "luminanceVariance": 0.031523276385131555,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 39.185285000000476
+    },
+    {
+      "id": "posterize",
+      "name": "Posterize",
+      "category": "color",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.1012507730233297,
+        "changedPixelRatio": 0.9969618055555556,
+        "luminanceMean": 0.40988247938367206,
+        "luminanceVariance": 0.04089668805740773,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 35.594444000000294
+    },
+    {
+      "id": "thermal",
+      "name": "Thermal",
+      "category": "color",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.1974179956994372,
+        "changedPixelRatio": 0.9983181423611112,
+        "luminanceMean": 0.44637930825761907,
+        "luminanceVariance": 0.04642279426387497,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 38.84013899999991
+    },
+    {
+      "id": "duotone",
+      "name": "Duotone",
+      "category": "color",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.2651112586238199,
+        "changedPixelRatio": 1,
+        "luminanceMean": 0.4317670733762291,
+        "luminanceVariance": 0.019119403649157957,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 42.25277299999925
+    },
+    {
+      "id": "noiseTint",
+      "name": "Noise Tint",
+      "category": "color",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.08720479728349673,
+        "changedPixelRatio": 0.9948459201388888,
+        "luminanceMean": 0.49055043558091466,
+        "luminanceVariance": 0.02898929598947317,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 44.907092000000375
+    },
+    {
+      "id": "melt",
+      "name": "Melt",
+      "category": "geometry",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.06257825974718591,
+        "changedPixelRatio": 0.4011773003472222,
+        "luminanceMean": 0.5210494361468224,
+        "luminanceVariance": 0.03716439352191647,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 49.89817700000003
+    },
+    {
+      "id": "liquidWarp",
+      "name": "Liquid Warp",
+      "category": "geometry",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.08796654440132534,
+        "changedPixelRatio": 0.4115939670138889,
+        "luminanceMean": 0.5168738564644191,
+        "luminanceVariance": 0.04273537035333752,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 69.25363500000003
+    },
+    {
+      "id": "ripple",
+      "name": "Ripple",
+      "category": "geometry",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.0677087943105483,
+        "changedPixelRatio": 0.2858344184027778,
+        "luminanceMean": 0.5156457473787746,
+        "luminanceVariance": 0.04151068781484479,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 41.35836500000005
+    },
+    {
+      "id": "kaleidoscope",
+      "name": "Kaleidoscope",
+      "category": "geometry",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.31671687772331153,
+        "changedPixelRatio": 0.938720703125,
+        "luminanceMean": 0.5256183884803806,
+        "luminanceVariance": 0.013247002255844187,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 60.25997499999994
+    },
+    {
+      "id": "mirror",
+      "name": "Mirror",
+      "category": "geometry",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.2078103014932825,
+        "changedPixelRatio": 0.855224609375,
+        "luminanceMean": 0.5064592744501976,
+        "luminanceVariance": 0.039366948934016543,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 59.379408000000694
+    },
+    {
+      "id": "lensWarp",
+      "name": "Lens Warp",
+      "category": "geometry",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.14624225558278867,
+        "changedPixelRatio": 0.7245279947916666,
+        "luminanceMean": 0.6013925642530715,
+        "luminanceVariance": 0.05030252659250062,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 38.611237000000074
+    },
+    {
+      "id": "twirl",
+      "name": "Twirl",
+      "category": "geometry",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.27663093738652866,
+        "changedPixelRatio": 0.9624837239583334,
+        "luminanceMean": 0.5511876123152665,
+        "luminanceVariance": 0.04624955810792025,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 52.50905200000034
+    },
+    {
+      "id": "filmGrain",
+      "name": "Film Grain",
+      "category": "atmosphere",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.1359372872412854,
+        "changedPixelRatio": 0.9907769097222222,
+        "luminanceMean": 0.5208601876957405,
+        "luminanceVariance": 0.06862904693376143,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 90.04332799999975
+    },
+    {
+      "id": "bloom",
+      "name": "Bloom",
+      "category": "atmosphere",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.2244856203476761,
+        "changedPixelRatio": 0.885009765625,
+        "luminanceMean": 0.7513787919560255,
+        "luminanceVariance": 0.05587792031418182,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 76.55541999999969
+    },
+    {
+      "id": "staticSnow",
+      "name": "Static Snow",
+      "category": "atmosphere",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.1118310866013072,
+        "changedPixelRatio": 0.9897732204861112,
+        "luminanceMean": 0.5050174112796113,
+        "luminanceVariance": 0.026719270198013234,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 41.42657700000018
+    },
+    {
+      "id": "fog",
+      "name": "Fog",
+      "category": "atmosphere",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.06833093625181554,
+        "changedPixelRatio": 0.7542860243055556,
+        "luminanceMean": 0.5649556878489261,
+        "luminanceVariance": 0.02166244135479306,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 103.97159300000021
+    },
+    {
+      "id": "lightLeak",
+      "name": "Light Leak",
+      "category": "atmosphere",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.11005373575935004,
+        "changedPixelRatio": 0.6382921006944444,
+        "luminanceMean": 0.6184954813878492,
+        "luminanceVariance": 0.04887720025635128,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 43.26083000000108
+    },
+    {
+      "id": "holoShine",
+      "name": "Holographic Shine",
+      "category": "atmosphere",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.09503743844181191,
+        "changedPixelRatio": 0.8223198784722222,
+        "luminanceMean": 0.588511397314137,
+        "luminanceVariance": 0.038932042304895276,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 43.760597999998936
+    },
+    {
+      "id": "asciiCollapse",
+      "name": "ASCII Collapse",
+      "category": "corruption",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.2568801913126362,
+        "changedPixelRatio": 0.72021484375,
+        "luminanceMean": 0.36370185666018817,
+        "luminanceVariance": 0.08184203295477616,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 41.45657199999914
+    },
+    {
+      "id": "hexShatter",
+      "name": "Hex Shatter",
+      "category": "corruption",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.11593995381717502,
+        "changedPixelRatio": 0.6328938802083334,
+        "luminanceMean": 0.4923800220843224,
+        "luminanceVariance": 0.04433076220810192,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 50.178045000000566
+    },
+    {
+      "id": "bitCrush",
+      "name": "Bit Crush",
+      "category": "corruption",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.134086428263435,
+        "changedPixelRatio": 0.9979112413194444,
+        "luminanceMean": 0.45953778237348203,
+        "luminanceVariance": 0.04442294585130521,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 59.68598600000041
+    },
+    {
+      "id": "glitchTeleport",
+      "name": "Teleport",
+      "category": "corruption",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.09397357394925562,
+        "changedPixelRatio": 0.3175998263888889,
+        "luminanceMean": 0.5257491134131378,
+        "luminanceVariance": 0.03916102834138324,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 51.64919699999882
+    },
+    {
+      "id": "scanlineWarp",
+      "name": "Scanline Warp",
+      "category": "corruption",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.08091979847494553,
+        "changedPixelRatio": 0.598876953125,
+        "luminanceMean": 0.5080846700324755,
+        "luminanceVariance": 0.04002915152455366,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 45.21753700000045
+    },
+    {
+      "id": "pixelExplode",
+      "name": "Pixel Explode",
+      "category": "corruption",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.08257094793936093,
+        "changedPixelRatio": 0.4585774739583333,
+        "luminanceMean": 0.5030682625697467,
+        "luminanceVariance": 0.037397645492801834,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 44.95551499999965
+    },
+    {
+      "id": "chromaPulse",
+      "name": "Chroma Pulse",
+      "category": "color",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.08320245126407044,
+        "changedPixelRatio": 0.4381239149305556,
+        "luminanceMean": 0.5139671685219052,
+        "luminanceVariance": 0.03670168196849649,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 54.505849000001035
+    },
+    {
+      "id": "oilSlick",
+      "name": "Oil Slick",
+      "category": "color",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.1925933372480937,
+        "changedPixelRatio": 1,
+        "luminanceMean": 0.47857393795105285,
+        "luminanceVariance": 0.044245608296652444,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 69.25907300000108
+    },
+    {
+      "id": "infraredDream",
+      "name": "Infrared Dream",
+      "category": "color",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.256424994042756,
+        "changedPixelRatio": 1,
+        "luminanceMean": 0.6051050524236361,
+        "luminanceVariance": 0.024048548846083373,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 41.43899500000043
+    },
+    {
+      "id": "colorQuake",
+      "name": "Color Quake",
+      "category": "color",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.1665997895107117,
+        "changedPixelRatio": 0.9196234809027778,
+        "luminanceMean": 0.514270520577985,
+        "luminanceVariance": 0.054551661071091384,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 47.47863799999868
+    },
+    {
+      "id": "paletteDither",
+      "name": "Palette Dither",
+      "category": "color",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.11520664544753087,
+        "changedPixelRatio": 0.9984809027777778,
+        "luminanceMean": 0.39822172572851655,
+        "luminanceVariance": 0.041588040149499295,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 38.87489099999948
+    },
+    {
+      "id": "voltage",
+      "name": "Voltage",
+      "category": "color",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.05702054114469862,
+        "changedPixelRatio": 0.2935926649305556,
+        "luminanceMean": 0.5328514067606122,
+        "luminanceVariance": 0.04130449580832152,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 46.922857999999906
+    },
+    {
+      "id": "fractalZoom",
+      "name": "Fractal Zoom",
+      "category": "geometry",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.07836541734749455,
+        "changedPixelRatio": 0.8902723524305556,
+        "luminanceMean": 0.5177991646029058,
+        "luminanceVariance": 0.01773286053237244,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 155.4349259999999
+    },
+    {
+      "id": "polarFold",
+      "name": "Polar Fold",
+      "category": "geometry",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.2999651075708061,
+        "changedPixelRatio": 0.9663357204861112,
+        "luminanceMean": 0.5425200504450236,
+        "luminanceVariance": 0.033921002500435504,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 42.657570999999734
+    },
+    {
+      "id": "displacement",
+      "name": "Displacement Field",
+      "category": "geometry",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.24597644902868554,
+        "changedPixelRatio": 0.8854437934027778,
+        "luminanceMean": 0.5936107692291137,
+        "luminanceVariance": 0.05834200889578944,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 96.86262299999908
+    },
+    {
+      "id": "pageCurl",
+      "name": "Reality Tear",
+      "category": "geometry",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.09027791961692085,
+        "changedPixelRatio": 0.504150390625,
+        "luminanceMean": 0.5189368246187009,
+        "luminanceVariance": 0.041275496222882124,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 48.13358199999857
+    },
+    {
+      "id": "crystalize",
+      "name": "Crystalize",
+      "category": "geometry",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.06244617204520697,
+        "changedPixelRatio": 0.4181857638888889,
+        "luminanceMean": 0.5230215184802002,
+        "luminanceVariance": 0.03346442220767598,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 176.07436599999892
+    },
+    {
+      "id": "zoomBlur",
+      "name": "Zoom Blur",
+      "category": "geometry",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.07932740587554467,
+        "changedPixelRatio": 0.7975260416666666,
+        "luminanceMean": 0.5092905769590672,
+        "luminanceVariance": 0.022153942288867134,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 116.35541700000067
+    },
+    {
+      "id": "perspectiveTilt",
+      "name": "Perspective Tilt",
+      "category": "geometry",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.11560599355482934,
+        "changedPixelRatio": 0.5492892795138888,
+        "luminanceMean": 0.5453786191746058,
+        "luminanceVariance": 0.04989119020938265,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 36.65780699999959
+    },
+    {
+      "id": "godRays",
+      "name": "God Rays",
+      "category": "atmosphere",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.20853907101034858,
+        "changedPixelRatio": 1,
+        "luminanceMean": 0.729670909373278,
+        "luminanceVariance": 0.03129064728944497,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 70.23919300000125
+    },
+    {
+      "id": "auroraVeil",
+      "name": "Aurora Veil",
+      "category": "atmosphere",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.11158666229802106,
+        "changedPixelRatio": 0.9749891493055556,
+        "luminanceMean": 0.6200958296100516,
+        "luminanceVariance": 0.03334661735086464,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 71.32854299999963
+    },
+    {
+      "id": "dustMotes",
+      "name": "Dust Motes",
+      "category": "atmosphere",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.05720000312046115,
+        "changedPixelRatio": 0.3569064670138889,
+        "luminanceMean": 0.5679570755463395,
+        "luminanceVariance": 0.049634522537379155,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 69.93958500000008
+    },
+    {
+      "id": "dreamGlow",
+      "name": "Dream Glow",
+      "category": "atmosphere",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.11982528254357298,
+        "changedPixelRatio": 1,
+        "luminanceMean": 0.6321679881323387,
+        "luminanceVariance": 0.028899743023245772,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 63.85787899999923
+    },
+    {
+      "id": "vignette",
+      "name": "Vignette",
+      "category": "atmosphere",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.14045511216639434,
+        "changedPixelRatio": 0.7674424913194444,
+        "luminanceMean": 0.37990374310661834,
+        "luminanceVariance": 0.03635978962115738,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 37.52861000000121
+    },
+    {
+      "id": "plasmaField",
+      "name": "Plasma Field",
+      "category": "atmosphere",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.13448698200344952,
+        "changedPixelRatio": 1,
+        "luminanceMean": 0.4592479887706088,
+        "luminanceVariance": 0.0390113846936771,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 61.6635869999991
+    },
+    {
+      "id": "scanFreeze",
+      "name": "Scan Freeze",
+      "category": "atmosphere",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.08007074936456064,
+        "changedPixelRatio": 0.5527886284722222,
+        "luminanceMean": 0.5054105641084656,
+        "luminanceVariance": 0.03685960439917807,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 60.14464499999849
+    },
+    {
+      "id": "filmicTone",
+      "name": "Filmic Tone",
+      "category": "color",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.11562386528685548,
+        "changedPixelRatio": 1,
+        "luminanceMean": 0.46849026984184966,
+        "luminanceVariance": 0.07353632896426751,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 42.51511700000083
+    },
+    {
+      "id": "drosteTunnel",
+      "name": "Droste Tunnel",
+      "category": "geometry",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.40769456075254173,
+        "changedPixelRatio": 0.9908311631944444,
+        "luminanceMean": 0.5079816584966637,
+        "luminanceVariance": 0.042828667291173794,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 66.93908799999917
+    },
+    {
+      "id": "shockwave",
+      "name": "Shockwave",
+      "category": "corruption",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.11395236190541032,
+        "changedPixelRatio": 0.7212456597222222,
+        "luminanceMean": 0.5638833246314909,
+        "luminanceVariance": 0.04136209532104984,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 49.57802100000117
+    },
+    {
+      "id": "liquidChrome",
+      "name": "Liquid Chrome",
+      "category": "color",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.23775910465459332,
+        "changedPixelRatio": 0.9995930989583334,
+        "luminanceMean": 0.34640037085971265,
+        "luminanceVariance": 0.04198862005548788,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 101.26709999999912
+    },
+    {
+      "id": "voronoiShatter",
+      "name": "Voronoi Shatter",
+      "category": "geometry",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.3903953624273784,
+        "changedPixelRatio": 0.9930013020833334,
+        "luminanceMean": 0.49166045570783407,
+        "luminanceVariance": 0.037192713348565554,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 220.00061500000083
+    },
+    {
+      "id": "prismDispersion",
+      "name": "Prism Dispersion",
+      "category": "color",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.188119446997549,
+        "changedPixelRatio": 1,
+        "luminanceMean": 0.5459122007123046,
+        "luminanceVariance": 0.06234297320192855,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 81.75924300000042
+    },
+    {
+      "id": "neonContour",
+      "name": "Neon Contour",
+      "category": "atmosphere",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.3971984641657589,
+        "changedPixelRatio": 1,
+        "luminanceMean": 0.27969085003488564,
+        "luminanceVariance": 0.09184536853539127,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 60.520778000000064
+    },
+    {
+      "id": "inkFlow",
+      "name": "Ink Flow",
+      "category": "corruption",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.08592711028277052,
+        "changedPixelRatio": 0.5500217013888888,
+        "luminanceMean": 0.5035549714690348,
+        "luminanceVariance": 0.038829148262707947,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 159.0026230000003
+    },
+    {
+      "id": "halftone",
+      "name": "Halftone",
+      "category": "color",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.2203072519517066,
+        "changedPixelRatio": 0.9998372395833334,
+        "luminanceMean": 0.6685448993438646,
+        "luminanceVariance": 0.05485728337695106,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 62.452767999999196
+    },
+    {
+      "id": "crossHatch",
+      "name": "Cross Hatch",
+      "category": "color",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.25953556190994914,
+        "changedPixelRatio": 0.999755859375,
+        "luminanceMean": 0.6645549622991426,
+        "luminanceVariance": 0.07359780140224537,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 60.34088900000097
+    },
+    {
+      "id": "kuwahara",
+      "name": "Painterly",
+      "category": "color",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.03242261965550109,
+        "changedPixelRatio": 0.7562662760416666,
+        "luminanceMean": 0.502181591818132,
+        "luminanceVariance": 0.03121705115596035,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 61.50498999999945
+    },
+    {
+      "id": "anaglyph",
+      "name": "Anaglyph",
+      "category": "color",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.05940212673611111,
+        "changedPixelRatio": 0.9485948350694444,
+        "luminanceMean": 0.5147176432291919,
+        "luminanceVariance": 0.03321795034153163,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 42.06113899999946
+    },
+    {
+      "id": "photocopy",
+      "name": "Photocopy",
+      "category": "color",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.213117780387618,
+        "changedPixelRatio": 0.9178059895833334,
+        "luminanceMean": 0.44139699535762833,
+        "luminanceVariance": 0.06170099223397604,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 83.3508839999995
+    },
+    {
+      "id": "contourMap",
+      "name": "Contour Map",
+      "category": "color",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.20615691806236383,
+        "changedPixelRatio": 1,
+        "luminanceMean": 0.5828305124719336,
+        "luminanceVariance": 0.017053751978142184,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 41.6902740000005
+    },
+    {
+      "id": "emboss",
+      "name": "Relief",
+      "category": "geometry",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.2045065487132353,
+        "changedPixelRatio": 1,
+        "luminanceMean": 0.3900132179117923,
+        "luminanceVariance": 0.01408225236829086,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 56.75869099999909
+    },
+    {
+      "id": "extrude",
+      "name": "Extrude",
+      "category": "geometry",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.12569447990423022,
+        "changedPixelRatio": 0.992919921875,
+        "luminanceMean": 0.5621985403901182,
+        "luminanceVariance": 0.055520104110219515,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 160.407964
+    },
+    {
+      "id": "moire",
+      "name": "Moire",
+      "category": "geometry",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.10631918204202978,
+        "changedPixelRatio": 1,
+        "luminanceMean": 0.546509122583073,
+        "luminanceVariance": 0.04803907288316667,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 68.37621699999909
+    },
+    {
+      "id": "slitScan",
+      "name": "Slit Scan",
+      "category": "corruption",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.14485677083333334,
+        "changedPixelRatio": 0.9980740017361112,
+        "luminanceMean": 0.58625726075287,
+        "luminanceVariance": 0.05026376991989828,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 44.02010900000096
+    },
+    {
+      "id": "rollingShutter",
+      "name": "Rolling Shutter",
+      "category": "corruption",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.11884141532770516,
+        "changedPixelRatio": 0.8789605034722222,
+        "luminanceMean": 0.46630533639281396,
+        "luminanceVariance": 0.03419085151518059,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 45.88575900000069
+    },
+    {
+      "id": "echoTrails",
+      "name": "Echo Trails",
+      "category": "corruption",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.09000906352124183,
+        "changedPixelRatio": 0.9993218315972222,
+        "luminanceMean": 0.4912978161594558,
+        "luminanceVariance": 0.024094077526368274,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 130.15402499999982
+    },
+    {
+      "id": "caustics",
+      "name": "Caustics",
+      "category": "atmosphere",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.08071281970542847,
+        "changedPixelRatio": 0.4428439670138889,
+        "luminanceMean": 0.5938264853323966,
+        "luminanceVariance": 0.051650223469717926,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 77.57270199999948
+    },
+    {
+      "id": "anamorphic",
+      "name": "Anamorphic Flare",
+      "category": "atmosphere",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.17826375414170298,
+        "changedPixelRatio": 0.8837348090277778,
+        "luminanceMean": 0.6839280786824777,
+        "luminanceVariance": 0.061596414492463336,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 67.62169799999901
+    },
+    {
+      "id": "feedbackTunnel",
+      "name": "Feedback Tunnel",
+      "category": "geometry",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.3806510487586238,
+        "changedPixelRatio": 1,
+        "luminanceMean": 0.21926698529412403,
+        "luminanceVariance": 0.01826878470350405,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 51.67142199999944
+    },
+    {
+      "id": "topoContour",
+      "name": "Topographic",
+      "category": "color",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.3363771304239288,
+        "changedPixelRatio": 0.9999728732638888,
+        "luminanceMean": 0.5930417588763752,
+        "luminanceVariance": 0.01520295903622565,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 45.672630999999456
+    },
+    {
+      "id": "causticWater",
+      "name": "Caustic Water",
+      "category": "atmosphere",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.23875311336919028,
+        "changedPixelRatio": 0.9839952256944444,
+        "luminanceMean": 0.7212841923253898,
+        "luminanceVariance": 0.055193890399621304,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 91.92177300000003
+    },
+    {
+      "id": "moirePulse",
+      "name": "Moiré Pulse",
+      "category": "geometry",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.1623764581063907,
+        "changedPixelRatio": 0.9851888020833334,
+        "luminanceMean": 0.5779024980000524,
+        "luminanceVariance": 0.0295389239124908,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 54.45194099999935
+    },
+    {
+      "id": "trailDecay",
+      "name": "Trail Decay",
+      "category": "corruption",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.020041445397603486,
+        "changedPixelRatio": 0.2422146267361111,
+        "luminanceMean": 0.5225308131425197,
+        "luminanceVariance": 0.04125291719630603,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 49.66179700000066
+    },
+    {
+      "id": "motionMomentum",
+      "name": "Momentum",
+      "category": "corruption",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.08225510762754176,
+        "changedPixelRatio": 0.9285481770833334,
+        "luminanceMean": 0.4991021243319408,
+        "luminanceVariance": 0.024877750758574124,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 55.24793099999988
+    },
+    {
+      "id": "infiniteZoom",
+      "name": "Infinite Zoom",
+      "category": "geometry",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.13776999080882352,
+        "changedPixelRatio": 1,
+        "luminanceMean": 0.5286876049113239,
+        "luminanceVariance": 0.022945841699140712,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 46.929410000000644
+    },
+    {
+      "id": "timeDisplace",
+      "name": "Time Displace",
+      "category": "corruption",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.06785751265205156,
+        "changedPixelRatio": 0.8860134548611112,
+        "luminanceMean": 0.5297294648692666,
+        "luminanceVariance": 0.0344933713653357,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 51.63004099999853
+    },
+    {
+      "id": "reactionBloom",
+      "name": "Reaction Bloom",
+      "category": "atmosphere",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.13704100853304285,
+        "changedPixelRatio": 1,
+        "luminanceMean": 0.5716079000289315,
+        "luminanceVariance": 0.02728081644152547,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 51.97887199999968
+    },
+    {
+      "id": "depthShear",
+      "name": "Depth Shear",
+      "category": "dimension",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.08029361411810094,
+        "changedPixelRatio": 0.6270073784722222,
+        "luminanceMean": 0.5362901976953355,
+        "luminanceVariance": 0.03983680621217517,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 47.19833199999994
+    },
+    {
+      "id": "dimensionSplit",
+      "name": "Dimension Split",
+      "category": "dimension",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.10036381740196078,
+        "changedPixelRatio": 0.6858452690972222,
+        "luminanceMean": 0.5385872086056368,
+        "luminanceVariance": 0.04236139485606305,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 51.54874900000141
+    },
+    {
+      "id": "timeShatter",
+      "name": "Time Shatter",
+      "category": "dimension",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.2596556996641249,
+        "changedPixelRatio": 1,
+        "luminanceMean": 0.5343242574508101,
+        "luminanceVariance": 0.027815872139658526,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 66.1058809999995
+    },
+    {
+      "id": "parallaxExplode",
+      "name": "Parallax Explode",
+      "category": "dimension",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.06926664907861292,
+        "changedPixelRatio": 0.3850640190972222,
+        "luminanceMean": 0.5082427481191719,
+        "luminanceVariance": 0.03814399980624772,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 44.83111199999985
+    },
+    {
+      "id": "depthEcho",
+      "name": "Depth Echo",
+      "category": "dimension",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.015288238414578794,
+        "changedPixelRatio": 0.15983072916666666,
+        "luminanceMean": 0.5202041837937202,
+        "luminanceVariance": 0.04104046873674283,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 114.7501059999995
+    },
+    {
+      "id": "strataSlice",
+      "name": "Strata",
+      "category": "dimension",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.24552798911810095,
+        "changedPixelRatio": 1,
+        "luminanceMean": 0.508807197478383,
+        "luminanceVariance": 0.025362253160220116,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 67.26542599999993
+    },
+    {
+      "id": "chronoBleed",
+      "name": "Chrono Bleed",
+      "category": "dimension",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.15749265273238924,
+        "changedPixelRatio": 0.9997829861111112,
+        "luminanceMean": 0.5089662488723798,
+        "luminanceVariance": 0.024947767144013977,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 69.22890199999893
+    },
+    {
+      "id": "flowSmear",
+      "name": "Flow Smear",
+      "category": "dimension",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.09288056151279957,
+        "changedPixelRatio": 0.8167588975694444,
+        "luminanceMean": 0.5462548408351874,
+        "luminanceVariance": 0.02075890121095797,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 53.904993000000104
+    },
+    {
+      "id": "flowTurbulence",
+      "name": "Turbulence",
+      "category": "dimension",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.11295853048974219,
+        "changedPixelRatio": 0.7461480034722222,
+        "luminanceMean": 0.5299561305146681,
+        "luminanceVariance": 0.04290735457614592,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 60.90285899999981
+    },
+    {
+      "id": "glassRefract",
+      "name": "Glass",
+      "category": "geometry",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.09870032793209876,
+        "changedPixelRatio": 0.6228841145833334,
+        "luminanceMean": 0.544525398369398,
+        "luminanceVariance": 0.04073086665174508,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 86.81476500000099
+    },
+    {
+      "id": "chromaAberrate",
+      "name": "Aberration",
+      "category": "color",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.03591136613789034,
+        "changedPixelRatio": 0.3114149305555556,
+        "luminanceMean": 0.5072892490468127,
+        "luminanceVariance": 0.03517081997891963,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 38.206043000000136
+    },
+    {
+      "id": "crtPhosphor",
+      "name": "CRT",
+      "category": "atmosphere",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.27586890659041396,
+        "changedPixelRatio": 1,
+        "luminanceMean": 0.3153277243966157,
+        "luminanceVariance": 0.05036124375873227,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 91.5288959999998
+    },
+    {
+      "id": "mandalaBloom",
+      "name": "Mandala",
+      "category": "geometry",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.3498639053422295,
+        "changedPixelRatio": 0.9315049913194444,
+        "luminanceMean": 0.4824756078090082,
+        "luminanceVariance": 0.01392869581848441,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 63.873342000000775
+    },
+    {
+      "id": "volumetricShaft",
+      "name": "Volumetric Shaft",
+      "category": "atmosphere",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.03034084655274147,
+        "changedPixelRatio": 0.619873046875,
+        "luminanceMean": 0.5412368565538217,
+        "luminanceVariance": 0.04214330203487976,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 70.90710199999921
+    },
+    {
+      "id": "emberField",
+      "name": "Embers",
+      "category": "atmosphere",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.003997984465777052,
+        "changedPixelRatio": 0.044379340277777776,
+        "luminanceMean": 0.5124131387867364,
+        "luminanceVariance": 0.040525430446960775,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 65.30947100000049
+    },
+    {
+      "id": "volumetricPull",
+      "name": "Volumetric Pull",
+      "category": "dimension",
+      "status": "pass",
+      "compileLog": "vertex:\n\nfragment:\n\nlink:\n",
+      "glError": 0,
+      "metrics": {
+        "meanAbsoluteDelta": 0.11520054636437908,
+        "changedPixelRatio": 0.6321614583333334,
+        "luminanceMean": 0.5428356358081072,
+        "luminanceVariance": 0.0485667599024972,
+        "blank": false,
+        "inert": false
+      },
+      "elapsedMs": 46.51791400000002
+    }
+  ]
+}

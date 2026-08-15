@@ -15,9 +15,8 @@
  * two unrelated piles — and the look is *named*, so the user can see the intent
  * instead of guessing at it.
  *
- * It also maps onto the quadrant instrument: Q1 grades, Q2 forms, Q3 accents,
- * Q4 finishes. Re-rolling one quadrant swaps that part of the sentence and
- * leaves the grammar intact.
+ * Re-rolling one semantic role swaps that part of the sentence and leaves the
+ * grammar intact.
  */
 import { EFFECTS, EFFECTS_BY_ID } from "./effects";
 import type { BlendMode, LayerRegion, RegionMode } from "./blend";
@@ -265,7 +264,7 @@ export const ROLE_BLURBS: Record<Role, string> = {
 /** How polished an effect reads. Cinematic is the house default. */
 export type Fidelity = "cinematic" | "neutral" | "lofi";
 
-type Craft = {
+export type Craft = {
   role: Role;
   fidelity: Fidelity;
   /** What it contributes, 0..1. */
@@ -769,7 +768,7 @@ export function gpuCostOf(id: string): number {
  * Choose the effect for one role, honouring the look, the brief and a
  * remaining detail budget.
  *
- * `affinityTarget` (-1..1) lets the quadrant instrument keep its
+ * `affinityTarget` (-1..1) lets role rerolls keep their
  * similar↔incompatible axis: positive stays inside the look's own picks,
  * negative reaches outside them for something that fights the look.
  */
@@ -1036,6 +1035,40 @@ export function blendForRole(role: Role, rand: () => number): BlendMode {
   return pool[Math.floor(rand() * pool.length)];
 }
 
+/** Compose one semantic role without disturbing the rest of a stack. */
+export function composeRoleLayer(
+  role: Role,
+  look: Look,
+  brief: FrameBrief,
+  rand: () => number,
+  options: {
+    exclude: string[];
+    affinityTarget?: number;
+    wildness: number;
+    existingRegion?: LayerRegion | null;
+  },
+): ComposedLayer | null {
+  const effectId = pickForRole(role, look, brief, rand, {
+    exclude: options.exclude,
+    affinityTarget: options.affinityTarget,
+    wildness: options.wildness,
+  });
+  if (!EFFECTS_BY_ID[effectId]) return null;
+
+  const region = options.existingRegion ?? null;
+  return {
+    effectId,
+    role,
+    params: paramsForRole(effectId, role, look, brief, rand, options.wildness),
+    opacity: opacityForRole(role, look, brief, rand, effectId, {
+      wildness: options.wildness,
+      regioned: !!region,
+    }),
+    blend: role === "grade" ? "normal" : blendForRole(role, rand),
+    region,
+  };
+}
+
 /**
  * Compose a whole stack: pick a look, then fill the roles in order.
  *
@@ -1184,11 +1217,6 @@ export function compose(
   }
 
   return { look, brief, layers };
-}
-
-/** Which role a quadrant drives. Q1 grades, Q2 forms, Q3 accents, Q4 finishes. */
-export function roleForQuadrant(q: number): Role {
-  return ROLES[Math.max(0, Math.min(3, q))];
 }
 
 /**

@@ -1,6 +1,7 @@
 tools/cutouts/cutouts/
 tools/cutouts/review.html
 tools/cutouts/failures.csv
+docs/effect-audit/frames/
 tools/cutouts/.venv/
 __pycache__/
 # Logs
@@ -15,7 +16,9 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+*.tsbuildinfo
 *.local
+.worktrees/
 
 # Editor directories and files
 .vscode/*

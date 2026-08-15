@@ -27,7 +27,37 @@ function layerOf(effectId: string, over: Partial<Layer> = {}): Layer {
   };
 }
 
+function legacyWire(layers: Array<{ e: string; o: number; b: number }>): string {
+  return btoa(JSON.stringify({ v: 1, l: layers }))
+    .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function encodedWire(encoded: string): Record<string, unknown> {
+  const json = atob(encoded.replace(/-/g, "+").replace(/_/g, "/") + "==");
+  return JSON.parse(json) as Record<string, unknown>;
+}
+
 describe("preset url codec", () => {
+  it("keeps version one while encoding explicit roles as optional numeric g values", () => {
+    const explicit = encodedWire(encodePreset({ layers: [layerOf("bloom", { role: "finish" })] }));
+    const legacy = encodedWire(encodePreset({ layers: [layerOf("bloom")] }));
+
+    expect(explicit.v).toBe(1);
+    expect((explicit.l as Array<Record<string, unknown>>)[0].g).toBe(3);
+    expect((legacy.l as Array<Record<string, unknown>>)[0]).not.toHaveProperty("g");
+  });
+
+  it("round-trips explicit semantic roles", () => {
+    const encoded = encodePreset({ layers: [layerOf("bloom", { role: "finish" })] });
+    expect(decodePreset(encoded)!.layers[0].role).toBe("finish");
+  });
+
+  it("infers roles when decoding a version-one link without g", () => {
+    const legacy = legacyWire([{ e: "filmicTone", o: 1000, b: 0 }, { e: "bloom", o: 700, b: 1 }]);
+    expect(decodePreset(legacy)!.layers.map(layer => layer.role))
+      .toEqual(["grade", "finish"]);
+  });
+
   it("round-trips a simple stack", () => {
     const payload: PresetPayload = {
       seed: "abc123",

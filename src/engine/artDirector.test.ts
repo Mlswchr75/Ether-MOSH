@@ -8,12 +8,12 @@ import {
   briefFrom,
   chooseLook,
   compose,
+  composeRoleLayer,
   craftOf,
   gpuCostOf,
   opacityForRole,
   pickForRole,
   poolForRole,
-  roleForQuadrant,
   statsFromPixels,
   type SourceStats,
 } from "./artDirector";
@@ -117,6 +117,26 @@ describe("the brief", () => {
 });
 
 describe("the grammar", () => {
+  it("composes role layers with grade-safe blending and explicit region handling", () => {
+    const look = LOOKS[0];
+    const brief = briefFrom(NEUTRAL_STATS);
+    const region = { mode: "radial" as const, scale: 0.4, feather: 0.1, invert: false };
+
+    const grade = composeRoleLayer("grade", look, brief, rngFromSeed("grade-role"), {
+      exclude: [], wildness: 0.4,
+    });
+    const added = composeRoleLayer("form", look, brief, rngFromSeed("added-role"), {
+      exclude: [], wildness: 0.4, existingRegion: null,
+    });
+    const rerolled = composeRoleLayer("accent", look, brief, rngFromSeed("rerolled-role"), {
+      exclude: [], wildness: 0.4, existingRegion: region,
+    });
+
+    expect(grade!.blend).toBe("normal");
+    expect(added!.region).toBeNull();
+    expect(rerolled!.region).toEqual(region);
+  });
+
   it("assigns every registered effect a role", () => {
     for (const id of Object.keys(EFFECTS_BY_ID)) {
       expect(craftOf(id), `${id} has no craft entry`).not.toBeNull();
@@ -127,13 +147,6 @@ describe("the grammar", () => {
     for (const role of ROLES) {
       expect(poolForRole(role).length, role).toBeGreaterThan(4);
     }
-  });
-
-  it("maps quadrants onto composition roles in order", () => {
-    expect(roleForQuadrant(0)).toBe("grade");
-    expect(roleForQuadrant(1)).toBe("form");
-    expect(roleForQuadrant(2)).toBe("accent");
-    expect(roleForQuadrant(3)).toBe("finish");
   });
 
   it("gives every look a pick for every role it can fill", () => {

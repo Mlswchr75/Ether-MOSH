@@ -1,4 +1,5 @@
 import type { BlendMode } from "@/engine/blend";
+import type { Role } from "@/engine/artDirector";
 export type { PaletteProfile, BiomeId } from "@/engine/imagePalette";
 
 export type IsolationMode = 'off' | 'auto' | 'tap';
@@ -34,6 +35,7 @@ export type AudioMap = {
 export type Layer = {
   id: string;
   effectId: string;
+  role?: Role;
   hidden: boolean;
   locked: boolean;
   opacity: number;
@@ -57,6 +59,8 @@ export type Favorite = {
   layers: Layer[];
   seed?: string;
   createdAt?: string;
+  /** Optional preview retained by legacy/cloud favorite payloads. */
+  thumb?: string;
 };
 
 export type Snapshot = {

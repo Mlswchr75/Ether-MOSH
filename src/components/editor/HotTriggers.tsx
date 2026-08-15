@@ -506,7 +506,7 @@ export function HotTriggers({ isRecording, onToggleRecord, onScreenshot, onFreez
                             type="button"
                             onClick={() => { applyFavorite(f.id); setFavOpen(false); }}
                             className="flex-1 min-w-0 truncate text-left font-mono text-[10px] uppercase tracking-[0.12em] text-white/85 hover:text-[hsl(var(--accent))]"
-                            title={`${f.layers.length} layers · ${new Date(f.createdAt).toLocaleString()}`}
+                            title={`${f.layers.length} layers · ${f.createdAt ? new Date(f.createdAt).toLocaleString() : "saved preset"}`}
                           >
                             <span className="truncate">{f.name}</span>
                             <span className="ml-1 text-white/35">·{f.layers.length}L</span>
@@ -608,10 +608,14 @@ function GifButton({
   useEffect(() => {
     if (!open) return;
     const close = () => setOpen(false);
-    window.addEventListener("pointerdown", close, { capture: true });
+    // Bubble on purpose: the trigger and menu stop pointerdown propagation so
+    // an inside tap can finish as a click before the menu is unmounted. A
+    // capture-phase listener runs first and used to delete the timing button
+    // mid-gesture, so onGif was never called.
+    window.addEventListener("pointerdown", close);
     window.addEventListener("keydown", close);
     return () => {
-      window.removeEventListener("pointerdown", close, { capture: true } as any);
+      window.removeEventListener("pointerdown", close);
       window.removeEventListener("keydown", close);
     };
   }, [open]);

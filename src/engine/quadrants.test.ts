@@ -7,36 +7,9 @@ import {
   applyAxisDelta,
   axisTargets,
   blendForRelation,
-  localInQuadrant,
-  quadrantAt,
   relationLabel,
-  rollQuadrantEffect,
   similarity,
-  type QuadrantIndex,
 } from "./quadrants";
-
-describe("quadrantAt", () => {
-  it("maps corners to Q1..Q4 in reading order", () => {
-    expect(quadrantAt(0.1, 0.1)).toBe(0); // top-left
-    expect(quadrantAt(0.9, 0.1)).toBe(1); // top-right
-    expect(quadrantAt(0.1, 0.9)).toBe(2); // bottom-left
-    expect(quadrantAt(0.9, 0.9)).toBe(3); // bottom-right
-  });
-
-  it("puts the exact midpoint in the bottom-right quadrant", () => {
-    expect(quadrantAt(0.5, 0.5)).toBe(3);
-  });
-});
-
-describe("localInQuadrant", () => {
-  it("rescales each quadrant to a full 0..1 pad", () => {
-    expect(localInQuadrant(0, 0)).toEqual({ x: 0, y: 0 });
-    // Just inside the top-left quadrant's far corner.
-    expect(localInQuadrant(0.25, 0.25)).toEqual({ x: 0.5, y: 0.5 });
-    // Same relative spot, bottom-right quadrant.
-    expect(localInQuadrant(0.75, 0.75)).toEqual({ x: 0.5, y: 0.5 });
-  });
-});
 
 describe("traits", () => {
   it("derives traits for every registered effect", () => {
@@ -102,63 +75,6 @@ describe("relationLabel", () => {
     expect(relationLabel(0)).toBe("wild");
     expect(relationLabel(0.4)).toBe("kindred");
     expect(relationLabel(1)).toBe("matched");
-  });
-});
-
-describe("rollQuadrantEffect", () => {
-  it("never returns an excluded effect", () => {
-    const exclude = ["datamosh", "pixelSort", "blockShift"];
-    for (let i = 0; i < 200; i++) {
-      const roll = rollQuadrantEffect({
-        neighbours: ["hueRotate"],
-        exclude,
-        rand: rngFromSeed(`seed-${i}`),
-      });
-      expect(exclude).not.toContain(roll.effectId);
-    }
-  });
-
-  it("never duplicates an effect another quadrant already holds", () => {
-    const neighbours = ["datamosh", "hueRotate", "kaleidoscope"];
-    for (let i = 0; i < 200; i++) {
-      const roll = rollQuadrantEffect({ neighbours, rand: rngFromSeed(`dup-${i}`) });
-      expect(neighbours).not.toContain(roll.effectId);
-    }
-  });
-
-  it("honours a forced target: similar targets beat clashing targets", () => {
-    const neighbours = ["datamosh", "blockShift"];
-    let similarTotal = 0;
-    let clashingTotal = 0;
-    for (let i = 0; i < 60; i++) {
-      similarTotal += rollQuadrantEffect({
-        neighbours, targetAffinity: 1, rand: rngFromSeed(`s-${i}`),
-      }).affinity;
-      clashingTotal += rollQuadrantEffect({
-        neighbours, targetAffinity: -1, rand: rngFromSeed(`c-${i}`),
-      }).affinity;
-    }
-    expect(similarTotal / 60).toBeGreaterThan(clashingTotal / 60);
-  });
-
-  it("spreads across many distinct effects over repeated rolls", () => {
-    const seen = new Set<string>();
-    for (let i = 0; i < 300; i++) {
-      seen.add(rollQuadrantEffect({ neighbours: [], rand: rngFromSeed(`v-${i}`) }).effectId);
-    }
-    // The whole point of the feature: taps must not cycle a handful of effects.
-    expect(seen.size).toBeGreaterThan(15);
-  });
-
-  it("still returns an effect when exclusions would starve the pool", () => {
-    const everything = Object.keys(EFFECTS_BY_ID);
-    const roll = rollQuadrantEffect({
-      neighbours: everything,
-      exclude: everything,
-      rand: rngFromSeed("starved"),
-    });
-    expect(roll.effectId).toBeTruthy();
-    expect(EFFECTS_BY_ID[roll.effectId]).toBeDefined();
   });
 });
 

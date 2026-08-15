@@ -18,7 +18,7 @@ import { EFFECTS_BY_ID } from "@/engine/effects";
 const reset = () => useStore.setState({
   layers: [], selectedLayerId: null, shuffleSec: null,
   past: [], future: [],
-  currentLook: null, lastQuadrantRoll: null, quadrantHistory: [[], [], [], []],
+  currentLook: null, lastRoleRoll: null,
 });
 
 describe("disrupt", () => {

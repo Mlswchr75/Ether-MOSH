@@ -72,7 +72,7 @@ export default function Favorites() {
                       onClick={() => onApply(f.id)}
                       className="relative block aspect-square w-full overflow-hidden"
                       aria-label={`Apply ${f.name}`}
-                      title={`${f.layers.length} layers · ${new Date(f.createdAt).toLocaleString()}`}
+                      title={`${f.layers.length} layers · ${f.createdAt ? new Date(f.createdAt).toLocaleString() : "saved preset"}`}
                     >
                       {f.thumb ? (
                         <img

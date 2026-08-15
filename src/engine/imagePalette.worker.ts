@@ -76,9 +76,9 @@ function labToRgb(L: number, a: number, b: number): [number, number, number] {
   const fx = a / 500 + fy;
   const fz = fy - b / 200;
   const finv = (t: number) => t > 0.206897 ? t * t * t : (t - 16 / 116) / 7.787;
-  let r = finv(fx) * 0.95047 * 3.2404542 - finv(fy) * 1.00000 * 1.5371385 - finv(fz) * 1.08883 * 0.4985314;
-  let g = -finv(fx) * 0.95047 * 0.9692660 + finv(fy) * 1.00000 * 1.8760108 + finv(fz) * 1.08883 * 0.0415560;
-  let bv = finv(fx) * 0.95047 * 0.0556434 - finv(fy) * 1.00000 * 0.2040259 + finv(fz) * 1.08883 * 1.0572252;
+  const r = finv(fx) * 0.95047 * 3.2404542 - finv(fy) * 1.00000 * 1.5371385 - finv(fz) * 1.08883 * 0.4985314;
+  const g = -finv(fx) * 0.95047 * 0.9692660 + finv(fy) * 1.00000 * 1.8760108 + finv(fz) * 1.08883 * 0.0415560;
+  const bv = finv(fx) * 0.95047 * 0.0556434 - finv(fy) * 1.00000 * 0.2040259 + finv(fz) * 1.08883 * 1.0572252;
   const srgb = (c: number) => Math.round(Math.min(255, Math.max(0, c <= 0.0031308 ? c * 12.92 : 1.055 * Math.pow(c, 1 / 2.4) - 0.055)) * 255);
   return [srgb(r), srgb(g), srgb(bv)];
 }
@@ -105,7 +105,8 @@ function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
 
 function computeMetrics(pixels: Uint8ClampedArray, w: number, h: number) {
   const n = w * h;
-  let warmthSum = 0, satSum = 0, briSum = 0, hues: number[] = [];
+  let warmthSum = 0, satSum = 0, briSum = 0;
+  const hues: number[] = [];
   const briValues: number[] = [];
 
   for (let i = 0; i < n; i++) {

@@ -23,6 +23,7 @@
  */
 import { BLEND_MODES, REGION_MODES, type BlendMode, type LayerRegion, type RegionMode } from "./blend";
 import { EFFECTS_BY_ID } from "./effects";
+import { ROLE_ORDER, normalizeLayerRoles } from "./effectRoles";
 import type { AudioMap, AudioSource, Intensity, Layer, Modulator, ModulatorType } from "@/store/types";
 
 const VERSION = 1;
@@ -51,6 +52,7 @@ type WireLayer = {
   e: string;
   o: number;
   b: number;
+  g?: 0 | 1 | 2 | 3;
   h?: 1;
   p?: Record<string, number>;
   r?: [number, number, number, number, number, number];
@@ -101,6 +103,10 @@ export function encodePreset(input: PresetPayload): string {
       o: qEnc(l.opacity),
       b: Math.max(0, BLEND_MODES.indexOf(l.blend)),
     };
+    if (l.role) {
+      const roleIndex = ROLE_ORDER.indexOf(l.role);
+      if (roleIndex >= 0) w.g = roleIndex as 0 | 1 | 2 | 3;
+    }
     if (l.hidden) w.h = 1;
 
     // Normalise against the declared range so a later range change rescales
@@ -264,13 +270,14 @@ export function decodePreset(encoded: string): PresetPayload | null {
       params,
       mods,
       audioMaps,
+      role: typeof w.g === "number" ? ROLE_ORDER[w.g] : undefined,
     });
   }
 
   if (!layers.length) return null;
 
   return {
-    layers,
+    layers: normalizeLayerRoles(layers),
     seed: typeof wire.s === "string" ? wire.s : undefined,
     intensity: typeof wire.i === "number" ? INTENSITIES[wire.i] : undefined,
     lookId: typeof wire.k === "string" ? wire.k : undefined,

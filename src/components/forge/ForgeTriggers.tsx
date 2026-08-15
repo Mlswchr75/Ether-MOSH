@@ -85,10 +85,13 @@ export function ForgeTriggers({
   useEffect(() => {
     if (!gifOpen && !shuffleOpen) return;
     const close = () => { setGifOpen(false); setShuffleOpen(false); };
-    window.addEventListener("pointerdown", close, { capture: true });
+    // Bubble on purpose: both menus stop pointerdown propagation for inside
+    // taps. Listening in capture phase closed and unmounted a timing option
+    // before its click could call onGif.
+    window.addEventListener("pointerdown", close);
     window.addEventListener("keydown", close);
     return () => {
-      window.removeEventListener("pointerdown", close, { capture: true } as any);
+      window.removeEventListener("pointerdown", close);
       window.removeEventListener("keydown", close);
     };
   }, [gifOpen, shuffleOpen]);
