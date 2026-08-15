@@ -62,7 +62,21 @@ export const MoshingBackdrop = () => {
     }
 
     renderer.setSourceCanvas(src);
-    renderer.setRenderScale(0.5);
+
+    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const cpuCount = navigator.hardwareConcurrency || 4;
+    const targetFps = cpuCount <= 4 ? 24 : 30;
+    const frameTime = 1000 / targetFps;
+    const paintFps = 10;
+    const paintFrameTime = 1000 / paintFps;
+    const downscale = cpuCount <= 4 ? 0.35 : 0.5;
+
+    renderer.setRenderScale(downscale);
+
+    let isVisible = !document.hidden;
+    let isInViewport = true;
+    let lastFrameTime = 0;
+    let lastPaintTime = 0;
 
     const resize = () => {
       if (renderer && host.clientWidth > 0 && host.clientHeight > 0) {
@@ -77,6 +91,19 @@ export const MoshingBackdrop = () => {
     resize();
     const ro = new ResizeObserver(resize);
     ro.observe(host);
+
+    const io = new IntersectionObserver(
+      (entries) => {
+        isInViewport = entries[0].isIntersecting;
+      },
+      { threshold: 0.01 }
+    );
+    io.observe(host);
+
+    const handleVisibility = () => {
+      isVisible = !document.hidden;
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
 
     let raf = 0;
     let stackIdx = 0;
@@ -106,16 +133,61 @@ export const MoshingBackdrop = () => {
       }
     };
 
-    const loop = () => {
+    const loop = (now: number) => {
+      if (!isVisible || !isInViewport) {
+        raf = requestAnimationFrame(loop);
+        return;
+      }
+
+      if (prefersReducedMotion) {
+        if (lastFrameTime === 0) {
+          const t = (now - start) / 1000;
+          try {
+            const elapsed = now - lastPaintTime;
+            if (elapsed >= paintFrameTime) {
+              paintSource(t);
+              lastPaintTime = now;
+            }
+
+            const layers: RenderLayer[] = STACK_ROTATION[stackIdx].map((l, i) => ({
+              id: `bg${i}`,
+              effectId: l.effectId,
+              hidden: false,
+              opacity: l.opacity,
+              blend: i === 0 ? "normal" : "screen",
+              params: fillParams(l.effectId, l.params),
+            }));
+
+            if (renderer && src.width > 0 && src.height > 0) {
+              renderer.render(layers, 0.3);
+            }
+          } catch (err) {
+            console.error("MOSH WebGL backdrop caught render error safely:", err);
+          }
+          lastFrameTime = now;
+        }
+        raf = requestAnimationFrame(loop);
+        return;
+      }
+
+      const elapsed = now - lastFrameTime;
+      if (elapsed < frameTime) {
+        raf = requestAnimationFrame(loop);
+        return;
+      }
+
       try {
-        const now = performance.now();
         const t = (now - start) / 1000;
         if (now - lastSwap > 9000) {
           stackIdx = (stackIdx + 1) % STACK_ROTATION.length;
           lastSwap = now;
         }
 
-        paintSource(t);
+        const paintElapsed = now - lastPaintTime;
+        if (paintElapsed >= paintFrameTime) {
+          paintSource(t);
+          lastPaintTime = now;
+        }
 
         const layers: RenderLayer[] = STACK_ROTATION[stackIdx].map((l, i) => ({
           id: `bg${i}`,
@@ -133,6 +205,7 @@ export const MoshingBackdrop = () => {
         console.error("MOSH WebGL backdrop caught render error safely:", err);
       }
 
+      lastFrameTime = now;
       raf = requestAnimationFrame(loop);
     };
 
@@ -141,6 +214,8 @@ export const MoshingBackdrop = () => {
     return () => {
       cancelAnimationFrame(raf);
       ro.disconnect();
+      io.disconnect();
+      document.removeEventListener("visibilitychange", handleVisibility);
       try {
         renderer?.dispose();
       } catch {

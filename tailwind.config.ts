@@ -24,8 +24,8 @@ export default {
         mono: ["'JetBrains Mono'", "'IBM Plex Mono'", "'SF Mono'", "Menlo", "ui-monospace", "monospace"],
       },
       fontSize: {
-        xs: ["10px", { lineHeight: "1" }],
-        sm: ["11px", { lineHeight: "1" }],
+        xs: ["12px", { lineHeight: "1" }],
+        sm: ["12px", { lineHeight: "1" }],
         base: ["12px", { lineHeight: "1.4" }],
         md: ["12px", { lineHeight: "1" }],
         lg: ["14px", { lineHeight: "1.2" }],

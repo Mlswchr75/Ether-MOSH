@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://ether-mosh.netlify.app/sitemap.xml
