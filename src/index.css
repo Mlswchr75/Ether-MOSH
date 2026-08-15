@@ -877,6 +877,151 @@
     .mosh-icon, .mosh-glitch, .bio-flicker { animation: none !important; }
     .bio-flicker { opacity: 0.5; }
   }
+
+  /* ============ Demo film reel (second home panel) ============ */
+
+  /* The strip itself: dark film stock with sprocket holes punched along both
+     long edges. The holes are a repeating gradient rather than elements so a
+     reel of any length costs the same. */
+  .reel-strip {
+    --sprocket: rgba(0, 0, 0, 0.92);
+    position: relative;
+    padding: 15px 0;
+    background:
+      repeating-linear-gradient(
+        to right,
+        transparent 0 9px,
+        rgba(255, 255, 255, 0.5) 9px 21px,
+        transparent 21px 30px
+      ) top    left / 100% 7px repeat-x,
+      repeating-linear-gradient(
+        to right,
+        transparent 0 9px,
+        rgba(255, 255, 255, 0.5) 9px 21px,
+        transparent 21px 30px
+      ) bottom left / 100% 7px repeat-x,
+      linear-gradient(to bottom, #0b0b0d, #141417 50%, #0b0b0d);
+    box-shadow:
+      0 0 0 1px hsl(var(--border-strong)),
+      0 18px 60px rgba(0, 0, 0, 0.75);
+  }
+
+  /* Projector gate weave — the tiny vertical wander of real film in a gate.
+     Kept on its own element so it never fights the JS scroll transform. */
+  .reel-gate { animation: reel-weave 2.9s ease-in-out infinite; }
+  @keyframes reel-weave {
+    0%, 100% { transform: translate3d(0, 0, 0); }
+    30%      { transform: translate3d(0, -1.5px, 0); }
+    55%      { transform: translate3d(0, 1px, 0); }
+    80%      { transform: translate3d(0, -0.5px, 0); }
+  }
+
+  .reel-frame {
+    position: relative;
+    display: block;
+    overflow: hidden;
+    background: #000;
+    /* A visible edge matters more than it looks: much of the catalogue is
+       dark garments on dark backdrops, and without it those frames read as
+       holes in the strip rather than film. */
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.24);
+    filter: saturate(0.86) contrast(1.1);
+    transition: filter 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+  }
+  /* Grain + a warm gate flare, so frames read as exposed stock rather than
+     product photos pasted onto a black bar. */
+  .reel-frame::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(ellipse at 50% 40%, transparent 55%, rgba(0, 0, 0, 0.32) 100%),
+      repeating-linear-gradient(
+        to bottom,
+        rgba(255, 255, 255, 0.045) 0 1px,
+        transparent 1px 3px
+      );
+    mix-blend-mode: overlay;
+  }
+  .reel-frame:hover,
+  .reel-frame:focus-visible {
+    filter: saturate(1.25) contrast(1.05) brightness(1.08);
+    box-shadow:
+      inset 0 0 0 1px hsl(var(--accent)),
+      0 0 26px hsl(var(--accent) / 0.55);
+    transform: scale(1.06);
+    outline: none;
+    z-index: 2;
+  }
+
+  .reel-frame-label {
+    position: absolute;
+    inset: auto 0 0 0;
+    padding: 3px 5px;
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.9), transparent);
+    color: hsl(var(--foreground) / 0.75);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 7px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    opacity: 0;
+    transition: opacity 180ms ease;
+  }
+  .reel-frame:hover .reel-frame-label,
+  .reel-frame:focus-visible .reel-frame-label { opacity: 1; }
+
+  /* Spawn: the reel tears in as horizontal bands that snap into register.
+     Durations here must match GLITCH_IN_MS / GLITCH_OUT_MS in the director. */
+  .reel-glitch-in {
+    animation: reel-in 780ms steps(9, end) both;
+    will-change: transform, clip-path, filter, opacity;
+  }
+  @keyframes reel-in {
+    0%   { opacity: 0; clip-path: inset(45% 0 45% 0); filter: invert(1) hue-rotate(90deg) contrast(2); transform: translate(-50%, -50%) rotate(var(--reel-angle, 0deg)) translateX(7%) scaleY(0.25); }
+    15%  { opacity: 1; clip-path: inset(10% 0 62% 0); filter: invert(0.6) hue-rotate(-60deg) contrast(1.7); transform: translate(-50%, -50%) rotate(var(--reel-angle, 0deg)) translateX(-5%) scaleY(1.35); }
+    32%  { clip-path: inset(58% 0 8% 0);  filter: hue-rotate(120deg) saturate(2.4); transform: translate(-50%, -50%) rotate(var(--reel-angle, 0deg)) translateX(4%)  scaleY(0.8); }
+    50%  { clip-path: inset(22% 0 38% 0); filter: hue-rotate(-40deg) saturate(1.8); transform: translate(-50%, -50%) rotate(var(--reel-angle, 0deg)) translateX(-3%) scaleY(1.12); }
+    68%  { clip-path: inset(4% 0 70% 0);  filter: hue-rotate(45deg) contrast(1.3); transform: translate(-50%, -50%) rotate(var(--reel-angle, 0deg)) translateX(2%)  scaleY(0.95); }
+    84%  { clip-path: inset(0 0 12% 0);   filter: none; transform: translate(-50%, -50%) rotate(var(--reel-angle, 0deg)) translateX(-1%) scaleY(1.03); }
+    100% { opacity: 1; clip-path: inset(0 0 0 0); filter: none; transform: translate(-50%, -50%) rotate(var(--reel-angle, 0deg)) translateX(0) scaleY(1); }
+  }
+
+  /* Despawn: the same tearing, run down to nothing. */
+  .reel-glitch-out {
+    animation: reel-out 620ms steps(8, end) both;
+    will-change: transform, clip-path, filter, opacity;
+  }
+  @keyframes reel-out {
+    0%   { opacity: 1; clip-path: inset(0 0 0 0); filter: none; transform: translate(-50%, -50%) rotate(var(--reel-angle, 0deg)) translateX(0) scaleY(1); }
+    22%  { clip-path: inset(0 0 46% 0);  filter: hue-rotate(-80deg) saturate(2.2); transform: translate(-50%, -50%) rotate(var(--reel-angle, 0deg)) translateX(3%)  scaleY(1.1); }
+    44%  { clip-path: inset(52% 0 6% 0); filter: invert(0.7) hue-rotate(140deg) contrast(1.9); transform: translate(-50%, -50%) rotate(var(--reel-angle, 0deg)) translateX(-6%) scaleY(0.7); }
+    66%  { clip-path: inset(30% 0 44% 0); filter: invert(1) contrast(2.4); transform: translate(-50%, -50%) rotate(var(--reel-angle, 0deg)) translateX(8%)  scaleY(1.3); }
+    88%  { opacity: 0.6; clip-path: inset(48% 0 48% 0); transform: translate(-50%, -50%) rotate(var(--reel-angle, 0deg)) translateX(-10%) scaleY(0.2); }
+    100% { opacity: 0; clip-path: inset(50% 0 50% 0); transform: translate(-50%, -50%) rotate(var(--reel-angle, 0deg)) translateX(0) scaleY(0); }
+  }
+
+  /* Scroll hint on the first panel — present enough to read as an invitation,
+     quiet enough not to compete with the hero. */
+  .reel-hint { animation: reel-hint-pulse 3.4s ease-in-out infinite; }
+  @keyframes reel-hint-pulse {
+    0%, 100% { opacity: 0.5; }
+    50%      { opacity: 0.92; }
+  }
+  .reel-hint-arrow { animation: reel-hint-arrow 2.1s ease-in-out infinite; }
+  @keyframes reel-hint-arrow {
+    0%, 100% { transform: translate(0, 0); }
+    50%      { transform: translate(3px, 3px); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .reel-gate, .reel-glitch-in, .reel-glitch-out,
+    .reel-hint, .reel-hint-arrow { animation: none !important; }
+  }
 }
 
 /* Performance Mode — sizing handled by GlCanvas (orientation-aware). */

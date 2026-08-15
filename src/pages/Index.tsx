@@ -8,7 +8,7 @@ import { useStore } from "@/store/useStore";
 import { loadImageFile, loadImageFromClipboard } from "@/lib/sourceLoader";
 import { haptic } from "@/hooks/useHaptics";
 import { defaultFacing, requestCameraStream } from "@/hooks/useCamera";
-import { MoshingBackdrop } from "@/components/home/MoshingBackdrop";
+import { LazyMoshingBackdrop } from "@/components/home/LazyMoshingBackdrop";
 import { AboutTrigger } from "@/components/AboutOverlay";
 import { BioFlicker } from "@/components/home/BioFlicker";
 import { RebellionNudge } from "@/components/home/RebellionNudge";
@@ -16,14 +16,20 @@ import { QuadrantDecor } from "@/components/home/QuadrantDecor";
 import { GlitchWordField, KEEP_OUT } from "@/components/home/GlitchWordField";
 import { HeroWord, HERO_ANCHOR } from "@/components/home/HeroWord";
 
-const DemoCarousel = lazy(() => import("@/components/DemoCarousel"));
+const DemoReelPanel = lazy(() =>
+  import("@/components/home/DemoReelPanel").then(m => ({ default: m.DemoReelPanel })),
+);
 
 const EASE_SNAP = [0.22, 1, 0.36, 1] as const;
+
+/** Pointer travel past which a tap counts as a swipe, not a click, in px. */
+const SWIPE_SLOP = 14;
 
 const Index = () => {
   const navigate = useNavigate();
   const setVideoSource = useStore(s => s.setVideoSource);
   const fileRef = useRef<HTMLInputElement>(null);
+  const scrollRef = useRef<HTMLElement>(null);
   const [dragOver, setDragOver] = useState(false);
 
   // Whatever the hero is currently shouting. The word field takes it so the
@@ -37,7 +43,15 @@ const Index = () => {
     navigate("/edit");
   }, [navigate]);
 
+  // A swipe across the dropzone should reveal the reel, not open a file
+  // dialog, so the click handler ignores gestures that travelled.
+  const pressAt = useRef<{ x: number; y: number } | null>(null);
   const openPicker = useCallback(() => fileRef.current?.click(), []);
+  const openPickerIfTap = useCallback((e: React.MouseEvent) => {
+    const from = pressAt.current;
+    if (from && Math.hypot(e.clientX - from.x, e.clientY - from.y) > SWIPE_SLOP) return;
+    openPicker();
+  }, [openPicker]);
 
   // Called directly from a click handler (user gesture) so getUserMedia fires
   // in the right context and mobile browsers show the permission dialog.
@@ -68,6 +82,62 @@ const Index = () => {
     }
   }, [loadFile]);
 
+  /**
+   * The panels stack vertically, so scrolling down reaches the reel for free.
+   * The hint also promises "scroll right", so horizontal wheel and swipe get
+   * mapped onto the same move — a trackpad flick sideways or a left swipe on
+   * a phone lands on the same panel a downward scroll would.
+   */
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    let locked = false;
+    const goTo = (panel: number) => {
+      if (locked) return;
+      locked = true;
+      el.scrollTo({ top: panel * el.clientHeight, behavior: "smooth" });
+      window.setTimeout(() => { locked = false; }, 700);
+    };
+    const onFirstPanel = () => el.scrollTop < el.clientHeight / 2;
+
+    const onWheel = (e: WheelEvent) => {
+      if (Math.abs(e.deltaX) <= Math.abs(e.deltaY) || Math.abs(e.deltaX) < 12) return;
+      const forward = e.deltaX > 0;
+      if (forward === onFirstPanel()) {
+        e.preventDefault();
+        goTo(forward ? 1 : 0);
+      }
+    };
+
+    let touch: { x: number; y: number } | null = null;
+    const onTouchStart = (e: TouchEvent) => {
+      const t = e.touches[0];
+      touch = t ? { x: t.clientX, y: t.clientY } : null;
+    };
+    const onTouchEnd = (e: TouchEvent) => {
+      const start = touch;
+      const t = e.changedTouches[0];
+      touch = null;
+      if (!start || !t) return;
+      const dx = t.clientX - start.x;
+      const dy = t.clientY - start.y;
+      if (Math.abs(dx) < 60 || Math.abs(dx) <= Math.abs(dy)) return;
+      // Swiping left drags the page rightward, i.e. forward to the reel.
+      const forward = dx < 0;
+      if (forward === onFirstPanel()) goTo(forward ? 1 : 0);
+    };
+
+    el.addEventListener("wheel", onWheel, { passive: false });
+    el.addEventListener("touchstart", onTouchStart, { passive: true });
+    el.addEventListener("touchend", onTouchEnd, { passive: true });
+    return () => {
+      el.removeEventListener("wheel", onWheel);
+      el.removeEventListener("touchstart", onTouchStart);
+      el.removeEventListener("touchend", onTouchEnd);
+    };
+  }, []);
+
   // Clipboard paste — paste an image anywhere on the home page to start moshing
   useEffect(() => {
     const onPaste = async (e: ClipboardEvent) => {
@@ -83,7 +153,10 @@ const Index = () => {
   }, [navigate]);
 
   return (
-    <main className="relative h-screen w-screen overflow-hidden bg-background text-foreground">
+    <main
+      ref={scrollRef}
+      className="h-screen w-screen snap-y snap-mandatory overflow-y-auto overflow-x-hidden bg-background text-foreground"
+    >
       <Helmet>
         <title>MOSH — Audio-Reactive Visual Instrument</title>
         <meta name="description" content="Drop an image and warp it in real time. MOSH is a browser-based audio-reactive visual instrument with 105 GPU effects." />
@@ -93,11 +166,15 @@ const Index = () => {
         <meta property="og:url" content="https://ether-mosh.netlify.app/" />
       </Helmet>
       <h1 className="sr-only">MOSH — Real-time audio-reactive image and video glitch instrument</h1>
+
+      {/* Panel one: the instrument itself. Panel two is the demo reel. */}
+      <section className="relative h-screen w-screen shrink-0 snap-start overflow-hidden">
       {/* Fullscreen moshing dropzone — using div so nested interactive elements are valid HTML */}
       <div
         role="button"
         tabIndex={0}
-        onClick={openPicker}
+        onPointerDown={(e) => { pressAt.current = { x: e.clientX, y: e.clientY }; }}
+        onClick={openPickerIfTap}
         onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") openPicker(); }}
         onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
         onDragLeave={() => setDragOver(false)}
@@ -111,9 +188,9 @@ const Index = () => {
           dragOver ? "border-primary" : "border-border/40 hover:border-primary/60"
         }`}
       >
-        {/* Real-time moshing backdrop (canvas) */}
+        {/* Real-time moshing backdrop (canvas) — lazy-loaded after first paint */}
         <div className="pointer-events-none absolute inset-0">
-          <MoshingBackdrop />
+          <LazyMoshingBackdrop />
           <div className="absolute inset-0 scanline opacity-60" />
           <div className="absolute inset-0 bg-gradient-radial-darken" />
           <div className="absolute inset-0 bg-background/25" />
@@ -250,6 +327,24 @@ const Index = () => {
             <button type="button" onClick={(e) => { e.stopPropagation(); navigate("/privacy"); }} className="hover:text-accent transition">privacy</button>
           </nav>
         </motion.div>
+        {/* Points at the demo reel on the next panel. Loud enough to be taken
+            as an instruction, quiet enough to stay under the hero. */}
+        <motion.button
+          {...KEEP_OUT}
+          type="button"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.6, delay: 1.6 }}
+          onClick={(e) => {
+            e.stopPropagation();
+            scrollRef.current?.scrollTo({ top: scrollRef.current.clientHeight, behavior: "smooth" });
+          }}
+          className="reel-hint pointer-events-auto absolute bottom-[4.5rem] left-1/2 z-20 -translate-x-1/2 whitespace-nowrap font-mono text-[11px] uppercase tracking-[0.3em] text-foreground/70 transition-colors hover:text-accent"
+        >
+          scroll <span className="reel-hint-arrow inline-block">→</span> or{" "}
+          <span className="reel-hint-arrow inline-block">↓</span> · 500+ demo frames to mosh
+        </motion.button>
+
         <RebellionNudge />
         <AboutTrigger />
 
@@ -259,9 +354,10 @@ const Index = () => {
           onChange={(e) => { const f = e.target.files?.[0]; if (f) loadFile(f); }}
         />
       </div>
+      </section>
 
-      <Suspense fallback={null}>
-        <DemoCarousel onSelect={loadFromUrl} isIdle={false} />
+      <Suspense fallback={<div className="h-screen w-screen shrink-0 snap-start bg-background" />}>
+        <DemoReelPanel onSelect={loadFromUrl} />
       </Suspense>
     </main>
   );
