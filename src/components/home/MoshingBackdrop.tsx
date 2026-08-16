@@ -61,6 +61,13 @@ export const MoshingBackdrop = () => {
       return;
     }
 
+    // The backdrop only ever cycles through STACK_ROTATION's effects, not the
+    // full ~100-effect catalog — warming up every effect's shader (a single
+    // long main-thread task) to avoid a hitch that can never happen here was
+    // costing far more than it saved.
+    const warmupIds = Array.from(new Set(STACK_ROTATION.flatMap(stack => stack.map(l => l.effectId))));
+    renderer.setWarmupEffects(warmupIds);
+
     renderer.setSourceCanvas(src);
 
     const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;

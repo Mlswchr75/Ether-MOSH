@@ -104,6 +104,10 @@ export class MoshRenderer {
   private sourceFillMaterial: THREE.ShaderMaterial;
   private finisherMaterial!: THREE.ShaderMaterial;
   private warmupHandle: number | null = null;
+  /** When set, warmup only pre-compiles these effects instead of the full
+   *  catalog — for callers (like a decorative background) that only ever
+   *  render a small, known subset and shouldn't pay to compile the rest. */
+  private warmupEffectIds: string[] | null = null;
   private startTime = performance.now();
   // Tile pass — post-process after the effect stack, before screen blit.
   private tileMaterial: THREE.ShaderMaterial | null = null;
@@ -836,13 +840,23 @@ export class MoshRenderer {
     this.resize(this.cssWidth, this.cssHeight);
   }
 
+  /** Restrict warmup pre-compilation to this set of effect ids instead of the
+   *  full catalog. Call before the first setSource*() so it takes effect on
+   *  the initial warmup pass. */
+  setWarmupEffects(ids: string[]) {
+    this.warmupEffectIds = ids;
+  }
+
   private scheduleWarmup() {
     if (this.warmupHandle != null) return;
     this.warmupHandle = window.setTimeout(() => {
       this.warmupHandle = null;
       if (!this.sourceTex) return;
       const previous = this.quad.material;
-      for (const def of Object.values(EFFECTS_BY_ID)) {
+      const defs = this.warmupEffectIds
+        ? this.warmupEffectIds.map(id => EFFECTS_BY_ID[id]).filter(Boolean)
+        : Object.values(EFFECTS_BY_ID);
+      for (const def of defs) {
         const entry = this.getShader(def.id);
         const uni = entry.material.uniforms;
         uni.uTex.value = this.sourceTex;
