@@ -47,6 +47,8 @@ import { CameraMenu } from "@/components/editor/CameraMenu";
 
 import { StartCameraOverlay } from "@/components/editor/StartCameraOverlay";
 import { HotTriggers } from "@/components/editor/HotTriggers";
+import { ActionConfirmation } from "@/components/editor/ActionConfirmation";
+import { scanForBestFrame } from "@/engine/screenshotScanner";
 import { AccountChip } from "@/components/AccountChip";
 import { usePaywall } from "@/hooks/usePaywall";
 import { useCloudFavorites } from "@/hooks/useCloudFavorites";
@@ -113,6 +115,11 @@ export default function Editor() {
   const recStartRef = useRef(0);
   const [gifBusy, setGifBusy] = useState(false);
   const [gifProgress, setGifProgress] = useState(0);
+  const [actionConfirm, setActionConfirm] = useState<{
+    type: "screenshot" | "gif" | "record";
+    onConfirm: () => void;
+  } | null>(null);
+  const [screenshotScanning, setScreenshotScanning] = useState(false);
   const shellRef = useRef<HTMLElement>(null);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const [showFirstTip, setShowFirstTip] = useState(false);
@@ -576,19 +583,34 @@ export default function Editor() {
   const takeScreenshot = async () => {
     const c = getCanvas();
     if (!c) return;
-    try {
-      // Free tier caps export at 720px on the long edge. Supporters get full res.
-      const longEdge = Math.max(c.width, c.height);
-      const scale = paywall.isSupporter ? 1 : Math.min(1, 720 / longEdge);
-      const blob = await exportCanvas(c, { format: "png", scale, aspect: null });
-      const filename = `mosh-${Date.now()}.png`;
-      shareOrDownload(blob, filename);
-      toast.success(paywall.isSupporter ? "Screenshot ready" : "Screenshot ready (720p · unlock for full res)", {
-        description: canNativeShare() ? "Share sheet opening…" : "Saved to downloads",
-      });
-    } catch (e) {
-      toast.error("Screenshot failed");
-    }
+
+    setActionConfirm({
+      type: "screenshot",
+      onConfirm: async () => {
+        setActionConfirm(null);
+        setScreenshotScanning(true);
+        toast.loading("Analyzing frames for best quality…", { duration: 1500 });
+
+        try {
+          // Scan next 0.75s for the crispest frame
+          const result = await scanForBestFrame(c, 750);
+
+          // Free tier caps export at 720px on the long edge. Supporters get full res.
+          const longEdge = Math.max(result.bestCanvas.width, result.bestCanvas.height);
+          const scale = paywall.isSupporter ? 1 : Math.min(1, 720 / longEdge);
+          const blob = await exportCanvas(result.bestCanvas, { format: "png", scale, aspect: null });
+          const filename = `mosh-${Date.now()}.png`;
+          shareOrDownload(blob, filename);
+          toast.success(paywall.isSupporter ? "Screenshot ready" : "Screenshot ready (720p · unlock for full res)", {
+            description: canNativeShare() ? "Share sheet opening…" : "Saved to downloads",
+          });
+        } catch (e) {
+          toast.error("Screenshot failed");
+        } finally {
+          setScreenshotScanning(false);
+        }
+      },
+    });
   };
 
   const shareCurrent = useCallback(async () => {
@@ -618,32 +640,39 @@ export default function Editor() {
     if (!paywall.require("Seamless GIF loop")) return;
     const c = getCanvas();
     if (!c) { toast.error("No visualizer to capture"); return; }
-    setGifBusy(true);
-    setGifProgress(0);
-    // Pause auto-shuffle so the mosh effect stays locked for the whole window.
-    const prevShuffle = useStore.getState().shuffleSec;
-    if (prevShuffle != null) useStore.getState().setShuffleSec(null);
-    const t = toast.loading(`Locking mosh · capturing ${seconds}s seamless GIF…`, { duration: 30_000 });
-    try {
-      const result = await captureLoopingGif(c, {
-        durationMs: Math.round(seconds * 1000),
-        fps: 12,
-        maxWidth: 480,
-        onProgress: (phase, p) => {
-          // Weight capture as 0..0.7, encode as 0.7..1
-          setGifProgress(phase === "capture" ? p * 0.7 : 0.7 + p * 0.3);
-        },
-      });
-      downloadBlob(result.blob, `mosh-${Date.now()}_${seconds}s_loop.gif`);
-      const quality = result.loopScore > 0.85 ? "tight loop" : result.loopScore > 0.6 ? "clean loop" : "loop";
-      toast.success(`${seconds}s GIF saved · ${result.frameCount}f · ${quality}`, { id: t });
-    } catch (e) {
-      toast.error("GIF capture failed", { id: t });
-    } finally {
-      if (prevShuffle != null) useStore.getState().setShuffleSec(prevShuffle);
-      setGifBusy(false);
-      setGifProgress(0);
-    }
+
+    setActionConfirm({
+      type: "gif",
+      onConfirm: async () => {
+        setActionConfirm(null);
+        setGifBusy(true);
+        setGifProgress(0);
+        // Pause auto-shuffle so the mosh effect stays locked for the whole window.
+        const prevShuffle = useStore.getState().shuffleSec;
+        if (prevShuffle != null) useStore.getState().setShuffleSec(null);
+        const t = toast.loading(`Locking mosh · capturing ${seconds}s seamless GIF…`, { duration: 30_000 });
+        try {
+          const result = await captureLoopingGif(c, {
+            durationMs: Math.round(seconds * 1000),
+            fps: 12,
+            maxWidth: 480,
+            onProgress: (phase, p) => {
+              // Weight capture as 0..0.7, encode as 0.7..1
+              setGifProgress(phase === "capture" ? p * 0.7 : 0.7 + p * 0.3);
+            },
+          });
+          downloadBlob(result.blob, `mosh-${Date.now()}_${seconds}s_loop.gif`);
+          const quality = result.loopScore > 0.85 ? "tight loop" : result.loopScore > 0.6 ? "clean loop" : "loop";
+          toast.success(`${seconds}s GIF saved · ${result.frameCount}f · ${quality}`, { id: t });
+        } catch (e) {
+          toast.error("GIF capture failed", { id: t });
+        } finally {
+          if (prevShuffle != null) useStore.getState().setShuffleSec(prevShuffle);
+          setGifBusy(false);
+          setGifProgress(0);
+        }
+      },
+    });
   }, [gifBusy, paywall]);
 
 
@@ -657,29 +686,35 @@ export default function Editor() {
     if (!recorderRef.current) recorderRef.current = new CanvasRecorder();
     const rec = recorderRef.current;
     if (rec.state === "idle") {
-      try {
-        rec.start(c, 30);
-        recStartRef.current = performance.now();
-        setRecElapsed(0);
-        setIsRecording(true);
-        if (paywall.isSupporter) {
-          toast.success("Recording started · Shift+R to stop");
-        } else {
-          toast.success("Recording started · 15s free cap · Shift+R to stop early");
-          if (recCapRef.current) window.clearTimeout(recCapRef.current);
-          recCapRef.current = window.setTimeout(() => {
-            recCapRef.current = null;
-            if (recorderRef.current?.state === "recording") {
-              toast("15s free cap reached — unlock supporter for longer clips", {
-                action: { label: "Unlock", onClick: () => paywall.purchase() },
-              });
-              toggleRecord();
+      setActionConfirm({
+        type: "record",
+        onConfirm: async () => {
+          setActionConfirm(null);
+          try {
+            rec.start(c, 30);
+            recStartRef.current = performance.now();
+            setRecElapsed(0);
+            setIsRecording(true);
+            if (paywall.isSupporter) {
+              toast.success("Recording started · Shift+R to stop");
+            } else {
+              toast.success("Recording started · 15s free cap · Shift+R to stop early");
+              if (recCapRef.current) window.clearTimeout(recCapRef.current);
+              recCapRef.current = window.setTimeout(() => {
+                recCapRef.current = null;
+                if (recorderRef.current?.state === "recording") {
+                  toast("15s free cap reached — unlock supporter for longer clips", {
+                    action: { label: "Unlock", onClick: () => paywall.purchase() },
+                  });
+                  toggleRecord();
+                }
+              }, 15_000);
             }
-          }, 15_000);
-        }
-      } catch (e) {
-        toast.error("Could not start recording");
-      }
+          } catch (e) {
+            toast.error("Could not start recording");
+          }
+        },
+      });
     } else {
       try {
         if (recCapRef.current) { window.clearTimeout(recCapRef.current); recCapRef.current = null; }
@@ -1503,6 +1538,33 @@ export default function Editor() {
         <div className="pointer-events-none fixed bottom-16 left-1/2 z-40 -translate-x-1/2 font-mono text-[10px] uppercase tracking-widest text-[hsl(var(--text-tertiary))]">
           Slot {slotShake + 1} empty
         </div>
+      )}
+
+      {/* Action confirmation bubble */}
+      {actionConfirm && (
+        <ActionConfirmation
+          title={
+            actionConfirm.type === "screenshot"
+              ? screenshotScanning
+                ? "Scanning frames…"
+                : "Capture screenshot?"
+              : actionConfirm.type === "gif"
+              ? "Capture 7s GIF?"
+              : "Start recording?"
+          }
+          subtitle={
+            actionConfirm.type === "screenshot"
+              ? screenshotScanning
+                ? "Finding the crispest frame…"
+                : "Will analyze next 0.75s for best quality"
+              : actionConfirm.type === "gif"
+              ? "7 seconds · creates seamless loop"
+              : undefined
+          }
+          autoConfirmMs={actionConfirm.type === "screenshot" && screenshotScanning ? null : 0}
+          onConfirm={actionConfirm.onConfirm}
+          onCancel={() => setActionConfirm(null)}
+        />
       )}
 
     </main>

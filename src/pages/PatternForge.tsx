@@ -20,6 +20,7 @@ import { downloadBlob } from "@/engine/export";
 import { ForgeTriggers } from "@/components/forge/ForgeTriggers";
 import { ForgeJourney, type JourneyMove, type JourneyState, type Section } from "@/engine/forgeJourney";
 import { useIdleFade } from "@/hooks/useIdleFade";
+import { ActionConfirmation } from "@/components/editor/ActionConfirmation";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
 
@@ -82,6 +83,10 @@ export default function PatternForge() {
   const recorderRef = useRef<CanvasRecorder | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [actionConfirm, setActionConfirm] = useState<{
+    type: "screenshot" | "gif" | "record";
+    onConfirm: () => void;
+  } | null>(null);
 
   const palette = PALETTES[paletteIdx];
 
@@ -883,6 +888,28 @@ pool limited to tile-safe effects · edges healed on export
           </div>
         </motion.div>
       </div>
+
+      {/* Action confirmation bubble */}
+      {actionConfirm && (
+        <ActionConfirmation
+          title={
+            actionConfirm.type === "screenshot"
+              ? "Capture screenshot?"
+              : actionConfirm.type === "gif"
+              ? "Capture GIF?"
+              : "Start recording?"
+          }
+          subtitle={
+            actionConfirm.type === "gif"
+              ? "Seamless pattern tile"
+              : undefined
+          }
+          autoConfirmMs={0}
+          onConfirm={actionConfirm.onConfirm}
+          onCancel={() => setActionConfirm(null)}
+        />
+      )}
+
     </main>
   );
 }
