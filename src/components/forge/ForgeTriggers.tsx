@@ -101,7 +101,7 @@ export function ForgeTriggers({
   useEffect(() => { if (gifBusy) setGifOpen(false); }, [gifBusy]);
 
   return (
-    <div className="pointer-events-auto absolute right-3 top-3 z-20 flex flex-col gap-1.5">
+    <div className="ui-chrome pointer-events-auto absolute right-3 top-3 z-20 flex flex-col gap-1.5">
       <Btn
         label={micOn ? "Audio reactivity on" : "Audio reactivity off"}
         active={micOn}

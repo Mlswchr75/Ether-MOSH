@@ -80,7 +80,7 @@ export function RoleControlRail({ onTune }: RoleControlRailProps) {
   return (
     <TooltipProvider>
       <div
-        className="pointer-events-none absolute inset-x-0 top-3 flex flex-col items-center gap-2"
+        className="ui-chrome pointer-events-none absolute inset-x-0 top-3 flex flex-col items-center gap-2"
         onPointerDown={event => event.stopPropagation()}
         onPointerMove={event => event.stopPropagation()}
         onPointerUp={event => event.stopPropagation()}
@@ -138,11 +138,11 @@ export function RoleControlRail({ onTune }: RoleControlRailProps) {
                       clearTouchDescription();
                     }}
                     className={`relative min-h-10 rounded-sm border px-1 py-1 text-left font-mono text-[9px] uppercase tracking-[0.12em] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[hsl(var(--accent))] ${
-                      selected ? "border-[hsl(var(--accent))] bg-[hsl(var(--accent)/0.14)] text-white" : "border-white/15 bg-black/50 text-white/65"
+                      selected ? "border-[hsl(var(--accent)/0.7)] bg-[hsl(var(--accent)/0.10)] text-white/90" : "border-white/10 bg-black/25 text-white/55"
                     } ${allLocked ? "line-through text-white/35" : ""} ${roleLayers.length === 0 ? "opacity-50" : ""}`}
                   >
                     <span className="block text-[10px] font-bold tracking-[0.14em]">{copy.label}</span>
-                    <span className="block text-[8px] normal-case tracking-normal text-white/55">{copy.technical}</span>
+                    <span className="block text-[8px] normal-case tracking-normal text-white/45">{copy.technical}</span>
                     <span className="sr-only"> {stateText}</span>
                     {roleLayers.length > 1 && <span className="absolute right-1 top-1 rounded bg-white/10 px-1 text-[8px]">x{roleLayers.length}</span>}
                     {roleLayers.length === 0 && <span className="absolute right-1 top-1 text-[8px] normal-case">empty</span>}
@@ -171,7 +171,7 @@ export function RoleControlRail({ onTune }: RoleControlRailProps) {
         />
 
         {showHint && (
-          <div className="pointer-events-none flex items-center gap-2 rounded-sm border border-white/15 bg-black/65 px-2 py-1 font-mono text-[9px] uppercase tracking-[0.12em] text-white/75">
+          <div className="pointer-events-none flex items-center gap-2 rounded-sm border border-white/10 bg-black/35 px-2 py-1 font-mono text-[9px] uppercase tracking-[0.12em] text-white/60">
             <span>Select a role - tap to evolve - drag to tune</span>
             <button
               type="button"
@@ -203,8 +203,8 @@ function RoleControlStrip({
 }) {
   const copy = ROLE_COPY[role];
   return (
-    <section aria-label={`${copy.label} ${copy.technical} controls`} className="pointer-events-auto w-[min(96vw,34rem)] rounded-sm border border-white/15 bg-black/70 p-2 backdrop-blur-sm">
-      <p className="font-mono text-[10px] text-white/75">{copy.description}</p>
+    <section aria-label={`${copy.label} ${copy.technical} controls`} className="pointer-events-auto w-[min(96vw,34rem)] rounded-sm border border-white/10 bg-black/35 p-2 backdrop-blur-sm">
+      <p className="font-mono text-[10px] text-white/60">{copy.description}</p>
       {layers.length > 0 && (
         <div className="mt-2 flex max-w-full gap-1 overflow-x-auto pb-0.5" aria-label="Effect layers">
           {layers.map(layer => (
@@ -224,14 +224,14 @@ function RoleControlStrip({
       )}
       <div className="mt-2 flex flex-wrap gap-1">
         {layers.length === 0 ? (
-          <button type="button" disabled={!hasSource} onPointerDown={event => event.stopPropagation()} onClick={onAdd} className="min-h-10 rounded-sm border border-white/20 px-2 font-mono text-[9px] uppercase disabled:cursor-not-allowed disabled:opacity-40">
+          <button type="button" disabled={!hasSource} onPointerDown={event => event.stopPropagation()} onClick={onAdd} className="min-h-10 rounded-sm border border-white/10 px-2 font-mono text-[9px] uppercase disabled:cursor-not-allowed disabled:opacity-40">
             <Plus aria-hidden className="mr-1 inline size-3" />Add
           </button>
         ) : (
           <>
-            <button type="button" disabled={!hasSource} onPointerDown={event => event.stopPropagation()} onClick={onReroll} className="min-h-10 rounded-sm border border-white/20 px-2 font-mono text-[9px] uppercase disabled:cursor-not-allowed disabled:opacity-40">Reroll</button>
-            <button type="button" disabled={!hasSource} onPointerDown={event => event.stopPropagation()} onClick={onToggleLock} className="min-h-10 rounded-sm border border-white/20 px-2 font-mono text-[9px] uppercase disabled:cursor-not-allowed disabled:opacity-40">{activeLayer?.locked ? "Unlock" : "Lock"}</button>
-            <button type="button" disabled={!hasSource} onPointerDown={event => event.stopPropagation()} onClick={onTune} className="min-h-10 rounded-sm border border-white/20 px-2 font-mono text-[9px] uppercase disabled:cursor-not-allowed disabled:opacity-40">Tune</button>
+            <button type="button" disabled={!hasSource} onPointerDown={event => event.stopPropagation()} onClick={onReroll} className="min-h-10 rounded-sm border border-white/10 px-2 font-mono text-[9px] uppercase disabled:cursor-not-allowed disabled:opacity-40">Reroll</button>
+            <button type="button" disabled={!hasSource} onPointerDown={event => event.stopPropagation()} onClick={onToggleLock} className="min-h-10 rounded-sm border border-white/10 px-2 font-mono text-[9px] uppercase disabled:cursor-not-allowed disabled:opacity-40">{activeLayer?.locked ? "Unlock" : "Lock"}</button>
+            <button type="button" disabled={!hasSource} onPointerDown={event => event.stopPropagation()} onClick={onTune} className="min-h-10 rounded-sm border border-white/10 px-2 font-mono text-[9px] uppercase disabled:cursor-not-allowed disabled:opacity-40">Tune</button>
           </>
         )}
       </div>

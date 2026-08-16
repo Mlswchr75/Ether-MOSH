@@ -896,19 +896,20 @@
      artwork, but clearly behind it. Pointing at any control brings that
      cluster back to full strength immediately. */
   .ui-chrome {
-    opacity: var(--chrome-op, 0.6);
-    transition: opacity 600ms ease;
+    opacity: var(--chrome-op, 0.18);
+    transition: opacity 500ms ease;
   }
   .ui-chrome:hover,
   .ui-chrome:focus-within {
     --chrome-op: 1;
-    transition-duration: 140ms;
+    transition-duration: 100ms;
   }
 
-  /* Idle stages. These sit after the hover rule on purpose: at equal
-     specificity the later rule wins, and any pointer movement resets the
-     stage to active anyway, so hover never needs to override a fade. */
-  [data-idle="dim"] .ui-chrome { --chrome-op: 0.12; }
+  /* Single idle stage: fade to fully invisible after 2s of inactivity.
+     The UI is deliberately semi-transparent at rest (0.18) so it camouflages
+     into the visualizer. On the slightest movement or hover, it pops back to
+     full opacity instantly. After 2s completely silent, it vanishes entirely
+     to show pure visualization. */
   [data-idle="hidden"] .ui-chrome {
     --chrome-op: 0;
     pointer-events: none;

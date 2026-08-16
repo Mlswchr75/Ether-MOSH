@@ -28,7 +28,6 @@ type Props = {
   onClearFx?: () => void;
   /** True when something is actually on — the button dims when there isn't. */
   hasFx?: boolean;
-  dimmed?: boolean;
 };
 
 const SHUFFLE_TIMINGS = [5, 15, 30, 60, 120] as const;
@@ -70,7 +69,7 @@ function HotBtn({
  * Floating cluster of "moshing" cute icons over the visualizer.
  * The DOM overlay is outside <canvas>, so canvas.captureStream() never records these.
  */
-export function HotTriggers({ isRecording, onToggleRecord, onScreenshot, onFreeze, onGif, onShare, onSupport, gifBusy, gifProgress, onMicFlash, journeyOn, onToggleJourney, journeyLocked, isFullscreen, onToggleFullscreen, onHome, onClearFx, hasFx, dimmed }: Props) {
+export function HotTriggers({ isRecording, onToggleRecord, onScreenshot, onFreeze, onGif, onShare, onSupport, gifBusy, gifProgress, onMicFlash, journeyOn, onToggleJourney, journeyLocked, isFullscreen, onToggleFullscreen, onHome, onClearFx, hasFx }: Props) {
   const micEnabled = useStore(s => s.micEnabled);
   const setMicEnabled = useStore(s => s.setMicEnabled);
   const mosh = useStore(s => s.mosh);
@@ -229,12 +228,12 @@ export function HotTriggers({ isRecording, onToggleRecord, onScreenshot, onFreez
     /* top-14 keeps the rail clear of the account chip pinned at top-3/right-3
        (z-40), which would otherwise sit on top of the first trigger. */
     <div
-      className={`hot-triggers pointer-events-none absolute right-3 top-14 z-30 flex flex-col items-end gap-1 safe-top safe-right transition-opacity duration-700 ${dimmed ? "opacity-0" : "opacity-100"}`}
+      className="ui-chrome hot-triggers pointer-events-none absolute right-3 top-14 z-30 flex flex-col items-end gap-1 safe-top safe-right"
     >
       {/* Auto-wrapping rail: fills a column, then starts a second one inward.
           No overflow clipping, so left-opening panels stay visible. */}
       <div
-        className={`hot-trigger-rail pointer-events-auto ${dimmed ? "pointer-events-none" : ""}`}
+        className="hot-trigger-rail pointer-events-auto"
       >
         {onHome && (
           <HotBtn delay={0} label="Back to start" onClick={onHome}>

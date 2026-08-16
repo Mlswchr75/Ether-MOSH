@@ -1,31 +1,28 @@
 import { useEffect, useState } from "react";
 
 /**
- * Tracks how long the instrument has been left alone, in two stages: the
- * chrome first sinks to near-invisible, then goes entirely.
+ * Tracks idle time: UI chrome stays visible and semi-transparent at rest,
+ * then fades to completely invisible after the timeout.
  *
- * Two stages rather than one because a single hard cut is startling and
- * gives no warning that the controls are about to go; the dim step reads as
- * the UI receding rather than breaking.
+ * This is intentional: the editor is a visual instrument, so its own controls
+ * should step back and let the artwork be the focus. The 2s timeout gives the
+ * user time to interact, but after that, it's pure visualization.
  */
-export type IdleStage = "active" | "dim" | "hidden";
+export type IdleStage = "active" | "hidden";
 
 /** Anything that counts as "still here". Scroll included via `wheel`. */
 const ACTIVITY = ["pointermove", "pointerdown", "keydown", "touchstart", "wheel"] as const;
 
-export function useIdleFade(dimMs = 2_500, hideMs = 5_000): IdleStage {
+export function useIdleFade(hideMs = 2_000): IdleStage {
   const [stage, setStage] = useState<IdleStage>("active");
 
   useEffect(() => {
-    let toDim: number | undefined;
     let toHidden: number | undefined;
 
     const arm = () => {
-      toDim = window.setTimeout(() => setStage("dim"), dimMs);
       toHidden = window.setTimeout(() => setStage("hidden"), hideMs);
     };
     const disarm = () => {
-      window.clearTimeout(toDim);
       window.clearTimeout(toHidden);
     };
     const reset = () => {
@@ -43,7 +40,7 @@ export function useIdleFade(dimMs = 2_500, hideMs = 5_000): IdleStage {
       disarm();
       ACTIVITY.forEach(e => window.removeEventListener(e, reset, { capture: true }));
     };
-  }, [dimMs, hideMs]);
+  }, [hideMs]);
 
   return stage;
 }

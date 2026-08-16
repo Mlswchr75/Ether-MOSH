@@ -124,8 +124,8 @@ export default function Editor() {
 
   useFullscreenSync();
 
-  // Chrome sinks to near-invisible at 2.5s, then goes entirely at 5s.
-  const idleStage = useIdleFade(2_500, 5_000);
+  // UI chrome fades to fully invisible after 2s of inactivity.
+  const idleStage = useIdleFade(2_000);
   const focusTune = useCallback((layerId: string) => {
     useStore.getState().selectLayer(layerId);
     setHideUI(false);

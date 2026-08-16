@@ -19,6 +19,7 @@ import { CanvasRecorder } from "@/engine/recorder";
 import { downloadBlob } from "@/engine/export";
 import { ForgeTriggers } from "@/components/forge/ForgeTriggers";
 import { ForgeJourney, type JourneyMove, type JourneyState, type Section } from "@/engine/forgeJourney";
+import { useIdleFade } from "@/hooks/useIdleFade";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
 
@@ -615,15 +616,17 @@ export default function PatternForge() {
     }
   }, [exporting, palette, seed, currentStack, seamless, intensity, drawSourceFrame]);
 
+  const idleStage = useIdleFade(2_000);
+
   return (
-    <main className="flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground">
+    <main className="flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground" data-idle={idleStage}>
       <Helmet>
         <title>Pattern Forge — MOSH</title>
         <meta name="description" content="Generate procedural glitch patterns to use as MOSH source images." />
       </Helmet>
 
       {/* Top bar */}
-      <div className="flex shrink-0 items-center justify-between border-b border-border/30 px-5 py-3">
+      <div className="ui-chrome flex shrink-0 items-center justify-between border-b border-border/30 px-5 py-3">
         <button
           type="button"
           onClick={() => navigate("/")}
@@ -694,7 +697,7 @@ export default function PatternForge() {
               doing is indistinguishable from a broken one, so it reports the
               measurements it acted on rather than just a status light. */}
           {journeyOn && journeyState && (
-            <div className="pointer-events-none absolute bottom-3 left-3 z-20 max-w-[min(22rem,60vw)] rounded-sm border border-[hsl(var(--border-default))] bg-black/70 px-3 py-2 backdrop-blur-md">
+            <div className="ui-chrome pointer-events-none absolute bottom-3 left-3 z-20 max-w-[min(22rem,60vw)] rounded-sm border border-[hsl(var(--border-default))] bg-black/70 px-3 py-2 backdrop-blur-md">
               <p className="font-mono text-[9px] uppercase tracking-[0.3em] text-[hsl(var(--accent))]">
                 journey · {journeyState.section}
               </p>
