@@ -896,7 +896,7 @@
      artwork, but clearly behind it. Pointing at any control brings that
      cluster back to full strength immediately. */
   .ui-chrome {
-    opacity: var(--chrome-op, 0.18);
+    opacity: var(--chrome-op, 0.42);
     transition: opacity 500ms ease;
   }
   .ui-chrome:hover,
