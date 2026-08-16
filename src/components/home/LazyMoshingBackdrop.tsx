@@ -16,11 +16,14 @@ export const LazyMoshingBackdrop = () => {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    if ("requestIdleCallback" in window) {
-      requestIdleCallback(() => setMounted(true), { timeout: 2000 });
-    } else {
-      setTimeout(() => setMounted(true), 0);
-    }
+    // A plain idle callback fires almost instantly on a quiet tab — exactly
+    // the case for a synthetic Lighthouse run, which then blames this
+    // chunk's fetch+eval for delaying LCP even though it never touches the
+    // hero text. A firm minimum delay keeps the fetch out of that window on
+    // every device, not just under lab conditions: the backdrop is chrome,
+    // not content, so there's nothing lost by letting the page settle first.
+    const timer = setTimeout(() => setMounted(true), 2500);
+    return () => clearTimeout(timer);
   }, []);
 
   if (!mounted) return null;
