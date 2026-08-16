@@ -28,7 +28,7 @@ import { SourceTransition } from "@/components/editor/SourceTransition";
 import { RippleLayer } from "@/components/editor/Ripple";
 import { enterFullscreen, exitFullscreen, hasSeenPerfMode, markPerfModeSeen, useFullscreenSync } from "@/hooks/usePerformanceMode";
 import { toast } from "sonner";
-import { shareApp, shareBlob, shareOrDownload, canNativeShare } from "@/lib/share";
+import { shareApp, shareBlob, shareOrDownload, shareUrl, canNativeShare } from "@/lib/share";
 import { presetFromUrl, PRESET_PARAM } from "@/engine/presetUrl";
 import { applyOverlayClass, overlayFromUrl } from "@/lib/overlayMode";
 import { DELIVERABLES_BY_ID } from "@/engine/deliverables";
@@ -56,6 +56,7 @@ import { JourneyDirector, type JourneyDirectorState } from "@/engine/journeyDire
 import type { JourneyMic } from "@/engine/journeyCore";
 import { EFFECTS } from "@/engine/effects";
 import { useIdleFade } from "@/hooks/useIdleFade";
+import { captureQuickThumb } from "@/engine/quickThumb";
 
 // Unified one-screen control rack — no tabs.
 
@@ -578,6 +579,21 @@ export default function Editor() {
     useStore.getState().clearAllFx();   // layers + auto-shuffle
     setJourneyOn(false);
     toast.message("FX cleared — remastered source only", { duration: 1800 });
+  }, []);
+
+  /**
+   * Grabs a thumbnail off the live canvas (instant — no scan) and saves the
+   * current stack. The favorite carries its own shareable link, generated
+   * once here, so it keeps working even if this exact route changes later.
+   */
+  const saveFavoriteNow = useCallback(() => {
+    const c = getCanvas();
+    const thumb = c ? captureQuickThumb(c) : undefined;
+    const fav = useStore.getState().saveFavorite(thumb);
+    toast.success(`Saved "${fav.name}"`, {
+      description: fav.link ? "Tap to copy its instant-replay link" : undefined,
+      action: fav.link ? { label: "Copy link", onClick: () => shareUrl(fav.link!) } : undefined,
+    });
   }, []);
 
   const takeScreenshot = async () => {
@@ -1192,6 +1208,7 @@ export default function Editor() {
             onToggleRecord={toggleRecord}
             onScreenshot={takeScreenshot}
             onGif={captureGif}
+            onSaveFavorite={saveFavoriteNow}
             onShare={shareCurrent}
             onSupport={() => navigate("/pricing")}
             gifBusy={gifBusy}

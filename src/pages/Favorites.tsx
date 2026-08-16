@@ -1,8 +1,11 @@
 import { useNavigate, Link } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
-import { ArrowLeft, Play, Pencil, Trash2, Star } from "lucide-react";
+import { ArrowLeft, Play, Pencil, Trash2, Star, Link2, Download, FileJson } from "lucide-react";
 import { useState } from "react";
 import { useStore } from "@/store/useStore";
+import { shareUrl } from "@/lib/share";
+import { downloadBlob } from "@/engine/export";
+import { favoritesToCSV, favoritesToJSON } from "@/engine/favoritesLog";
 
 export default function Favorites() {
   const navigate = useNavigate();
@@ -15,6 +18,16 @@ export default function Favorites() {
 
   const onApply = (id: string) => {
     if (applyFavorite(id)) navigate("/edit");
+  };
+
+  const exportCSV = () => {
+    const csv = favoritesToCSV(favorites);
+    downloadBlob(new Blob([csv], { type: "text/csv;charset=utf-8" }), `mosh-favorites-${Date.now()}.csv`);
+  };
+
+  const exportJSON = () => {
+    const json = favoritesToJSON(favorites);
+    downloadBlob(new Blob([json], { type: "application/json" }), `mosh-favorites-${Date.now()}.json`);
   };
 
   return (
@@ -38,10 +51,40 @@ export default function Favorites() {
             <Star className="h-3.5 w-3.5" strokeWidth={1.5} />
             favorites · {favorites.length}
           </h1>
-          <div className="w-[112px]" />
+          <div className="flex items-center gap-2">
+            {favorites.length > 0 && (
+              <>
+                <button
+                  type="button"
+                  onClick={exportCSV}
+                  className="flex items-center gap-1 font-mono text-[9px] uppercase tracking-[0.15em] text-white/50 hover:text-[hsl(var(--accent))]"
+                  title="Export the full favorites log as a spreadsheet (CSV) — every layer, effect, and param value"
+                >
+                  <Download className="h-3 w-3" strokeWidth={1.5} />
+                  csv
+                </button>
+                <button
+                  type="button"
+                  onClick={exportJSON}
+                  className="flex items-center gap-1 font-mono text-[9px] uppercase tracking-[0.15em] text-white/50 hover:text-[hsl(var(--accent))]"
+                  title="Export the full favorites log as machine-readable JSON — effect ids, raw params, and GLSL source per layer"
+                >
+                  <FileJson className="h-3 w-3" strokeWidth={1.5} />
+                  json
+                </button>
+              </>
+            )}
+          </div>
         </header>
 
         <section className="mx-auto max-w-6xl px-4 py-6 safe-bottom">
+          <p className="mb-4 font-mono text-[9px] uppercase tracking-[0.15em] text-white/30">
+            each favorite carries its exact stack — every effect, param, and blend, plus a link that
+            reopens it instantly. see what each effect does in the{" "}
+            <Link to="/effects" className="text-white/50 underline decoration-dotted hover:text-[hsl(var(--accent))]">
+              effect registry
+            </Link>.
+          </p>
           {favorites.length === 0 ? (
             <div className="mt-24 flex flex-col items-center gap-3 text-center">
               <Star className="h-8 w-8 text-white/20" strokeWidth={1.5} />
@@ -118,6 +161,17 @@ export default function Favorites() {
                       )}
                       {!renaming && (
                         <>
+                          {f.link && (
+                            <button
+                              type="button"
+                              onClick={() => shareUrl(f.link!)}
+                              className="text-white/40 hover:text-[hsl(var(--accent))]"
+                              aria-label="copy instant-replay link"
+                              title="copy instant-replay link — opens this exact mosh"
+                            >
+                              <Link2 className="h-3 w-3" strokeWidth={1.5} />
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => { setRenameId(f.id); setRenameVal(f.name); }}

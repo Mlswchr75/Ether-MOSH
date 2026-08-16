@@ -18,6 +18,7 @@ const AuthCallback = lazy(() => import("./pages/AuthCallback.tsx"));
 const Checkout = lazy(() => import("./pages/Checkout.tsx"));
 const Account = lazy(() => import("./pages/Account.tsx"));
 const Favorites = lazy(() => import("./pages/Favorites.tsx"));
+const EffectsRegistry = lazy(() => import("./pages/EffectsRegistry.tsx"));
 const Contact = lazy(() => import("./pages/Contact.tsx"));
 const About = lazy(() => import("./pages/About.tsx"));
 const OAuthConsent = lazy(() => import("./pages/OAuthConsent.tsx"));
@@ -53,6 +54,7 @@ const App = () => (
             <Route path="/checkout" element={<Checkout />} />
             <Route path="/account" element={<Account />} />
             <Route path="/favorites" element={<Favorites />} />
+            <Route path="/effects" element={<EffectsRegistry />} />
             <Route path="/contact" element={<Contact />} />
             <Route path="/about" element={<About />} />
             <Route path="/oauth/consent" element={<OAuthConsent />} />

@@ -232,7 +232,8 @@ type Actions = {
   setTileMode: (m: TileMode) => void;
   updateTileUniforms: (u: Partial<TileUniforms>) => void;
   setPaletteProfile: (p: PaletteProfile | null) => void;
-  saveFavorite: () => void;
+  /** Saves the current stack. Optional data-URL thumbnail for the gallery. */
+  saveFavorite: (thumb?: string) => Favorite;
   applyFavorite: (id: string) => boolean;
   /** Apply a preset decoded from a shared link. */
   applyPreset: (payload: PresetPayload | null) => boolean;
@@ -853,20 +854,28 @@ export const useStore = create<State & Actions>((set, get) => ({
   updateTileUniforms: (u) => set(s => ({ tileUniforms: { ...s.tileUniforms, ...u } })),
   setPaletteProfile: (p) => set({ paletteProfile: p }),
 
-  saveFavorite: () => {
+  saveFavorite: (thumb) => {
     const s = get();
+    const layers = s.layers.map(l => ({ ...l, params: { ...l.params }, mods: { ...l.mods }, audioMaps: { ...(l.audioMaps ?? {}) } }));
+    const id = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2);
+    // Computed at save time, against /edit specifically — favoriting from any
+    // route still has to produce a link that lands back in the visualizer.
+    const link = presetToUrl({ layers, seed: s.seed }, `${window.location.origin}/edit`);
     const fav: Favorite = {
-      id: (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2)),
+      id,
       name: `Preset ${new Date().toLocaleTimeString()}`,
-      layers: s.layers.map(l => ({ ...l, params: { ...l.params }, mods: { ...l.mods }, audioMaps: { ...(l.audioMaps ?? {}) } })),
+      layers,
       seed: s.seed,
       createdAt: new Date().toISOString(),
+      thumb,
+      link,
     };
     set(st => {
       const next = [...st.favorites, fav];
       try { localStorage.setItem("cathedral_favorites_v1", JSON.stringify(next)); } catch {}
       return { favorites: next };
     });
+    return fav;
   },
 
   applyFavorite: (id) => {
@@ -1153,9 +1162,15 @@ function loadFavoritesFromStorage(): Favorite[] {
     const raw = localStorage.getItem("cathedral_favorites_v1");
     if (raw) {
       const favorites = JSON.parse(raw) as Favorite[];
-      return Array.isArray(favorites)
-        ? favorites.map(favorite => ({ ...favorite, layers: normalizeLayerRoles(favorite.layers) }))
-        : [];
+      if (!Array.isArray(favorites)) return [];
+      // Backfill: favorites saved before the shareable-link field existed
+      // still deserve one, computed from data they already carry.
+      const origin = typeof window !== "undefined" ? window.location.origin : "https://ether-mosh.netlify.app";
+      return favorites.map(favorite => {
+        const layers = normalizeLayerRoles(favorite.layers);
+        const link = favorite.link ?? presetToUrl({ layers, seed: favorite.seed }, `${origin}/edit`);
+        return { ...favorite, layers, link };
+      });
     }
   } catch {}
   return [];

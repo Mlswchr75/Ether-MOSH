@@ -61,6 +61,12 @@ export type Favorite = {
   createdAt?: string;
   /** Optional preview retained by legacy/cloud favorite payloads. */
   thumb?: string;
+  /**
+   * Shareable link that re-applies this exact stack — computed once at save
+   * time (not derived on read) so a favorite still opens the same look even
+   * after the effect library or encoding scheme moves on. See presetUrl.ts.
+   */
+  link?: string;
 };
 
 export type Snapshot = {

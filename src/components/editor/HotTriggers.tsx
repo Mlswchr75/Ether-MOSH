@@ -1,8 +1,9 @@
-import { Mic, MicOff, Circle, Square, Sparkles, Scissors, Snowflake, Camera, Shuffle, Star, Play, Pencil, Trash2, X, Film, Lock, Share2, Compass, Maximize2, Minimize2, Gem, Home, SwitchCamera, Crosshair, Eraser } from "lucide-react";
+import { Mic, MicOff, Circle, Square, Sparkles, Scissors, Snowflake, Camera, Shuffle, Star, Play, Pencil, Trash2, X, Film, Lock, Share2, Compass, Maximize2, Minimize2, Gem, Home, SwitchCamera, Crosshair, Eraser, Link2 } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useStore } from "@/store/useStore";
 import { requestCameraStream, type CameraFacing } from "@/hooks/useCamera";
 import { IsolationPanel } from "./IsolationPanel";
+import { shareUrl } from "@/lib/share";
 import { toast } from "sonner";
 
 
@@ -28,6 +29,9 @@ type Props = {
   onClearFx?: () => void;
   /** True when something is actually on — the button dims when there isn't. */
   hasFx?: boolean;
+  /** Captures a thumbnail + shareable link, then saves. Falls back to the
+   *  store's bare saveFavorite() (no thumb/link) if not provided. */
+  onSaveFavorite?: () => void;
 };
 
 const SHUFFLE_TIMINGS = [5, 15, 30, 60, 120] as const;
@@ -69,7 +73,7 @@ function HotBtn({
  * Floating cluster of "moshing" cute icons over the visualizer.
  * The DOM overlay is outside <canvas>, so canvas.captureStream() never records these.
  */
-export function HotTriggers({ isRecording, onToggleRecord, onScreenshot, onFreeze, onGif, onShare, onSupport, gifBusy, gifProgress, onMicFlash, journeyOn, onToggleJourney, journeyLocked, isFullscreen, onToggleFullscreen, onHome, onClearFx, hasFx }: Props) {
+export function HotTriggers({ isRecording, onToggleRecord, onScreenshot, onFreeze, onGif, onShare, onSupport, gifBusy, gifProgress, onMicFlash, journeyOn, onToggleJourney, journeyLocked, isFullscreen, onToggleFullscreen, onHome, onClearFx, hasFx, onSaveFavorite }: Props) {
   const micEnabled = useStore(s => s.micEnabled);
   const setMicEnabled = useStore(s => s.setMicEnabled);
   const mosh = useStore(s => s.mosh);
@@ -210,7 +214,7 @@ export function HotTriggers({ isRecording, onToggleRecord, onScreenshot, onFreez
     favHoldTimerRef.current = window.setTimeout(() => {
       favHeldRef.current = true;
       // Long-press = quick save without opening the panel (power-user shortcut).
-      saveFavorite();
+      (onSaveFavorite ?? saveFavorite)();
       try { (navigator as any).vibrate?.(15); } catch {}
     }, 480);
   };
@@ -473,7 +477,7 @@ export function HotTriggers({ isRecording, onToggleRecord, onScreenshot, onFreez
               </div>
               <button
                 type="button"
-                onClick={() => { saveFavorite(); }}
+                onClick={() => { (onSaveFavorite ?? saveFavorite)(); }}
                 className="mb-1.5 w-full rounded border border-dashed border-white/15 px-2 py-1.5 text-left font-mono text-[10px] uppercase tracking-[0.15em] text-white/70 hover:border-[hsl(var(--accent))] hover:text-[hsl(var(--accent))]"
               >
                 + save current mosh
@@ -522,6 +526,17 @@ export function HotTriggers({ isRecording, onToggleRecord, onScreenshot, onFreez
                             >
                               <Play className="h-3 w-3" strokeWidth={1.5} />
                             </button>
+                            {f.link && (
+                              <button
+                                type="button"
+                                onClick={() => shareUrl(f.link!)}
+                                className="text-white/40 hover:text-[hsl(var(--accent))] opacity-0 group-hover:opacity-100"
+                                aria-label="copy link"
+                                title="copy instant-replay link"
+                              >
+                                <Link2 className="h-3 w-3" strokeWidth={1.5} />
+                              </button>
+                            )}
                             <button
                               type="button"
                               onClick={() => { setRenameId(f.id); setRenameVal(f.name); }}
