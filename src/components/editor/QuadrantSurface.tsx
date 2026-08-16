@@ -30,7 +30,6 @@ import { useKaossStore } from "@/store/kaossStore";
 import { EFFECTS_BY_ID } from "@/engine/effects";
 import type { Role } from "@/engine/artDirector";
 import { ROLE_COPY, groupLayersByRole, resolveLayerRole } from "@/engine/effectRoles";
-import { RoleControlRail } from "@/components/editor/RoleControlRail";
 import {
   applyAxisDelta,
   axisTargets,
@@ -324,7 +323,6 @@ export function QuadrantSurface({ onRoll, onTogglePerf, onTune = () => {} }: Pro
       onContextMenu={(e) => e.preventDefault()}
       aria-label="Visual instrument — tap to re-roll the next role, hold to re-roll everything, drag to sweep the selected role's parameters"
     >
-      <RoleControlRail onTune={onTune} />
       {readout && <QuadrantReadout r={readout} />}
     </div>
   );
