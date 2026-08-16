@@ -36,7 +36,6 @@ import { captureDeliverable } from "@/engine/captureDeliverable";
 import { cueFromUrl, setlistFilename } from "@/engine/setlist";
 import { KaossSurface } from "@/components/editor/KaossSurface";
 import { QuadrantSurface } from "@/components/editor/QuadrantSurface";
-import { RoleControlRail } from "@/components/editor/RoleControlRail";
 import { TrackpadGestures } from "@/components/editor/TrackpadGestures";
 import { toggleSystemAudio } from "@/engine/systemAudio";
 import { loadImageFile, loadImageFromClipboard } from "@/lib/sourceLoader";
@@ -54,7 +53,7 @@ import { useCloudFavorites } from "@/hooks/useCloudFavorites";
 import { JourneyDirector, type JourneyDirectorState } from "@/engine/journeyDirector";
 import type { JourneyMic } from "@/engine/journeyCore";
 import { EFFECTS } from "@/engine/effects";
-import { useIdleHide } from "@/hooks/useIdleHide";
+import { useIdleFade } from "@/hooks/useIdleFade";
 
 // Unified one-screen control rack — no tabs.
 
@@ -125,7 +124,8 @@ export default function Editor() {
 
   useFullscreenSync();
 
-  const idleHidden = useIdleHide(5000);
+  // Chrome sinks to near-invisible at 2.5s, then goes entirely at 5s.
+  const idleStage = useIdleFade(2_500, 5_000);
   const focusTune = useCallback((layerId: string) => {
     useStore.getState().selectLayer(layerId);
     setHideUI(false);
@@ -1062,6 +1062,8 @@ export default function Editor() {
   return (
     <main
       ref={shellRef}
+      // Drives the two-stage fade of everything carrying `.ui-chrome`.
+      data-idle={idleStage}
       className={`editor-shell bg-background text-foreground ${
         isPerformanceMode
           ? "fixed inset-0 z-[9999] flex flex-col overflow-hidden"
@@ -1135,7 +1137,6 @@ export default function Editor() {
           <GlCanvas />
         </div>
         {!hasSource && !isOverlay && <StartCameraOverlay />}
-        {!hasSource && !isOverlay && <RoleControlRail onTune={focusTune} />}
         <SystemAudioHud visible={systemAudioEnabled && !isOverlay} />
         {hasSource && !isOverlay && (
           <QuadrantSurface onTogglePerf={togglePerf} onTune={focusTune} />
@@ -1181,7 +1182,6 @@ export default function Editor() {
               try { useStore.getState().clearImage(); } catch {}
               navigate("/");
             }}
-            dimmed={idleHidden}
           />
         )}
         {journeyOn && (
@@ -1201,7 +1201,7 @@ export default function Editor() {
             unattended director that never says what it is doing is
             indistinguishable from a broken one. */}
         {journeyOn && journeyState && !isPerformanceMode && !hideUI && (
-          <div className="pointer-events-none absolute bottom-3 left-3 z-30 max-w-[min(22rem,60vw)] rounded-sm border border-[hsl(var(--border-default))] bg-black/70 px-3 py-2 backdrop-blur-md">
+          <div className="ui-chrome pointer-events-none absolute bottom-3 left-3 z-30 max-w-[min(22rem,60vw)] rounded-sm border border-[hsl(var(--border-subtle))] bg-black/40 px-3 py-2 backdrop-blur-md">
             <p className="font-mono text-[9px] uppercase tracking-[0.3em] text-[hsl(var(--accent))]">
               journey · {journeyState.section}
             </p>
@@ -1215,7 +1215,7 @@ export default function Editor() {
           </div>
         )}
         {!isPerformanceMode && !hideUI && (
-          <div className={`absolute top-3 right-3 z-40 pointer-events-auto transition-opacity duration-500 ${idleHidden ? "opacity-0 pointer-events-none" : "opacity-100"}`}>
+          <div className="ui-chrome absolute top-3 right-3 z-40 pointer-events-auto">
             <AccountChip />
           </div>
         )}
