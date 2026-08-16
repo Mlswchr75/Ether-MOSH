@@ -1,6 +1,7 @@
-import { Mic, MicOff, Circle, Square, Sparkles, Scissors, Snowflake, Camera, Shuffle, Star, Play, Pencil, Trash2, X, Film, Lock, Share2, Compass, Maximize2, Minimize2, Gem, Home, SwitchCamera, Crosshair, Eraser, Link2 } from "lucide-react";
+import { Mic, MicOff, Circle, Square, Sparkles, Scissors, Snowflake, Camera, Shuffle, Star, Play, Pencil, Trash2, X, Film, Lock, Share2, Compass, Maximize2, Minimize2, Gem, Home, SwitchCamera, Crosshair, Eraser, Link2, Music, Music2, Upload, Shuffle as ShuffleIcon } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useStore } from "@/store/useStore";
+import { trackPlayer, DEFAULT_TRACK_TITLE } from "@/engine/trackPlayer";
 import { requestCameraStream, type CameraFacing } from "@/hooks/useCamera";
 import { IsolationPanel } from "./IsolationPanel";
 import { shareUrl } from "@/lib/share";
@@ -66,6 +67,133 @@ function HotBtn({
       <span className="hot-trigger__glitch" aria-hidden>{children}</span>
       <span className="hot-trigger__ico">{children}</span>
     </button>
+  );
+}
+
+/**
+ * Theme-track hot-trigger: tap toggles play/pause, the small caret opens a
+ * compact panel (now-playing title, load-your-own file, new drop-in point,
+ * clear audio). Lives in the same `.hot-trigger` row and inherits whatever
+ * idle/inactivity fade the row it's mounted in already has — no separate
+ * timeout logic here.
+ */
+function TrackTrigger({ delay }: { delay: number }) {
+  const trackEnabled = useStore(s => s.trackEnabled);
+  const trackTitle = useStore(s => s.trackTitle);
+  const setTrackEnabled = useStore(s => s.setTrackEnabled);
+  const setTrackMeta = useStore(s => s.setTrackMeta);
+  const [open, setOpen] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: PointerEvent) => {
+      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    window.addEventListener("pointerdown", close);
+    return () => window.removeEventListener("pointerdown", close);
+  }, [open]);
+
+  return (
+    <div ref={wrapRef} className="relative" data-shuffle-picker>
+      <button
+        type="button"
+        aria-label={trackEnabled ? `Pause ${trackTitle}` : "Play theme track"}
+        aria-pressed={trackEnabled}
+        title={trackEnabled ? `Pause · ${trackTitle}` : "Play theme track"}
+        data-active={trackEnabled || undefined}
+        data-no-longpress
+        className="hot-trigger"
+        style={{ animationDelay: `${delay}ms` }}
+        onClick={() => setTrackEnabled(!trackEnabled)}
+      >
+        <span className="hot-trigger__glitch" aria-hidden>
+          {trackEnabled ? <Music className="h-4 w-4" strokeWidth={1.5} /> : <Music2 className="h-4 w-4" strokeWidth={1.5} />}
+        </span>
+        <span className="hot-trigger__ico">
+          {trackEnabled ? <Music className="h-4 w-4" strokeWidth={1.5} /> : <Music2 className="h-4 w-4" strokeWidth={1.5} />}
+        </span>
+      </button>
+      <button
+        type="button"
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={() => setOpen(o => !o)}
+        aria-label="Track options"
+        aria-expanded={open || undefined}
+        aria-haspopup="menu"
+        data-no-longpress
+        className="absolute -bottom-1 -right-1 grid h-3.5 w-3.5 place-items-center rounded-full bg-black/70 text-[hsl(var(--text-secondary))] transition hover:text-[hsl(var(--accent))]"
+        title="Track options"
+      >
+        <ShuffleIcon className="h-2 w-2" strokeWidth={2.5} />
+      </button>
+
+      {open && (
+        <div
+          className="panel-in-3d absolute right-full top-0 z-50 mr-2 w-52 rounded-sm border border-[hsl(var(--border-default))] bg-black/85 p-2.5 backdrop-blur-md"
+          role="menu"
+          aria-label="Track options"
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <div className="overflow-hidden whitespace-nowrap font-mono text-[10px] uppercase tracking-[0.16em] text-[hsl(var(--text-secondary))]">
+            now playing
+          </div>
+          <div className="mt-0.5 truncate text-[12px] font-semibold text-[hsl(var(--text-primary))]" title={trackTitle}>
+            {trackTitle}
+          </div>
+
+          <button
+            type="button"
+            role="menuitem"
+            data-no-longpress
+            onClick={() => { trackPlayer.seekToRandomSensiblePoint(); setOpen(false); }}
+            className="mt-2 flex w-full items-center gap-2 rounded-sm border border-transparent px-2 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-[hsl(var(--text-secondary))] transition hover:border-[hsl(var(--accent))] hover:text-[hsl(var(--accent))]"
+          >
+            <ShuffleIcon className="h-3 w-3" /> new drop-in point
+          </button>
+
+          <button
+            type="button"
+            role="menuitem"
+            data-no-longpress
+            onClick={() => fileRef.current?.click()}
+            className="mt-1 flex w-full items-center gap-2 rounded-sm border border-transparent px-2 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-[hsl(var(--text-secondary))] transition hover:border-[hsl(var(--accent))] hover:text-[hsl(var(--accent))]"
+          >
+            <Upload className="h-3 w-3" /> browse file
+          </button>
+
+          {trackEnabled && (
+            <button
+              type="button"
+              role="menuitem"
+              data-no-longpress
+              onClick={() => { trackPlayer.dispose(); setTrackEnabled(false); setTrackMeta(DEFAULT_TRACK_TITLE, ""); setOpen(false); }}
+              className="mt-1 flex w-full items-center gap-2 rounded-sm border border-transparent px-2 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-[hsl(var(--text-secondary))] transition hover:border-destructive hover:text-destructive"
+            >
+              <X className="h-3 w-3" /> clear all audio
+            </button>
+          )}
+
+          <input
+            ref={fileRef}
+            type="file"
+            accept="audio/*"
+            hidden
+            onChange={async (e) => {
+              const f = e.target.files?.[0];
+              if (!f) return;
+              const url = URL.createObjectURL(f);
+              const name = f.name.replace(/\.[^.]+$/, "");
+              await trackPlayer.setSource(url, name, "");
+              setTrackMeta(name, "");
+              setTrackEnabled(true);
+              setOpen(false);
+            }}
+          />
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -287,6 +415,8 @@ export function HotTriggers({ isRecording, onToggleRecord, onScreenshot, onFreez
             ? <Mic className="h-4 w-4" strokeWidth={1.5} />
             : <MicOff className="h-4 w-4" strokeWidth={1.5} />}
         </HotBtn>
+
+        <TrackTrigger delay={70} />
 
         {/* Auto-shuffle — dropdown opens LEFT */}
         <div className="relative" data-shuffle-picker>

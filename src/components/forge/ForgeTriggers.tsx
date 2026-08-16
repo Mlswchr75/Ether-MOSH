@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
-import { Mic, MicOff, Film, Circle, Square, Maximize2, Minimize2, Shuffle, Sparkles } from "lucide-react";
+import { useEffect as useEffectReact, useRef as useRefReact } from "react";
+import { Mic, MicOff, Film, Circle, Square, Maximize2, Minimize2, Shuffle, Sparkles, Music, Music2, Upload, X } from "lucide-react";
+import { useStore } from "@/store/useStore";
+import { trackPlayer, DEFAULT_TRACK_TITLE } from "@/engine/trackPlayer";
 
 /**
  * Forge's trigger rail — the same controls the editor has, against Forge's own
@@ -71,6 +74,128 @@ function Btn({
   );
 }
 
+/** Same theme-track hot-trigger as the editor's HotTriggers, adapted to
+ *  Forge's `.hot-trigger` rail and local button styling. */
+function ForgeTrackTrigger({ delay }: { delay: number }) {
+  const trackEnabled = useStore(s => s.trackEnabled);
+  const trackTitle = useStore(s => s.trackTitle);
+  const setTrackEnabled = useStore(s => s.setTrackEnabled);
+  const setTrackMeta = useStore(s => s.setTrackMeta);
+  const [open, setOpen] = useState(false);
+  const fileRef = useRefReact<HTMLInputElement>(null);
+  const wrapRef = useRefReact<HTMLDivElement>(null);
+
+  useEffectReact(() => {
+    if (!open) return;
+    const close = (e: PointerEvent) => {
+      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    window.addEventListener("pointerdown", close);
+    return () => window.removeEventListener("pointerdown", close);
+  }, [open]);
+
+  return (
+    <div ref={wrapRef} className="relative">
+      <button
+        type="button"
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={() => setOpen(o => !o)}
+        aria-label={trackEnabled ? `Pause ${trackTitle}` : "Play theme track"}
+        aria-pressed={trackEnabled}
+        aria-expanded={open || undefined}
+        aria-haspopup="menu"
+        title={trackEnabled ? `Pause · ${trackTitle}` : "Play theme track — tap to open"}
+        data-active={(trackEnabled || open) || undefined}
+        data-no-longpress
+        className="hot-trigger relative"
+        style={{ animationDelay: `${delay}ms` }}
+      >
+        <span className="hot-trigger__glitch" aria-hidden>
+          {trackEnabled ? <Music className="h-4 w-4" strokeWidth={1.5} /> : <Music2 className="h-4 w-4" strokeWidth={1.5} />}
+        </span>
+        <span className="hot-trigger__ico">
+          {trackEnabled ? <Music className="h-4 w-4" strokeWidth={1.5} /> : <Music2 className="h-4 w-4" strokeWidth={1.5} />}
+        </span>
+      </button>
+
+      {open && (
+        <div
+          className="panel-in-3d absolute right-full top-0 z-50 mr-2 w-52 rounded-sm border border-[hsl(var(--border-default))] bg-black/85 p-2.5 backdrop-blur-md"
+          role="menu"
+          aria-label="Track options"
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <div className="overflow-hidden whitespace-nowrap font-mono text-[10px] uppercase tracking-[0.16em] text-[hsl(var(--text-secondary))]">
+            now playing
+          </div>
+          <div className="mt-0.5 truncate text-[12px] font-semibold text-[hsl(var(--text-primary))]" title={trackTitle}>
+            {trackTitle}
+          </div>
+
+          <button
+            type="button"
+            role="menuitem"
+            data-no-longpress
+            onClick={() => setTrackEnabled(!trackEnabled)}
+            className="mt-2 flex w-full items-center gap-2 rounded-sm border border-transparent px-2 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-[hsl(var(--text-secondary))] transition hover:border-[hsl(var(--accent))] hover:text-[hsl(var(--accent))]"
+          >
+            {trackEnabled ? <Music2 className="h-3 w-3" /> : <Music className="h-3 w-3" />} {trackEnabled ? "pause" : "play"}
+          </button>
+
+          <button
+            type="button"
+            role="menuitem"
+            data-no-longpress
+            onClick={() => { trackPlayer.seekToRandomSensiblePoint(); setOpen(false); }}
+            className="mt-1 flex w-full items-center gap-2 rounded-sm border border-transparent px-2 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-[hsl(var(--text-secondary))] transition hover:border-[hsl(var(--accent))] hover:text-[hsl(var(--accent))]"
+          >
+            <Shuffle className="h-3 w-3" /> new drop-in point
+          </button>
+
+          <button
+            type="button"
+            role="menuitem"
+            data-no-longpress
+            onClick={() => fileRef.current?.click()}
+            className="mt-1 flex w-full items-center gap-2 rounded-sm border border-transparent px-2 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-[hsl(var(--text-secondary))] transition hover:border-[hsl(var(--accent))] hover:text-[hsl(var(--accent))]"
+          >
+            <Upload className="h-3 w-3" /> browse file
+          </button>
+
+          {trackEnabled && (
+            <button
+              type="button"
+              role="menuitem"
+              data-no-longpress
+              onClick={() => { trackPlayer.dispose(); setTrackEnabled(false); setTrackMeta(DEFAULT_TRACK_TITLE, ""); setOpen(false); }}
+              className="mt-1 flex w-full items-center gap-2 rounded-sm border border-transparent px-2 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-[hsl(var(--text-secondary))] transition hover:border-destructive hover:text-destructive"
+            >
+              <X className="h-3 w-3" /> clear all audio
+            </button>
+          )}
+
+          <input
+            ref={fileRef}
+            type="file"
+            accept="audio/*"
+            hidden
+            onChange={async (e) => {
+              const f = e.target.files?.[0];
+              if (!f) return;
+              const url = URL.createObjectURL(f);
+              const name = f.name.replace(/\.[^.]+$/, "");
+              await trackPlayer.setSource(url, name, "");
+              setTrackMeta(name, "");
+              setTrackEnabled(true);
+              setOpen(false);
+            }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ForgeTriggers({
   micOn, onToggleMic,
   onGif, gifBusy, gifProgress,
@@ -110,6 +235,8 @@ export function ForgeTriggers({
       >
         {micOn ? <Mic className="h-4 w-4" strokeWidth={1.5} /> : <MicOff className="h-4 w-4" strokeWidth={1.5} />}
       </Btn>
+
+      <ForgeTrackTrigger delay={20} />
 
       {/* Journey — the auto-director. Listed above shuffle because turning it
           on supersedes the interval, and adjacency makes that legible. */}

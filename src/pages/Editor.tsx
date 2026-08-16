@@ -38,6 +38,7 @@ import { KaossSurface } from "@/components/editor/KaossSurface";
 import { QuadrantSurface } from "@/components/editor/QuadrantSurface";
 import { TrackpadGestures } from "@/components/editor/TrackpadGestures";
 import { toggleSystemAudio } from "@/engine/systemAudio";
+import { trackPlayer } from "@/engine/trackPlayer";
 import { loadImageFile, loadImageFromClipboard } from "@/lib/sourceLoader";
 import { SystemAudioHud } from "@/components/editor/SystemAudioHud";
 
@@ -131,6 +132,10 @@ export default function Editor() {
   const prevImageRef = useRef<HTMLImageElement | null>(null);
 
   useFullscreenSync();
+
+  // Entering the editor with the track already playing should feel like a
+  // fresh drop-in, not a loop of wherever it happened to be.
+  useEffect(() => { trackPlayer.noteModeEntry(); }, []);
 
   // UI chrome fades to fully invisible after 2s of inactivity.
   const idleStage = useIdleFade(2_000);

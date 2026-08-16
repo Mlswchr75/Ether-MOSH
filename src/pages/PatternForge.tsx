@@ -13,6 +13,7 @@ import { healToSeamless, renderSizeFor, DEFAULT_HEAL_BAND as DEFAULT_BAND } from
 import { EFFECTS_BY_ID } from "@/engine/effects";
 import { toast } from "sonner";
 import { MicAnalyzer } from "@/engine/mic";
+import { trackPlayer } from "@/engine/trackPlayer";
 import { applyAudio, bandsFrom, stepBeat } from "@/engine/audioMapping";
 import { captureLoopingGif } from "@/engine/gifCapture";
 import { CanvasRecorder } from "@/engine/recorder";
@@ -100,6 +101,10 @@ export default function PatternForge() {
      few seconds. The renderer now lives as long as the page does. */
   const stackRef = useRef<ForgeLayer[]>(currentStack);
   useEffect(() => { stackRef.current = currentStack; }, [currentStack]);
+
+  // Entering Forge with the track already playing should feel like a fresh
+  // drop-in, not a loop of wherever it happened to be.
+  useEffect(() => { trackPlayer.noteModeEntry(); }, []);
 
   /**
    * Paint the source frame. Shared by the preview and the exporter on purpose:
@@ -332,7 +337,7 @@ export default function PatternForge() {
       getCanvas: () => exportCanvasRef.current,
       // Only hand over a live mic. Passing a stopped one would have the
       // director reading zeroes and confidently reporting silence.
-      getMic: () => (micRef.current.enabled ? micRef.current : null),
+      getMic: () => (micRef.current.enabled ? micRef.current : (trackPlayer.enabled ? trackPlayer : null)),
       onMove: (move, st) => applyMoveRef.current(move, st),
       onState: setJourneyState,
     });
@@ -435,7 +440,9 @@ export default function PatternForge() {
          Passing a scalar pulse alone was the bug: only the handful of effects
          that read uPulse in main() responded, so with the mic on most stacks
          looked identical to mic off. Every parameter now listens to a band. */
-      const mic = micRef.current;
+      // Theme track and Forge's own mic toggle are mutually exclusive — read
+      // whichever is active. trackPlayer mirrors MicAnalyzer's public surface.
+      const mic = trackPlayer.enabled ? trackPlayer : micRef.current;
       const dt = Math.max(0.001, Math.min(0.1, (nowMs - lastMsRef.current) / 1000));
       lastMsRef.current = nowMs;
 
