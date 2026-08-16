@@ -157,12 +157,18 @@ export function GlitchWordField({ exclude, words = FIELD_WORDS }: GlitchWordFiel
     /**
      * Boxes currently spoken for: every marked element plus every live word.
      *
-     * Re-queried each spawn rather than cached, because the reserved UI moves —
-     * the hero grows and shrinks as the headline swaps between "MOSH" and
-     * "DROP AN IMAGE", and a stale box is an overlap waiting to happen.
+     * The keep-out geometry (`box`, `reserved`) is measured once per beat and
+     * passed in rather than re-queried per spawn — nothing marked keep-out
+     * moves mid-beat, and re-running `querySelectorAll` plus a
+     * `getBoundingClientRect()` per element on every spawn attempt was a
+     * synchronous-layout tax paid twice a beat for geometry that hadn't
+     * changed. Only live-word rects (already in memory, no DOM read) vary
+     * between the two spawn attempts within one beat.
      */
-    const claimed = (): Rect[] => {
-      const box = host.getBoundingClientRect();
+    const claimed = (reserved: Rect[]): Rect[] => reserved.concat(liveRef.current.map(l => l.rect));
+
+    /** Keep-out boxes relative to `host`, measured once per beat. */
+    const measureReserved = (box: DOMRect): Rect[] => {
       const reserved: Rect[] = [];
       for (const el of document.querySelectorAll<HTMLElement>(`[${KEEP_OUT_ATTR}]`)) {
         const r = el.getBoundingClientRect();
@@ -174,11 +180,10 @@ export function GlitchWordField({ exclude, words = FIELD_WORDS }: GlitchWordFiel
           b: r.bottom - box.top,
         });
       }
-      return reserved.concat(liveRef.current.map(l => l.rect));
+      return reserved;
     };
 
-    const spawn = (now: number): Live | null => {
-      const box = host.getBoundingClientRect();
+    const spawn = (now: number, box: DOMRect, reserved: Rect[]): Live | null => {
       const W = box.width;
       const H = box.height;
       if (W < 120 || H < 120) return null;
@@ -220,7 +225,7 @@ export function GlitchWordField({ exclude, words = FIELD_WORDS }: GlitchWordFiel
         h: m.height,
         deg,
         margin,
-        blocked: claimed(),
+        blocked: claimed(reserved),
         gap,
         rng: Math.random,
       });
@@ -250,18 +255,18 @@ export function GlitchWordField({ exclude, words = FIELD_WORDS }: GlitchWordFiel
 
     // How many words the field carries at once, by area — a phone gets a
     // handful, a desktop a crowd, and neither ends up feeling different.
-    const targetCount = () => {
-      const { width, height } = host.getBoundingClientRect();
-      return Math.max(3, Math.min(11, Math.round((width * height) / 118000)));
-    };
+    const targetCount = (box: DOMRect) =>
+      Math.max(3, Math.min(11, Math.round((box.width * box.height) / 118000)));
 
     if (reduced) {
       // The glitching is the whole effect; with it off, place one calm set and
       // leave it alone rather than swapping words on a timer.
+      const box = host.getBoundingClientRect();
+      const reserved = measureReserved(box);
       const initial: Live[] = [];
       liveRef.current = initial;
-      for (let i = 0; i < targetCount(); i++) {
-        const next = spawn(performance.now());
+      for (let i = 0; i < targetCount(box); i++) {
+        const next = spawn(performance.now(), box, reserved);
         if (next) {
           initial.push({ ...next, life: 0 });
           liveRef.current = initial;
@@ -277,6 +282,8 @@ export function GlitchWordField({ exclude, words = FIELD_WORDS }: GlitchWordFiel
     const beat = () => {
       if (cancelled) return;
       const now = performance.now();
+      const box = host.getBoundingClientRect();
+      const reserved = measureReserved(box);
 
       // Retire expired words first — that frees their boxes for this same beat,
       // so a vacated gap can be refilled immediately. A word the hero has since
@@ -285,13 +292,13 @@ export function GlitchWordField({ exclude, words = FIELD_WORDS }: GlitchWordFiel
       let next = liveRef.current.filter(
         l => l.dieAt > now && l.word !== excludeRef.current,
       );
-      const target = targetCount();
+      const target = targetCount(box);
 
       // At most two spawns per beat: the field should fill in visibly rather
       // than snapping to full the moment it mounts.
       for (let i = 0; i < 2 && next.length < target; i++) {
         liveRef.current = next;
-        const born = spawn(now);
+        const born = spawn(now, box, reserved);
         if (!born) break;
         next = next.concat(born);
       }

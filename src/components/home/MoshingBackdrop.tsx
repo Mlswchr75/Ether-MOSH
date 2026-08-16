@@ -65,11 +65,17 @@ export const MoshingBackdrop = () => {
 
     const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const cpuCount = navigator.hardwareConcurrency || 4;
-    const targetFps = cpuCount <= 4 ? 24 : 30;
-    const frameTime = 1000 / targetFps;
-    const paintFps = 10;
+    // This is a decorative background, not the instrument itself — it should
+    // never be the reason the page feels slow to respond. Lower ceilings than
+    // the editor's own renderer, and a runtime backoff below so a device that
+    // turns out slower than hardwareConcurrency suggested still self-corrects
+    // instead of contending with the main thread indefinitely.
+    let targetFps = cpuCount <= 4 ? 15 : 24;
+    let frameTime = 1000 / targetFps;
+    const paintFps = 6;
     const paintFrameTime = 1000 / paintFps;
-    const downscale = cpuCount <= 4 ? 0.35 : 0.5;
+    let downscale = cpuCount <= 4 ? 0.22 : 0.4;
+    let singleLayer = cpuCount <= 4;
 
     renderer.setRenderScale(downscale);
 
@@ -77,6 +83,28 @@ export const MoshingBackdrop = () => {
     let isInViewport = true;
     let lastFrameTime = 0;
     let lastPaintTime = 0;
+
+    // Adaptive backoff: measure actual render cost and step down further if
+    // frames are running long. A frame budget is a guess about the device;
+    // the device's own behavior is the ground truth.
+    let slowFrameStreak = 0;
+    let downgraded = false;
+    const recordFrameCost = (ms: number) => {
+      if (downgraded) return;
+      if (ms > frameTime * 1.4) {
+        slowFrameStreak++;
+        if (slowFrameStreak >= 8) {
+          downgraded = true;
+          targetFps = Math.max(8, Math.round(targetFps * 0.6));
+          frameTime = 1000 / targetFps;
+          downscale = Math.max(0.14, downscale * 0.65);
+          renderer?.setRenderScale(downscale);
+          singleLayer = true;
+        }
+      } else {
+        slowFrameStreak = 0;
+      }
+    };
 
     const resize = () => {
       if (renderer && host.clientWidth > 0 && host.clientHeight > 0) {
@@ -119,7 +147,7 @@ export const MoshingBackdrop = () => {
       sctx.fillStyle = g;
       sctx.fillRect(0, 0, src.width, src.height);
 
-      for (let i = 0; i < 5; i++) {
+      for (let i = 0; i < 3; i++) {
         const x = (0.5 + 0.42 * Math.sin(t * (0.23 + i * 0.11) + i * 2.1)) * src.width;
         const y = (0.5 + 0.42 * Math.cos(t * (0.31 + i * 0.07) + i * 1.3)) * src.height;
         const r = 24 + 18 * Math.sin(t * 0.5 + i);
@@ -149,7 +177,8 @@ export const MoshingBackdrop = () => {
               lastPaintTime = now;
             }
 
-            const layers: RenderLayer[] = STACK_ROTATION[stackIdx].map((l, i) => ({
+            const stack = singleLayer ? STACK_ROTATION[stackIdx].slice(0, 1) : STACK_ROTATION[stackIdx];
+            const layers: RenderLayer[] = stack.map((l, i) => ({
               id: `bg${i}`,
               effectId: l.effectId,
               hidden: false,
@@ -176,6 +205,7 @@ export const MoshingBackdrop = () => {
         return;
       }
 
+      const frameStart = performance.now();
       try {
         const t = (now - start) / 1000;
         if (now - lastSwap > 9000) {
@@ -189,7 +219,8 @@ export const MoshingBackdrop = () => {
           lastPaintTime = now;
         }
 
-        const layers: RenderLayer[] = STACK_ROTATION[stackIdx].map((l, i) => ({
+        const stack = singleLayer ? STACK_ROTATION[stackIdx].slice(0, 1) : STACK_ROTATION[stackIdx];
+        const layers: RenderLayer[] = stack.map((l, i) => ({
           id: `bg${i}`,
           effectId: l.effectId,
           hidden: false,
@@ -204,6 +235,7 @@ export const MoshingBackdrop = () => {
       } catch (err) {
         console.error("MOSH WebGL backdrop caught render error safely:", err);
       }
+      recordFrameCost(performance.now() - frameStart);
 
       lastFrameTime = now;
       raf = requestAnimationFrame(loop);
