@@ -9,72 +9,72 @@
 
 @layer base {
   :root {
-    /* --- Raw glass-system tokens (used by .glass-*, .btn-*, etc.) --- */
-    --surface-0: 240 20% 4%;              /* solid bottom layer */
-    --surface-0-a: 0.92;
-    --surface-1: 252 25% 5%;              /* primary glass panel */
-    --surface-1-a: 0.72;
-    --surface-2: 252 22% 6%;              /* nested card inside a panel */
-    --surface-2-a: 0.60;
-    --surface-hover: 0 0% 100%;
-    --surface-hover-a: 0.04;
-    --surface-active: 0 0% 100%;
-    --surface-active-a: 0.07;
+    /* === MOSH Design System ===
+       Flat, modern naming. All HSL. Use inline opacity (/ 0.xx) instead of variant variables.
+    */
 
-    --border-subtle:  0 0% 100% / 0.06;
-    --border-default: 0 0% 100% / 0.10;
-    --border-strong:  0 0% 100% / 0.16;
+    /* Background layers */
+    --bg-base: 240 20% 4%;              /* Solid bottom layer — pure black */
+    --bg-panel: 252 25% 5%;             /* Glass panel — primary UI surface */
+    --bg-card: 252 22% 6%;              /* Nested card — inside a panel */
+    --bg-hover: 0 0% 100%;              /* Hover state tint */
+    --bg-active: 0 0% 100%;             /* Active state tint */
 
-    --text-primary:   240 22% 92%;        /* #e8e6f0 */
-    --text-secondary: 246 12% 58%;        /* #8a87a0 */
-    --text-tertiary:  246 12% 40%;        /* #5a5870 */
-    --text-disabled:  246 12% 26%;        /* #3a3850 */
+    /* Text hierarchy */
+    --text-body: 240 22% 92%;           /* Primary readable text #e8e6f0 */
+    --text-muted: 246 12% 58%;          /* Secondary / hint text #8a87a0 */
+    --text-tertiary: 246 12% 40%;       /* Tertiary / disabled #5a5870 */
+    --text-disabled: 246 12% 26%;       /* Fully disabled #3a3850 */
 
-    --accent-h: 326;
-    --accent-s: 100%;
-    --accent-l: 59%;
-    --accent: var(--accent-h) var(--accent-s) var(--accent-l);  /* magenta #ff2d92 */
-    --accent-glow: var(--accent-h) var(--accent-s) var(--accent-l) / 0.35;
-    --accent-dim:  var(--accent-h) var(--accent-s) var(--accent-l) / 0.55;
+    /* Borders */
+    --border-subtle: 0 0% 100%;         /* Faint (use with / 0.06 opacity) */
+    --border-default: 0 0% 100%;        /* Standard (use with / 0.10 opacity) */
+    --border-strong: 0 0% 100%;         /* Prominent (use with / 0.16 opacity) */
 
-    --signal-live: 0 100% 66%;
-    --signal-good: 142 71% 58%;
-    --signal-warn: 48 96% 53%;
+    /* Accent color (magenta) */
+    --mag: 326 100% 59%;                /* Magenta #ff2d92 — focus, highlights */
 
+    /* Signal colors */
+    --signal-live: 0 100% 66%;          /* Red — live/active */
+    --signal-good: 142 71% 58%;         /* Green — success/healthy */
+    --signal-warn: 48 96% 53%;          /* Yellow — warning/attention */
+
+    /* Effects */
     --blur-glass: 40px;
     --saturate-glass: 180%;
+    --radius: 2px;
 
-    /* --- Legacy shadcn tokens — remapped to the new system so the existing
-         <Button>, <Input>, etc. inherit the eurorack look. ALL HSL. --- */
-    --background: var(--surface-0);
-    --foreground: var(--text-primary);
-    --card: var(--surface-1);
-    --card-foreground: var(--text-primary);
-    --popover: var(--surface-0);
-    --popover-foreground: var(--text-primary);
-    --primary: var(--accent);
-    --primary-foreground: var(--surface-0);
-    --primary-glow: var(--accent-h) var(--accent-s) 70%;
+    /* === Legacy shadcn aliases (for compatibility, will be removed) ===
+       These map to modern tokens. Prefer using the tokens above directly.
+    */
+    --background: var(--bg-base);
+    --foreground: var(--text-body);
+    --card: var(--bg-panel);
+    --card-foreground: var(--text-body);
+    --popover: var(--bg-base);
+    --popover-foreground: var(--text-body);
+    --primary: var(--mag);
+    --primary-foreground: var(--bg-base);
     --secondary: 186 100% 50%;
-    --secondary-foreground: var(--surface-0);
-    --accent-foreground: var(--surface-0);
+    --secondary-foreground: var(--bg-base);
+    --accent: var(--mag);
+    --accent-foreground: var(--bg-base);
     --muted: 252 14% 10%;
-    --muted-foreground: var(--text-secondary);
+    --muted-foreground: var(--text-muted);
     --destructive: 0 100% 60%;
     --destructive-foreground: 0 0% 100%;
     --border: 0 0% 100% / 0.10;
     --input: 252 22% 8%;
-    --ring: var(--accent);
-    --radius: 2px;
+    --ring: var(--mag);
 
-    --sidebar-background: var(--surface-1);
-    --sidebar-foreground: var(--text-primary);
-    --sidebar-primary: var(--accent);
-    --sidebar-primary-foreground: var(--surface-0);
-    --sidebar-accent: var(--surface-2);
-    --sidebar-accent-foreground: var(--text-primary);
+    --sidebar-background: var(--bg-panel);
+    --sidebar-foreground: var(--text-body);
+    --sidebar-primary: var(--mag);
+    --sidebar-primary-foreground: var(--bg-base);
+    --sidebar-accent: var(--bg-card);
+    --sidebar-accent-foreground: var(--text-body);
     --sidebar-border: 0 0% 100% / 0.10;
-    --sidebar-ring: var(--accent);
+    --sidebar-ring: var(--mag);
   }
 
   /* No light mode. The instrument has one face. */
@@ -110,8 +110,8 @@
   }
 
   body {
-    background: hsl(var(--surface-0));
-    color: hsl(var(--text-primary));
+    background: hsl(var(--bg-base));
+    color: hsl(var(--text-body));
     font-family: 'JetBrains Mono', 'IBM Plex Mono', 'SF Mono', Menlo, ui-monospace, monospace;
     -webkit-font-smoothing: antialiased;
     overscroll-behavior: none;
@@ -119,12 +119,12 @@
   }
 
   ::selection {
-    background: hsl(var(--accent) / 0.45);
-    color: hsl(var(--text-primary));
+    background: hsl(var(--mag) / 0.45);
+    color: hsl(var(--text-body));
   }
   ::-moz-selection {
-    background: hsl(var(--accent) / 0.45);
-    color: hsl(var(--text-primary));
+    background: hsl(var(--mag) / 0.45);
+    color: hsl(var(--text-body));
   }
 
   .font-mono {
@@ -145,19 +145,19 @@
 @layer components {
   /* ---------------- Glass surfaces ---------------- */
   .glass-1 {
-    background: hsl(var(--surface-1) / var(--surface-1-a));
+    background: hsl(var(--bg-panel) / 0.72);
     backdrop-filter: blur(var(--blur-glass)) saturate(var(--saturate-glass));
     -webkit-backdrop-filter: blur(var(--blur-glass)) saturate(var(--saturate-glass));
     border: 1px solid hsl(var(--border-default));
     border-radius: 2px;
   }
   .glass-2 {
-    background: hsl(var(--surface-2) / var(--surface-2-a));
+    background: hsl(var(--bg-card) / 0.60);
     border: 1px solid hsl(var(--border-subtle));
     border-radius: 2px;
   }
   .glass-modal {
-    background: hsl(var(--surface-0) / var(--surface-0-a));
+    background: hsl(var(--bg-base) / 0.92);
     backdrop-filter: blur(60px) saturate(200%);
     -webkit-backdrop-filter: blur(60px) saturate(200%);
     border: 1px solid hsl(var(--border-default));
@@ -170,7 +170,7 @@
   /* ---------------- Buttons ---------------- */
   .btn-ghost {
     background: transparent;
-    color: hsl(var(--text-secondary));
+    color: hsl(var(--text-muted));
     border: 1px solid hsl(var(--border-default));
     border-radius: 2px;
     padding: 6px 12px;
@@ -183,15 +183,15 @@
     gap: 6px;
   }
   .btn-ghost:hover {
-    color: hsl(var(--text-primary));
+    color: hsl(var(--text-body));
     border-color: hsl(var(--border-strong));
-    background: hsl(var(--surface-hover) / var(--surface-hover-a));
+    background: hsl(var(--bg-hover) / 0.04);
   }
   .btn-ghost:disabled { opacity: 0.4; pointer-events: none; }
 
   .btn-icon {
     background: transparent;
-    color: hsl(var(--text-secondary));
+    color: hsl(var(--text-muted));
     border: 1px solid transparent;
     border-radius: 2px;
     padding: 6px;
@@ -200,19 +200,19 @@
     transition: color 120ms ease-out, border-color 120ms ease-out, background-color 120ms ease-out;
   }
   .btn-icon:hover {
-    color: hsl(var(--text-primary));
-    background: hsl(var(--surface-hover) / var(--surface-hover-a));
+    color: hsl(var(--text-body));
+    background: hsl(var(--bg-hover) / 0.04);
     border-color: hsl(var(--border-default));
   }
   .btn-icon[data-active="true"] {
-    color: hsl(var(--accent));
+    color: hsl(var(--mag));
     border-color: hsl(var(--border-default));
   }
 
   .btn-accent {
     background: transparent;
-    color: hsl(var(--accent));
-    border: 1px solid hsl(var(--accent));
+    color: hsl(var(--mag));
+    border: 1px solid hsl(var(--mag));
     border-radius: 2px;
     padding: 6px 12px;
     font: 11px/1 'JetBrains Mono', ui-monospace, monospace;
@@ -224,24 +224,24 @@
     gap: 6px;
   }
   .btn-accent:hover {
-    background: hsl(var(--accent));
-    color: hsl(var(--surface-0));
+    background: hsl(var(--mag));
+    color: hsl(var(--bg-base));
   }
 
   /* ---------------- Inputs ---------------- */
   .input-mono {
-    background: hsl(var(--surface-2) / 0.9);
+    background: hsl(var(--bg-card) / 0.9);
     border: 1px solid hsl(var(--border-default));
     border-radius: 3px;
-    color: hsl(var(--text-primary));
+    color: hsl(var(--text-body));
     font: 12px/1 'JetBrains Mono', ui-monospace, monospace;
     padding: 8px 10px;
-    caret-color: hsl(var(--accent));
+    caret-color: hsl(var(--mag));
     outline: none;
     transition: border-color 120ms ease-out;
   }
   .input-mono::placeholder { color: hsl(var(--text-tertiary)); }
-  .input-mono:focus { border-color: hsl(var(--accent-dim)); }
+  .input-mono:focus { border-color: hsl(var(--mag) / 0.55); }
 
   /* ---------------- Sliders (icy blue glow) ---------------- */
   .slider-hair {
@@ -327,12 +327,15 @@
     block-size: var(--ht-size);
     flex: none;
 
-    color: hsl(var(--text-secondary));
-    background: hsl(var(--surface-0) / 0.55);
-    border: 1px solid hsl(var(--border-default));
+    /* Camouflaged at rest — the artwork behind these should win. Hover and
+       focus below restore the original contrast, so nothing is lost once you
+       actually go looking for a control. */
+    color: hsl(var(--text-secondary) / 0.7);
+    background: hsl(var(--bg-base) / 0.22);
+    border: 1px solid hsl(var(--border-subtle));
     border-radius: 2px;
-    backdrop-filter: blur(12px) saturate(140%);
-    -webkit-backdrop-filter: blur(12px) saturate(140%);
+    backdrop-filter: blur(6px) saturate(115%);
+    -webkit-backdrop-filter: blur(6px) saturate(115%);
 
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
@@ -347,17 +350,19 @@
     block-size: var(--ht-ico);
   }
   .hot-trigger:hover {
-    color: hsl(var(--text-primary));
+    color: hsl(var(--text-body));
     border-color: hsl(var(--border-strong));
-    background: hsl(var(--surface-0) / 0.75);
+    background: hsl(var(--bg-base) / 0.75);
+    backdrop-filter: blur(12px) saturate(140%);
+    -webkit-backdrop-filter: blur(12px) saturate(140%);
   }
   .hot-trigger:active { transform: scale(0.92); }
   .hot-trigger:focus-visible {
-    outline: 1px solid hsl(var(--accent));
+    outline: 1px solid hsl(var(--mag));
     outline-offset: 1px;
   }
   .hot-trigger[data-active] {
-    color: hsl(var(--accent));
+    color: hsl(var(--mag));
     border-color: hsl(var(--accent) / 0.55);
     background: hsl(var(--accent) / 0.1);
   }
@@ -375,7 +380,7 @@
     inset: 0;
     display: grid;
     place-items: center;
-    color: hsl(var(--accent));
+    color: hsl(var(--mag));
     opacity: 0;
     pointer-events: none;
     transition: opacity 120ms ease-out, transform 120ms ease-out;
@@ -426,7 +431,7 @@
     font-size: 13px;
     letter-spacing: 0.22em;
     text-transform: uppercase;
-    color: hsl(var(--text-primary));
+    color: hsl(var(--text-body));
   }
   .section-header .rule {
     flex: 1; height: 1px;
@@ -459,30 +464,30 @@
     background: hsl(var(--text-tertiary));
     transition: transform 120ms ease-out, background-color 120ms ease-out;
   }
-  .switch-square[data-on="true"] { border-color: hsl(var(--accent)); }
+  .switch-square[data-on="true"] { border-color: hsl(var(--mag)); }
   .switch-square[data-on="true"]::after {
     transform: translateX(10px);
-    background: hsl(var(--accent));
+    background: hsl(var(--mag));
   }
 
   /* ---------------- Tabs (bottom bar) ---------------- */
   .tab-rack {
     background: transparent;
-    color: hsl(var(--text-secondary));
+    color: hsl(var(--text-muted));
     font: 11px/1 'JetBrains Mono', ui-monospace, monospace;
     letter-spacing: 0.04em;
     text-transform: uppercase;
     transition: color 120ms ease-out;
     position: relative;
   }
-  .tab-rack:hover { color: hsl(var(--text-primary)); }
-  .tab-rack[data-active="true"] { color: hsl(var(--text-primary)); }
+  .tab-rack:hover { color: hsl(var(--text-body)); }
+  .tab-rack[data-active="true"] { color: hsl(var(--text-body)); }
   .tab-rack[data-active="true"]::after {
     content: '';
     position: absolute;
     left: 0; right: 0; bottom: 0;
     height: 1px;
-    background: hsl(var(--accent));
+    background: hsl(var(--mag));
   }
 
   /* ---------------- Hot trigger buttons (right-side toolbar) ---------------- */
@@ -510,7 +515,7 @@
     border-color: rgba(255, 255, 255, 0.18);
   }
   .hot-trigger[data-active] {
-    color: hsl(var(--accent));
+    color: hsl(var(--mag));
     border-color: hsl(var(--accent) / 0.45);
     background: hsl(var(--accent) / 0.10);
   }
@@ -532,7 +537,7 @@
     justify-content: center;
     opacity: 0;
     pointer-events: none;
-    color: hsl(var(--accent));
+    color: hsl(var(--mag));
   }
   .hot-trigger:hover .hot-trigger__glitch {
     animation: hot-glitch 0.5s steps(1) infinite;
@@ -575,7 +580,7 @@
   .editor-shell { contain: layout paint; }
 
   .text-acid {
-    color: hsl(var(--accent));
+    color: hsl(var(--mag));
     background: none;
     -webkit-background-clip: initial;
     background-clip: initial;
@@ -620,7 +625,7 @@
   }
   .audio-meter-bar {
     transition: width 80ms linear;
-    background: linear-gradient(90deg, hsl(var(--accent) / 0.4), hsl(var(--accent)));
+    background: linear-gradient(90deg, hsl(var(--accent) / 0.4), hsl(var(--mag)));
     box-shadow: 0 0 6px hsl(var(--accent) / 0.5);
   }
   .audio-tilde-on { animation: audioMeterPulse 1.4s ease-in-out infinite; }
@@ -878,6 +883,41 @@
     .bio-flicker { opacity: 0.5; }
   }
 
+  /* ============ Editor chrome: camouflage + idle fade ============
+
+     The editor is a visual instrument, so its own controls are the one thing
+     on screen that should never be the most interesting. Everything overlaying
+     the canvas carries `.ui-chrome`, which routes its opacity through a single
+     custom property. One property rather than competing `opacity` rules means
+     the resting camouflage, the hover reveal and the two idle stages can never
+     fight each other — the last matching rule simply wins.
+
+     Resting state is deliberately semi-transparent: legible against the
+     artwork, but clearly behind it. Pointing at any control brings that
+     cluster back to full strength immediately. */
+  .ui-chrome {
+    opacity: var(--chrome-op, 0.6);
+    transition: opacity 600ms ease;
+  }
+  .ui-chrome:hover,
+  .ui-chrome:focus-within {
+    --chrome-op: 1;
+    transition-duration: 140ms;
+  }
+
+  /* Idle stages. These sit after the hover rule on purpose: at equal
+     specificity the later rule wins, and any pointer movement resets the
+     stage to active anyway, so hover never needs to override a fade. */
+  [data-idle="dim"] .ui-chrome { --chrome-op: 0.12; }
+  [data-idle="hidden"] .ui-chrome {
+    --chrome-op: 0;
+    pointer-events: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .ui-chrome { transition: none; }
+  }
+
   /* ============ Demo film reel (second home panel) ============ */
 
   /* The strip itself: dark film stock with sprocket holes punched along both
@@ -948,7 +988,7 @@
   .reel-frame:focus-visible {
     filter: saturate(1.25) contrast(1.05) brightness(1.08);
     box-shadow:
-      inset 0 0 0 1px hsl(var(--accent)),
+      inset 0 0 0 1px hsl(var(--mag)),
       0 0 26px hsl(var(--accent) / 0.55);
     transform: scale(1.06);
     outline: none;
