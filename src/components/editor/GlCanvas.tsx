@@ -5,6 +5,7 @@ import { MoshRenderer, type RenderLayer } from "@/engine/Renderer";
 import { evalModulator } from "@/engine/modulators";
 import { BeatClock } from "@/engine/beat";
 import { MicAnalyzer } from "@/engine/mic";
+import { trackPlayer } from "@/engine/trackPlayer";
 import { EFFECTS_BY_ID } from "@/engine/effects";
 import { timeController } from "@/engine/timefx";
 import { ProceduralSource } from "@/engine/proceduralSource";
@@ -338,8 +339,11 @@ export function GlCanvas() {
 
       const t = timeController.tick();
       const beatPulse = beatRef.current.pulse(now);
-      const micPulse = micRef.current.level();
-      const mic = micRef.current;
+      // Theme track and mic are mutually exclusive at the store level — read
+      // whichever is actually active. trackPlayer mirrors MicAnalyzer's full
+      // public surface, so nothing downstream needs to know which one it got.
+      const mic = trackPlayer.enabled ? trackPlayer : micRef.current;
+      const micPulse = mic.level();
       (window as any).__aegisMicLevel = micPulse;
       (window as any).__aegisAudioBands = mic.bands;
       /* The analyser itself, for directors that need the raw bands and the

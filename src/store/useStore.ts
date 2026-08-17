@@ -38,6 +38,7 @@ import { DEFAULT_TILE_UNIFORMS, type TileMode, type TileUniforms } from "@/engin
 import { extractPalette } from "@/engine/imagePalette";
 import { BIOME_LABELS, biomeAccentHex } from "@/engine/imagePalette";
 import { upscaleImage } from "@/engine/upscaler";
+import { trackPlayer } from "@/engine/trackPlayer";
 import { toast } from "sonner";
 
 const HISTORY_LIMIT = 20;
@@ -107,6 +108,10 @@ type State = {
   beatEnabled: boolean;
   micEnabled: boolean;
   systemAudioEnabled: boolean;
+  /** Theme-track playback, mutually exclusive with mic/system audio. */
+  trackEnabled: boolean;
+  trackTitle: string;
+  trackArtist: string;
   micSensitivity: number;
   isPerformanceMode: boolean;
   showMetersInPerformance: boolean;
@@ -217,6 +222,8 @@ type Actions = {
   setBeatEnabled: (b: boolean) => void;
   setMicEnabled: (b: boolean) => void;
   setSystemAudioEnabled: (b: boolean) => void;
+  setTrackEnabled: (b: boolean) => void;
+  setTrackMeta: (title: string, artist: string) => void;
   setMicSensitivity: (v: number) => void;
   setPerformanceMode: (b: boolean) => void;
   togglePerformanceMode: () => void;
@@ -394,6 +401,9 @@ export const useStore = create<State & Actions>((set, get) => ({
   beatEnabled: false,
   micEnabled: false,
   systemAudioEnabled: false,
+  trackEnabled: false,
+  trackTitle: trackPlayer.title,
+  trackArtist: trackPlayer.artist,
   micSensitivity: 1,
   isPerformanceMode: false,
   showMetersInPerformance: typeof localStorage !== "undefined" && localStorage.getItem("cathedral_meters_in_perf") === "1",
@@ -857,8 +867,28 @@ export const useStore = create<State & Actions>((set, get) => ({
   setBeforeAfterSplit: (v) => set({ beforeAfterSplit: v }),
   setBpm: (bpm) => set({ bpm }),
   setBeatEnabled: (b) => set({ beatEnabled: b }),
-  setMicEnabled: (b) => set(s => b ? { micEnabled: true, systemAudioEnabled: false } : { micEnabled: false }),
-  setSystemAudioEnabled: (b) => set(s => b ? { systemAudioEnabled: true, micEnabled: false } : { systemAudioEnabled: false }),
+  setMicEnabled: (b) => {
+    if (b && useStore.getState().trackEnabled) trackPlayer.pause();
+    set(s => b ? { micEnabled: true, systemAudioEnabled: false, trackEnabled: false } : { micEnabled: false });
+  },
+  setSystemAudioEnabled: (b) => {
+    if (b && useStore.getState().trackEnabled) trackPlayer.pause();
+    set(s => b ? { systemAudioEnabled: true, micEnabled: false, trackEnabled: false } : { systemAudioEnabled: false });
+  },
+  setTrackEnabled: (b) => {
+    if (b) {
+      trackPlayer.play().then(() => {
+        set({ trackEnabled: true, micEnabled: false, systemAudioEnabled: false });
+      }).catch((err) => {
+        console.error("[track] play failed:", err);
+        set({ trackEnabled: false });
+      });
+    } else {
+      trackPlayer.pause();
+      set({ trackEnabled: false });
+    }
+  },
+  setTrackMeta: (title, artist) => set({ trackTitle: title, trackArtist: artist }),
   setMicSensitivity: (v) => set({ micSensitivity: v }),
   setPerformanceMode: (b) => set({ isPerformanceMode: b }),
   togglePerformanceMode: () => set(s => ({ isPerformanceMode: !s.isPerformanceMode })),

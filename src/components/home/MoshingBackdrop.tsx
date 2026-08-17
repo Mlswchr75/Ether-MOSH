@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { MoshRenderer } from "@/engine/Renderer";
 import type { RenderLayer } from "@/engine/Renderer";
+import { trackPlayer } from "@/engine/trackPlayer";
 
 /**
  * Ambient home-page visual: a procedural Canvas2D plasma feeds the real MOSH
@@ -194,8 +195,12 @@ export const MoshingBackdrop = () => {
               params: fillParams(l.effectId, l.params),
             }));
 
+            // Cheap blend-in: one number read per frame, no extra GL work —
+            // when the theme track is playing the backdrop breathes with it
+            // instead of the fixed idle value.
+            const bgPulse = trackPlayer.enabled ? Math.min(1, 0.25 + trackPlayer.level() * 0.9) : 0.3;
             if (renderer && src.width > 0 && src.height > 0) {
-              renderer.render(layers, 0.3);
+              renderer.render(layers, bgPulse);
             }
           } catch (err) {
             console.error("MOSH WebGL backdrop caught render error safely:", err);
@@ -236,8 +241,12 @@ export const MoshingBackdrop = () => {
           params: fillParams(l.effectId, l.params),
         }));
 
+        // Same blend-in as the reduced-motion path above.
+        const bgPulse = trackPlayer.enabled
+          ? Math.min(1, 0.25 + trackPlayer.level() * 0.9)
+          : 0.3 + 0.3 * Math.sin(t * 2);
         if (renderer && src.width > 0 && src.height > 0) {
-          renderer.render(layers, 0.3 + 0.3 * Math.sin(t * 2));
+          renderer.render(layers, bgPulse);
         }
       } catch (err) {
         console.error("MOSH WebGL backdrop caught render error safely:", err);
