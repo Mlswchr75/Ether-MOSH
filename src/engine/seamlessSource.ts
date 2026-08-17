@@ -55,6 +55,18 @@ export function drawSeamless(
   const complexity = Math.max(1, Math.min(6, Math.round(opts.complexity ?? 3)));
   const rng = rngFromSeed(seed);
 
+  // Repeat count for this seed — how many times the field tiles across its
+  // own canvas, not just at the outer edge. Since every frequency below is
+  // an integer multiple of 2π·uv, multiplying them by an integer repeat
+  // keeps the field exactly periodic (still seamless for export) while
+  // making it periodic *more often* — the same "zoom out and tile" the
+  // canvas already does at its outer boundary, just happening N times
+  // instead of once. Weighted toward 2-3: dense enough that a single frame
+  // reads as many small motifs instead of one soft blend, but a low chance
+  // of 1 keeps the original look in the rotation too.
+  const repeatRoll = rng();
+  const tileRepeat = repeatRoll < 0.05 ? 1 : repeatRoll < 0.5 ? 2 : repeatRoll < 0.85 ? 3 : 4;
+
   const c0 = hexToRgb(colors[0]);
   const c1 = hexToRgb(colors[1]);
   const c2 = hexToRgb(colors[2]);
@@ -62,8 +74,8 @@ export function drawSeamless(
   // Integer frequencies only — a fractional frequency does not close the loop
   // across the tile, and that is exactly what a seam is.
   const waves = Array.from({ length: complexity }, () => ({
-    fx: Math.max(1, Math.round(rng() * 3)),
-    fy: Math.max(1, Math.round(rng() * 3)),
+    fx: Math.max(1, Math.round(rng() * 3)) * tileRepeat,
+    fy: Math.max(1, Math.round(rng() * 3)) * tileRepeat,
     phase: rng() * TAU,
     weight: 0.4 + rng() * 0.6,
   }));
@@ -107,17 +119,21 @@ export function drawSeamless(
      neighbours — so a blob overlapping any edge is completed by its own copy
      coming in from the far side. Only the centre stamp is visible; the other
      eight exist purely to finish the ones that cross. */
-  const blobs = 3 + Math.round(rng() * 4);
+  // Count scales with the repeat so each "cell" still gets its own share of
+  // blobs instead of the same handful spreading thinner; radius and drift
+  // shrink to match so a blob still sits proportionate to its cell rather
+  // than swallowing several of them.
+  const blobs = (3 + Math.round(rng() * 4)) * tileRepeat;
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
   for (let i = 0; i < blobs; i++) {
     const bx = rng() * w;
     const by = rng() * h;
-    const r = (0.08 + rng() * 0.16) * Math.min(w, h);
+    const r = (0.08 + rng() * 0.16) * Math.min(w, h) / tileRepeat;
     const col = [colors[0], colors[1], colors[2]][Math.floor(rng() * 3)];
     // Drift stays periodic so an animated preview also loops.
-    const dx = Math.sin(t * 0.3 + i) * w * 0.04;
-    const dy = Math.cos(t * 0.26 + i * 1.3) * h * 0.04;
+    const dx = Math.sin(t * 0.3 + i) * w * 0.04 / tileRepeat;
+    const dy = Math.cos(t * 0.26 + i * 1.3) * h * 0.04 / tileRepeat;
 
     for (let ox = -1; ox <= 1; ox++) {
       for (let oy = -1; oy <= 1; oy++) {
