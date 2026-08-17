@@ -8,6 +8,7 @@ import { MicAnalyzer } from "@/engine/mic";
 import { EFFECTS_BY_ID } from "@/engine/effects";
 import { timeController } from "@/engine/timefx";
 import { ProceduralSource } from "@/engine/proceduralSource";
+import { paintForgeSource } from "@/engine/forgeSource";
 import { FrequencyStrip, BeatBorder } from "./AudioFeedback";
 import { startAnalyzer, stopAnalyzer, getAudioData } from "@/engine/audioAnalyzer";
 import { IsolationOverlay } from "./IsolationOverlay";
@@ -58,12 +59,21 @@ export function GlCanvas() {
   const layersRef = useRef(useStore.getState().layers);
   const showBeforeAfterRef = useRef(useStore.getState().showBeforeAfter);
   const isVideoSourceRef = useRef(!!useStore.getState().videoElement);
+  const sourceModeRef = useRef(useStore.getState().sourceMode);
+  const forgeRef = useRef(useStore.getState().forge);
+  /** Forge's own small source canvas — repainted every frame, independent of
+   *  the ambient ProceduralSource used when there's simply no source yet. */
+  const forgeCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const forgeCtxRef = useRef<CanvasRenderingContext2D | null>(null);
   const vrFrameRef = useRef<(() => void) | null>(null);
   // Read once from the URL — overlay is a deployment mode, not a live setting.
   const overlayRef = useRef(overlayFromUrl());
 
   const imageElement = useStore(s => s.imageElement);
   const videoElement = useStore(s => s.videoElement);
+  const sourceMode = useStore(s => s.sourceMode);
+  const forgeSeamless = useStore(s => s.forge.seamless);
+  const randomiseForge = useStore(s => s.randomiseForge);
   const cameraFacing = useStore(s => s.cameraFacing);
   const showBeforeAfter = useStore(s => s.showBeforeAfter);
   const beforeAfterSplit = useStore(s => s.beforeAfterSplit);
@@ -101,9 +111,13 @@ export function GlCanvas() {
     rendererRef.current?.setSourceMirror(cameraFacing === 'user');
   }, [cameraFacing]);
 
-  // Source — priority: live video > still image > procedural ambient.
+  // Source — priority: live video > still image > forge pattern > procedural
+  // ambient. Reset up front rather than per-branch: every mode transition
+  // starts from a clean wrap-mode state, and only the forge branch re-enables
+  // repeat sampling.
   useEffect(() => {
     if (!rendererRef.current) return;
+    rendererRef.current.setTileableSampling(sourceMode === "forge" ? forgeSeamless : false);
     if (videoElement) {
       proceduralRef.current?.stop();
       let cancelled = false;
@@ -139,6 +153,15 @@ export function GlCanvas() {
     if (imageElement) {
       proceduralRef.current?.stop();
       rendererRef.current.setSourceImage(imageElement);
+    } else if (sourceMode === "forge") {
+      proceduralRef.current?.stop();
+      if (!forgeCanvasRef.current) {
+        const c = document.createElement("canvas");
+        c.width = 256; c.height = 256;
+        forgeCanvasRef.current = c;
+        forgeCtxRef.current = c.getContext("2d");
+      }
+      rendererRef.current.setSourceCanvas(forgeCanvasRef.current);
     } else {
       if (!proceduralRef.current) proceduralRef.current = new ProceduralSource(1024);
       proceduralRef.current.start();
@@ -146,7 +169,7 @@ export function GlCanvas() {
     }
     const r = containerRef.current?.getBoundingClientRect();
     if (r) rendererRef.current.resize(r.width, r.height);
-  }, [imageElement, videoElement]);
+  }, [imageElement, videoElement, sourceMode, forgeSeamless]);
 
   // Cleanup procedural on unmount
   useEffect(() => () => { proceduralRef.current?.dispose(); proceduralRef.current = null; }, []);
@@ -278,6 +301,8 @@ export function GlCanvas() {
     layersRef.current = state.layers;
     showBeforeAfterRef.current = state.showBeforeAfter;
     isVideoSourceRef.current = !!state.videoElement;
+    sourceModeRef.current = state.sourceMode;
+    forgeRef.current = state.forge;
   }), []);
 
   // Render loop with adaptive resolution
@@ -383,6 +408,17 @@ export function GlCanvas() {
 
       const sysBeat = useStore.getState().systemAudioEnabled ? getAudioData().beat : 0;
       const pulse = Math.max(beatPulse, micPulse, ripplePulse, kaossLevel, sysBeat);
+
+      // Forge mode paints its own source every frame — nothing to read a
+      // camera or image element for, the "photo" is generated on the spot.
+      if (sourceModeRef.current === "forge" && forgeCanvasRef.current && forgeCtxRef.current) {
+        const fc = forgeCanvasRef.current;
+        paintForgeSource(forgeCtxRef.current, fc.width, fc.height, t, forgeRef.current, {
+          treble: sources.treble ?? 0,
+          beat: sources.beat ?? 0,
+        });
+      }
+
       const audioSmooth = audioSmoothRef.current;
       const reactiveOn = mic.enabled || kaossActive;
       const renderLayers: RenderLayer[] = layersRef.current.map(l => {
@@ -489,8 +525,16 @@ export function GlCanvas() {
       <canvas
         ref={canvasRef}
         data-mosh-canvas
-        className="relative z-10 block h-full w-full"
+        className={`relative z-10 block h-full w-full ${sourceMode === "forge" ? "cursor-pointer" : ""}`}
         style={{ imageRendering: "auto", objectFit: "cover" }}
+        // Forge has no image or camera feed to tap-to-reroll a role on (that's
+        // QuadrantSurface's job in the other two modes, and it isn't mounted
+        // here) — a plain click is the whole interaction, same as it was on
+        // the standalone /forge page. Binding it to the canvas itself, not the
+        // container, means it only fires when the click actually lands on the
+        // visible pixels — any overlay drawn above it (HotTriggers etc.) is a
+        // separate element that receives the click first.
+        onClick={sourceMode === "forge" ? () => randomiseForge() : undefined}
       />
 
       <IsolationOverlay />

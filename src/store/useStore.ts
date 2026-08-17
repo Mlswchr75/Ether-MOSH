@@ -30,7 +30,9 @@ import {
   resolveLayerRole,
 } from "@/engine/effectRoles";
 import { exportSetlist, importSetlist, setlistToJson, SETLIST_SLOTS } from "@/engine/setlist";
-import type { AudioMap, Favorite, Intensity, IsolationMode, Layer, Modulator, PaletteProfile, StickerEntry } from "./types";
+import type { AudioMap, Favorite, ForgeState, Intensity, IsolationMode, Layer, Modulator, PaletteProfile, SourceMode, StickerEntry } from "./types";
+import { composeForgeStack } from "@/engine/forgeCompose";
+import { FORGE_PALETTES } from "@/engine/forgePalettes";
 import { facingOfTrack, type CameraFacing } from "@/lib/cameraFacing";
 import { DEFAULT_TILE_UNIFORMS, type TileMode, type TileUniforms } from "@/engine/tile";
 import { extractPalette } from "@/engine/imagePalette";
@@ -154,6 +156,12 @@ type State = {
   selectedRole: Role | null;
   /** Remembered active layer per semantic role. */
   selectedRoleLayers: Partial<Record<Role, string>>;
+  /** Which of upload / camera / forge currently feeds the renderer. */
+  sourceMode: SourceMode;
+  forge: ForgeState;
+  /** Layer stack from before forge mode was entered, restored on the way out
+   *  so forge's generated pattern never leaks onto a photo or camera feed. */
+  preForgeLayers: Layer[] | null;
 };
 
 export type RoleRoll = {
@@ -254,6 +262,20 @@ type Actions = {
   setIsolationMode: (m: IsolationMode) => void;
   setIsolationFeather: (n: number) => void;
   setIsolationInvert: (b: boolean) => void;
+
+  /** Switch which source feeds the renderer. Camera's own getUserMedia call
+   *  stays with the caller (needs to run inside a user gesture) — this only
+   *  tracks intent and handles the actual swap for forge <-> anything. */
+  setSourceMode: (mode: SourceMode) => void;
+  /** New seed, new palette, new effect stack. */
+  randomiseForge: () => void;
+  setForgePaletteIdx: (i: number) => void;
+  setForgeIntensity: (v: number) => void;
+  setForgeSeamless: (b: boolean) => void;
+  setForgeBaseImage: (img: HTMLImageElement | null, name: string | null) => void;
+  setForgeOverlay: (v: number) => void;
+  /** New seed only — same palette, same effect stack, different source field. */
+  reseedForge: () => void;
 };
 
 const newId = () => Math.random().toString(36).slice(2, 9);
@@ -282,6 +304,30 @@ function makeLayer(effectId: string, opts: Partial<Layer> = {}): Layer {
     audioMaps,
     ...opts,
   };
+}
+
+/**
+ * Forge's own randomised stack, shaped as ordinary `Layer[]` so it can sit in
+ * the same `layers` field the rest of the app reads — the render loop's
+ * audio-reactivity, HDR scoring and modulator code need no forge-specific
+ * branch, because as far as they're concerned it's just a stack of layers.
+ */
+function composeForgeLayers(forge: ForgeState): Layer[] {
+  const stack = composeForgeStack({
+    rand: Math.random,
+    seamless: forge.seamless,
+    intensity: forge.intensity,
+  });
+  return stack.map((l): Layer => ({
+    id: newId(),
+    effectId: l.effectId,
+    hidden: false,
+    locked: false,
+    opacity: l.opacity,
+    blend: l.blend,
+    params: l.params,
+    mods: {},
+  }));
 }
 
 /**
@@ -378,6 +424,18 @@ export const useStore = create<State & Actions>((set, get) => ({
   currentLook: null,
   currentBrief: null,
   lastRoleRoll: null,
+  sourceMode: "upload" as SourceMode,
+  forge: {
+    paletteIdx: 0,
+    seed: Math.floor(Math.random() * 0xFFFFFF),
+    intensity: 0.6,
+    seamless: true,
+    stack: [],
+    baseImage: null,
+    baseName: null,
+    overlay: 0.55,
+  } as ForgeState,
+  preForgeLayers: null,
 
   setGlCanvas: (canvas) => set({ glCanvas: canvas }),
 
@@ -390,11 +448,18 @@ export const useStore = create<State & Actions>((set, get) => ({
     // cameraFacing must go with the camera. Leaving it set meant that after one
     // front-camera session every image loaded afterwards stayed mirrored, so
     // any text in it read backwards.
+    // Coming from forge mode — e.g. a drag-drop while forge was active —
+    // restore the pre-forge layer stack rather than leaving forge's
+    // generated-noise stack applied to the new photo.
+    const wasForge = useStore.getState().sourceMode === "forge";
+    const preForge = useStore.getState().preForgeLayers;
     set({
       imageUrl: url, imageElement: el,
       videoElement: null, videoStream: null,
       cameraFacing: null,
       paletteProfile: null,
+      sourceMode: "upload",
+      ...(wasForge ? { layers: preForge ?? [], preForgeLayers: null } : {}),
     });
     // Async upscale — runs in a worker so the render loop isn't disturbed.
     // When done, swap in the higher-res element so fullscreen / zoom stays crisp.
@@ -449,6 +514,8 @@ export const useStore = create<State & Actions>((set, get) => ({
     const facing: CameraFacing | null =
       facingOfTrack(stream.getVideoTracks()[0])
       ?? (name === "front camera" ? "user" : name === "rear camera" ? "environment" : null);
+    const wasForge = useStore.getState().sourceMode === "forge";
+    const preForge = useStore.getState().preForgeLayers;
     set({
       imageUrl: null,
       imageElement: null,
@@ -457,6 +524,8 @@ export const useStore = create<State & Actions>((set, get) => ({
       sourceName: name ?? "live camera",
       paletteProfile: null,
       cameraFacing: facing,
+      sourceMode: "camera",
+      ...(wasForge ? { layers: preForge ?? [], preForgeLayers: null } : {}),
     });
   },
   clearVideoSource: () => {
@@ -1104,6 +1173,69 @@ export const useStore = create<State & Actions>((set, get) => ({
   setIsolationMode: (m) => set({ isolationMode: m }),
   setIsolationFeather: (n) => set({ isolationFeather: n }),
   setIsolationInvert: (b) => set({ isolationInvert: b }),
+
+  setSourceMode: (mode) => {
+    const s = get();
+    if (mode === s.sourceMode) return;
+
+    // Leaving forge — restore whatever was active before it rather than
+    // leaving forge's generated-noise stack applied to a photo or camera feed.
+    if (s.sourceMode === "forge" && mode !== "forge") {
+      set({ sourceMode: mode, layers: s.preForgeLayers ?? [], preForgeLayers: null });
+      return;
+    }
+
+    // Entering forge — stop any camera, drop any image, and remember the
+    // current stack so it comes back untouched on the way out.
+    if (mode === "forge") {
+      if (s.videoStream) { try { s.videoStream.getTracks().forEach(t => t.stop()); } catch {} }
+      if (s.videoElement) {
+        try { s.videoElement.srcObject = null; } catch {}
+        try { s.videoElement.parentNode?.removeChild(s.videoElement); } catch {}
+      }
+      const stack = s.forge.stack.length ? s.forge.stack : composeForgeLayers(s.forge);
+      set({
+        sourceMode: "forge",
+        imageUrl: null, imageElement: null, videoElement: null, videoStream: null, cameraFacing: null,
+        preForgeLayers: s.layers,
+        layers: stack,
+        forge: { ...s.forge, stack },
+      });
+      return;
+    }
+
+    // Plain upload <-> camera with no forge session in play. The actual
+    // camera getUserMedia call has to happen in the caller's click handler —
+    // this just tracks intent (e.g. switching to Upload before anything's
+    // been dropped yet).
+    set({ sourceMode: mode });
+  },
+
+  randomiseForge: () => {
+    const s = get();
+    const nextForge: ForgeState = {
+      ...s.forge,
+      seed: Math.floor(Math.random() * 0xFFFFFF),
+      paletteIdx: Math.floor(Math.random() * FORGE_PALETTES.length),
+    };
+    const stack = composeForgeLayers(nextForge);
+    nextForge.stack = stack;
+    set({ forge: nextForge, ...(s.sourceMode === "forge" ? { layers: stack } : {}) });
+  },
+  setForgePaletteIdx: (i) => set(s => ({ forge: { ...s.forge, paletteIdx: i } })),
+  setForgeIntensity: (v) => set(s => ({ forge: { ...s.forge, intensity: v } })),
+  setForgeSeamless: (b) => {
+    const s = get();
+    // The tile constraint changes which effects are even eligible, so the
+    // current stack may no longer be valid — re-roll under the new pool.
+    const nextForge: ForgeState = { ...s.forge, seamless: b };
+    const stack = composeForgeLayers(nextForge);
+    nextForge.stack = stack;
+    set({ forge: nextForge, ...(s.sourceMode === "forge" ? { layers: stack } : {}) });
+  },
+  setForgeBaseImage: (img, name) => set(s => ({ forge: { ...s.forge, baseImage: img, baseName: name } })),
+  setForgeOverlay: (v) => set(s => ({ forge: { ...s.forge, overlay: v } })),
+  reseedForge: () => set(s => ({ forge: { ...s.forge, seed: Math.floor(Math.random() * 0xFFFFFF) } })),
 }));
 
 function mapLayer(layers: Layer[], id: string, fn: (l: Layer) => Layer): Layer[] {

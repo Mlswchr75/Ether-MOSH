@@ -73,3 +73,28 @@ export type Snapshot = {
   layers: Layer[];
   seed: string;
 };
+
+/** Which of the three ways to feed the renderer is currently active. */
+export type SourceMode = "upload" | "camera" | "forge";
+
+/**
+ * Pattern Forge's own state, folded into the main store so switching into and
+ * out of forge mode doesn't tear down and rebuild a page. `stack` is already
+ * shaped as ordinary `Layer[]` (see randomiseForge in useStore.ts) so the
+ * existing render loop's audio-reactivity, HDR and modulator code apply to it
+ * unchanged — forge only replaces what feeds the effects, not how they run.
+ */
+export type ForgeState = {
+  paletteIdx: number;
+  seed: number;
+  /** 0..1 — layer count and how far params travel from their defaults. */
+  intensity: number;
+  /** Confines the effect pool to tile-safe effects and wraps sampling. */
+  seamless: boolean;
+  stack: Layer[];
+  /** Optional photo the generated pattern composites over. */
+  baseImage: HTMLImageElement | null;
+  baseName: string | null;
+  /** How much of the generated field sits over `baseImage`, 0..1. */
+  overlay: number;
+};

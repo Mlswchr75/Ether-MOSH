@@ -7,7 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 
 const Index = lazy(() => import("./pages/Index.tsx"));
 const Editor = lazy(() => import("./pages/Editor.tsx"));
-const PatternForge = lazy(() => import("./pages/PatternForge.tsx"));
+const ForgeRedirect = lazy(() => import("./pages/ForgeRedirect.tsx"));
 const Install = lazy(() => import("./pages/Install.tsx"));
 const Terms = lazy(() => import("./pages/Terms.tsx"));
 const Privacy = lazy(() => import("./pages/Privacy.tsx"));
@@ -42,7 +42,7 @@ const App = () => (
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/edit" element={<Editor />} />
-            <Route path="/forge" element={<PatternForge />} />
+            <Route path="/forge" element={<ForgeRedirect />} />
             <Route path="/install" element={<Install />} />
             <Route path="/terms" element={<Terms />} />
             <Route path="/privacy" element={<Privacy />} />

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Helmet } from "react-helmet-async";
-import { Download, ArrowLeft, Shuffle, Upload } from "lucide-react";
+import { Download, ArrowLeft, Upload } from "lucide-react";
 import { MoshRenderer } from "@/engine/Renderer";
 import type { RenderLayer } from "@/engine/Renderer";
 import { rngFromSeed } from "@/engine/seed";
@@ -59,6 +59,8 @@ export default function PatternForge() {
   /** How much of the generated field sits over an uploaded base, 0..1. */
   const [overlay, setOverlay] = useState(0.55);
   const fileRef = useRef<HTMLInputElement>(null);
+  /** Whether the canvas has been clicked yet — gates the "tap to shuffle" hint. */
+  const [hasShuffled, setHasShuffled] = useState(false);
 
   const micRef = useRef(new MicAnalyzer());
   /** Per-param smoothing, held across frames so values glide instead of jumping. */
@@ -644,14 +646,6 @@ export default function PatternForge() {
           pattern forge
         </span>
         <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={randomise}
-            className="flex items-center gap-1.5 border border-border/60 px-3 py-1.5 font-mono text-xs uppercase tracking-[0.2em] text-foreground/60 transition hover:border-accent hover:text-accent"
-          >
-            <Shuffle className="h-3 w-3" />
-            shuffle
-          </button>
           <div className="flex items-center gap-1 border border-primary/60">
             <Download className="ml-2 h-3 w-3 text-primary" />
             {EXPORT_SIZES.map(sz => (
@@ -674,7 +668,15 @@ export default function PatternForge() {
         {/* Canvas */}
         <div
           ref={hostRef}
-          className="relative flex-1 bg-black"
+          className="relative flex-1 cursor-pointer bg-black"
+          onClick={(e) => {
+            // ForgeTriggers renders inside this div, not beside it — without
+            // this guard every mic/journey/gif/record/fullscreen tap would
+            // also bubble up and fire a shuffle.
+            if ((e.target as HTMLElement).closest("[data-forge-chrome]")) return;
+            randomise();
+            setHasShuffled(true);
+          }}
           onDragOver={(e) => { e.preventDefault(); }}
           onDrop={(e) => {
             e.preventDefault();
@@ -715,6 +717,15 @@ export default function PatternForge() {
                 {` · next ${(journeyState.nextInMs / 1000).toFixed(1)}s`}
               </p>
             </div>
+          )}
+
+          {/* The canvas itself is the shuffle control now that the top-bar
+              button is gone — this is the only hint that a click does
+              anything, so it stays until the user has actually clicked. */}
+          {!hasShuffled && (
+            <p className="ui-chrome pointer-events-none absolute bottom-3 left-1/2 z-10 -translate-x-1/2 font-mono text-[9px] uppercase tracking-[0.35em] text-foreground/30">
+              tap anywhere to shuffle
+            </p>
           )}
         </div>
 

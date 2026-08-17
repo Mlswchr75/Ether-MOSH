@@ -46,6 +46,8 @@ import { AboutTrigger } from "@/components/AboutOverlay";
 import { CameraMenu } from "@/components/editor/CameraMenu";
 
 import { StartCameraOverlay } from "@/components/editor/StartCameraOverlay";
+import { ForgeTapHint } from "@/components/editor/ForgeTapHint";
+import { ForgePanel } from "@/components/editor/ForgePanel";
 import { HotTriggers } from "@/components/editor/HotTriggers";
 import { ActionConfirmation } from "@/components/editor/ActionConfirmation";
 import { scanForBestFrame } from "@/engine/screenshotScanner";
@@ -64,7 +66,11 @@ export default function Editor() {
   const navigate = useNavigate();
   const imageElement = useStore(s => s.imageElement);
   const videoElement = useStore(s => s.videoElement);
-  const hasSource = imageElement || videoElement;
+  const sourceMode = useStore(s => s.sourceMode);
+  // Forge generates its own source, so once it's picked there's always
+  // something on screen — the empty-state "go live" hero has nothing to do.
+  const hasSource = imageElement || videoElement || sourceMode === "forge";
+  const isForge = sourceMode === "forge";
   const seed = useStore(s => s.seed);
   const showBeforeAfter = useStore(s => s.showBeforeAfter);
   const setBeforeAfter = useStore(s => s.setBeforeAfter);
@@ -1189,9 +1195,13 @@ export default function Editor() {
         </div>
         {!hasSource && !isOverlay && <StartCameraOverlay />}
         <SystemAudioHud visible={systemAudioEnabled && !isOverlay} />
-        {hasSource && !isOverlay && (
+        {hasSource && !isForge && !isOverlay && (
           <QuadrantSurface onTogglePerf={togglePerf} onTune={focusTune} />
         )}
+        {/* Forge has no photo to assign roles on — GlCanvas binds a plain
+            click-to-shuffle directly to its own canvas instead. */}
+        {isForge && !isOverlay && <ForgeTapHint />}
+        {isForge && !isPerformanceMode && !isOverlay && <ForgePanel />}
         <TrackpadGestures
           targetRef={canvasContainerRef}
           onTogglePerf={togglePerf}
