@@ -264,7 +264,14 @@ const Index = () => {
               <motion.p
                 initial={{ y: 18, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
-                transition={{ duration: 0.4, delay: 0.55, ease: EASE_SNAP }}
+                // This copy is what Lighthouse measures as the page's largest
+                // contentful paint. It used to sit at delay: 0.55 as part of
+                // the staggered cascade with everything else below — but that
+                // meant the LCP paint literally couldn't happen until over
+                // half a second after mount, no matter how fast the bundle
+                // loaded. It still fades in with its neighbors; it just isn't
+                // the one waiting in line for its turn anymore.
+                transition={{ duration: 0.4, delay: 0, ease: EASE_SNAP }}
                 className="max-w-xl font-mono text-xs uppercase tracking-[0.25em] text-foreground/70"
               >
                 MOSH is a real-time, audio-reactive visual instrument. Load any image, stack 105 GPU effects, sync to your music, and export stills or video — all in your browser.
