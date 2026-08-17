@@ -7,6 +7,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { loadDemoFrames, shuffle, sizedSrc, type DemoFrame } from "@/data/demoReel";
 import { MoshReel } from "./MoshReel";
+import { AmbientGlitch } from "./AmbientGlitch";
 import { useReelDirector } from "./useReelDirector";
 
 type Props = {
@@ -58,6 +59,7 @@ export const DemoReelPanel = ({ onSelect }: Props) => {
       className="relative h-screen w-screen shrink-0 snap-start overflow-hidden bg-background"
     >
       <div className="pointer-events-none absolute inset-0 scanline opacity-40" />
+      <AmbientGlitch active={visible && !reduced} />
 
       {plan && <MoshReel plan={plan} phase={phase} onSelect={onSelect} />}
 

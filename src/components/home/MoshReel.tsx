@@ -12,13 +12,13 @@ import { sizedSrc, type DemoFrame } from "@/data/demoReel";
 import type { ReelPhase, ReelPlan } from "./useReelDirector";
 
 /** Frame box in px. The track length is derived from this, not measured. */
-const FRAME_W = 220;
-const FRAME_H = 165;
-const FRAME_GAP = 10;
+const FRAME_W = 286;
+const FRAME_H = 215;
+const FRAME_GAP = 13;
 const PITCH = FRAME_W + FRAME_GAP;
 
 /** Width the CDN is asked for — 2x the painted size, for retina. */
-const THUMB_W = 320;
+const THUMB_W = 416;
 
 type Props = {
   plan: ReelPlan;

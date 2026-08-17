@@ -167,7 +167,7 @@ export function ForgePanel() {
   }, [exporting]);
 
   return (
-    <div className="ui-chrome pointer-events-auto absolute left-3 top-14 z-20 flex w-44 flex-col gap-4 rounded-sm border border-[hsl(var(--border-default))] bg-black/70 p-3 backdrop-blur-md safe-top safe-left">
+    <div className="ui-chrome pointer-events-auto absolute left-3 top-14 z-20 flex max-h-[calc(100dvh-6rem)] w-44 flex-col gap-4 overflow-y-auto rounded-sm border border-[hsl(var(--border-default))] bg-black/70 p-3 backdrop-blur-md safe-top safe-left safe-bottom">
       {/* Palette */}
       <div>
         <p className="mb-2 font-mono text-[8px] uppercase tracking-[0.35em] text-foreground/40">palette</p>

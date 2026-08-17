@@ -43,7 +43,10 @@ export function VrButton({ getRenderer, getFrame }: Props) {
       type="button"
       onClick={onClick}
       aria-label={active ? "Exit VR" : "Enter VR"}
-      className="pointer-events-auto absolute top-3 left-3 z-40 flex items-center gap-2 rounded-full border border-white/15 bg-black/55 px-3 py-2 backdrop-blur-md"
+      /* top-14, not top-3: the source-mode pill (SourceModeToggle) owns
+         top-3 left-3 now — it's the more commonly used control and needed
+         the more prominent, always-visible row-1 spot. */
+      className="pointer-events-auto absolute top-14 left-3 z-40 flex items-center gap-2 rounded-full border border-white/15 bg-black/55 px-3 py-2 backdrop-blur-md"
     >
       <Glasses className="h-4 w-4 text-[hsl(var(--accent))]" />
       <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-white/85">

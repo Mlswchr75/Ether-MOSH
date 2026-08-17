@@ -1063,6 +1063,25 @@
     .reel-gate, .reel-glitch-in, .reel-glitch-out,
     .reel-hint, .reel-hint-arrow { animation: none !important; }
   }
+
+  /* Ambient background glitching behind the reel — ownerless flecks of
+     corruption in the empty space, not another thing competing for
+     attention. Same clip-path/hue-rotate/contrast vocabulary as the reel's
+     own spawn tear, just smaller, dimmer and one-shot per pulse (a
+     component schedules random ones; the animation itself never loops). */
+  .bg-glitch-pulse {
+    animation: bg-glitch-pulse var(--dur, 500ms) steps(6, end) both;
+  }
+  @keyframes bg-glitch-pulse {
+    0%   { opacity: 0;    clip-path: inset(42% 0 42% 0); filter: hue-rotate(0deg) contrast(1) saturate(1); }
+    12%  { opacity: 0.32; clip-path: inset(8% 0 68% 0);  filter: hue-rotate(85deg) contrast(1.8) saturate(2.2); }
+    38%  { opacity: 0.26; clip-path: inset(58% 0 12% 0); filter: hue-rotate(-55deg) contrast(1.5) saturate(1.8); }
+    64%  { opacity: 0.18; clip-path: inset(24% 0 48% 0); filter: hue-rotate(35deg) contrast(1.25) saturate(1.4); }
+    100% { opacity: 0;    clip-path: inset(50% 0 50% 0); filter: hue-rotate(0deg) contrast(1) saturate(1); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .bg-glitch-pulse { display: none; }
+  }
 }
 
 /* Performance Mode — sizing handled by GlCanvas (orientation-aware). */

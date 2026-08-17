@@ -236,7 +236,7 @@ const Index = () => {
               <motion.div
                 initial={{ scale: 0.55, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
-                transition={{ type: "spring", stiffness: 260, damping: 22, delay: 0.5 }}
+                transition={{ type: "spring", stiffness: 260, damping: 22, delay: 0.15 }}
                 className="pointer-events-auto flex items-center gap-5"
               >
                 <button
@@ -266,7 +266,7 @@ const Index = () => {
               <motion.div
                 initial={{ y: 28, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
-                transition={{ duration: 0.6, delay: 0.78, ease: EASE_SNAP }}
+                transition={{ duration: 0.5, delay: 0.35, ease: EASE_SNAP }}
               >
                 <HeroWord onWordChange={setHeroWord} />
               </motion.div>
@@ -274,7 +274,7 @@ const Index = () => {
               <motion.p
                 initial={{ y: 18, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
-                transition={{ duration: 0.5, delay: 1.08, ease: EASE_SNAP }}
+                transition={{ duration: 0.4, delay: 0.55, ease: EASE_SNAP }}
                 className="max-w-xl font-mono text-xs uppercase tracking-[0.25em] text-foreground/70"
               >
                 MOSH is a real-time, audio-reactive visual instrument. Load any image, stack 105 GPU effects, sync to your music, and export stills or video — all in your browser.
@@ -283,7 +283,7 @@ const Index = () => {
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                transition={{ duration: 0.5, delay: 1.32 }}
+                transition={{ duration: 0.4, delay: 0.75 }}
                 className="font-mono text-xs uppercase tracking-[0.35em] text-foreground/80"
               >
                 click anywhere · drag · paste · jpg · png · svg

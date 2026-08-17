@@ -1,10 +1,8 @@
-import { Mic, MicOff, Circle, Square, Sparkles, Scissors, Snowflake, Camera, Shuffle, Star, Play, Pencil, Trash2, X, Film, Lock, Share2, Compass, Maximize2, Minimize2, Gem, Home, SwitchCamera, Crosshair, Eraser, Link2, Upload, Video, Wand2, Music, Music2, Shuffle as ShuffleIcon } from "lucide-react";
+import { Mic, MicOff, Circle, Square, Sparkles, Scissors, Snowflake, Camera, Shuffle, Star, Play, Pencil, Trash2, X, Film, Lock, Share2, Compass, Maximize2, Minimize2, Gem, Home, SwitchCamera, Crosshair, Eraser, Link2, Upload, Music, Music2, Shuffle as ShuffleIcon } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useStore } from "@/store/useStore";
-import type { SourceMode } from "@/store/types";
 import { trackPlayer, DEFAULT_TRACK_TITLE } from "@/engine/trackPlayer";
-import { requestCameraStream, defaultFacing, type CameraError, type CameraFacing } from "@/hooks/useCamera";
-import { loadImageFile } from "@/lib/sourceLoader";
+import { requestCameraStream, type CameraFacing } from "@/hooks/useCamera";
 import { IsolationPanel } from "./IsolationPanel";
 import { shareUrl } from "@/lib/share";
 import { toast } from "sonner";
@@ -375,8 +373,6 @@ export function HotTriggers({ isRecording, onToggleRecord, onScreenshot, onFreez
           </HotBtn>
         )}
 
-        <SourceModeButton />
-
         {onToggleFullscreen && (
           <HotBtn
             delay={0}
@@ -728,140 +724,6 @@ export function HotTriggers({ isRecording, onToggleRecord, onScreenshot, onFreez
           REC
         </div>
       )}
-    </div>
-  );
-}
-
-const MODE_META: Record<SourceMode, { label: string; icon: typeof Upload }> = {
-  upload: { label: "Upload", icon: Upload },
-  camera: { label: "Camera", icon: Video },
-  forge: { label: "Forge", icon: Wand2 },
-};
-
-const CAMERA_ERR: Record<CameraError, string> = {
-  permission: "Camera blocked — allow it in your browser and try again",
-  busy: "Camera is in use by another app — close it and try again",
-  notfound: "No camera found on this device",
-  aborted: "Camera start was interrupted — tap again",
-  unsupported: "This browser can't access the camera",
-  unknown: "Couldn't access camera — try again",
-};
-
-/**
- * Source switcher — upload / camera / forge, interchangeable without leaving
- * the page. A tap opens the same left-opening picker every other multi-option
- * trigger here uses, so it reads as "one more of these" rather than a new
- * pattern. The three modes share this one screen and one renderer; only what
- * feeds it changes.
- */
-function SourceModeButton() {
-  const sourceMode = useStore(s => s.sourceMode);
-  const setSourceMode = useStore(s => s.setSourceMode);
-  const setVideoSource = useStore(s => s.setVideoSource);
-  const randomiseForge = useStore(s => s.randomiseForge);
-  const [open, setOpen] = useState(false);
-  const [starting, setStarting] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: PointerEvent) => {
-      if ((e.target as HTMLElement | null)?.closest("[data-mode-picker]")) return;
-      setOpen(false);
-    };
-    window.addEventListener("pointerdown", onDown, true);
-    return () => window.removeEventListener("pointerdown", onDown, true);
-  }, [open]);
-
-  const pick = async (mode: SourceMode) => {
-    setOpen(false);
-    if (mode === sourceMode) return;
-
-    if (mode === "upload") {
-      setSourceMode("upload");
-      fileRef.current?.click();
-      return;
-    }
-    if (mode === "camera") {
-      setStarting(true);
-      try {
-        const facing = defaultFacing();
-        const stream = await requestCameraStream({ facing });
-        setVideoSource(stream, facing === "user" ? "front camera" : "rear camera");
-      } catch (err) {
-        const tag = (err as { cameraError?: CameraError }).cameraError ?? "unknown";
-        toast.error(CAMERA_ERR[tag]);
-      } finally {
-        setStarting(false);
-      }
-      return;
-    }
-    // forge
-    setSourceMode("forge");
-    if (!useStore.getState().forge.stack.length) randomiseForge();
-  };
-
-  const Icon = MODE_META[sourceMode].icon;
-
-  return (
-    <div className="relative" data-mode-picker>
-      <button
-        type="button"
-        onClick={() => setOpen(o => !o)}
-        aria-label={`Source: ${MODE_META[sourceMode].label} — tap to switch`}
-        aria-expanded={open || undefined}
-        aria-haspopup="menu"
-        title="Switch source — upload, camera, or forge"
-        data-active={open || undefined}
-        data-no-longpress
-        disabled={starting}
-        className="hot-trigger"
-        style={{ animationDelay: "0ms" }}
-      >
-        <span className="hot-trigger__glitch" aria-hidden><Icon className="h-4 w-4" strokeWidth={1.5} /></span>
-        <span className="hot-trigger__ico"><Icon className="h-4 w-4" strokeWidth={1.5} /></span>
-      </button>
-
-      {open && (
-        <div
-          data-mode-picker
-          className="panel-in-3d absolute right-full mr-2 top-0 z-40 flex items-center gap-1 rounded-sm border border-[hsl(var(--border-default))] bg-black/85 p-1 backdrop-blur-md"
-          role="menu"
-          aria-label="Source mode"
-        >
-          {(Object.keys(MODE_META) as SourceMode[]).map((m) => {
-            const MIcon = MODE_META[m].icon;
-            return (
-              <button
-                key={m}
-                type="button"
-                role="menuitem"
-                data-no-longpress
-                onClick={() => pick(m)}
-                data-active={sourceMode === m || undefined}
-                className="flex min-w-[52px] flex-col items-center gap-1 rounded-sm border border-transparent px-2 py-1.5 font-mono text-[9px] uppercase tracking-[0.12em] text-[hsl(var(--text-secondary))] transition hover:border-[hsl(var(--accent))] hover:text-[hsl(var(--accent))] data-[active]:border-[hsl(var(--accent))] data-[active]:text-[hsl(var(--accent))]"
-              >
-                <MIcon className="h-3.5 w-3.5" strokeWidth={1.5} />
-                {MODE_META[m].label}
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      <input
-        ref={fileRef}
-        type="file"
-        accept="image/*"
-        hidden
-        onChange={async (e) => {
-          const f = e.target.files?.[0];
-          e.target.value = "";
-          if (!f) return;
-          const ok = await loadImageFile(f);
-          if (ok) toast.success("Image loaded — moshing…");
-        }}
-      />
     </div>
   );
 }
