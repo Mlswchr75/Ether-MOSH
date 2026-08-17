@@ -46,33 +46,6 @@ export function defaultAudioMap(key: string): DefaultMap {
 }
 
 /**
- * Apply a band to a value, with per-key smoothing carried in `state`.
- *
- * The caller owns the smoothing map so it survives across frames; passing it in
- * rather than holding module state keeps two renderers on one page from
- * bleeding into each other.
- */
-export function applyAudio(
-  value: number,
-  key: string,
-  range: number,
-  sources: Record<string, number>,
-  state: Map<string, number>,
-  stateKey: string,
-  map?: DefaultMap,
-): number {
-  const m = map ?? defaultAudioMap(key);
-  const target = sources[m.source] ?? 0;
-  const prev = state.get(stateKey) ?? 0;
-  // Exponential smoothing. The floor keeps a fully-smoothed param from freezing
-  // entirely, which reads as the control being broken rather than damped.
-  const alpha = Math.max(0.02, 1 - m.smoothing * 0.98);
-  const smoothed = prev + (target - prev) * alpha;
-  state.set(stateKey, smoothed);
-  return value + smoothed * m.amount * range;
-}
-
-/**
  * Band levels from a MicAnalyzer-shaped object.
  *
  * `beat` is derived rather than read: it is the part of the overall envelope
@@ -90,23 +63,4 @@ export function bandsFrom(mic: {
     overall: Math.max(mic.overallLevel, mic.level()),
     beat: beatEnvelope,
   };
-}
-
-/**
- * Track a beat envelope across frames.
- *
- * Rises instantly on a transient and falls slowly, so a kick produces a spike
- * that decays rather than a step that stays high. Returns the new envelope and
- * the running average it was measured against.
- */
-export function stepBeat(
-  level: number,
-  prev: { envelope: number; average: number },
-  dt: number,
-): { envelope: number; average: number } {
-  const average = prev.average + (level - prev.average) * Math.min(1, dt * 1.2);
-  const excess = Math.max(0, level - average * 1.25);
-  // Attack immediately, release over roughly a third of a second.
-  const decayed = prev.envelope * Math.max(0, 1 - dt * 3.2);
-  return { envelope: Math.min(1, Math.max(decayed, excess * 3)), average };
 }

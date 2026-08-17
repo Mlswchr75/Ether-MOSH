@@ -4,6 +4,11 @@ import { Helmet } from "react-helmet-async";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
 
+const canonical = "https://ether-mosh.netlify.app/install";
+const title = "Install — MOSH";
+const description = "Install MOSH as a native-feeling app on iOS, Android, or desktop. No app store required.";
+const ogImage = "https://ether-mosh.netlify.app/og-image.png";
+
 const steps = {
   ios: [
     { n: "01", text: "Open MOSH in Safari on your iPhone or iPad." },
@@ -31,8 +36,19 @@ export default function Install() {
   return (
     <main className="min-h-screen bg-background text-foreground">
       <Helmet>
-        <title>Install — MOSH</title>
-        <meta name="description" content="Install MOSH as a native-feeling app on iOS, Android, or desktop. No app store required." />
+        <title>{title}</title>
+        <meta name="description" content={description} />
+        <link rel="canonical" href={canonical} />
+        <meta property="og:type" content="website" />
+        <meta property="og:site_name" content="MOSH" />
+        <meta property="og:title" content={title} />
+        <meta property="og:description" content={description} />
+        <meta property="og:url" content={canonical} />
+        <meta property="og:image" content={ogImage} />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content={title} />
+        <meta name="twitter:description" content={description} />
+        <meta name="twitter:image" content={ogImage} />
       </Helmet>
 
       {/* Nav */}

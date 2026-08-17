@@ -1,11 +1,25 @@
 import { Camera, FlipHorizontal2, StopCircle, ChevronDown } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useCamera } from "@/hooks/useCamera";
 import { toast } from "sonner";
 
 export function CameraMenu() {
-  const { isLive, facing, devices, start, stop, flip } = useCamera();
+  const { isLive, facing, devices, start, stop, flip, error } = useCamera();
   const [open, setOpen] = useState(false);
+  const wasLiveRef = useRef(isLive);
+
+  // flip() and the device-picker below both call start() fire-and-forget, so
+  // a failure (no rear camera, device busy/disconnected) otherwise stops the
+  // stream with zero feedback — the LIVE badge just disappears. Watching
+  // `error` here catches both without duplicating start()'s logic. Gated on
+  // "was live a moment ago" so this doesn't also fire (and double up with
+  // handleStart's own toast) for a plain failed initial camera request.
+  useEffect(() => {
+    if (error && wasLiveRef.current) {
+      toast.error("Couldn't switch camera. Tap the camera button to reconnect.");
+    }
+    wasLiveRef.current = isLive;
+  }, [error, isLive]);
 
   const handleStart = async () => {
     if (!navigator.mediaDevices?.getUserMedia) {

@@ -16,7 +16,7 @@ const LegalLayout = ({
   title,
   description,
   canonical,
-  lastUpdated = "July 18, 2026",
+  lastUpdated,
   eyebrow = "legal",
   children,
 }: LegalLayoutProps) => (
@@ -52,9 +52,11 @@ const LegalLayout = ({
     <article className="relative z-10 mx-auto max-w-3xl px-5 py-12 md:py-16">
       <div className="mb-2 font-mono text-xs uppercase tracking-[0.3em] text-accent">{eyebrow}</div>
       <h1 className="font-sans text-4xl md:text-5xl font-bold leading-[0.95] tracking-tight">{title}</h1>
-      <div className="mt-3 font-mono text-[11px] uppercase tracking-[0.25em] text-muted-foreground">
-        last updated · {lastUpdated}
-      </div>
+      {lastUpdated ? (
+        <div className="mt-3 font-mono text-[11px] uppercase tracking-[0.25em] text-muted-foreground">
+          last updated · {lastUpdated}
+        </div>
+      ) : null}
       <div className="mt-10 space-y-8 text-sm leading-relaxed text-foreground/90">{children}</div>
     </article>
 

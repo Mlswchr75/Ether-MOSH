@@ -1,7 +1,9 @@
-import { useNavigate } from "react-router-dom";
+import { useEffect, useRef } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Helmet } from "react-helmet-async";
 import { Check } from "lucide-react";
+import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 import { useEntitlements } from "@/hooks/useEntitlements";
 
@@ -27,8 +29,34 @@ const FEATURES_UNLOCK = [
 
 export default function Pricing() {
   const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
   const { user } = useAuth();
-  const { isSupporter } = useEntitlements();
+  const { isSupporter, refresh } = useEntitlements();
+  const unlockCardRef = useRef<HTMLDivElement>(null);
+
+  // Returning from a successful Stripe checkout: force-refresh entitlements
+  // right away instead of waiting on the webhook's realtime event, and show
+  // a confirmation so a slow webhook doesn't look like a failed/missing
+  // payment (which was otherwise a real "did that actually charge me?"
+  // moment, and — worse — the exact state that used to let someone re-open
+  // checkout and pay twice).
+  useEffect(() => {
+    if (params.get("checkout") !== "success") return;
+    toast.success("Payment received — unlocking your account…");
+    refresh();
+    const next = new URLSearchParams(params);
+    next.delete("checkout");
+    setParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Deep-link from an in-editor paywall nudge (usePaywall.purchase()) — bring
+  // the unlock card into view instead of leaving the user to find it.
+  useEffect(() => {
+    if (params.get("unlock") !== "1") return;
+    unlockCardRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const startCheckout = (priceId: string) => {
     if (!user) {
@@ -104,6 +132,7 @@ export default function Pricing() {
           </motion.div>
 
           <motion.div
+            ref={unlockCardRef}
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.45, delay: 0.25, ease: EASE }}

@@ -21,8 +21,8 @@ import { buildAuthCallbackUrl, sanitizeNextPath } from "@/lib/authRedirect";
 // can therefore resolve the verified Google/email identity to the same
 // auth.users row, while entitlements remain keyed on that shared user ID.
 
-type Mode = "signin" | "signup";
-type Busy = null | "email" | "google";
+type Mode = "signin" | "signup" | "reset";
+type Busy = null | "email" | "google" | "reset";
 
 export default function Auth() {
   const navigate = useNavigate();
@@ -63,6 +63,27 @@ export default function Auth() {
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "auth failed");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const onResetPassword = async () => {
+    if (busy) return;
+    if (!email) {
+      toast.error("Enter your email above first");
+      return;
+    }
+    setBusy("reset");
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: new URL("/auth/reset-password", window.location.origin).toString(),
+      });
+      if (error) throw error;
+      toast.success("Check your email for a reset link");
+      setMode("signin");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't send reset email");
     } finally {
       setBusy(null);
     }
@@ -110,60 +131,93 @@ export default function Auth() {
       <div className="w-full max-w-md rounded-2xl border border-primary/40 bg-background/60 p-6 backdrop-blur"
            style={{ boxShadow: "0 0 60px hsl(var(--primary) / 0.25)" }}>
         <div className="mb-1 text-center font-mono text-[10px] uppercase tracking-[0.35em] text-foreground/60">
-          {mode === "signin" ? "sign in to" : "join"}
+          {mode === "signin" ? "sign in to" : mode === "signup" ? "join" : "reset password for"}
         </div>
         <div className="mb-6 text-center font-sans text-3xl font-bold tracking-tight text-primary">
           MOSH
         </div>
 
+        {mode !== "reset" && (
+          <>
+            <button
+              type="button"
+              onClick={onGoogle}
+              disabled={!!busy}
+              className="inline-flex w-full items-center justify-center gap-3 rounded-full border border-foreground/25 bg-background/40 px-6 py-3.5 font-mono text-sm uppercase tracking-[0.24em] text-foreground/90 transition-all hover:bg-foreground/5 active:scale-[0.98] disabled:opacity-60 min-h-[52px]"
+            >
+              <svg className="h-5 w-5" viewBox="0 0 24 24" aria-hidden="true">
+                <path fill="#EA4335" d="M12 10.2v3.9h5.5c-.24 1.4-1.7 4.1-5.5 4.1-3.3 0-6-2.7-6-6.2s2.7-6.2 6-6.2c1.9 0 3.1.8 3.9 1.5l2.6-2.6C16.9 3.2 14.7 2.2 12 2.2 6.9 2.2 2.8 6.3 2.8 12s4.1 9.8 9.2 9.8c5.3 0 8.8-3.7 8.8-9 0-.6-.1-1-.1-1.6H12z"/>
+              </svg>
+              {busy === "google" ? "…" : "continue with google"}
+            </button>
+
+            <div className="my-5 flex items-center gap-3">
+              <div className="h-px flex-1 bg-foreground/15" />
+              <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-foreground/40">or email</span>
+              <div className="h-px flex-1 bg-foreground/15" />
+            </div>
+          </>
+        )}
+
+        {mode === "reset" ? (
+          <div className="flex flex-col gap-3">
+            <input
+              type="email" required autoComplete="email" autoFocus
+              value={email} onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@domain.com"
+              className="rounded-md border border-foreground/20 bg-background/40 px-4 py-3 font-mono text-sm outline-none focus:border-primary/60 min-h-[48px]"
+            />
+            <button
+              type="button"
+              onClick={onResetPassword}
+              disabled={!!busy}
+              className="inline-flex items-center justify-center gap-2 rounded-full border border-primary/60 bg-primary/10 px-6 py-3 font-mono text-sm uppercase tracking-[0.28em] text-primary hover:bg-primary/20 active:scale-[0.98] disabled:opacity-60 min-h-[48px]"
+            >
+              <Mail className="h-4 w-4" aria-hidden="true" />
+              {busy === "reset" ? "…" : "send reset link"}
+            </button>
+          </div>
+        ) : (
+          <form onSubmit={onEmail} className="flex flex-col gap-3">
+            <input
+              type="email" required autoComplete="email"
+              value={email} onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@domain.com"
+              className="rounded-md border border-foreground/20 bg-background/40 px-4 py-3 font-mono text-sm outline-none focus:border-primary/60 min-h-[48px]"
+            />
+            <input
+              type="password" required minLength={6}
+              autoComplete={mode === "signup" ? "new-password" : "current-password"}
+              value={password} onChange={(e) => setPassword(e.target.value)}
+              placeholder="password"
+              className="rounded-md border border-foreground/20 bg-background/40 px-4 py-3 font-mono text-sm outline-none focus:border-primary/60 min-h-[48px]"
+            />
+            {mode === "signin" && (
+              <button
+                type="button"
+                onClick={() => setMode("reset")}
+                className="self-end font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/45 hover:text-foreground/75 transition"
+              >
+                forgot password?
+              </button>
+            )}
+            <button
+              type="submit"
+              disabled={!!busy}
+              className="inline-flex items-center justify-center gap-2 rounded-full border border-primary/60 bg-primary/10 px-6 py-3 font-mono text-sm uppercase tracking-[0.28em] text-primary hover:bg-primary/20 active:scale-[0.98] disabled:opacity-60 min-h-[48px]"
+            >
+              <Mail className="h-4 w-4" aria-hidden="true" />
+              {busy === "email" ? "…" : mode === "signin" ? "sign in" : "create account"}
+            </button>
+          </form>
+        )}
+
         <button
           type="button"
-          onClick={onGoogle}
-          disabled={!!busy}
-          className="inline-flex w-full items-center justify-center gap-3 rounded-full border border-foreground/25 bg-background/40 px-6 py-3.5 font-mono text-sm uppercase tracking-[0.24em] text-foreground/90 transition-all hover:bg-foreground/5 active:scale-[0.98] disabled:opacity-60 min-h-[52px]"
-        >
-          <svg className="h-5 w-5" viewBox="0 0 24 24" aria-hidden="true">
-            <path fill="#EA4335" d="M12 10.2v3.9h5.5c-.24 1.4-1.7 4.1-5.5 4.1-3.3 0-6-2.7-6-6.2s2.7-6.2 6-6.2c1.9 0 3.1.8 3.9 1.5l2.6-2.6C16.9 3.2 14.7 2.2 12 2.2 6.9 2.2 2.8 6.3 2.8 12s4.1 9.8 9.2 9.8c5.3 0 8.8-3.7 8.8-9 0-.6-.1-1-.1-1.6H12z"/>
-          </svg>
-          {busy === "google" ? "…" : "continue with google"}
-        </button>
-
-        <div className="my-5 flex items-center gap-3">
-          <div className="h-px flex-1 bg-foreground/15" />
-          <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-foreground/40">or email</span>
-          <div className="h-px flex-1 bg-foreground/15" />
-        </div>
-
-        <form onSubmit={onEmail} className="flex flex-col gap-3">
-          <input
-            type="email" required autoComplete="email"
-            value={email} onChange={(e) => setEmail(e.target.value)}
-            placeholder="you@domain.com"
-            className="rounded-md border border-foreground/20 bg-background/40 px-4 py-3 font-mono text-sm outline-none focus:border-primary/60 min-h-[48px]"
-          />
-          <input
-            type="password" required minLength={6}
-            autoComplete={mode === "signup" ? "new-password" : "current-password"}
-            value={password} onChange={(e) => setPassword(e.target.value)}
-            placeholder="password"
-            className="rounded-md border border-foreground/20 bg-background/40 px-4 py-3 font-mono text-sm outline-none focus:border-primary/60 min-h-[48px]"
-          />
-          <button
-            type="submit"
-            disabled={!!busy}
-            className="inline-flex items-center justify-center gap-2 rounded-full border border-primary/60 bg-primary/10 px-6 py-3 font-mono text-sm uppercase tracking-[0.28em] text-primary hover:bg-primary/20 active:scale-[0.98] disabled:opacity-60 min-h-[48px]"
-          >
-            <Mail className="h-4 w-4" aria-hidden="true" />
-            {busy === "email" ? "…" : mode === "signin" ? "sign in" : "create account"}
-          </button>
-        </form>
-
-        <button
-          type="button"
-          onClick={() => setMode(mode === "signin" ? "signup" : "signin")}
+          onClick={() => setMode(mode === "signup" ? "signin" : mode === "reset" ? "signin" : "signup")}
           className="mt-5 block w-full text-center font-mono text-[10px] uppercase tracking-[0.3em] text-foreground/50 hover:text-foreground/80 transition"
         >
-          {mode === "signin" ? "no account? sign up →" : "have an account? sign in →"}
+          {mode === "signin" ? "no account? sign up →" : mode === "signup" ? "have an account? sign in →" : "back to sign in →"}
         </button>
       </div>
     </main>

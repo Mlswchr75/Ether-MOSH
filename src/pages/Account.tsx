@@ -7,6 +7,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useEntitlements } from "@/hooks/useEntitlements";
 import { supabase } from "@/integrations/supabase/client";
 import { getPaymentsEnvironmentSafe } from "@/lib/stripe";
+import { RequireAuth } from "@/components/RequireAuth";
 
 function getPaymentsEnvironment(): "live" | "sandbox" {
   return getPaymentsEnvironmentSafe();
@@ -22,14 +23,14 @@ interface EntitlementRow {
 const productLabel = (id: string) =>
   id === "mosh_supporter" ? "Supporter unlock" : id === "mosh_tip" ? "Tip" : id;
 
-const Account = () => {
+function AccountContent() {
   const { user, signOut } = useAuth();
   const { isSupporter, loading: entLoading, error: entitlementError } = useEntitlements();
   const [rows, setRows] = useState<EntitlementRow[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user) { setRows([]); setLoading(false); return; }
     (async () => {
       setLoading(true);
       const { data } = await supabase
@@ -144,6 +145,12 @@ const Account = () => {
       </section>
     </main>
   );
-};
+}
 
-export default Account;
+export default function Account() {
+  return (
+    <RequireAuth>
+      <AccountContent />
+    </RequireAuth>
+  );
+}

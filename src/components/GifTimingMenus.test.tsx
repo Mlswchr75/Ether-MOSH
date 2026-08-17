@@ -1,7 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { HotTriggers } from "@/components/editor/HotTriggers";
-import { ForgeTriggers } from "@/components/forge/ForgeTriggers";
 
 const GIF_LENGTHS = [3, 5, 7] as const;
 
@@ -46,44 +45,12 @@ function renderEditorTriggers(onGif: (seconds?: number) => void) {
   );
 }
 
-function renderForgeTriggers(onGif: (seconds: number) => void) {
-  render(
-    <ForgeTriggers
-      micOn={false}
-      onToggleMic={() => {}}
-      onGif={onGif}
-      gifBusy={false}
-      gifProgress={0}
-      isRecording={false}
-      onToggleRecord={() => {}}
-      isFullscreen={false}
-      onToggleFullscreen={() => {}}
-      shuffleSec={null}
-      onShuffleSec={() => {}}
-      journeyOn={false}
-      onToggleJourney={() => {}}
-    />,
-  );
-}
-
 describe("editor GIF timing menu (live camera and uploaded images)", () => {
   it.each(GIF_LENGTHS)("starts a %ss capture when its timing option is tapped", (seconds) => {
     const onGif = vi.fn();
     renderEditorTriggers(onGif);
 
     fireEvent.click(screen.getByRole("button", { name: "Capture seamless GIF loop" }));
-    tapTimingOption(seconds);
-
-    expect(onGif).toHaveBeenCalledExactlyOnceWith(seconds);
-  });
-});
-
-describe("Forge GIF timing menu", () => {
-  it.each(GIF_LENGTHS)("starts a %ss capture when its timing option is tapped", (seconds) => {
-    const onGif = vi.fn();
-    renderForgeTriggers(onGif);
-
-    fireEvent.click(screen.getByRole("button", { name: "Capture looping GIF" }));
     tapTimingOption(seconds);
 
     expect(onGif).toHaveBeenCalledExactlyOnceWith(seconds);

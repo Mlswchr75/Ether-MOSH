@@ -182,13 +182,20 @@ function TrackTrigger({ delay }: { delay: number }) {
             hidden
             onChange={async (e) => {
               const f = e.target.files?.[0];
+              e.target.value = "";
               if (!f) return;
               const url = URL.createObjectURL(f);
               const name = f.name.replace(/\.[^.]+$/, "");
-              await trackPlayer.setSource(url, name, "");
-              setTrackMeta(name, "");
-              setTrackEnabled(true);
-              setOpen(false);
+              try {
+                await trackPlayer.setSource(url, name, "");
+                setTrackMeta(name, "");
+                setTrackEnabled(true);
+                setOpen(false);
+              } catch (err) {
+                console.error("[track] failed to load audio file:", err);
+                URL.revokeObjectURL(url);
+                toast.error("Couldn't load that audio file");
+              }
             }}
           />
         </div>

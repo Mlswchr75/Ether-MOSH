@@ -173,7 +173,7 @@ class StickerEngine {
     dctx.filter = 'saturate(1.08) contrast(1.04)';
     dctx.drawImage(src, 0, 0, ow, oh);
     dctx.filter = 'none';
-    return new Promise(res => dst.toBlob(b => res(b!), 'image/webp', 0.94));
+    return new Promise((res, rej) => dst.toBlob(b => (b ? res(b) : rej(new Error('toBlob returned null'))), 'image/webp', 0.94));
   }
 
   async exportAPNG(frames: ImageData[], fps = 28): Promise<Blob> {

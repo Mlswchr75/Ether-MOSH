@@ -66,7 +66,7 @@ export default function EffectsRegistry() {
             <ArrowLeft className="h-3.5 w-3.5" strokeWidth={1.5} />
             back
           </Link>
-          <h1 className="hidden shrink-0 font-mono text-[11px] uppercase tracking-[0.25em] text-[hsl(var(--accent))] sm:block">
+          <h1 className="sr-only shrink-0 font-mono text-[11px] uppercase tracking-[0.25em] text-[hsl(var(--accent))] sm:not-sr-only">
             effect registry · {registry.length}
           </h1>
           <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -76,6 +76,7 @@ export default function EffectsRegistry() {
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
                 placeholder="search effects…"
+                aria-label="Search effects"
                 className="min-w-0 flex-1 bg-transparent font-mono text-[10px] uppercase tracking-[0.1em] text-white/80 outline-none placeholder:text-white/30"
               />
             </div>
@@ -123,6 +124,8 @@ export default function EffectsRegistry() {
                       <button
                         type="button"
                         onClick={() => setExpanded(isOpen ? null : e.id)}
+                        aria-expanded={isOpen}
+                        aria-controls={`effect-detail-${e.id}`}
                         className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left"
                       >
                         <div className="min-w-0">
@@ -139,7 +142,7 @@ export default function EffectsRegistry() {
                         </span>
                       </button>
                       {isOpen && (
-                        <div className="border-t border-white/10 px-3 py-2">
+                        <div id={`effect-detail-${e.id}`} className="border-t border-white/10 px-3 py-2">
                           <table className="mb-3 w-full text-left font-mono text-[9px]">
                             <thead>
                               <tr className="text-white/40">

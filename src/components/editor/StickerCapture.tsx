@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Sparkles, Download, X, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { useStore } from '@/store/useStore';
 import { stickerEngine, type StickerScore } from '@/engine/StickerEngine';
 import { segmentationEngine } from '@/engine/SegmentationEngine';
@@ -41,20 +42,26 @@ export function StickerCapture() {
     const frames = [...recFrames.current];
     recFrames.current = [];
     setPhase('encoding');
-    if (frames.length < 3) { setPhase('idle'); return; }
-    const first = stickerEngine.cropToBounds(frames[0]);
-    if (!first) { setPhase('idle'); return; }
-    const enhanced = frames.map(f => {
-      const c = stickerEngine.cropToBounds(f) ?? f;
-      return stickerEngine.enhanceHDR(c);
-    });
-    doFlash();
-    const blob = await stickerEngine.exportAPNG(enhanced, 28);
-    const url = URL.createObjectURL(blob);
-    addSticker({ id: crypto.randomUUID(), url, animated: true, w: first.width, h: first.height, ts: Date.now() });
-    setGalleryOpen(true);
-    setPhase('idle');
-    setRecProg(0);
+    try {
+      if (frames.length < 3) return;
+      const first = stickerEngine.cropToBounds(frames[0]);
+      if (!first) return;
+      const enhanced = frames.map(f => {
+        const c = stickerEngine.cropToBounds(f) ?? f;
+        return stickerEngine.enhanceHDR(c);
+      });
+      doFlash();
+      const blob = await stickerEngine.exportAPNG(enhanced, 28);
+      const url = URL.createObjectURL(blob);
+      addSticker({ id: crypto.randomUUID(), url, animated: true, w: first.width, h: first.height, ts: Date.now() });
+      setGalleryOpen(true);
+    } catch (err) {
+      console.error('[sticker] recording capture failed:', err);
+      toast.error("Couldn't save that capture — try again");
+    } finally {
+      setPhase('idle');
+      setRecProg(0);
+    }
   }, [addSticker]);
 
   useEffect(() => {
@@ -91,21 +98,27 @@ export function StickerCapture() {
     const gl = glRef.current, vid = vidRef.current;
     if (!gl || !vid || phaseRef.current !== 'idle') return;
     setPhase('capturing');
-    await stickerEngine.refreshBestMask(vid);
-    const mask = stickerEngine.getBestMask();
-    if (!mask) { setPhase('idle'); return; }
-    const raw = stickerEngine.compositeFrame(gl, mask.data, mask.width, mask.height);
-    if (!raw) { setPhase('idle'); return; }
-    const cropped = stickerEngine.cropToBounds(raw);
-    if (!cropped) { setPhase('idle'); return; }
-    const enhanced = stickerEngine.enhanceHDR(cropped);
-    setPhase('encoding');
-    const blob = await stickerEngine.exportWebP(enhanced, 2);
-    doFlash();
-    const url = URL.createObjectURL(blob);
-    addSticker({ id: crypto.randomUUID(), url, animated: false, w: enhanced.width * 2, h: enhanced.height * 2, ts: Date.now() });
-    setGalleryOpen(true);
-    setPhase('idle');
+    try {
+      await stickerEngine.refreshBestMask(vid);
+      const mask = stickerEngine.getBestMask();
+      if (!mask) return;
+      const raw = stickerEngine.compositeFrame(gl, mask.data, mask.width, mask.height);
+      if (!raw) return;
+      const cropped = stickerEngine.cropToBounds(raw);
+      if (!cropped) return;
+      const enhanced = stickerEngine.enhanceHDR(cropped);
+      setPhase('encoding');
+      const blob = await stickerEngine.exportWebP(enhanced, 2);
+      doFlash();
+      const url = URL.createObjectURL(blob);
+      addSticker({ id: crypto.randomUUID(), url, animated: false, w: enhanced.width * 2, h: enhanced.height * 2, ts: Date.now() });
+      setGalleryOpen(true);
+    } catch (err) {
+      console.error('[sticker] static capture failed:', err);
+      toast.error("Couldn't save that capture — try again");
+    } finally {
+      setPhase('idle');
+    }
   }, [addSticker]);
 
   const startRecording = useCallback(() => {

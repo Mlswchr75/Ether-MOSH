@@ -1,12 +1,22 @@
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Helmet } from "react-helmet-async";
+
+const MORE_LINKS = [
+  { to: "/guides", label: "guides" },
+  { to: "/effects", label: "effect registry" },
+  { to: "/pricing", label: "pricing" },
+  { to: "/contact", label: "contact" },
+];
 
 export default function NotFound() {
   const navigate = useNavigate();
   return (
     <main className="relative flex h-screen w-screen flex-col items-center justify-center overflow-hidden bg-background text-foreground">
-      <Helmet><title>404 — MOSH</title></Helmet>
+      <Helmet>
+        <title>404 — MOSH</title>
+        <meta name="robots" content="noindex" />
+      </Helmet>
       <div className="pointer-events-none absolute inset-0 scanline opacity-40" />
       <motion.div
         initial={{ opacity: 0, y: 24 }}
@@ -21,9 +31,9 @@ export default function NotFound() {
         >
           404
         </div>
-        <p className="font-mono text-xs uppercase tracking-[0.35em] text-foreground/50">
+        <h1 className="font-mono text-xs uppercase tracking-[0.35em] text-foreground/50">
           signal lost — page not found
-        </p>
+        </h1>
         <button
           type="button"
           onClick={() => navigate("/")}
@@ -31,6 +41,17 @@ export default function NotFound() {
         >
           ← back to home
         </button>
+        <nav aria-label="More destinations" className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
+          {MORE_LINKS.map(({ to, label }) => (
+            <Link
+              key={to}
+              to={to}
+              className="font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/40 transition hover:text-accent"
+            >
+              {label}
+            </Link>
+          ))}
+        </nav>
       </motion.div>
     </main>
   );

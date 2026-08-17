@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Helmet } from "react-helmet-async";
 import { Camera, Upload } from "lucide-react";
@@ -339,13 +339,13 @@ const Index = () => {
           className="pointer-events-auto absolute bottom-6 left-0 right-0 z-20 flex flex-col items-center gap-3"
         >
           <nav aria-label="Footer" className="flex flex-wrap items-center justify-center gap-4 font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/60">
-            <button type="button" onClick={(e) => { e.stopPropagation(); navigate("/pricing"); }} className="hover:text-accent transition">pricing</button>
+            <Link to="/pricing" onClick={(e) => e.stopPropagation()} className="hover:text-accent transition">pricing</Link>
             <span aria-hidden className="text-foreground/30">·</span>
-            <button type="button" onClick={(e) => { e.stopPropagation(); navigate("/refund"); }} className="hover:text-accent transition">refunds</button>
+            <Link to="/refund" onClick={(e) => e.stopPropagation()} className="hover:text-accent transition">refunds</Link>
             <span aria-hidden className="text-foreground/30">·</span>
-            <button type="button" onClick={(e) => { e.stopPropagation(); navigate("/terms"); }} className="hover:text-accent transition">terms</button>
+            <Link to="/terms" onClick={(e) => e.stopPropagation()} className="hover:text-accent transition">terms</Link>
             <span aria-hidden className="text-foreground/30">·</span>
-            <button type="button" onClick={(e) => { e.stopPropagation(); navigate("/privacy"); }} className="hover:text-accent transition">privacy</button>
+            <Link to="/privacy" onClick={(e) => e.stopPropagation()} className="hover:text-accent transition">privacy</Link>
           </nav>
         </motion.div>
         {/* Points at the demo reel on the next panel. Loud enough to be taken

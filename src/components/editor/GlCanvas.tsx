@@ -54,6 +54,9 @@ export function GlCanvas() {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<MoshRenderer | null>(null);
+  // Bumped to force the renderer (and everything that configures it) to
+  // rebuild after a WebGL context loss/restore cycle.
+  const [rendererGeneration, setRendererGeneration] = useState(0);
   const beatRef = useRef(new BeatClock());
   const micRef = useRef(new MicAnalyzer());
   const proceduralRef = useRef<ProceduralSource | null>(null);
@@ -90,7 +93,8 @@ export function GlCanvas() {
   const tileMode = useStore(s => s.tileMode);
   const tileUniforms = useStore(s => s.tileUniforms);
 
-  // Init renderer
+  // Init renderer — re-runs on rendererGeneration bumps, which is how a lost
+  // WebGL context gets a fresh renderer instead of a permanently dead canvas.
   useEffect(() => {
     if (!canvasRef.current) return;
     try {
@@ -105,12 +109,39 @@ export function GlCanvas() {
       rendererRef.current?.dispose();
       rendererRef.current = null;
     };
+  }, [rendererGeneration]);
+
+  // WebGL context loss recovery. Without this the canvas just freezes/goes
+  // black forever on GPU reset or driver reclaim (common on mobile after
+  // backgrounding) — preventDefault on "lost" is what tells the browser to
+  // actually attempt restoration rather than losing the context permanently.
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const onLost = (e: Event) => {
+      e.preventDefault();
+      console.error("[webgl] context lost");
+      toast.error("Graphics reset — reconnecting…", { id: "webgl-context" });
+    };
+    const onRestored = () => {
+      console.warn("[webgl] context restored — recreating renderer");
+      rendererRef.current?.dispose();
+      rendererRef.current = null;
+      setRendererGeneration(g => g + 1);
+      toast.success("Reconnected", { id: "webgl-context" });
+    };
+    canvas.addEventListener("webglcontextlost", onLost);
+    canvas.addEventListener("webglcontextrestored", onRestored);
+    return () => {
+      canvas.removeEventListener("webglcontextlost", onLost);
+      canvas.removeEventListener("webglcontextrestored", onRestored);
+    };
   }, []);
 
   // Mirror front-facing camera — re-runs whenever the facing changes (e.g. flip button).
   useEffect(() => {
     rendererRef.current?.setSourceMirror(cameraFacing === 'user');
-  }, [cameraFacing]);
+  }, [cameraFacing, rendererGeneration]);
 
   // Source — priority: live video > still image > forge pattern > procedural
   // ambient. Reset up front rather than per-branch: every mode transition
@@ -170,7 +201,7 @@ export function GlCanvas() {
     }
     const r = containerRef.current?.getBoundingClientRect();
     if (r) rendererRef.current.resize(r.width, r.height);
-  }, [imageElement, videoElement, sourceMode, forgeSeamless]);
+  }, [imageElement, videoElement, sourceMode, forgeSeamless, rendererGeneration]);
 
   // Cleanup procedural on unmount
   useEffect(() => () => { proceduralRef.current?.dispose(); proceduralRef.current = null; }, []);
@@ -210,11 +241,11 @@ export function GlCanvas() {
   useEffect(() => {
     rendererRef.current?.setTile(tileMode, tileUniforms);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tileMode]);
+  }, [tileMode, rendererGeneration]);
   useEffect(() => {
     if (tileMode === "none") return;
     rendererRef.current?.updateTileUniforms(tileUniforms);
-  }, [tileMode, tileUniforms]);
+  }, [tileMode, tileUniforms, rendererGeneration]);
 
   // Microphone sensitivity passthrough
   useEffect(() => { micRef.current.sensitivity = micSensitivity; }, [micSensitivity]);

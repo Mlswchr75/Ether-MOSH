@@ -6,6 +6,7 @@ const canonical = "https://ether-mosh.netlify.app/guides/make-music-video";
 const title = "How to Make an Audio-Reactive Music Video";
 const description =
   "Step-by-step guide to creating audio-reactive music visualizers for YouTube, TikTok, and Reels using MOSH's glitch instrument, live effects, and recording tools.";
+const ogImage = "https://ether-mosh.netlify.app/og-image.png";
 
 const howToJsonLd = {
   "@context": "https://schema.org",
@@ -57,16 +58,18 @@ const faqJsonLd = {
 const GuideMakeMusicVideo = () => (
   <>
     <Helmet>
-      <title>{title} — MOSH</title>
+      <title>{title} | MOSH</title>
       <meta name="description" content={description} />
       <link rel="canonical" href={canonical} />
-      <meta property="og:title" content={`${title} — MOSH`} />
+      <meta property="og:title" content={title} />
       <meta property="og:description" content={description} />
       <meta property="og:url" content={canonical} />
       <meta property="og:type" content="article" />
+      <meta property="og:image" content={ogImage} />
       <meta name="twitter:card" content="summary_large_image" />
-      <meta name="twitter:title" content={`${title} — MOSH`} />
+      <meta name="twitter:title" content={title} />
       <meta name="twitter:description" content={description} />
+      <meta name="twitter:image" content={ogImage} />
       <script type="application/ld+json">{JSON.stringify(howToJsonLd)}</script>
       <script type="application/ld+json">{JSON.stringify(faqJsonLd)}</script>
     </Helmet>
@@ -175,6 +178,18 @@ const GuideMakeMusicVideo = () => (
           <li>Match the intensity to the section. Verse = restraint, chorus = go.</li>
           <li>Loop-friendly endings get replayed, and replays are the whole game on TikTok.</li>
         </ul>
+      </section>
+
+      <section>
+        <LegalH2>Frequently Asked Questions</LegalH2>
+        <div className="mt-4 space-y-6">
+          {faqJsonLd.mainEntity.map((f) => (
+            <div key={f.name}>
+              <h3 className="font-sans text-lg font-semibold text-foreground">{f.name}</h3>
+              <p className="mt-2">{f.acceptedAnswer.text}</p>
+            </div>
+          ))}
+        </div>
       </section>
 
       <section>

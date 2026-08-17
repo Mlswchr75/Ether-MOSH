@@ -477,7 +477,7 @@ export const useStore = create<State & Actions>((set, get) => ({
       if (!hi) return;
       if (useStore.getState().imageElement !== el) return; // a newer image won
       set({ imageElement: hi });
-    }).catch(() => {});
+    }).catch((err) => console.warn("[upscale] failed — keeping original resolution:", err));
     // Async palette extraction; UI never blocks on this.
     extractPalette(el).then((profile) => {
       // Bail if a newer image has loaded since we started.
@@ -492,7 +492,7 @@ export const useStore = create<State & Actions>((set, get) => ({
           className: "font-mono uppercase tracking-[0.2em] text-[hsl(var(--accent))]",
         });
       } catch {}
-    }).catch(() => {});
+    }).catch((err) => console.warn("[palette] extraction failed:", err));
   },
   setVideoSource: (stream, name) => {
     // Switching to live video kills any prior stream + still image.
@@ -881,6 +881,7 @@ export const useStore = create<State & Actions>((set, get) => ({
         set({ trackEnabled: true, micEnabled: false, systemAudioEnabled: false });
       }).catch((err) => {
         console.error("[track] play failed:", err);
+        toast.error("Couldn't play the track");
         set({ trackEnabled: false });
       });
     } else {

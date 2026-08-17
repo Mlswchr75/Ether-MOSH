@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { useStore } from "@/store/useStore";
 import { segmentationEngine, MaskResult } from "@/engine/SegmentationEngine";
 
@@ -106,11 +107,25 @@ export function IsolationOverlay() {
     }
     if (mode === 'auto') {
       setLoading(true);
-      Promise.all([segmentationEngine.loadAuto(), segmentationEngine.loadTap()]).then(() => setLoading(false));
+      Promise.all([segmentationEngine.loadAuto(), segmentationEngine.loadTap()]).then(() => {
+        setLoading(false);
+        // loadAuto/loadTap never reject (they catch and console.warn
+        // internally) — readiness after the fact is the only signal that a
+        // CDN/model fetch actually failed, so check it explicitly rather
+        // than let isolate silently do nothing.
+        if (!segmentationEngine.isAutoReady() && !segmentationEngine.isTapReady()) {
+          toast.error("Isolate subject unavailable — couldn't load the segmentation model");
+        }
+      });
     }
     if (mode === 'tap') {
       setTapHint(true); setLoading(true);
-      segmentationEngine.loadTap().then(() => setLoading(false));
+      segmentationEngine.loadTap().then(() => {
+        setLoading(false);
+        if (!segmentationEngine.isTapReady()) {
+          toast.error("Isolate subject unavailable — couldn't load the segmentation model");
+        }
+      });
       maskRef.current = null; lockedRef.current = false; setLocked(false);
     }
   }, [mode]);
