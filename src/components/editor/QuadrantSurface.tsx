@@ -278,6 +278,18 @@ export function QuadrantSurface({ onRoll, onTogglePerf, onTune = () => {} }: Pro
     // long enough to belong to the menu-rack hold is not a tap.
     if (d.moved || performance.now() - d.startedAt >= TAP_MS) return;
 
+    // A fresh source has zero layers, which fails the exact same
+    // every-role-has-nothing-unlocked check as a deliberately all-locked
+    // stack — moshNext() can't tell "nothing exists yet" from "everything is
+    // pinned" apart. Without this, the very first tap on a blank canvas
+    // (before anyone has pressed the Mosh button) claimed roles were
+    // "locked", which isn't true and isn't discoverable. Seed the stack with
+    // a full mosh instead — that's what an empty canvas actually needs.
+    if (useStore.getState().layers.length === 0) {
+      useStore.getState().mosh();
+      return;
+    }
+
     const roll = moshNext();
     if (!roll) {
       // Every role is locked — say so rather than looking broken.

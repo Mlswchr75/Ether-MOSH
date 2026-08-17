@@ -15,7 +15,7 @@ import { RebellionNudge } from "@/components/home/RebellionNudge";
 import { QuadrantDecor } from "@/components/home/QuadrantDecor";
 import { GlitchWordField, KEEP_OUT } from "@/components/home/GlitchWordField";
 import { HeroWord, HERO_ANCHOR } from "@/components/home/HeroWord";
-import { trackPlayer } from "@/engine/trackPlayer";
+import { titleAmbience } from "@/engine/titleAmbience";
 
 const DemoReelPanel = lazy(() =>
   import("@/components/home/DemoReelPanel").then(m => ({ default: m.DemoReelPanel })),
@@ -37,24 +37,14 @@ const Index = () => {
   // same word is never on screen twice.
   const [heroWord, setHeroWord] = useState<string>(HERO_ANCHOR);
 
-  // Start the theme track on the visitor's first real interaction with the
-  // page — browsers block audio before a user gesture, so this can't be
-  // autoplay-on-load. Fire-and-forget: a rejected play() (gesture didn't
-  // count, autoplay policy, etc.) never blocks anything the visitor was
-  // actually trying to do.
+  // The theme track no longer autoplays — it stays loaded as an optional
+  // default (the "play theme track" control in the editor still reaches it
+  // instantly) but nothing sounds until the visitor asks for it. In its
+  // place: procedural sci-fi/mechanical stingers on a loose schedule, purely
+  // atmospheric, gone the moment they leave the title screen.
   useEffect(() => {
-    if (trackPlayer.enabled) return;
-    const start = () => {
-      trackPlayer.play().catch(() => {});
-      window.removeEventListener("pointerdown", start);
-      window.removeEventListener("keydown", start);
-    };
-    window.addEventListener("pointerdown", start, { once: true });
-    window.addEventListener("keydown", start, { once: true });
-    return () => {
-      window.removeEventListener("pointerdown", start);
-      window.removeEventListener("keydown", start);
-    };
+    titleAmbience.start();
+    return () => titleAmbience.stop();
   }, []);
 
   const loadFile = useCallback(async (file: File) => {
