@@ -10,6 +10,33 @@ function isVideoFile(file: File): boolean {
   return file.type.startsWith("video/");
 }
 
+/**
+ * Some WebM files — notably anything produced by MediaRecorder, and other
+ * streamed/muxed-without-a-Cues-element containers — report `duration` as
+ * `Infinity` until the browser is forced to resolve it. Left unhandled, that
+ * silently defeats the 5-7s cap: a clip whose real length is well over
+ * MAX_CLIP_SECONDS gets treated as "duration unknown" and used in full
+ * instead of triggering the trim step. Seeking past the end forces Chromium
+ * and Firefox to compute the real duration.
+ */
+function resolveDuration(video: HTMLVideoElement): Promise<number> {
+  if (Number.isFinite(video.duration) && video.duration > 0) return Promise.resolve(video.duration);
+  return new Promise<number>((resolve) => {
+    const finish = (value: number) => {
+      video.removeEventListener("durationchange", onChange);
+      window.clearTimeout(timeout);
+      video.currentTime = 0;
+      resolve(value);
+    };
+    const onChange = () => {
+      if (Number.isFinite(video.duration) && video.duration > 0) finish(video.duration);
+    };
+    video.addEventListener("durationchange", onChange);
+    const timeout = window.setTimeout(() => finish(0), 2000);
+    try { video.currentTime = 1e10; } catch { finish(0); }
+  });
+}
+
 async function loadVideoClip(file: File): Promise<StickerClip> {
   const url = URL.createObjectURL(file);
   const video = document.createElement("video");
@@ -25,7 +52,8 @@ async function loadVideoClip(file: File): Promise<StickerClip> {
     video.src = url;
   });
 
-  const duration = Number.isFinite(video.duration) ? video.duration : 0;
+  const resolved = await resolveDuration(video);
+  const duration = Number.isFinite(resolved) ? resolved : 0;
   const trimEnd = Math.min(duration || MAX_CLIP_SECONDS, MAX_CLIP_SECONDS);
 
   try { await video.play(); } catch { /* autoplay can fail silently pre-gesture; loop still primed */ }
