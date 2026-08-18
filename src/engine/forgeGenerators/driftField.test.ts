@@ -51,7 +51,10 @@ function installCanvas2DPolyfillIfNeeded() {
 
   const contexts = new WeakMap<HTMLCanvasElement, MockCtx2D>();
   const original = HTMLCanvasElement.prototype.getContext;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint's no-explicit-any is relaxed for test files in this project's
+  // config, so no disable comment is needed for this cast (monkey-patching a
+  // native prototype method's overloaded signature isn't expressible more
+  // narrowly without losing the point of the mock).
   (HTMLCanvasElement.prototype as any).getContext = function (
     this: HTMLCanvasElement,
     type: string,

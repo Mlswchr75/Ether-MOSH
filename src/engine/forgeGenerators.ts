@@ -1,11 +1,12 @@
 /**
- * Forge's generator registry — the source-imagery side of Forge, mirroring
- * how effects.ts registers the 105 post-process effects. A generator draws
- * Forge's raw frame; the existing effect stack and Journey director then
- * process it exactly as they always have, unaware anything upstream changed.
+ * Forge's generator kit — shared types plus the `defineGenerator` helper
+ * every generator module builds on. This file must never import a generator
+ * implementation (anything under ./forgeGenerators/): those files import
+ * FROM here, and forgeGeneratorRegistry.ts assembles the full GENERATORS
+ * list by importing both this file and every generator — a one-directional
+ * dependency graph with no cycle. See forgeGeneratorRegistry.ts for why that
+ * split exists; don't reintroduce a generator import here.
  */
-
-import { DRIFT_FIELD } from "./forgeGenerators/driftField";
 
 export type GeneratorCategory = "volumetric" | "cellular" | "organic" | "field";
 
@@ -72,7 +73,11 @@ export function defineGenerator<S>(def: {
 /** id used by forgeSource.ts to special-case the WebGL generator's lifecycle. */
 export const VOLUMETRIC_BLOOM_ID = "volumetricBloom";
 
-const VOLUMETRIC_BLOOM_DESCRIPTOR: ForgeGeneratorDescriptor = {
+/**
+ * Exported (not module-private) because forgeGeneratorRegistry.ts — not this
+ * file — is what assembles the full GENERATORS list, and needs this entry.
+ */
+export const VOLUMETRIC_BLOOM_DESCRIPTOR: ForgeGeneratorDescriptor = {
   id: VOLUMETRIC_BLOOM_ID,
   name: "Volumetric Bloom",
   category: "volumetric",
@@ -80,9 +85,3 @@ const VOLUMETRIC_BLOOM_DESCRIPTOR: ForgeGeneratorDescriptor = {
   costTier: "heavy",
   kind: "webgl",
 };
-
-export const GENERATORS: ForgeGenerator[] = [VOLUMETRIC_BLOOM_DESCRIPTOR, DRIFT_FIELD];
-
-export const GENERATORS_BY_ID: Record<string, ForgeGenerator> = Object.fromEntries(
-  GENERATORS.map(g => [g.id, g]),
-);
