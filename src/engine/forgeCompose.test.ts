@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { composeForgeStack } from "./forgeCompose";
 import { EFFECTS_BY_ID, type EffectCategory } from "./effects";
 import { tileVerdict } from "./tileSafety";
+import { GENERATORS } from "./forgeGeneratorRegistry";
+import { pickForgeGenerator, rollKaleidoscope } from "./forgeCompose";
 
 /**
  * The bias exists so the journey director can have an opinion. Two things must
@@ -105,5 +107,35 @@ describe("forge composition", () => {
       expect(stack[0].blend).toBe("normal");
       expect(stack[0].opacity).toBe(1);
     }
+  });
+});
+
+describe("forge generator selection", () => {
+  it("only picks ids that exist in the registry", () => {
+    const rand = rng(99);
+    for (let i = 0; i < 100; i++) {
+      const id = pickForgeGenerator(rand);
+      expect(GENERATORS.some(g => g.id === id)).toBe(true);
+    }
+  });
+
+  it("reaches every registered generator over many rolls", () => {
+    const rand = rng(4242);
+    const seen = new Set<string>();
+    for (let i = 0; i < 500; i++) seen.add(pickForgeGenerator(rand));
+    for (const g of GENERATORS) expect(seen.has(g.id)).toBe(true);
+  });
+
+  it("rollKaleidoscope returns null most of the time and a valid fold count otherwise", () => {
+    const rand = rng(55);
+    let sawNull = false;
+    let sawFold = false;
+    for (let i = 0; i < 200; i++) {
+      const fold = rollKaleidoscope(rand);
+      if (fold === null) sawNull = true;
+      else { sawFold = true; expect([4, 6, 8]).toContain(fold); }
+    }
+    expect(sawNull).toBe(true);
+    expect(sawFold).toBe(true);
   });
 });

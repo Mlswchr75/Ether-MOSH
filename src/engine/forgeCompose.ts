@@ -14,6 +14,8 @@
 import { EFFECTS_BY_ID, type EffectCategory } from "./effects";
 import { tileSafeEffects, tileVerdict } from "./tileSafety";
 import type { BlendMode } from "./blend";
+import { GENERATORS } from "./forgeGeneratorRegistry";
+import { KALEIDOSCOPE_FOLD_OPTIONS } from "./forgeKaleidoscope";
 
 export type ForgeLayer = {
   effectId: string;
@@ -148,4 +150,27 @@ export function explainPool(): { safe: string[]; rejected: { id: string; reason:
     else rejected.push({ id, reason: v.reason ?? "unknown" });
   }
   return { safe, rejected };
+}
+
+/**
+ * Pick which generator drives the next shuffle. Uses the same weighted-draw
+ * machinery as effect selection above, but with a flat weight per generator
+ * for now — a director with an opinion (Journey, later) can pass its own
+ * weighting the same way categoryBias already lets it for effects.
+ */
+export function pickForgeGenerator(rand: () => number): string {
+  const ids = GENERATORS.map(g => g.id);
+  const picked = weightedDraw(ids, () => 1, 1, rand);
+  return picked[0] ?? ids[0];
+}
+
+/**
+ * Roughly one shuffle in four wraps the chosen generator in kaleidoscope
+ * symmetry. Returns the fold count to use, or null for no symmetry this
+ * round.
+ */
+export function rollKaleidoscope(rand: () => number): number | null {
+  if (rand() > 0.25) return null;
+  const idx = Math.floor(rand() * KALEIDOSCOPE_FOLD_OPTIONS.length);
+  return KALEIDOSCOPE_FOLD_OPTIONS[idx];
 }
