@@ -10,6 +10,7 @@ import { EFFECTS_BY_ID } from "@/engine/effects";
 import { timeController } from "@/engine/timefx";
 import { ProceduralSource } from "@/engine/proceduralSource";
 import { paintForgeSource, createForgeRuntime, type ForgeRuntime } from "@/engine/forgeSource";
+import { AudioWindow, type JourneyMic } from "@/engine/journeyCore";
 import { FrequencyStrip, BeatBorder } from "./AudioFeedback";
 import { startAnalyzer, stopAnalyzer, getAudioData } from "@/engine/audioAnalyzer";
 import { IsolationOverlay } from "./IsolationOverlay";
@@ -70,6 +71,7 @@ export function GlCanvas() {
   const forgeCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const forgeCtxRef = useRef<CanvasRenderingContext2D | null>(null);
   const forgeRuntimeRef = useRef<ForgeRuntime | null>(null);
+  const forgeAudioWindowRef = useRef(new AudioWindow());
   const vrFrameRef = useRef<(() => void) | null>(null);
   // Read once from the URL — overlay is a deployment mode, not a live setting.
   const overlayRef = useRef(overlayFromUrl());
@@ -388,6 +390,10 @@ export function GlCanvas() {
          drives it — handing the instance up through props would invite a second
          caller into `level()`, which is not a getter and would steal beats. */
       (window as any).__aegisMic = mic;
+      // Forge's richer audio features reuse the exact same rolling-window
+      // analysis Journey already relies on — the mic object published above
+      // already satisfies JourneyMic, so no adaptation is needed.
+      forgeAudioWindowRef.current.sample(mic as unknown as JourneyMic, now);
       const sources: Record<string, number> = {
         bass: mic.bassLevel,
         sub: mic.subLevel,
@@ -454,9 +460,17 @@ export function GlCanvas() {
       if (sourceModeRef.current === "forge" && forgeCanvasRef.current && forgeCtxRef.current) {
         const fc = forgeCanvasRef.current;
         if (!forgeRuntimeRef.current) forgeRuntimeRef.current = createForgeRuntime();
+        const forgeAudioFeatures = forgeAudioWindowRef.current.features(mic as unknown as JourneyMic, now);
         paintForgeSource(forgeCtxRef.current, fc.width, fc.height, t, forgeRef.current, {
           treble: sources.treble ?? 0,
           beat: sources.beat ?? 0,
+          bpm: forgeAudioFeatures.bpm,
+          regularity: forgeAudioFeatures.regularity,
+          density: forgeAudioFeatures.density,
+          brightness: forgeAudioFeatures.brightness,
+          weight: forgeAudioFeatures.weight,
+          dynamics: forgeAudioFeatures.dynamics,
+          energy: forgeAudioFeatures.energy,
         }, forgeRuntimeRef.current);
       }
 
