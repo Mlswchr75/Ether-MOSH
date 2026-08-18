@@ -561,6 +561,33 @@
     z-index: 1;
   }
 
+  /* ---------------- Hot-trigger identity tints ----------------
+     Every function on the visualizer rail carries its own resting hue
+     (an "H S% L%" triple or `var(--token)`, passed as --ht-tint) so the
+     row reads as a legend of distinct controls rather than a wall of
+     identical gray glyphs. Selector specificity here is deliberately
+     bumped past the base .hot-trigger rules above (adding [data-tint]
+     everywhere) so tint wins regardless of source order. Active state
+     still converges on the shared magenta glow — the one unambiguous
+     "this is on" signal — so tint only governs idle and hover. */
+  .hot-trigger[data-tint] {
+    color: hsl(var(--ht-tint) / 0.82);
+  }
+  .hot-trigger[data-tint]:hover {
+    color: hsl(var(--ht-tint) / 1);
+    border-color: hsl(var(--ht-tint) / 0.5);
+  }
+  .hot-trigger[data-tint] .hot-trigger__glitch {
+    color: hsl(var(--ht-tint) / 0.9);
+  }
+  .hot-trigger[data-tint][data-active] {
+    color: hsl(var(--mag));
+    border-color: hsl(var(--accent) / 0.45);
+  }
+  .hot-trigger[data-tint]:disabled {
+    color: hsl(var(--ht-tint) / 0.35);
+  }
+
   /* Slide-in for picker / favorites panels */
   .panel-in-3d {
     animation: panel-in 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
