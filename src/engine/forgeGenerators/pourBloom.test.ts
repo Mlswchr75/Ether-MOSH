@@ -91,6 +91,7 @@ describe("Pour Bloom generator", () => {
       expect(highMax).toBe(8);
     } finally {
       if (original) Object.defineProperty(navigator, "hardwareConcurrency", original);
+      else delete (navigator as { hardwareConcurrency?: number }).hardwareConcurrency;
     }
   });
 

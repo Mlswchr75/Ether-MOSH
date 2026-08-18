@@ -96,6 +96,7 @@ describe("Shatter Field generator", () => {
       expect(highMax).toBe(13);
     } finally {
       if (original) Object.defineProperty(navigator, "hardwareConcurrency", original);
+      else delete (navigator as { hardwareConcurrency?: number }).hardwareConcurrency;
     }
   });
 
