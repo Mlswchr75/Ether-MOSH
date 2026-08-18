@@ -1249,14 +1249,20 @@ export const useStore = create<State & Actions>((set, get) => ({
 
   randomiseForge: () => {
     const s = get();
+    const pickedGeneratorId = pickForgeGenerator(Math.random);
+    const generatorChanged = pickedGeneratorId !== s.forge.activeGeneratorId;
     const nextForge: ForgeState = {
       ...s.forge,
       seed: Math.floor(Math.random() * 0xFFFFFF),
       paletteIdx: Math.floor(Math.random() * FORGE_PALETTES.length),
-      activeGeneratorId: pickForgeGenerator(Math.random),
+      activeGeneratorId: pickedGeneratorId,
       kaleidoscopeFolds: rollKaleidoscope(Math.random),
-      transitionFromGeneratorId: s.forge.activeGeneratorId,
-      transitionStartedAt: performance.now(),
+      // Only start a crossfade when the generator actually changed — a
+      // same-id "transition" would render both the outgoing and incoming
+      // generator every frame for TRANSITION_MS to composite two
+      // pixel-identical images.
+      transitionFromGeneratorId: generatorChanged ? s.forge.activeGeneratorId : null,
+      transitionStartedAt: generatorChanged ? performance.now() : null,
     };
     const stack = composeForgeLayers(nextForge);
     nextForge.stack = stack;
