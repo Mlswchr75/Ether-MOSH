@@ -4,6 +4,7 @@ import { useStore } from "@/store/useStore";
 import { trackPlayer, DEFAULT_TRACK_TITLE } from "@/engine/trackPlayer";
 import { requestCameraStream, type CameraFacing } from "@/hooks/useCamera";
 import { IsolationPanel } from "./IsolationPanel";
+import { AudioSourcePicker } from "./AudioSourcePicker";
 import { shareUrl } from "@/lib/share";
 import { toast } from "sonner";
 
@@ -211,6 +212,9 @@ function TrackTrigger({ delay }: { delay: number }) {
 export function HotTriggers({ isRecording, onToggleRecord, onScreenshot, onFreeze, onGif, onShare, onSupport, gifBusy, gifProgress, onMicFlash, journeyOn, onToggleJourney, journeyLocked, isFullscreen, onToggleFullscreen, onHome, onClearFx, hasFx, onSaveFavorite }: Props) {
   const micEnabled = useStore(s => s.micEnabled);
   const setMicEnabled = useStore(s => s.setMicEnabled);
+  const systemAudioEnabled = useStore(s => s.systemAudioEnabled);
+  const setSystemAudioEnabled = useStore(s => s.setSystemAudioEnabled);
+  const [audioPickerOpen, setAudioPickerOpen] = useState(false);
   const mosh = useStore(s => s.mosh);
   const shuffleSec = useStore(s => s.shuffleSec);
   const setShuffleSec = useStore(s => s.setShuffleSec);
@@ -281,6 +285,18 @@ export function HotTriggers({ isRecording, onToggleRecord, onScreenshot, onFreez
       setFlipBusy(false);
     }
   };
+
+  // Close the mic/device-audio source picker on outside tap
+  useEffect(() => {
+    if (!audioPickerOpen) return;
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && t.closest("[data-audio-source-picker]")) return;
+      setAudioPickerOpen(false);
+    };
+    window.addEventListener("pointerdown", onDown, true);
+    return () => window.removeEventListener("pointerdown", onDown, true);
+  }, [audioPickerOpen]);
 
   // Close picker on outside tap
   useEffect(() => {
@@ -409,20 +425,31 @@ export function HotTriggers({ isRecording, onToggleRecord, onScreenshot, onFreez
             : <Circle className="h-4 w-4" strokeWidth={1.5} />}
         </HotBtn>
 
-        <HotBtn
-          delay={60}
-          label={micEnabled ? "Mic on" : "Mic off"}
-          active={micEnabled}
-          onClick={() => {
-            const next = !useStore.getState().micEnabled;
-            setMicEnabled(next);
-            onMicFlash?.(next);
-          }}
-        >
-          {micEnabled
-            ? <Mic className="h-4 w-4" strokeWidth={1.5} />
-            : <MicOff className="h-4 w-4" strokeWidth={1.5} />}
-        </HotBtn>
+        <div className="relative" data-audio-source-picker>
+          <HotBtn
+            delay={60}
+            label={micEnabled ? "Mic on" : systemAudioEnabled ? "Device audio on" : "Listen mode"}
+            active={micEnabled || systemAudioEnabled}
+            onClick={() => {
+              // Already listening — a tap just stops whichever source is active.
+              if (micEnabled) { setMicEnabled(false); onMicFlash?.(false); return; }
+              if (systemAudioEnabled) { setSystemAudioEnabled(false); onMicFlash?.(false); return; }
+              // Nothing active yet — ask which source, since grabbing the
+              // physical mic will interrupt Bluetooth/other playback.
+              setAudioPickerOpen(v => !v);
+            }}
+          >
+            {(micEnabled || systemAudioEnabled)
+              ? <Mic className="h-4 w-4" strokeWidth={1.5} />
+              : <MicOff className="h-4 w-4" strokeWidth={1.5} />}
+          </HotBtn>
+          {audioPickerOpen && (
+            <AudioSourcePicker
+              className="absolute right-full mr-2 top-0 z-40"
+              onClose={() => { setAudioPickerOpen(false); onMicFlash?.(true); }}
+            />
+          )}
+        </div>
 
         <TrackTrigger delay={70} />
 

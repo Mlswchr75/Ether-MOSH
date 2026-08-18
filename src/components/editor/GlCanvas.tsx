@@ -312,10 +312,23 @@ export function GlCanvas() {
     });
   }, [micEnabled, systemAudioEnabled]);
 
-  // Auto-resume the AudioContext if iOS suspends it.
+  // Auto-resume the AudioContext if iOS suspends it, and — the important
+  // direction — fully release the mic/device-audio capture when the tab is
+  // backgrounded. Without this, switching away to (say) YouTube leaves the
+  // getUserMedia stream open in the background, which keeps holding the
+  // Bluetooth audio route (or the OS audio focus) and blocks playback
+  // elsewhere until the tab is closed. Mirrors useCamera's stop-on-hide.
   useEffect(() => {
     const mic = micRef.current;
-    const onVis = () => { if (!document.hidden) mic.resume(); };
+    const onVis = () => {
+      if (document.hidden) {
+        const s = useStore.getState();
+        if (s.micEnabled) s.setMicEnabled(false);
+        if (s.systemAudioEnabled) s.setSystemAudioEnabled(false);
+      } else {
+        mic.resume();
+      }
+    };
     const onTouch = () => mic.resume();
     document.addEventListener("visibilitychange", onVis);
     window.addEventListener("touchend", onTouch, { passive: true });
