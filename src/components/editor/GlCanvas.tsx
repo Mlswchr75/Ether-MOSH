@@ -393,7 +393,7 @@ export function GlCanvas() {
       // Forge's richer audio features reuse the exact same rolling-window
       // analysis Journey already relies on — the mic object published above
       // already satisfies JourneyMic, so no adaptation is needed.
-      forgeAudioWindowRef.current.sample(mic as unknown as JourneyMic, now);
+      forgeAudioWindowRef.current.sample(mic, now);
       const sources: Record<string, number> = {
         bass: mic.bassLevel,
         sub: mic.subLevel,
@@ -460,7 +460,7 @@ export function GlCanvas() {
       if (sourceModeRef.current === "forge" && forgeCanvasRef.current && forgeCtxRef.current) {
         const fc = forgeCanvasRef.current;
         if (!forgeRuntimeRef.current) forgeRuntimeRef.current = createForgeRuntime();
-        const forgeAudioFeatures = forgeAudioWindowRef.current.features(mic as unknown as JourneyMic, now);
+        const forgeAudioFeatures = forgeAudioWindowRef.current.features(mic, now);
         paintForgeSource(forgeCtxRef.current, fc.width, fc.height, t, forgeRef.current, {
           treble: sources.treble ?? 0,
           beat: sources.beat ?? 0,
