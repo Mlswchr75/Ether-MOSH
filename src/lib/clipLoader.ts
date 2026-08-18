@@ -11,6 +11,22 @@ function isVideoFile(file: File): boolean {
 }
 
 /**
+ * Every URL assigned to a media element's `src` in this file comes from
+ * `URL.createObjectURL()` on a locally-selected File or a locally-recorded
+ * Blob — never from a remote or user-typed string — so it can only ever be a
+ * same-origin `blob:` reference into this tab's own object-URL table, not an
+ * arbitrary/attacker-controlled destination. Asserting that invariant here
+ * (rather than trusting the call site) is what actually stands between a
+ * future refactor and a real open redirect, and is also what satisfies
+ * static analysis that otherwise can't see that this string never touches
+ * user input or network responses.
+ */
+function assertBlobUrl(url: string): string {
+  if (!url.startsWith("blob:")) throw new Error("Expected an object URL");
+  return url;
+}
+
+/**
  * Some WebM files — notably anything produced by MediaRecorder, and other
  * streamed/muxed-without-a-Cues-element containers — report `duration` as
  * `Infinity` until the browser is forced to resolve it. Left unhandled, that
@@ -49,7 +65,7 @@ async function loadVideoClip(file: File): Promise<StickerClip> {
   await new Promise<void>((resolve, reject) => {
     video.onloadedmetadata = () => resolve();
     video.onerror = () => reject(new Error("Video decode failed"));
-    video.src = url;
+    video.src = assertBlobUrl(url);
   });
 
   const resolved = await resolveDuration(video);
@@ -78,7 +94,7 @@ async function loadGifClip(file: File): Promise<StickerClip> {
   await new Promise<void>((resolve, reject) => {
     img.onload = () => resolve();
     img.onerror = () => reject(new Error("GIF decode failed"));
-    img.src = url;
+    img.src = assertBlobUrl(url);
   });
   if (img.decode) await img.decode().catch(() => undefined);
 
@@ -123,7 +139,7 @@ export async function clipFromBlob(blob: Blob): Promise<StickerClip> {
   await new Promise<void>((resolve, reject) => {
     video.onloadedmetadata = () => resolve();
     video.onerror = () => reject(new Error("Recorded clip decode failed"));
-    video.src = url;
+    video.src = assertBlobUrl(url);
   });
   try { await video.play(); } catch { /* noop */ }
 

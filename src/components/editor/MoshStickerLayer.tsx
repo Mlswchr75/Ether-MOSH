@@ -249,6 +249,7 @@ function StickerNode({ sticker, containerRef, selected, onSelect }: NodeProps) {
       <div
         ref={mountRef}
         data-no-longpress
+        data-mosh-sticker-body={id}
         onPointerDown={onBodyPointerDown}
         onPointerMove={onBodyPointerMove}
         onPointerUp={onBodyPointerUp}
