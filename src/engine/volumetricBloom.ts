@@ -29,6 +29,8 @@ uniform vec3 uColorA;
 uniform vec3 uColorB;
 uniform float uStepBudget;
 
+// Keep in sync with VOLUMETRIC_BLOOM_MAX_STEP_BUDGET below — WebGL1 loop
+// bounds must be compile-time constants, so this can't be driven by a uniform.
 #define MAX_STEPS 64
 #define MAX_DIST 12.0
 #define SURF_EPS 0.01
@@ -98,11 +100,24 @@ void main() {
 }
 `;
 
+// Mirrors the GLSL `MAX_STEPS` compile-time loop bound above — WebGL1 requires
+// raymarch loop bounds to be compile-time constants, so the shader can never
+// execute more than this many steps no matter what value is passed in.
+// Callers (e.g. future device-adaptive performance tiering) should treat
+// values above this as a no-op ceiling, not a knob with headroom.
+export const VOLUMETRIC_BLOOM_MAX_STEP_BUDGET = 64;
+
 export type VolumetricBloomFrame = {
   energy: number;
   beat: number;
   colorA: [number, number, number];
   colorB: [number, number, number];
+  /**
+   * Raymarch step budget. Values above VOLUMETRIC_BLOOM_MAX_STEP_BUDGET (64)
+   * have no effect: the shader's `MAX_STEPS` loop bound is a GLSL
+   * compile-time constant (a real WebGL1 requirement), so e.g. 96 renders
+   * byte-identical to 64. render() also clamps to this ceiling defensively.
+   */
   stepBudget: number;
 };
 
@@ -113,7 +128,10 @@ export class VolumetricBloomRenderer {
   private material: THREE.ShaderMaterial;
   private canvas: HTMLCanvasElement;
   private lost = false;
-  private onLost = () => { this.lost = true; };
+  // preventDefault is what tells the browser to actually attempt restoration
+  // rather than losing the context permanently — same as GlCanvas.tsx's
+  // handler around MoshRenderer.
+  private onLost = (e: Event) => { e.preventDefault(); this.lost = true; };
   private onRestored = () => { this.lost = false; };
 
   constructor(canvas: HTMLCanvasElement) {
@@ -164,7 +182,7 @@ export class VolumetricBloomRenderer {
     u.uTime.value = t;
     u.uEnergy.value = frame.energy;
     u.uBeat.value = frame.beat;
-    u.uStepBudget.value = frame.stepBudget;
+    u.uStepBudget.value = Math.min(VOLUMETRIC_BLOOM_MAX_STEP_BUDGET, frame.stepBudget);
     (u.uColorA.value as THREE.Vector3).set(frame.colorA[0], frame.colorA[1], frame.colorA[2]);
     (u.uColorB.value as THREE.Vector3).set(frame.colorB[0], frame.colorB[1], frame.colorB[2]);
     this.renderer.render(this.scene, this.camera);
@@ -174,6 +192,16 @@ export class VolumetricBloomRenderer {
     this.canvas.removeEventListener("webglcontextlost", this.onLost);
     this.canvas.removeEventListener("webglcontextrestored", this.onRestored);
     this.material.dispose();
+    // Force-release the GL context rather than relying solely on
+    // renderer.dispose() — browsers cap concurrent live WebGL contexts
+    // (commonly ~8-16), and this class may get constructed/destroyed
+    // frequently once weighted generator selection and crossfade
+    // transitions land. Same defensive pattern as MoshRenderer.dispose()
+    // in Renderer.ts.
+    try {
+      const ext = this.renderer.getContext().getExtension("WEBGL_lose_context");
+      ext?.loseContext();
+    } catch {}
     this.renderer.dispose();
   }
 }
