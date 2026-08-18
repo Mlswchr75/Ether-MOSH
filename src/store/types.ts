@@ -97,4 +97,16 @@ export type ForgeState = {
   baseName: string | null;
   /** How much of the generated field sits over `baseImage`, 0..1. */
   overlay: number;
+  /** Id of the generator currently producing Forge's source imagery. */
+  activeGeneratorId: string;
+  /** Fold count if kaleidoscope symmetry is wrapping the active generator this shuffle, else null. */
+  kaleidoscopeFolds: number | null;
+  /**
+   * Set on shuffle/reseed to the *previous* generator id so
+   * paintForgeSource can crossfade into the new one instead of hard-cutting.
+   * Cleared once the transition window elapses.
+   */
+  transitionFromGeneratorId: string | null;
+  /** performance.now() timestamp the current transition began, or null when settled. */
+  transitionStartedAt: number | null;
 };

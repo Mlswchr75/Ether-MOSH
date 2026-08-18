@@ -31,7 +31,8 @@ import {
 } from "@/engine/effectRoles";
 import { exportSetlist, importSetlist, setlistToJson, SETLIST_SLOTS } from "@/engine/setlist";
 import type { AudioMap, Favorite, ForgeState, Intensity, IsolationMode, Layer, Modulator, PaletteProfile, SourceMode, StickerEntry } from "./types";
-import { composeForgeStack } from "@/engine/forgeCompose";
+import { composeForgeStack, pickForgeGenerator, rollKaleidoscope } from "@/engine/forgeCompose";
+import { DRIFT_FIELD } from "@/engine/forgeGenerators/driftField";
 import { FORGE_PALETTES } from "@/engine/forgePalettes";
 import { facingOfTrack, type CameraFacing } from "@/lib/cameraFacing";
 import { DEFAULT_TILE_UNIFORMS, type TileMode, type TileUniforms } from "@/engine/tile";
@@ -444,6 +445,10 @@ export const useStore = create<State & Actions>((set, get) => ({
     baseImage: null,
     baseName: null,
     overlay: 0.55,
+    activeGeneratorId: DRIFT_FIELD.id,
+    kaleidoscopeFolds: null,
+    transitionFromGeneratorId: null,
+    transitionStartedAt: null,
   } as ForgeState,
   preForgeLayers: null,
 
@@ -1248,6 +1253,10 @@ export const useStore = create<State & Actions>((set, get) => ({
       ...s.forge,
       seed: Math.floor(Math.random() * 0xFFFFFF),
       paletteIdx: Math.floor(Math.random() * FORGE_PALETTES.length),
+      activeGeneratorId: pickForgeGenerator(Math.random),
+      kaleidoscopeFolds: rollKaleidoscope(Math.random),
+      transitionFromGeneratorId: s.forge.activeGeneratorId,
+      transitionStartedAt: performance.now(),
     };
     const stack = composeForgeLayers(nextForge);
     nextForge.stack = stack;
