@@ -61,7 +61,12 @@ export function MoshStickerLayer() {
     <div
       ref={containerRef}
       className="absolute inset-0 pointer-events-none"
-      style={{ display: enabled ? undefined : "none", zIndex: 25 }}
+      // Above StartCameraOverlay's centered "GO LIVE" CTA (z-30) and
+      // HotTriggers (z-30) — a sticker placed before any main source is
+      // loaded, or one that happens to sit under the always-visible control
+      // rail, must stay interactable rather than getting silently shadowed
+      // by chrome that only covers a small centered/corner region anyway.
+      style={{ display: enabled ? undefined : "none", zIndex: 32 }}
       onPointerDown={(e) => { if (e.target === containerRef.current) selectSticker(null); }}
     >
       {stickers.map(s => (
