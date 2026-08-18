@@ -169,6 +169,14 @@ export const GENERATORS_BY_ID: Record<string, ForgeGenerator> = Object.fromEntri
 );
 ```
 
+> **Corrected in Task 2** (see that task's Step 4 for the full explanation):
+> `GENERATORS`/`GENERATORS_BY_ID` were later moved out of this file into a
+> new `forgeGeneratorRegistry.ts` to break a circular import with generator
+> modules, and `VOLUMETRIC_BLOOM_DESCRIPTOR` became an exported (not
+> module-private) `const` so that new file can import it. If you're
+> implementing Task 1 fresh, skip straight to the corrected version — there's
+> no reason to build the broken intermediate state first.
+
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `npx vitest run src/engine/forgeGenerators.test.ts`
@@ -277,20 +285,42 @@ export const DRIFT_FIELD = defineGenerator<Record<string, never>>({
 
 - [ ] **Step 4: Register it in the generator list**
 
-In `src/engine/forgeGenerators.ts`, add the import and include it in `GENERATORS`:
-
-```ts
-import { DRIFT_FIELD } from "./forgeGenerators/driftField";
-```
-
-```ts
-export const GENERATORS: ForgeGenerator[] = [VOLUMETRIC_BLOOM_DESCRIPTOR, DRIFT_FIELD];
-```
+> **Corrected during implementation:** registering a generator by importing it
+> directly into `forgeGenerators.ts` creates a runtime circular import —
+> `driftField.ts` imports `defineGenerator` (a value) from
+> `forgeGenerators.ts`, and `forgeGenerators.ts` would import `DRIFT_FIELD`
+> (a value) back. Whichever module a test reaches first ends up mid-evaluation
+> when the other tries to read from it, so `GENERATORS_BY_ID` gets built from
+> an `undefined` entry and throws. `GENERATORS`/`GENERATORS_BY_ID` now live in
+> a separate `src/engine/forgeGeneratorRegistry.ts`, which is the only module
+> allowed to import both `forgeGenerators.ts` (types + `defineGenerator`) and
+> individual generator files — nothing imports `forgeGeneratorRegistry.ts`
+> back, so there's no cycle. `forgeGenerators.ts` itself must never import
+> from `./forgeGenerators/*`.
+>
+> Register a new generator in `src/engine/forgeGeneratorRegistry.ts`
+> (**not** `forgeGenerators.ts`):
+>
+> ```ts
+> import { VOLUMETRIC_BLOOM_DESCRIPTOR, type ForgeGenerator } from "./forgeGenerators";
+> import { DRIFT_FIELD } from "./forgeGenerators/driftField";
+>
+> export const GENERATORS: ForgeGenerator[] = [VOLUMETRIC_BLOOM_DESCRIPTOR, DRIFT_FIELD];
+>
+> export const GENERATORS_BY_ID: Record<string, ForgeGenerator> = Object.fromEntries(
+>   GENERATORS.map(g => [g.id, g]),
+> );
+> ```
+>
+> (`VOLUMETRIC_BLOOM_DESCRIPTOR` is exported from `forgeGenerators.ts`, not
+> module-private, specifically so this file can import it.)
 
 - [ ] **Step 5: Run test to verify it passes**
 
-Run: `npx vitest run src/engine/forgeGenerators/driftField.test.ts`
-Expected: PASS (2 tests)
+Run: `npx vitest run src/engine/forgeGenerators.test.ts src/engine/forgeGeneratorRegistry.test.ts src/engine/forgeGenerators/driftField.test.ts`
+Expected: PASS (5 tests — `forgeGenerators.test.ts` now covers only `defineGenerator`, `forgeGeneratorRegistry.test.ts` covers `GENERATORS`/`GENERATORS_BY_ID`, both split out of the original combined test file)
+
+**Also note:** jsdom (this project's vitest test environment) doesn't implement real Canvas2D rendering, and the native `canvas` npm package isn't installable in this sandbox (missing system cairo/pkg-config). `driftField.test.ts` includes a feature-detected polyfill (only activates if `getContext("2d")` returns null) implementing just enough of the 2D context surface for `drawSeamless`'s pixel-based drawing to run for real in tests. Later Canvas2D generator tasks (3, 4) can reuse the same minimal ImageData-based approach; tasks needing canvas transforms/compositing (5, 6) will need to extend it for the specific methods they call (`drawImage`, `clip`, `translate`, `rotate`, `scale`, `clearRect`, etc.) — check what jsdom actually lacks before assuming, don't guess.
 
 - [ ] **Step 6: Commit**
 
@@ -494,7 +524,7 @@ export const SHATTER_FIELD = defineGenerator<ShatterFieldState>({
 
 - [ ] **Step 4: Register it in the generator list**
 
-In `src/engine/forgeGenerators.ts`:
+Register in `src/engine/forgeGeneratorRegistry.ts` (**not** `forgeGenerators.ts` — see Task 2's Step 4 for why: that file must never import a generator module, to avoid a circular import with `defineGenerator`):
 
 ```ts
 import { SHATTER_FIELD } from "./forgeGenerators/shatterField";
@@ -685,7 +715,7 @@ export const POUR_BLOOM = defineGenerator<PourBloomState>({
 
 - [ ] **Step 4: Register it in the generator list**
 
-In `src/engine/forgeGenerators.ts`:
+Register in `src/engine/forgeGeneratorRegistry.ts` (**not** `forgeGenerators.ts` — see Task 2's Step 4):
 
 ```ts
 import { POUR_BLOOM } from "./forgeGenerators/pourBloom";
@@ -1174,7 +1204,7 @@ git commit -m "forge: add Volumetric Bloom WebGL raymarch generator"
 Append to `src/engine/forgeCompose.test.ts`:
 
 ```ts
-import { GENERATORS } from "./forgeGenerators";
+import { GENERATORS } from "./forgeGeneratorRegistry";
 import { pickForgeGenerator, rollKaleidoscope } from "./forgeCompose";
 
 describe("forge generator selection", () => {
@@ -1218,7 +1248,7 @@ Expected: FAIL — `pickForgeGenerator is not exported` / `rollKaleidoscope is n
 In `src/engine/forgeCompose.ts`, add these imports near the top (alongside the existing ones):
 
 ```ts
-import { GENERATORS } from "./forgeGenerators";
+import { GENERATORS } from "./forgeGeneratorRegistry";
 import { KALEIDOSCOPE_FOLD_OPTIONS } from "./forgeKaleidoscope";
 ```
 
@@ -1474,7 +1504,8 @@ Replace the full contents of `src/engine/forgeSource.ts`:
 ```ts
 import { drawSeamless } from "./seamlessSource";
 import { FORGE_PALETTES } from "./forgePalettes";
-import { GENERATORS_BY_ID, VOLUMETRIC_BLOOM_ID, type ForgeGeneratorAudio, type Canvas2DForgeGenerator } from "./forgeGenerators";
+import { VOLUMETRIC_BLOOM_ID, type ForgeGeneratorAudio, type Canvas2DForgeGenerator } from "./forgeGenerators";
+import { GENERATORS_BY_ID } from "./forgeGeneratorRegistry";
 import { DRIFT_FIELD } from "./forgeGenerators/driftField";
 import { applyKaleidoscope } from "./forgeKaleidoscope";
 import { applyFinishingGlow } from "./forgeFinishing";
@@ -1989,3 +2020,5 @@ Navigate to `/edit` with an uploaded image and with the camera source, confirm b
 - **Spec coverage:** All five roster generators (Volumetric Bloom, Shatter Field, Pour Bloom, Kaleidoscope, Drift Field), the shared finishing pass, crossfade transitions, the existing-effect-registry reuse (no work needed, confirmed already true during brainstorming), device-adaptive performance tiering, and WebGL error-handling/fallback are each covered by a task. Phase 2 (seamless tiling for the new generators) and Phase 3 (image-upload + self-learning) are explicitly out of scope per the spec and are not addressed here.
 - **Type consistency:** `ForgeGeneratorAudio` is defined once in Task 1 and reused unchanged through every later task. `ForgeGenerator`/`Canvas2DForgeGenerator`/`defineGenerator` are defined once and used identically by all three Canvas2D generators. `ForgeRuntime` is defined in Task 10 and only ever extended (Task 12), never redefined. `paintForgeSource`'s signature changes exactly once (Task 10) and every later reference to it (Task 11) matches that signature.
 - **No placeholders:** every step contains complete, runnable code — no `TBD`, no "add appropriate error handling" without showing the handling, no "similar to Task N" without repeating the code.
+
+**Amendment (discovered during Task 2 implementation):** the original plan had every generator module import `defineGenerator` (a value) from `forgeGenerators.ts`, while `forgeGenerators.ts` itself imported each generator back to build `GENERATORS`/`GENERATORS_BY_ID` — a runtime circular import. This wasn't caught during design or spec/code review because those reviews inspect structure and types, not module evaluation order; it only surfaced when a test actually ran and hit the cycle. Fixed by splitting `GENERATORS`/`GENERATORS_BY_ID` into a new `forgeGeneratorRegistry.ts` that imports both `forgeGenerators.ts` and every generator module, while `forgeGenerators.ts` itself never imports a generator. Tasks 1, 2, 3, 4, 8, and 10 above are updated in place to reflect this — treat the plan as already corrected, not as something to re-derive.
