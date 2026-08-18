@@ -10,7 +10,7 @@ import { EFFECTS_BY_ID } from "@/engine/effects";
 import { timeController } from "@/engine/timefx";
 import { ProceduralSource } from "@/engine/proceduralSource";
 import { paintForgeSource, createForgeRuntime, type ForgeRuntime } from "@/engine/forgeSource";
-import { AudioWindow, type JourneyMic } from "@/engine/journeyCore";
+import { AudioWindow, SILENT_FEATURES, type AudioFeatures, type JourneyMic } from "@/engine/journeyCore";
 import { FrequencyStrip, BeatBorder } from "./AudioFeedback";
 import { startAnalyzer, stopAnalyzer, getAudioData } from "@/engine/audioAnalyzer";
 import { IsolationOverlay } from "./IsolationOverlay";
@@ -19,6 +19,9 @@ import { toast } from "sonner";
 import { vrMode } from "@/engine/vrMode";
 import { VrButton } from "./VrButton";
 
+/** Matches JourneyDirector's default sampleMs — the cadence its AudioFeatures
+ *  computation was designed for, not an arbitrary choice. */
+const FORGE_AUDIO_FEATURES_INTERVAL_MS = 110;
 
 /**
  * Heuristic default audio map for any unmapped param. When the mic is on,
@@ -72,6 +75,13 @@ export function GlCanvas() {
   const forgeCtxRef = useRef<CanvasRenderingContext2D | null>(null);
   const forgeRuntimeRef = useRef<ForgeRuntime | null>(null);
   const forgeAudioWindowRef = useRef(new AudioWindow());
+  // .features() does per-call array allocation + a tempo sort over the whole
+  // rolling window — cheap once, not free at requestAnimationFrame cadence.
+  // Journey's own director recomputes at a 110ms interval (~9Hz), not per
+  // frame; Forge mirrors that cadence instead of paying render-loop cost for
+  // a value that doesn't change frame-to-frame anyway.
+  const forgeAudioFeaturesRef = useRef<AudioFeatures>(SILENT_FEATURES);
+  const forgeAudioFeaturesAtRef = useRef(0);
   const vrFrameRef = useRef<(() => void) | null>(null);
   // Read once from the URL — overlay is a deployment mode, not a live setting.
   const overlayRef = useRef(overlayFromUrl());
@@ -460,7 +470,11 @@ export function GlCanvas() {
       if (sourceModeRef.current === "forge" && forgeCanvasRef.current && forgeCtxRef.current) {
         const fc = forgeCanvasRef.current;
         if (!forgeRuntimeRef.current) forgeRuntimeRef.current = createForgeRuntime();
-        const forgeAudioFeatures = forgeAudioWindowRef.current.features(mic, now);
+        if (now - forgeAudioFeaturesAtRef.current >= FORGE_AUDIO_FEATURES_INTERVAL_MS) {
+          forgeAudioFeaturesRef.current = forgeAudioWindowRef.current.features(mic, now);
+          forgeAudioFeaturesAtRef.current = now;
+        }
+        const forgeAudioFeatures = forgeAudioFeaturesRef.current;
         paintForgeSource(forgeCtxRef.current, fc.width, fc.height, t, forgeRef.current, {
           treble: sources.treble ?? 0,
           beat: sources.beat ?? 0,
