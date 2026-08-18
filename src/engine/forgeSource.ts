@@ -27,6 +27,8 @@ export type ForgeRuntime = {
   volumetric: VolumetricBloomRenderer | null;
   volumetricCanvas: HTMLCanvasElement | null;
   volumetricFailed: boolean;
+  volumetricStepBudget: number;
+  volumetricSlowFrameStreak: number;
 };
 
 function makeCanvas(): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } {
@@ -53,6 +55,7 @@ export function createForgeRuntime(): ForgeRuntime {
   const a = makeCanvas();
   const b = makeCanvas();
   const f = makeCanvas();
+  const cpuCount = typeof navigator !== "undefined" ? navigator.hardwareConcurrency || 4 : 4;
   return {
     states: new Map(),
     scratchA: a.canvas,
@@ -64,6 +67,8 @@ export function createForgeRuntime(): ForgeRuntime {
     volumetric: null,
     volumetricCanvas: null,
     volumetricFailed: false,
+    volumetricStepBudget: cpuCount <= 4 ? 28 : 48,
+    volumetricSlowFrameStreak: 0,
   };
 }
 
@@ -116,13 +121,25 @@ function renderGeneratorInto(
         }
         const colorA = hexToRgb(palette[0]).map(c => c / 255) as [number, number, number];
         const colorB = hexToRgb(palette[1]).map(c => c / 255) as [number, number, number];
+        const frameStart = performance.now();
         runtime.volumetric.render(t, {
           energy: audio.energy,
           beat: audio.beat,
           colorA,
           colorB,
-          stepBudget: 48,
+          stepBudget: runtime.volumetricStepBudget,
         });
+        const frameCost = performance.now() - frameStart;
+        const budget = 1000 / 30; // 30fps floor for this generator specifically
+        if (frameCost > budget * 1.4) {
+          runtime.volumetricSlowFrameStreak++;
+          if (runtime.volumetricSlowFrameStreak >= 8 && runtime.volumetricStepBudget > 16) {
+            runtime.volumetricStepBudget = Math.max(16, runtime.volumetricStepBudget - 8);
+            runtime.volumetricSlowFrameStreak = 0;
+          }
+        } else {
+          runtime.volumetricSlowFrameStreak = 0;
+        }
         if (!runtime.volumetric.isLost) {
           target.clearRect(0, 0, w, h);
           target.drawImage(runtime.volumetricCanvas, 0, 0, w, h);

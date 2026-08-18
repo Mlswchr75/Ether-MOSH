@@ -22,7 +22,9 @@ function toroidalDelta(a: number, b: number): number {
 
 function createState(seed: string): PourBloomState {
   const rand = rngFromSeed(seed);
-  const count = 5 + Math.floor(rand() * 4); // 5..8
+  const cpuCount = typeof navigator !== "undefined" ? navigator.hardwareConcurrency || 4 : 4;
+  const ceiling = cpuCount <= 4 ? 6 : 8;
+  const count = 4 + Math.floor(rand() * (ceiling - 4)); // 4..ceiling
   const blobs: PourBlob[] = [];
   for (let i = 0; i < count; i++) {
     blobs.push({

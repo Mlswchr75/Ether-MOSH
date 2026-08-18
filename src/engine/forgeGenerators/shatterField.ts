@@ -21,7 +21,9 @@ function toroidalDelta(a: number, b: number): number {
 
 function createState(seed: string): ShatterFieldState {
   const rand = rngFromSeed(seed);
-  const count = 8 + Math.floor(rand() * 6); // 8..13
+  const cpuCount = typeof navigator !== "undefined" ? navigator.hardwareConcurrency || 4 : 4;
+  const ceiling = cpuCount <= 4 ? 9 : 13;
+  const count = 6 + Math.floor(rand() * (ceiling - 6)); // 6..ceiling
   const cells: ShatterCell[] = [];
   for (let i = 0; i < count; i++) {
     cells.push({

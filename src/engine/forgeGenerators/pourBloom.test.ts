@@ -64,9 +64,9 @@ function makeCtx(w: number, h: number) {
 const AUDIO = { treble: 0, beat: 0, bpm: 0, regularity: 0, density: 0, brightness: 0.4, weight: 0.4, dynamics: 0, energy: 0 };
 
 describe("Pour Bloom generator", () => {
-  it("seeds between 5 and 8 blobs with positive radii", () => {
+  it("seeds between 4 and 8 blobs with positive radii depending on device tier", () => {
     const state = POUR_BLOOM.createState("seed-a") as PourBloomState;
-    expect(state.blobs.length).toBeGreaterThanOrEqual(5);
+    expect(state.blobs.length).toBeGreaterThanOrEqual(4);
     expect(state.blobs.length).toBeLessThanOrEqual(8);
     for (const b of state.blobs) expect(b.r).toBeGreaterThan(0);
   });

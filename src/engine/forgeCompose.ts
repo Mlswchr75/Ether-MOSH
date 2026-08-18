@@ -154,14 +154,27 @@ export function explainPool(): { safe: string[]; rejected: { id: string; reason:
 
 /**
  * Pick which generator drives the next shuffle. Uses the same weighted-draw
- * machinery as effect selection above, but with a flat weight per generator
- * for now — a director with an opinion (Journey, later) can pass its own
- * weighting the same way categoryBias already lets it for effects.
+ * machinery as effect selection above. Weight is flat across generators
+ * except for a device-tier bias: on low-CPU-count devices, `costTier:
+ * "heavy"` generators (currently only Volumetric Bloom, the WebGL raymarch
+ * generator) are drawn less often, since that is the most expensive thing
+ * Forge can render and a weak device shouldn't land on it as often as
+ * anything else. A director with an opinion (Journey, later) can still layer
+ * its own weighting on top the same way categoryBias already lets it for
+ * effects.
  */
 export function pickForgeGenerator(rand: () => number): string {
-  const ids = GENERATORS.map(g => g.id);
-  const picked = weightedDraw(ids, () => 1, 1, rand);
-  return picked[0] ?? ids[0];
+  const lowTier = typeof navigator !== "undefined" ? (navigator.hardwareConcurrency || 4) <= 4 : false;
+  const picked = weightedDraw(
+    GENERATORS.map(g => g.id),
+    id => {
+      const g = GENERATORS.find(x => x.id === id);
+      return lowTier && g?.costTier === "heavy" ? 0.35 : 1;
+    },
+    1,
+    rand,
+  );
+  return picked[0] ?? GENERATORS[0]?.id ?? "driftField";
 }
 
 /**

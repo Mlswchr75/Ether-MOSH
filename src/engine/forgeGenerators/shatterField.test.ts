@@ -64,9 +64,9 @@ function makeCtx(w: number, h: number) {
 const AUDIO = { treble: 0, beat: 0, bpm: 0, regularity: 0, density: 0, brightness: 0.4, weight: 0.4, dynamics: 0, energy: 0 };
 
 describe("Shatter Field generator", () => {
-  it("seeds between 8 and 13 drifting cells", () => {
+  it("seeds between 6 and 13 drifting cells depending on device tier", () => {
     const state = SHATTER_FIELD.createState("seed-a") as ShatterFieldState;
-    expect(state.cells.length).toBeGreaterThanOrEqual(8);
+    expect(state.cells.length).toBeGreaterThanOrEqual(6);
     expect(state.cells.length).toBeLessThanOrEqual(13);
     for (const c of state.cells) {
       expect(c.x).toBeGreaterThanOrEqual(0);

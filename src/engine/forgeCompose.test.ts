@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { composeForgeStack } from "./forgeCompose";
 import { EFFECTS_BY_ID, type EffectCategory } from "./effects";
 import { tileVerdict } from "./tileSafety";
@@ -111,6 +111,25 @@ describe("forge composition", () => {
 });
 
 describe("forge generator selection", () => {
+  let restoreHardwareConcurrency: (() => void) | null = null;
+
+  /** Volumetric Bloom is the only `costTier: "heavy"` generator today. */
+  const VOLUMETRIC_BLOOM_ID = "volumetricBloom";
+
+  function stubHardwareConcurrency(value: number) {
+    const original = Object.getOwnPropertyDescriptor(navigator, "hardwareConcurrency");
+    Object.defineProperty(navigator, "hardwareConcurrency", { value, configurable: true });
+    restoreHardwareConcurrency = () => {
+      if (original) Object.defineProperty(navigator, "hardwareConcurrency", original);
+      else delete (navigator as { hardwareConcurrency?: number }).hardwareConcurrency;
+    };
+  }
+
+  afterEach(() => {
+    restoreHardwareConcurrency?.();
+    restoreHardwareConcurrency = null;
+  });
+
   it("only picks ids that exist in the registry", () => {
     const rand = rng(99);
     for (let i = 0; i < 100; i++) {
@@ -124,6 +143,41 @@ describe("forge generator selection", () => {
     const seen = new Set<string>();
     for (let i = 0; i < 500; i++) seen.add(pickForgeGenerator(rand));
     for (const g of GENERATORS) expect(seen.has(g.id)).toBe(true);
+  });
+
+  it("down-weights the heavy generator (Volumetric Bloom) on low-tier devices", () => {
+    stubHardwareConcurrency(2);
+    const rand = rng(2026);
+    let volumetricCount = 0;
+    const rolls = 500;
+    for (let i = 0; i < rolls; i++) {
+      if (pickForgeGenerator(rand) === VOLUMETRIC_BLOOM_ID) volumetricCount++;
+    }
+    // Flat weighting across 4 generators would land ~25%; the biased weight
+    // (0.35 vs 1) works out to roughly 10.4%. Use a generous threshold well
+    // below flat-share and above zero, so this is a real statistical signal
+    // without being flaky.
+    expect(volumetricCount / rolls).toBeLessThan(0.15);
+    expect(volumetricCount).toBeGreaterThan(0); // never fully locked out
+  });
+
+  it("keeps selection roughly uniform across all 4 generators on high-tier devices", () => {
+    stubHardwareConcurrency(8);
+    const rand = rng(4242);
+    const counts: Record<string, number> = {};
+    const rolls = 500;
+    for (let i = 0; i < rolls; i++) {
+      const id = pickForgeGenerator(rand);
+      counts[id] = (counts[id] ?? 0) + 1;
+    }
+    for (const g of GENERATORS) {
+      const share = (counts[g.id] ?? 0) / rolls;
+      // Flat weighting over 4 ids is ~25% each; allow a wide band so this
+      // isn't flaky, while still catching one generator dominating or being
+      // starved.
+      expect(share).toBeGreaterThan(0.1);
+      expect(share).toBeLessThan(0.4);
+    }
   });
 
   it("rollKaleidoscope returns null most of the time and a valid fold count otherwise", () => {
