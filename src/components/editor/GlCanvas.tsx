@@ -9,7 +9,7 @@ import { trackPlayer } from "@/engine/trackPlayer";
 import { EFFECTS_BY_ID } from "@/engine/effects";
 import { timeController } from "@/engine/timefx";
 import { ProceduralSource } from "@/engine/proceduralSource";
-import { paintForgeSource } from "@/engine/forgeSource";
+import { paintForgeSource, createForgeRuntime, type ForgeRuntime } from "@/engine/forgeSource";
 import { FrequencyStrip, BeatBorder } from "./AudioFeedback";
 import { startAnalyzer, stopAnalyzer, getAudioData } from "@/engine/audioAnalyzer";
 import { IsolationOverlay } from "./IsolationOverlay";
@@ -69,6 +69,7 @@ export function GlCanvas() {
    *  the ambient ProceduralSource used when there's simply no source yet. */
   const forgeCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const forgeCtxRef = useRef<CanvasRenderingContext2D | null>(null);
+  const forgeRuntimeRef = useRef<ForgeRuntime | null>(null);
   const vrFrameRef = useRef<(() => void) | null>(null);
   // Read once from the URL — overlay is a deployment mode, not a live setting.
   const overlayRef = useRef(overlayFromUrl());
@@ -448,10 +449,11 @@ export function GlCanvas() {
       // camera or image element for, the "photo" is generated on the spot.
       if (sourceModeRef.current === "forge" && forgeCanvasRef.current && forgeCtxRef.current) {
         const fc = forgeCanvasRef.current;
+        if (!forgeRuntimeRef.current) forgeRuntimeRef.current = createForgeRuntime();
         paintForgeSource(forgeCtxRef.current, fc.width, fc.height, t, forgeRef.current, {
           treble: sources.treble ?? 0,
           beat: sources.beat ?? 0,
-        });
+        }, forgeRuntimeRef.current);
       }
 
       const audioSmooth = audioSmoothRef.current;
