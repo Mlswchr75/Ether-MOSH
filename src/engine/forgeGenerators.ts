@@ -5,6 +5,8 @@
  * process it exactly as they always have, unaware anything upstream changed.
  */
 
+import { DRIFT_FIELD } from "./forgeGenerators/driftField";
+
 export type GeneratorCategory = "volumetric" | "cellular" | "organic" | "field";
 
 export type ForgeGeneratorAudio = {
@@ -79,7 +81,7 @@ const VOLUMETRIC_BLOOM_DESCRIPTOR: ForgeGeneratorDescriptor = {
   kind: "webgl",
 };
 
-export const GENERATORS: ForgeGenerator[] = [VOLUMETRIC_BLOOM_DESCRIPTOR];
+export const GENERATORS: ForgeGenerator[] = [VOLUMETRIC_BLOOM_DESCRIPTOR, DRIFT_FIELD];
 
 export const GENERATORS_BY_ID: Record<string, ForgeGenerator> = Object.fromEntries(
   GENERATORS.map(g => [g.id, g]),
