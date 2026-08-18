@@ -335,7 +335,7 @@ git commit -m "forge: fold existing field into the generator registry as Drift F
 
 **Files:**
 - Create: `src/engine/forgeGenerators/shatterField.ts`
-- Modify: `src/engine/forgeGenerators.ts` (register it)
+- Modify: `src/engine/forgeGeneratorRegistry.ts` (register it — see Task 2's Step 4 for why this isn't `forgeGenerators.ts`)
 - Test: `src/engine/forgeGenerators/shatterField.test.ts`
 
 - [ ] **Step 1: Write the failing test**
@@ -552,7 +552,7 @@ git commit -m "forge: add Shatter Field cellular-fracture generator"
 
 **Files:**
 - Create: `src/engine/forgeGenerators/pourBloom.ts`
-- Modify: `src/engine/forgeGenerators.ts` (register it)
+- Modify: `src/engine/forgeGeneratorRegistry.ts` (register it — see Task 2's Step 4 for why this isn't `forgeGenerators.ts`)
 - Test: `src/engine/forgeGenerators/pourBloom.test.ts`
 
 - [ ] **Step 1: Write the failing test**
