@@ -18,8 +18,9 @@
  */
 import { VOLUMETRIC_BLOOM_DESCRIPTOR, type ForgeGenerator } from "./forgeGenerators";
 import { DRIFT_FIELD } from "./forgeGenerators/driftField";
+import { SHATTER_FIELD } from "./forgeGenerators/shatterField";
 
-export const GENERATORS: ForgeGenerator[] = [VOLUMETRIC_BLOOM_DESCRIPTOR, DRIFT_FIELD];
+export const GENERATORS: ForgeGenerator[] = [VOLUMETRIC_BLOOM_DESCRIPTOR, DRIFT_FIELD, SHATTER_FIELD];
 
 export const GENERATORS_BY_ID: Record<string, ForgeGenerator> = Object.fromEntries(
   GENERATORS.map(g => [g.id, g]),
