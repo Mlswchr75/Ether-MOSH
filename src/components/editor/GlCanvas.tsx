@@ -207,6 +207,10 @@ export function GlCanvas() {
   // Cleanup procedural on unmount
   useEffect(() => () => { proceduralRef.current?.dispose(); proceduralRef.current = null; }, []);
 
+  // Cleanup forge's Volumetric Bloom WebGL context on unmount — browsers cap
+  // concurrent contexts, so this must be released explicitly, not left to GC.
+  useEffect(() => () => { forgeRuntimeRef.current?.volumetric?.dispose(); forgeRuntimeRef.current = null; }, []);
+
   // Auto-resume AudioContext on tab refocus
   useEffect(() => {
     const onVis = () => {

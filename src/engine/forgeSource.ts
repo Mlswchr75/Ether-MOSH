@@ -1,5 +1,5 @@
 import { FORGE_PALETTES } from "./forgePalettes";
-import { VOLUMETRIC_BLOOM_ID, type ForgeGeneratorAudio, type Canvas2DForgeGenerator } from "./forgeGenerators";
+import { VOLUMETRIC_BLOOM_ID, type ForgeGeneratorAudio, type Canvas2DForgeGenerator, type ForgeGenerator } from "./forgeGenerators";
 import { GENERATORS_BY_ID } from "./forgeGeneratorRegistry";
 import { DRIFT_FIELD } from "./forgeGenerators/driftField";
 import { applyKaleidoscope } from "./forgeKaleidoscope";
@@ -36,6 +36,19 @@ function makeCanvas(): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2
   return { canvas, ctx };
 }
 
+/**
+ * Scratch canvases are created once per runtime at the browser default
+ * (300x150) and reused across frames, so they must be kept in sync with the
+ * caller's actual frame size on every call — otherwise content drawn at
+ * `w`x`h` gets clipped/stretched against a stale canvas size.
+ */
+function ensureSize(canvas: HTMLCanvasElement, w: number, h: number) {
+  if (canvas.width !== w || canvas.height !== h) {
+    canvas.width = w;
+    canvas.height = h;
+  }
+}
+
 export function createForgeRuntime(): ForgeRuntime {
   const a = makeCanvas();
   const b = makeCanvas();
@@ -52,6 +65,10 @@ export function createForgeRuntime(): ForgeRuntime {
     volumetricCanvas: null,
     volumetricFailed: false,
   };
+}
+
+function isCanvas2DGenerator(g: ForgeGenerator): g is Canvas2DForgeGenerator {
+  return g.kind === "canvas2d";
 }
 
 function stateFor(runtime: ForgeRuntime, generator: Canvas2DForgeGenerator, seed: string): unknown {
@@ -122,7 +139,7 @@ function renderGeneratorInto(
   }
 
   const entry = GENERATORS_BY_ID[generatorId];
-  const generator = entry && entry.kind === "canvas2d" ? entry : DRIFT_FIELD;
+  const generator = entry && isCanvas2DGenerator(entry) ? entry : DRIFT_FIELD;
   const state = stateFor(runtime, generator, seed);
   generator.render({ ctx: target, w, h, t, seed, palette, intensity, audio }, state);
 }
@@ -138,6 +155,8 @@ export function paintForgeSource(
   reactive: Partial<ForgeGeneratorAudio> = {},
   runtime: ForgeRuntime,
 ) {
+  ensureSize(runtime.scratchA, w, h);
+  ensureSize(runtime.scratchB, w, h);
   const palette = FORGE_PALETTES[forge.paletteIdx]?.colors ?? FORGE_PALETTES[0].colors;
   const audio: ForgeGeneratorAudio = {
     treble: reactive.treble ?? 0,

@@ -3,7 +3,7 @@ import { Download, RotateCw, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { useStore } from "@/store/useStore";
 import { MoshRenderer, type RenderLayer } from "@/engine/Renderer";
-import { paintForgeSource } from "@/engine/forgeSource";
+import { paintForgeSource, createForgeRuntime } from "@/engine/forgeSource";
 import { FORGE_PALETTES } from "@/engine/forgePalettes";
 import { seamScore } from "@/engine/tileSafety";
 import { healToSeamless, renderSizeFor, DEFAULT_HEAL_BAND } from "@/engine/seamlessHeal";
@@ -62,6 +62,7 @@ export function ForgePanel() {
     const t0 = toast.loading(seamless ? "Finding the cleanest frame…" : `Rendering ${size}x${size}…`);
     let off: HTMLCanvasElement | null = null;
     let r: MoshRenderer | null = null;
+    const runtime = createForgeRuntime();
     try {
       const renderSize = seamless ? renderSizeFor(size) : size;
       off = document.createElement("canvas");
@@ -97,7 +98,7 @@ export function ForgePanel() {
       const pctx = probe.getContext("2d", { willReadFrequently: true })!;
 
       const paint = (time: number) => {
-        paintForgeSource(sctx, src.width, src.height, time, currentForge);
+        paintForgeSource(sctx, src.width, src.height, time, currentForge, {}, runtime);
         r!.render(layers, 0.5);
       };
 
@@ -162,6 +163,7 @@ export function ForgePanel() {
     } finally {
       r?.dispose();
       off?.remove();
+      runtime.volumetric?.dispose();
       setExporting(false);
     }
   }, [exporting]);
