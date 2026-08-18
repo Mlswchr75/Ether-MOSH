@@ -35,6 +35,8 @@ import { DELIVERABLES_BY_ID } from "@/engine/deliverables";
 import { captureDeliverable } from "@/engine/captureDeliverable";
 import { cueFromUrl, setlistFilename } from "@/engine/setlist";
 import { KaossSurface } from "@/components/editor/KaossSurface";
+import { MoshStickerLayer } from "@/components/editor/MoshStickerLayer";
+import { useMoshStickerStore } from "@/store/moshStickerStore";
 import { QuadrantSurface } from "@/components/editor/QuadrantSurface";
 import { TrackpadGestures } from "@/components/editor/TrackpadGestures";
 import { toggleSystemAudio } from "@/engine/systemAudio";
@@ -1219,6 +1221,7 @@ export default function Editor() {
           onMicFlash={(on) => setMicFlash({ on, key: performance.now() })}
         />
         <KaossSurface />
+        <MoshStickerLayer />
         <RippleLayer />
         <SourceTransition trigger={transitionKey} />
         
@@ -1253,6 +1256,7 @@ export default function Editor() {
               try { useStore.getState().reset(); } catch {}
               try { useStore.getState().clearVideoSource(); } catch {}
               try { useStore.getState().clearImage(); } catch {}
+              try { useMoshStickerStore.getState().disposeAll(); } catch {}
               navigate("/");
             }}
           />

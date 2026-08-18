@@ -4,6 +4,7 @@ import { useStore } from "@/store/useStore";
 import { trackPlayer, DEFAULT_TRACK_TITLE } from "@/engine/trackPlayer";
 import { requestCameraStream, type CameraFacing } from "@/hooks/useCamera";
 import { IsolationPanel } from "./IsolationPanel";
+import { MoshStickerTrigger } from "./MoshStickerTrigger";
 import { shareUrl } from "@/lib/share";
 import { toast } from "sonner";
 
@@ -425,6 +426,7 @@ export function HotTriggers({ isRecording, onToggleRecord, onScreenshot, onFreez
         </HotBtn>
 
         <TrackTrigger delay={70} />
+        <MoshStickerTrigger delay={80} />
 
         {/* Auto-shuffle — dropdown opens LEFT */}
         <div className="relative" data-shuffle-picker>
