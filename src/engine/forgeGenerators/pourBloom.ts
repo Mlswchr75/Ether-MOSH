@@ -24,7 +24,7 @@ function createState(seed: string): PourBloomState {
   const rand = rngFromSeed(seed);
   const cpuCount = typeof navigator !== "undefined" ? navigator.hardwareConcurrency || 4 : 4;
   const ceiling = cpuCount <= 4 ? 6 : 8;
-  const count = 4 + Math.floor(rand() * (ceiling - 4)); // 4..ceiling
+  const count = 4 + Math.floor(rand() * (ceiling - 4 + 1)); // 4..ceiling
   const blobs: PourBlob[] = [];
   for (let i = 0; i < count; i++) {
     blobs.push({

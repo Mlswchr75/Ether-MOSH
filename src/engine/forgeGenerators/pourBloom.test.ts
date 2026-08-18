@@ -71,6 +71,29 @@ describe("Pour Bloom generator", () => {
     for (const b of state.blobs) expect(b.r).toBeGreaterThan(0);
   });
 
+  it("actually reaches the stated per-tier ceiling, not ceiling-1", () => {
+    const original = Object.getOwnPropertyDescriptor(navigator, "hardwareConcurrency");
+    try {
+      Object.defineProperty(navigator, "hardwareConcurrency", { value: 2, configurable: true });
+      let lowMax = 0;
+      for (let i = 0; i < 60; i++) {
+        const state = POUR_BLOOM.createState(`low-${i}`) as PourBloomState;
+        lowMax = Math.max(lowMax, state.blobs.length);
+      }
+      expect(lowMax).toBe(6);
+
+      Object.defineProperty(navigator, "hardwareConcurrency", { value: 8, configurable: true });
+      let highMax = 0;
+      for (let i = 0; i < 60; i++) {
+        const state = POUR_BLOOM.createState(`high-${i}`) as PourBloomState;
+        highMax = Math.max(highMax, state.blobs.length);
+      }
+      expect(highMax).toBe(8);
+    } finally {
+      if (original) Object.defineProperty(navigator, "hardwareConcurrency", original);
+    }
+  });
+
   it("is deterministic for a fixed seed", () => {
     const a = POUR_BLOOM.createState("same-seed") as PourBloomState;
     const b = POUR_BLOOM.createState("same-seed") as PourBloomState;

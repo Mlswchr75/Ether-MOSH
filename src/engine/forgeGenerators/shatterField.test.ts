@@ -76,6 +76,29 @@ describe("Shatter Field generator", () => {
     }
   });
 
+  it("actually reaches the stated per-tier ceiling, not ceiling-1", () => {
+    const original = Object.getOwnPropertyDescriptor(navigator, "hardwareConcurrency");
+    try {
+      Object.defineProperty(navigator, "hardwareConcurrency", { value: 2, configurable: true });
+      let lowMax = 0;
+      for (let i = 0; i < 60; i++) {
+        const state = SHATTER_FIELD.createState(`low-${i}`) as ShatterFieldState;
+        lowMax = Math.max(lowMax, state.cells.length);
+      }
+      expect(lowMax).toBe(9);
+
+      Object.defineProperty(navigator, "hardwareConcurrency", { value: 8, configurable: true });
+      let highMax = 0;
+      for (let i = 0; i < 60; i++) {
+        const state = SHATTER_FIELD.createState(`high-${i}`) as ShatterFieldState;
+        highMax = Math.max(highMax, state.cells.length);
+      }
+      expect(highMax).toBe(13);
+    } finally {
+      if (original) Object.defineProperty(navigator, "hardwareConcurrency", original);
+    }
+  });
+
   it("advances cell positions between frames using elapsed time, wrapping at the edges", () => {
     const state = SHATTER_FIELD.createState("seed-b") as ShatterFieldState;
     const before = state.cells.map(c => ({ x: c.x, y: c.y }));
