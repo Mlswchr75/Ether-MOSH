@@ -1,0 +1,380 @@
+{%- liquid
+  assign src_coll = section.settings.source_collection
+  if src_coll != blank
+    assign coll = collections[src_coll]
+  else
+    assign coll = collections.all
+  endif
+  assign speed        = section.settings.scroll_speed
+  assign bg           = section.settings.bg_color
+  assign fg           = section.settings.fg_color
+  assign accent       = section.settings.accent_color
+  assign card_w       = section.settings.card_width
+  assign card_w_mob   = card_w | times: 0.7 | floor
+-%}
+
+<style>
+  /* ── Section wrapper ── */
+  .br-cc-{{ section.id }} {
+    background: {{ bg }};
+    padding: clamp(1.5rem, 3vw, 2.5rem) 0;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* Neutralise any Allure section-animate / js-animate displacement */
+  .br-cc-{{ section.id }}.section-animate,
+  .br-cc-{{ section.id }}.js-animate {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+  }
+
+  /* ── Header ── */
+  .br-cc-{{ section.id }} .brc-header {
+    padding: 0 clamp(1rem, 4vw, 4rem) 1.25rem;
+    border-bottom: 3px solid {{ accent }};
+    margin-bottom: 1.75rem;
+  }
+
+  .br-cc-{{ section.id }} .brc-subhead {
+    font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    font-size: 0.78rem;
+    color: {{ accent }};
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin: 0 0 0.35rem;
+    line-height: 1;
+  }
+
+  .br-cc-{{ section.id }} .brc-heading {
+    font-family: "Arial Black", Impact, "Helvetica Neue", system-ui, sans-serif;
+    font-weight: 900;
+    font-size: clamp(1.2rem, 3.5vw, 2.4rem);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: {{ fg }};
+    margin: 0;
+    line-height: 1;
+  }
+
+  /* ── Scrolling track ── */
+  .br-cc-{{ section.id }} .brc-track-wrap {
+    overflow: hidden;
+    width: 100%;
+    /* cursor hint so users know the carousel is interactive */
+    cursor: default;
+  }
+
+  .br-cc-{{ section.id }} .brc-track {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    width: max-content;
+    padding: 0.25rem 0 1rem;
+    animation: brc-scroll-{{ section.id }} {{ speed }}s linear infinite;
+    will-change: transform;
+  }
+
+  /* Pause on desktop hover — pure CSS, no JS required */
+  .br-cc-{{ section.id }} .brc-track-wrap:hover .brc-track {
+    animation-play-state: paused;
+  }
+
+  /* Pause via touch JS (data-paused attribute added/removed by script) */
+  .br-cc-{{ section.id }} .brc-track[data-paused] {
+    animation-play-state: paused;
+  }
+
+  @keyframes brc-scroll-{{ section.id }} {
+    from { transform: translateX(0); }
+    to   { transform: translateX(-50%); }
+  }
+
+  /* Respect user preference for reduced motion */
+  @media (prefers-reduced-motion: reduce) {
+    .br-cc-{{ section.id }} .brc-track {
+      animation: none;
+    }
+  }
+
+  /* ── Product cards ── */
+  .br-cc-{{ section.id }} .brc-card {
+    flex-shrink: 0;
+    width: {{ card_w }}px;
+    display: block;
+    text-decoration: none;
+    color: {{ fg }};
+    outline-offset: 3px;
+  }
+
+  @media (max-width: 749px) {
+    .br-cc-{{ section.id }} .brc-card {
+      width: {{ card_w_mob }}px;
+    }
+  }
+
+  .br-cc-{{ section.id }} .brc-img-wrap {
+    display: block;
+    width: 100%;
+    aspect-ratio: 4 / 5;
+    overflow: hidden;
+    background: #111;
+    position: relative;
+    border: 2px solid transparent;
+    transition: border-color 0.2s ease;
+  }
+
+  .br-cc-{{ section.id }} .brc-card:hover .brc-img-wrap,
+  .br-cc-{{ section.id }} .brc-card:focus-visible .brc-img-wrap {
+    border-color: {{ accent }};
+  }
+
+  .br-cc-{{ section.id }} .brc-img-wrap img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center top;
+    display: block;
+    transition: transform 0.45s ease;
+  }
+
+  .br-cc-{{ section.id }} .brc-card:hover .brc-img-wrap img {
+    transform: scale(1.05);
+  }
+
+  .br-cc-{{ section.id }} .brc-info {
+    display: block;
+    padding: 0.5rem 0.1rem 0;
+  }
+
+  .br-cc-{{ section.id }} .brc-title {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    font-family: "Arial Black", Impact, "Helvetica Neue", system-ui, sans-serif;
+    font-weight: 900;
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: {{ fg }};
+    margin: 0 0 0.2rem;
+    line-height: 1.25;
+  }
+
+  .br-cc-{{ section.id }} .brc-price {
+    display: block;
+    font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: {{ accent }};
+    letter-spacing: 0.05em;
+  }
+
+  .br-cc-{{ section.id }} .brc-price--compare {
+    color: #555;
+    text-decoration: line-through;
+    margin-right: 0.35em;
+    font-weight: 400;
+  }
+</style>
+
+{%- if coll.products_count > 0 -%}
+<section
+  class="br-cc-{{ section.id }} section-br-collection-carousel"
+  data-section-id="{{ section.id }}"
+  aria-label="{{ section.settings.heading | default: 'Product carousel' | escape }}"
+>
+
+  {%- if section.settings.heading != blank or section.settings.subheading != blank -%}
+    <header class="brc-header">
+      {%- if section.settings.subheading != blank -%}
+        <p class="brc-subhead" aria-hidden="true">{{ section.settings.subheading }}</p>
+      {%- endif -%}
+      {%- if section.settings.heading != blank -%}
+        <h2 class="brc-heading">{{ section.settings.heading }}</h2>
+      {%- endif -%}
+    </header>
+  {%- endif -%}
+
+  <div class="brc-track-wrap" data-brc-wrap>
+    <div class="brc-track" data-brc-track>
+
+      {%- comment -%} Set 1 — accessible, linked {%- endcomment -%}
+      {%- for product in coll.products limit: 24 -%}
+        <a class="brc-card" href="{{ product.url }}">
+          <span class="brc-img-wrap">
+            {%- if product.featured_image != blank -%}
+              <img
+                src="{{ product.featured_image | image_url: width: 480 }}"
+                alt="{{ product.featured_image.alt | default: product.title | escape }}"
+                width="480"
+                height="600"
+                {%- if forloop.index <= 5 %} loading="eager"{%- else %} loading="lazy"{%- endif %}
+                decoding="async"
+              >
+            {%- else -%}
+              {{ 'product-1' | placeholder_svg_tag }}
+            {%- endif -%}
+          </span>
+          <span class="brc-info">
+            <span class="brc-title">{{ product.title }}</span>
+            <span class="brc-price">
+              {%- if product.compare_at_price > product.price -%}
+                <span class="brc-price--compare">{{ product.compare_at_price | money }}</span>
+              {%- endif -%}
+              {{ product.price | money }}
+            </span>
+          </span>
+        </a>
+      {%- endfor -%}
+
+      {%- comment -%} Set 2 — duplicate for seamless infinite loop, hidden from a11y {%- endcomment -%}
+      {%- for product in coll.products limit: 24 -%}
+        <a class="brc-card" href="{{ product.url }}" aria-hidden="true" tabindex="-1">
+          <span class="brc-img-wrap">
+            {%- if product.featured_image != blank -%}
+              <img
+                src="{{ product.featured_image | image_url: width: 480 }}"
+                alt=""
+                width="480"
+                height="600"
+                loading="lazy"
+                decoding="async"
+              >
+            {%- else -%}
+              {{ 'product-1' | placeholder_svg_tag }}
+            {%- endif -%}
+          </span>
+          <span class="brc-info" aria-hidden="true">
+            <span class="brc-title">{{ product.title }}</span>
+            <span class="brc-price">
+              {%- if product.compare_at_price > product.price -%}
+                <span class="brc-price--compare">{{ product.compare_at_price | money }}</span>
+              {%- endif -%}
+              {{ product.price | money }}
+            </span>
+          </span>
+        </a>
+      {%- endfor -%}
+
+    </div>
+  </div>
+
+</section>
+{%- endif -%}
+
+<script>
+(function () {
+  var track = document.querySelector('.br-cc-{{ section.id }} [data-brc-track]');
+  if (!track) return;
+
+  var timer;
+
+  function pauseCarousel() {
+    clearTimeout(timer);
+    track.setAttribute('data-paused', '');
+  }
+
+  function resumeCarousel(delayMs) {
+    clearTimeout(timer);
+    timer = setTimeout(function () {
+      track.removeAttribute('data-paused');
+    }, delayMs || 0);
+  }
+
+  track.addEventListener('touchstart',  pauseCarousel,                         { passive: true });
+  track.addEventListener('touchend',    function () { resumeCarousel(1400); }, { passive: true });
+  track.addEventListener('touchcancel', function () { resumeCarousel(300);  }, { passive: true });
+})();
+</script>
+
+{% schema %}
+{
+  "name": "Collection Carousel",
+  "tag": "section",
+  "class": "section-br-collection-carousel",
+  "settings": [
+    {
+      "type": "header",
+      "content": "Header"
+    },
+    {
+      "type": "text",
+      "id": "heading",
+      "label": "Heading",
+      "default": "SHOP THE COLLECTION"
+    },
+    {
+      "type": "text",
+      "id": "subheading",
+      "label": "Eyebrow text",
+      "default": "// BROWSE ALL"
+    },
+    {
+      "type": "header",
+      "content": "Colors"
+    },
+    {
+      "type": "color",
+      "id": "bg_color",
+      "label": "Background",
+      "default": "#000000"
+    },
+    {
+      "type": "color",
+      "id": "fg_color",
+      "label": "Text",
+      "default": "#FFFFFF"
+    },
+    {
+      "type": "color",
+      "id": "accent_color",
+      "label": "Accent",
+      "default": "#FF2BD6"
+    },
+    {
+      "type": "header",
+      "content": "Source"
+    },
+    {
+      "type": "collection",
+      "id": "source_collection",
+      "label": "Collection (leave blank to show all products)"
+    },
+    {
+      "type": "header",
+      "content": "Carousel"
+    },
+    {
+      "type": "paragraph",
+      "content": "The carousel auto-scrolls continuously. It pauses when a visitor hovers (desktop) or taps (mobile). Higher speed value = slower scroll."
+    },
+    {
+      "type": "range",
+      "id": "scroll_speed",
+      "label": "Scroll speed (seconds per full loop)",
+      "min": 20,
+      "max": 120,
+      "step": 5,
+      "default": 50
+    },
+    {
+      "type": "range",
+      "id": "card_width",
+      "label": "Card width — desktop (px)",
+      "min": 140,
+      "max": 380,
+      "step": 10,
+      "default": 240
+    }
+  ],
+  "presets": [
+    {
+      "name": "Collection Carousel"
+    }
+  ]
+}
+{% endschema %}
