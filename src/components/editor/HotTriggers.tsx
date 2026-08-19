@@ -1,9 +1,10 @@
-import { Mic, MicOff, Circle, Square, Sparkles, Scissors, Snowflake, Camera, Shuffle, Star, Play, Pencil, Trash2, X, Film, Lock, Share2, Compass, Maximize2, Minimize2, Gem, Home, SwitchCamera, Crosshair, Eraser, Link2, Upload, Music, Music2, Shuffle as ShuffleIcon } from "lucide-react";
+import { Mic, MicOff, Circle, Square, Sparkles, Scissors, Snowflake, Camera, Shuffle, Star, Play, Pencil, Trash2, X, Film, Lock, Share2, Compass, Maximize2, Minimize2, Gem, Home, SwitchCamera, Crosshair, Eraser, Link2, Upload, Music, Music2, Shuffle as ShuffleIcon, Undo2, Redo2 } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useStore } from "@/store/useStore";
 import { trackPlayer, DEFAULT_TRACK_TITLE } from "@/engine/trackPlayer";
 import { requestCameraStream, type CameraFacing } from "@/hooks/useCamera";
 import { IsolationPanel } from "./IsolationPanel";
+import { AudioSourcePicker } from "./AudioSourcePicker";
 import { shareUrl } from "@/lib/share";
 import { toast } from "sonner";
 
@@ -42,27 +43,39 @@ const DEFAULT_SHUFFLE_SEC = 5;
  * Stable, module-scoped button. Defining this inside HotTriggers made React
  * remount every button on every render — clicks landing during a remount were
  * dropped (record button appeared "stuck").
+ *
+ * `tint` gives the idle icon its own identity color — an "H S% L%" triple
+ * (or a `var(--token)` reference) fed to `--ht-tint` in index.css — so the
+ * rail reads as a legend of distinct functions instead of a wall of
+ * identical gray glyphs. Active state still converges on the shared
+ * magenta glow (`[data-active]`), kept as the one unambiguous "this is on"
+ * signal across every trigger regardless of its resting color.
  */
 function HotBtn({
-  label, active, onClick, children, delay,
+  label, active, onClick, children, delay, tint, disabled,
 }: {
   label: string;
   active?: boolean;
   delay: number;
   onClick: () => void;
   children: ReactNode;
+  tint?: string;
+  disabled?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       aria-label={label}
       aria-pressed={active ? true : undefined}
+      aria-disabled={disabled || undefined}
       title={label}
       data-active={active || undefined}
+      data-tint={tint ? "" : undefined}
       data-no-longpress
       className="hot-trigger"
-      style={{ animationDelay: `${delay}ms` }}
+      style={{ animationDelay: `${delay}ms`, ...(tint ? { ["--ht-tint" as string]: tint } : {}) }}
     >
       <span className="hot-trigger__glitch" aria-hidden>{children}</span>
       <span className="hot-trigger__ico">{children}</span>
@@ -103,9 +116,10 @@ function TrackTrigger({ delay }: { delay: number }) {
         aria-pressed={trackEnabled}
         title={trackEnabled ? `Pause · ${trackTitle}` : "Play theme track"}
         data-active={trackEnabled || undefined}
+        data-tint=""
         data-no-longpress
         className="hot-trigger"
-        style={{ animationDelay: `${delay}ms` }}
+        style={{ animationDelay: `${delay}ms`, ["--ht-tint" as string]: "262 68% 72%" }}
         onClick={() => setTrackEnabled(!trackEnabled)}
       >
         <span className="hot-trigger__glitch" aria-hidden>
@@ -211,7 +225,14 @@ function TrackTrigger({ delay }: { delay: number }) {
 export function HotTriggers({ isRecording, onToggleRecord, onScreenshot, onFreeze, onGif, onShare, onSupport, gifBusy, gifProgress, onMicFlash, journeyOn, onToggleJourney, journeyLocked, isFullscreen, onToggleFullscreen, onHome, onClearFx, hasFx, onSaveFavorite }: Props) {
   const micEnabled = useStore(s => s.micEnabled);
   const setMicEnabled = useStore(s => s.setMicEnabled);
+  const systemAudioEnabled = useStore(s => s.systemAudioEnabled);
+  const setSystemAudioEnabled = useStore(s => s.setSystemAudioEnabled);
+  const [audioPickerOpen, setAudioPickerOpen] = useState(false);
   const mosh = useStore(s => s.mosh);
+  const undo = useStore(s => s.undo);
+  const redo = useStore(s => s.redo);
+  const canUndo = useStore(s => s.past.length > 0);
+  const canRedo = useStore(s => s.future.length > 0);
   const shuffleSec = useStore(s => s.shuffleSec);
   const setShuffleSec = useStore(s => s.setShuffleSec);
 
@@ -281,6 +302,18 @@ export function HotTriggers({ isRecording, onToggleRecord, onScreenshot, onFreez
       setFlipBusy(false);
     }
   };
+
+  // Close the mic/device-audio source picker on outside tap
+  useEffect(() => {
+    if (!audioPickerOpen) return;
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && t.closest("[data-audio-source-picker]")) return;
+      setAudioPickerOpen(false);
+    };
+    window.addEventListener("pointerdown", onDown, true);
+    return () => window.removeEventListener("pointerdown", onDown, true);
+  }, [audioPickerOpen]);
 
   // Close picker on outside tap
   useEffect(() => {
@@ -375,10 +408,17 @@ export function HotTriggers({ isRecording, onToggleRecord, onScreenshot, onFreez
         className="hot-trigger-rail pointer-events-auto"
       >
         {onHome && (
-          <HotBtn delay={0} label="Back to start" onClick={onHome}>
+          <HotBtn delay={0} label="Back to start" onClick={onHome} tint="220 12% 80%">
             <Home className="h-4 w-4" strokeWidth={1.5} />
           </HotBtn>
         )}
+
+        <HotBtn delay={0} label="Undo" onClick={undo} disabled={!canUndo} tint="210 10% 75%">
+          <Undo2 className="h-4 w-4" strokeWidth={1.5} />
+        </HotBtn>
+        <HotBtn delay={0} label="Redo" onClick={redo} disabled={!canRedo} tint="210 10% 75%">
+          <Redo2 className="h-4 w-4" strokeWidth={1.5} />
+        </HotBtn>
 
         {onToggleFullscreen && (
           <HotBtn
@@ -386,6 +426,7 @@ export function HotTriggers({ isRecording, onToggleRecord, onScreenshot, onFreez
             label={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
             active={isFullscreen}
             onClick={onToggleFullscreen}
+            tint="184 90% 60%"
           >
             {isFullscreen
               ? <Minimize2 className="h-4 w-4" strokeWidth={1.5} />
@@ -393,7 +434,7 @@ export function HotTriggers({ isRecording, onToggleRecord, onScreenshot, onFreez
           </HotBtn>
         )}
         {isTouchScreen && videoStream && (
-          <HotBtn delay={0} label="Switch camera" onClick={flipCamera} active={flipBusy}>
+          <HotBtn delay={0} label="Switch camera" onClick={flipCamera} active={flipBusy} tint="212 80% 70%">
             <SwitchCamera className="h-4 w-4" strokeWidth={1.5} />
           </HotBtn>
         )}
@@ -403,26 +444,39 @@ export function HotTriggers({ isRecording, onToggleRecord, onScreenshot, onFreez
           label={isRecording ? "Stop recording" : "One-tap record"}
           active={isRecording}
           onClick={onToggleRecord}
+          tint="var(--signal-live)"
         >
           {isRecording
             ? <Square className="h-3.5 w-3.5 fill-current" strokeWidth={1.5} />
             : <Circle className="h-4 w-4" strokeWidth={1.5} />}
         </HotBtn>
 
-        <HotBtn
-          delay={60}
-          label={micEnabled ? "Mic on" : "Mic off"}
-          active={micEnabled}
-          onClick={() => {
-            const next = !useStore.getState().micEnabled;
-            setMicEnabled(next);
-            onMicFlash?.(next);
-          }}
-        >
-          {micEnabled
-            ? <Mic className="h-4 w-4" strokeWidth={1.5} />
-            : <MicOff className="h-4 w-4" strokeWidth={1.5} />}
-        </HotBtn>
+        <div className="relative" data-audio-source-picker>
+          <HotBtn
+            delay={60}
+            label={micEnabled ? "Mic on" : systemAudioEnabled ? "Device audio on" : "Listen mode"}
+            active={micEnabled || systemAudioEnabled}
+            tint="var(--signal-good)"
+            onClick={() => {
+              // Already listening — a tap just stops whichever source is active.
+              if (micEnabled) { setMicEnabled(false); onMicFlash?.(false); return; }
+              if (systemAudioEnabled) { setSystemAudioEnabled(false); onMicFlash?.(false); return; }
+              // Nothing active yet — ask which source, since grabbing the
+              // physical mic will interrupt Bluetooth/other playback.
+              setAudioPickerOpen(v => !v);
+            }}
+          >
+            {(micEnabled || systemAudioEnabled)
+              ? <Mic className="h-4 w-4" strokeWidth={1.5} />
+              : <MicOff className="h-4 w-4" strokeWidth={1.5} />}
+          </HotBtn>
+          {audioPickerOpen && (
+            <AudioSourcePicker
+              className="absolute right-full mr-2 top-0 z-40"
+              onClose={() => { setAudioPickerOpen(false); onMicFlash?.(true); }}
+            />
+          )}
+        </div>
 
         <TrackTrigger delay={70} />
 
@@ -434,9 +488,10 @@ export function HotTriggers({ isRecording, onToggleRecord, onScreenshot, onFreez
             aria-pressed={shuffleSec != null}
             title={shuffleSec ? `Shuffle every ${shuffleSec}s — hold for timing` : "Auto-shuffle — hold for timing"}
             data-active={shuffleSec != null || undefined}
+            data-tint=""
             data-no-longpress
             className="hot-trigger"
-            style={{ animationDelay: `120ms` }}
+            style={{ animationDelay: `120ms`, ["--ht-tint" as string]: "36 90% 60%" }}
             onClick={toggleShuffle}
             onPointerDown={startHold}
             onPointerUp={endHold}
@@ -480,7 +535,7 @@ export function HotTriggers({ isRecording, onToggleRecord, onScreenshot, onFreez
           )}
         </div>
 
-        <HotBtn delay={180} label="Mosh" onClick={mosh}>
+        <HotBtn delay={180} label="Mosh" onClick={mosh} tint="12 90% 58%">
           <Sparkles className="h-4 w-4" strokeWidth={1.5} />
         </HotBtn>
 
@@ -491,9 +546,10 @@ export function HotTriggers({ isRecording, onToggleRecord, onScreenshot, onFreez
             disabled={!hasFx}
             aria-label="Clear all effects and show the remastered source"
             title="Clear all FX — show the remastered source only"
+            data-tint=""
             data-no-longpress
             className="hot-trigger"
-            style={{ animationDelay: `190ms` }}
+            style={{ animationDelay: `190ms`, ["--ht-tint" as string]: "0 0% 66%" }}
           >
             <span className="hot-trigger__glitch" aria-hidden><Eraser className="h-4 w-4" strokeWidth={1.5} /></span>
             <span className="hot-trigger__ico"><Eraser className="h-4 w-4" strokeWidth={1.5} /></span>
@@ -517,9 +573,10 @@ export function HotTriggers({ isRecording, onToggleRecord, onScreenshot, onFreez
               ? "Journey · supporter unlock (I)"
               : (journeyOn ? "Journey on · directing itself from motion & sound (I)" : "Journey · sit back, it directs itself (I)")}
             data-active={journeyOn || undefined}
+            data-tint=""
             data-no-longpress
             className="hot-trigger relative"
-            style={{ animationDelay: `195ms` }}
+            style={{ animationDelay: `195ms`, ["--ht-tint" as string]: "248 70% 74%" }}
           >
             <span className="hot-trigger__glitch" aria-hidden><Compass className="h-4 w-4" strokeWidth={1.5} /></span>
             <span className="hot-trigger__ico"><Compass className="h-4 w-4" strokeWidth={1.5} /></span>
@@ -541,6 +598,7 @@ export function HotTriggers({ isRecording, onToggleRecord, onScreenshot, onFreez
             label="Isolation mode"
             active={isolationMode !== 'off'}
             onClick={() => setIsoOpen(v => !v)}
+            tint="174 65% 55%"
           >
             <Crosshair className="h-4 w-4" strokeWidth={1.5} />
           </HotBtn>
@@ -560,6 +618,7 @@ export function HotTriggers({ isRecording, onToggleRecord, onScreenshot, onFreez
           label="Sticker capture mode"
           active={stickerMode}
           onClick={() => setStickerMode(!stickerMode)}
+          tint="96 55% 62%"
         >
           <Scissors className="h-4 w-4" strokeWidth={1.5} />
         </HotBtn>
@@ -571,9 +630,10 @@ export function HotTriggers({ isRecording, onToggleRecord, onScreenshot, onFreez
             aria-label={favOpen ? "Close favorites" : "Open favorites (hold to quick-save)"}
             title="Favorites — tap to open, hold to save current mosh"
             data-active={favOpen || undefined}
+            data-tint=""
             data-no-longpress
             className="hot-trigger"
-            style={{ animationDelay: `210ms` }}
+            style={{ animationDelay: `210ms`, ["--ht-tint" as string]: "var(--signal-warn)" }}
             onClick={onFavTap}
             onPointerDown={startFavHold}
             onPointerUp={endFavHold}
@@ -704,22 +764,22 @@ export function HotTriggers({ isRecording, onToggleRecord, onScreenshot, onFreez
           )}
         </div>
 
-        <HotBtn delay={240} label="Freeze" onClick={onFreeze}>
+        <HotBtn delay={240} label="Freeze" onClick={onFreeze} tint="200 80% 76%">
           <Snowflake className="h-4 w-4" strokeWidth={1.5} />
         </HotBtn>
-        <HotBtn delay={300} label="Screenshot" onClick={onScreenshot}>
+        <HotBtn delay={300} label="Screenshot" onClick={onScreenshot} tint="40 20% 84%">
           <Camera className="h-4 w-4" strokeWidth={1.5} />
         </HotBtn>
 
         <GifButton onGif={onGif} gifBusy={gifBusy} gifProgress={gifProgress} />
 
         {onShare && (
-          <HotBtn delay={400} label="Share" onClick={onShare}>
+          <HotBtn delay={400} label="Share" onClick={onShare} tint="228 85% 72%">
             <Share2 className="h-4 w-4" strokeWidth={1.5} />
           </HotBtn>
         )}
         {onSupport && (
-          <HotBtn delay={440} label="Support MOSH" onClick={onSupport}>
+          <HotBtn delay={440} label="Support MOSH" onClick={onSupport} tint="280 70% 72%">
             <Gem className="h-4 w-4" strokeWidth={1.5} />
           </HotBtn>
         )}
@@ -785,10 +845,11 @@ function GifButton({
         aria-haspopup="menu"
         title="Seamless GIF loop — choose 3s / 5s / 7s (G)"
         data-active={(gifBusy || open) || undefined}
+        data-tint=""
         data-no-longpress
         disabled={gifBusy}
         className="hot-trigger relative"
-        style={{ animationDelay: `360ms` }}
+        style={{ animationDelay: `360ms`, ["--ht-tint" as string]: "300 70% 70%" }}
       >
         <span className="hot-trigger__glitch" aria-hidden><Film className="h-4 w-4" strokeWidth={1.5} /></span>
         <span className="hot-trigger__ico"><Film className="h-4 w-4" strokeWidth={1.5} /></span>

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Maximize2, Mic, MicOff, Image as ImageIcon, X, Circle, Activity } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { useNavigate } from "react-router-dom";
+import { AudioSourcePicker } from "./AudioSourcePicker";
 
 type Props = {
   isRecording: boolean;
@@ -12,9 +13,12 @@ export function PerformanceOverlay({ isRecording, onExit }: Props) {
   const navigate = useNavigate();
   const micEnabled = useStore(s => s.micEnabled);
   const setMicEnabled = useStore(s => s.setMicEnabled);
+  const systemAudioEnabled = useStore(s => s.systemAudioEnabled);
+  const setSystemAudioEnabled = useStore(s => s.setSystemAudioEnabled);
   const showMeters = useStore(s => s.showMetersInPerformance);
   const setShowMeters = useStore(s => s.setShowMetersInPerformance);
 
+  const [audioPickerOpen, setAudioPickerOpen] = useState(false);
   const [cursorHidden, setCursorHidden] = useState(false);
   const [peekVisible, setPeekVisible] = useState(false);
   const [holdShowAll, setHoldShowAll] = useState(false);
@@ -115,6 +119,18 @@ export function PerformanceOverlay({ isRecording, onExit }: Props) {
     };
   }, []);
 
+  // Close the mic/device-audio source picker on outside tap
+  useEffect(() => {
+    if (!audioPickerOpen) return;
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && t.closest("[data-audio-source-picker]")) return;
+      setAudioPickerOpen(false);
+    };
+    window.addEventListener("pointerdown", onDown, true);
+    return () => window.removeEventListener("pointerdown", onDown, true);
+  }, [audioPickerOpen]);
+
   const showPeek = peekVisible || holdShowAll;
   const liveAlpha = 0.5 + Math.min(0.5, micLevel * 0.8);
 
@@ -142,14 +158,28 @@ export function PerformanceOverlay({ isRecording, onExit }: Props) {
           >
             <X className="h-4 w-4" />
           </button>
-          <button
-            onClick={() => setMicEnabled(!micEnabled)}
-            className={`grid h-8 w-8 place-items-center rounded-sm transition ${micEnabled ? "text-red-400" : "text-white/70 hover:bg-white/10 hover:text-white"}`}
-            title="Listen Mode (Shift+I)"
-            aria-label="toggle mic"
-          >
-            {micEnabled ? <Mic className="h-4 w-4" /> : <MicOff className="h-4 w-4" />}
-          </button>
+          <div className="relative" data-audio-source-picker>
+            <button
+              onClick={() => {
+                if (micEnabled) { setMicEnabled(false); return; }
+                if (systemAudioEnabled) { setSystemAudioEnabled(false); return; }
+                // Nothing active yet — ask which source, since grabbing the
+                // physical mic will interrupt Bluetooth/other playback.
+                setAudioPickerOpen(v => !v);
+              }}
+              className={`grid h-8 w-8 place-items-center rounded-sm transition ${(micEnabled || systemAudioEnabled) ? "text-red-400" : "text-white/70 hover:bg-white/10 hover:text-white"}`}
+              title="Listen Mode (Shift+I)"
+              aria-label="toggle mic"
+            >
+              {(micEnabled || systemAudioEnabled) ? <Mic className="h-4 w-4" /> : <MicOff className="h-4 w-4" />}
+            </button>
+            {audioPickerOpen && (
+              <AudioSourcePicker
+                className="absolute left-0 top-full mt-2 z-40"
+                onClose={() => setAudioPickerOpen(false)}
+              />
+            )}
+          </div>
           <button
             onClick={() => setShowMeters(!showMeters)}
             className={`grid h-8 w-8 place-items-center rounded-sm transition ${showMeters ? "text-[hsl(var(--accent))]" : "text-white/70 hover:bg-white/10 hover:text-white"}`}
@@ -177,7 +207,7 @@ export function PerformanceOverlay({ isRecording, onExit }: Props) {
 
       {/* Bottom-right status */}
       <div className="pointer-events-none fixed bottom-4 right-4 z-[10000] flex flex-col items-end gap-1 font-mono text-[11px] tracking-widest">
-        {micEnabled && (
+        {(micEnabled || systemAudioEnabled) && (
           <div
             className="flex items-center gap-1.5"
             style={{ color: `rgba(255, 80, 80, 0.85)` }}
