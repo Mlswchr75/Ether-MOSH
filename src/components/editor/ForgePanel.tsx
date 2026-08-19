@@ -81,7 +81,14 @@ export function ForgePanel() {
       r.setHdrIntensity(0);
       r.setHdr(0);
 
-      const currentForge = useStore.getState().forge;
+      // Export must always be a clean, reproducible single-generator frame —
+      // paintForgeSource's crossfade progress is driven by wall-clock time
+      // (performance.now() vs transitionStartedAt), which is meaningless
+      // here since this loop's own `time` argument is a synthetic candidate
+      // clock, not real elapsed time. Strip any in-flight transition so
+      // every candidate paints the settled activeGeneratorId, never a blend
+      // whose ratio depends on how long the export search happens to take.
+      const currentForge = { ...useStore.getState().forge, transitionFromGeneratorId: null, transitionStartedAt: null };
       const layers: RenderLayer[] = useStore.getState().layers.map(l => ({
         id: l.id,
         effectId: l.effectId,
