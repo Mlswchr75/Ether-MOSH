@@ -66,6 +66,8 @@ export function GlCanvas() {
   const proceduralRef = useRef<ProceduralSource | null>(null);
   const layersRef = useRef(useStore.getState().layers);
   const showBeforeAfterRef = useRef(useStore.getState().showBeforeAfter);
+  /** Global reactivity multiplier (Sensitivity hot trigger) — 1 = no-op. */
+  const sensitivityRef = useRef(useStore.getState().sensitivity);
   const isVideoSourceRef = useRef(!!useStore.getState().videoElement);
   const sourceModeRef = useRef(useStore.getState().sourceMode);
   const forgeRef = useRef(useStore.getState().forge);
@@ -264,8 +266,10 @@ export function GlCanvas() {
     rendererRef.current?.updateTileUniforms(tileUniforms);
   }, [tileMode, tileUniforms, rendererGeneration]);
 
-  // Microphone sensitivity passthrough
-  useEffect(() => { micRef.current.sensitivity = micSensitivity; }, [micSensitivity]);
+  // Microphone sensitivity passthrough — scaled by the global Sensitivity
+  // hot trigger (1 = no-op, matches behavior before that control existed).
+  const sensitivity = useStore(s => s.sensitivity);
+  useEffect(() => { micRef.current.sensitivity = micSensitivity * sensitivity; }, [micSensitivity, sensitivity]);
 
   // Lightweight singleton analyzer mirrored off the system-audio stream.
   useEffect(() => {
@@ -362,6 +366,7 @@ export function GlCanvas() {
   useEffect(() => useStore.subscribe((state) => {
     layersRef.current = state.layers;
     showBeforeAfterRef.current = state.showBeforeAfter;
+    sensitivityRef.current = state.sensitivity;
     isVideoSourceRef.current = !!state.videoElement;
     sourceModeRef.current = state.sourceMode;
     forgeRef.current = state.forge;
@@ -520,7 +525,7 @@ export function GlCanvas() {
             const alpha = Math.max(0.02, 1 - am.smoothing * 0.98);
             const sm = prev + (target - prev) * alpha;
             audioSmooth.set(smKey, sm);
-            v = v + sm * am.amount * range;
+            v = v + sm * am.amount * range * sensitivityRef.current;
           } else if (reactiveOn && !am) {
             const dm = defaultAudioMap(k);
             const target = sources[dm.source] ?? 0;
@@ -529,7 +534,7 @@ export function GlCanvas() {
             const alpha = Math.max(0.02, 1 - dm.smoothing * 0.98);
             const sm = prev + (target - prev) * alpha;
             audioSmooth.set(smKey, sm);
-            v = v + sm * dm.amount * range;
+            v = v + sm * dm.amount * range * sensitivityRef.current;
           }
           params[k] = v;
         }

@@ -552,6 +552,44 @@
     100% { opacity: 0; }
   }
 
+  /* One-shot glitch burst — fires on every click (any hot trigger,
+     delegated from the rail container) and, completely at random,
+     ambiently on an idle trigger a few times a minute. 750ms, non-looping
+     (unlike the hover-only infinite hot-glitch above), driven by a plain
+     [data-glitch] attribute toggled in JS rather than React state, since
+     it's purely cosmetic and shouldn't cause re-renders. */
+  .hot-trigger[data-glitch] {
+    animation: hot-glitch-shake 750ms steps(2, end) both;
+  }
+  .hot-trigger[data-glitch] .hot-trigger__glitch {
+    animation: hot-glitch-burst 750ms steps(1) both;
+  }
+  @keyframes hot-glitch-shake {
+    0%, 100% { transform: translate(0, 0); }
+    10%  { transform: translate(-1px, 1px); }
+    24%  { transform: translate(1px, -1px); }
+    46%  { transform: translate(0, 0); }
+    60%  { transform: translate(1px, 1px); }
+    74%  { transform: translate(-1px, 0); }
+    88%  { transform: translate(0, 0); }
+  }
+  @keyframes hot-glitch-burst {
+    0%   { opacity: 0; }
+    8%   { opacity: 0.75; transform: translate(-2px, 1px); clip-path: inset(28% 0 50% 0); filter: hue-rotate(85deg) saturate(2); }
+    18%  { opacity: 0; transform: translate(0, 0); clip-path: none; filter: none; }
+    40%  { opacity: 0.6; transform: translate(2px, -1px); clip-path: inset(58% 0 16% 0); filter: hue-rotate(-60deg) saturate(1.8); }
+    52%  { opacity: 0; }
+    70%  { opacity: 0.45; transform: translate(-1px, 1px); clip-path: inset(10% 0 70% 0); }
+    82%  { opacity: 0; }
+    100% { opacity: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .hot-trigger[data-glitch],
+    .hot-trigger[data-glitch] .hot-trigger__glitch {
+      animation: none;
+    }
+  }
+
   /* Visible icon — normal flex child centered by the button */
   .hot-trigger__ico {
     display: flex;

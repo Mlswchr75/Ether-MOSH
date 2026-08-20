@@ -137,6 +137,8 @@ export default function Editor() {
   const [showFirstTip, setShowFirstTip] = useState(false);
   const [onboardingActive, setOnboardingActive] = useState(false);
   const [showMicHint, setShowMicHint] = useState(false);
+  const [showMicNudge, setShowMicNudge] = useState(false);
+  const micNudgeShownRef = useRef(false);
   const [showPerfHint, setShowPerfHint] = useState(false);
   const [transitionKey, setTransitionKey] = useState(0);
   const prevImageRef = useRef<HTMLImageElement | null>(null);
@@ -382,6 +384,18 @@ export default function Editor() {
     const id = window.setTimeout(() => setShowFirstTip(true), 1500);
     return () => window.clearTimeout(id);
   }, [hasSource]);
+
+  // First real content this session, in whichever mode got there first
+  // (upload, camera, or forge) — nudge toward the mic once, if nothing's
+  // already listening. Session-scoped (a ref, not localStorage) so it can
+  // nudge again next visit, per-session rather than per-browser-forever.
+  useEffect(() => {
+    if (!hasSource) return;
+    if (micNudgeShownRef.current) return;
+    if (micEnabled || systemAudioEnabled) return;
+    micNudgeShownRef.current = true;
+    setShowMicNudge(true);
+  }, [hasSource, micEnabled, systemAudioEnabled]);
 
   // Source-load film cut transition + onboarding abort
   useEffect(() => {
@@ -1298,6 +1312,10 @@ export default function Editor() {
               setIconFlash({ icon: "freeze", label: "Freeze", key: performance.now() });
             }}
             onMicFlash={(on) => setMicFlash({ on, key: performance.now() })}
+            showMicNudge={showMicNudge}
+            onMicNudgeYes={() => { setMicEnabled(true); setMicFlash({ on: true, key: performance.now() }); setShowMicNudge(false); }}
+            onMicNudgeNo={() => setShowMicNudge(false)}
+            onMicNudgeExpire={() => setShowMicNudge(false)}
             journeyOn={journeyOn}
             journeyLocked={!paywall.isSupporter}
             onToggleJourney={toggleJourney}

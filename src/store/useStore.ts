@@ -129,6 +129,10 @@ type State = {
   trackTitle: string;
   trackArtist: string;
   micSensitivity: number;
+  /** Global reactivity multiplier — scales mic/device-audio sensitivity and
+   *  audio-mapped modulator strength across every mode. 1 = no-op (the exact
+   *  behavior before this field existed). */
+  sensitivity: number;
   isPerformanceMode: boolean;
   showMetersInPerformance: boolean;
   /** Auto-mosh shuffle interval in seconds (null = off). */
@@ -241,6 +245,7 @@ type Actions = {
   setTrackEnabled: (b: boolean) => void;
   setTrackMeta: (title: string, artist: string) => void;
   setMicSensitivity: (v: number) => void;
+  setSensitivity: (v: number) => void;
   setPerformanceMode: (b: boolean) => void;
   togglePerformanceMode: () => void;
   setShowMetersInPerformance: (b: boolean) => void;
@@ -421,6 +426,7 @@ export const useStore = create<State & Actions>((set, get) => ({
   trackTitle: trackPlayer.title,
   trackArtist: trackPlayer.artist,
   micSensitivity: 1,
+  sensitivity: 1,
   isPerformanceMode: false,
   showMetersInPerformance: typeof localStorage !== "undefined" && localStorage.getItem("cathedral_meters_in_perf") === "1",
   shuffleSec: null,
@@ -911,6 +917,7 @@ export const useStore = create<State & Actions>((set, get) => ({
   },
   setTrackMeta: (title, artist) => set({ trackTitle: title, trackArtist: artist }),
   setMicSensitivity: (v) => set({ micSensitivity: v }),
+  setSensitivity: (v) => set({ sensitivity: v }),
   setPerformanceMode: (b) => set({ isPerformanceMode: b }),
   togglePerformanceMode: () => set(s => ({ isPerformanceMode: !s.isPerformanceMode })),
   setShowMetersInPerformance: (b) => {
