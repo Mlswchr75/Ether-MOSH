@@ -184,7 +184,11 @@ export const EFFECTS: EffectDef[] = [
     `
     vec2 block = floor(vUv/uScale)*uScale;
     float n = rand(block + floor(uTime*4.0)*0.13);
-    vec2 off = (vec2(rand(block+1.7), rand(block+5.3))-0.5) * uAmount * 0.4 * step(0.55, n);
+    // How many blocks ever get touched now scales with amount too, not just
+    // how far they move — at max, nearly every block is fair game instead of
+    // a fixed ~45% no matter how hard the dial is pushed.
+    float thresh = 1.0 - clamp(uAmount, 0.0, 1.0) * 0.92;
+    vec2 off = (vec2(rand(block+1.7), rand(block+5.3))-0.5) * uAmount * 0.4 * step(thresh, n);
     gl_FragColor = texture2D(uTex, vUv + off);
     `),
 
@@ -194,7 +198,10 @@ export const EFFECTS: EffectDef[] = [
     `
     float row = floor(vUv.y * uRows);
     float seed = rand(vec2(row, floor(uTime*2.0)));
-    float shift = (seed-0.5) * uAmount * step(0.7, seed);
+    // Fraction of rows that ever shift now scales with amount — at max,
+    // nearly every row is in play instead of a fixed ~30% ceiling.
+    float thresh = 1.0 - clamp(uAmount, 0.0, 1.0) * 0.94;
+    float shift = (seed-0.5) * uAmount * step(thresh, seed);
     gl_FragColor = texture2D(uTex, vec2(fract(vUv.x + shift), vUv.y));
     `),
 

@@ -1011,7 +1011,21 @@ export class MoshRenderer {
       uni.uPulse.value = pulse;
       for (const p of def.params) {
         const k = `u${p.key[0].toUpperCase() + p.key.slice(1)}`;
-        uni[k].value = layer.params[p.key] ?? p.default;
+        let v = layer.params[p.key] ?? p.default;
+        if (p.key === "amount") {
+          // Nearly every effect's primary intensity dial is declared 0..1,
+          // but the shader bodies were tuned against a muted top end (many
+          // multiply this by a small constant like 0.13-0.3 before it ever
+          // touches a pixel). Zero stays zero; the top of the dial now
+          // drives noticeably harder than the shaders' original headroom —
+          // this is the single choke point every effect's amount flows
+          // through, so boosting it here raises the ceiling everywhere at
+          // once instead of hand-tuning ~90 shader bodies individually.
+          const span = p.max - p.min || 1;
+          const t = Math.max(0, (v - p.min) / span);
+          v = p.min + Math.min(1, t) * span * 2.0;
+        }
+        uni[k].value = v;
       }
       this.quad.material = entry.material;
       this.renderer.setRenderTarget(effectTarget);

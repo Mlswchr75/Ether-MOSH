@@ -25,24 +25,24 @@ export function defaultAudioMap(key: string): DefaultMap {
   const k = key.toLowerCase();
   // Punchy / kick-driven params
   if (/(amount|intensity|strength|power|drive|gain|mix)/.test(k))
-    return { source: "bass", amount: 0.55, smoothing: 0.25 };
+    return { source: "bass", amount: 0.9, smoothing: 0.25 };
   // Beat-snappy structural shifts
   if (/(scale|size|zoom|radius|thick|width|count|density|stripes|cells|blocks|tiles|grid|repeat|slices|shards|bands|facets)/.test(k))
-    return { source: "beat", amount: 0.35, smoothing: 0.05 };
+    return { source: "beat", amount: 0.7, smoothing: 0.05 };
   // Colour / hue → treble shimmer
   if (/(hue|color|tint|saturat|chroma|rainbow|spectrum|prism|sheen|glow)/.test(k))
-    return { source: "treble", amount: 0.45, smoothing: 0.4 };
+    return { source: "treble", amount: 0.8, smoothing: 0.4 };
   // Spatial distortion → mid energy
   if (/(shift|offset|displace|warp|distort|skew|twist|swirl|wave|wobble|bend|pinch|spread|split|spacing|angle|churn|curl|rip|seam|slip|slide)/.test(k))
-    return { source: "mid", amount: 0.4, smoothing: 0.3 };
+    return { source: "mid", amount: 0.75, smoothing: 0.3 };
   // Time / motion / speed → overall envelope
   if (/(speed|rate|time|phase|frequency|tempo|flow|drift|spin|reach|persistence)/.test(k))
-    return { source: "overall", amount: 0.3, smoothing: 0.5 };
+    return { source: "overall", amount: 0.6, smoothing: 0.5 };
   // Threshold / cutoff / detail → bass
   if (/(threshold|cutoff|edge|detail|noise|grain|bleed|feather)/.test(k))
-    return { source: "bass", amount: 0.4, smoothing: 0.3 };
+    return { source: "bass", amount: 0.75, smoothing: 0.3 };
   // Default — gentle overall pulse so nothing is ever fully static
-  return { source: "overall", amount: 0.25, smoothing: 0.5 };
+  return { source: "overall", amount: 0.5, smoothing: 0.5 };
 }
 
 /**

@@ -1,4 +1,4 @@
-import { FORGE_PALETTES } from "./forgePalettes";
+import { FORGE_PALETTES, seededPalette } from "./forgePalettes";
 import { VOLUMETRIC_BLOOM_ID, type ForgeGeneratorAudio, type Canvas2DForgeGenerator, type ForgeGenerator } from "./forgeGenerators";
 import { GENERATORS_BY_ID } from "./forgeGeneratorRegistry";
 import { DRIFT_FIELD } from "./forgeGenerators/driftField";
@@ -174,7 +174,11 @@ export function paintForgeSource(
 ) {
   ensureSize(runtime.scratchA, w, h);
   ensureSize(runtime.scratchB, w, h);
-  const palette = FORGE_PALETTES[forge.paletteIdx]?.colors ?? FORGE_PALETTES[0].colors;
+  // Re-rolling the seed now also re-derives color (hue/saturation jitter on
+  // top of the chosen preset), not just layout — previously every reroll
+  // within one palette choice repeated the exact same three hues.
+  const basePalette = FORGE_PALETTES[forge.paletteIdx] ?? FORGE_PALETTES[0];
+  const palette = seededPalette(basePalette, forge.seed).colors;
   const audio: ForgeGeneratorAudio = {
     treble: reactive.treble ?? 0,
     beat: reactive.beat ?? 0,

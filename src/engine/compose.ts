@@ -43,9 +43,9 @@ const INK_BUDGET = 1.65;
 /** Opacity envelopes per role. The gap between structural and the rest is the point. */
 const ROLE_OPACITY: Record<Role, [number, number]> = {
   structural: [0.85, 1.0],
-  accent: [0.30, 0.55],
-  texture: [0.22, 0.45],
-  frame: [0.18, 0.36],
+  accent: [0.30, 0.95],
+  texture: [0.22, 0.85],
+  frame: [0.18, 0.7],
 };
 
 /** Blends that stay legible over a structural layer.
