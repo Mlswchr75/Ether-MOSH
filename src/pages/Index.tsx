@@ -8,6 +8,7 @@ import { useStore } from "@/store/useStore";
 import { loadImageFile, loadImageFromClipboard } from "@/lib/sourceLoader";
 import { haptic } from "@/hooks/useHaptics";
 import { defaultFacing, requestCameraStream } from "@/hooks/useCamera";
+import { useAuth } from "@/hooks/useAuth";
 import { LazyMoshingBackdrop } from "@/components/home/LazyMoshingBackdrop";
 import { AboutTrigger } from "@/components/AboutOverlay";
 import { BioFlicker } from "@/components/home/BioFlicker";
@@ -28,6 +29,7 @@ const SWIPE_SLOP = 14;
 
 const Index = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const setVideoSource = useStore(s => s.setVideoSource);
   const fileRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLElement>(null);
@@ -306,6 +308,12 @@ const Index = () => {
             mosh / v0.1
           </div>
           <div className="pointer-events-auto flex items-center gap-4">
+            <button
+              onClick={(e) => { e.stopPropagation(); navigate(user ? "/account" : "/auth"); }}
+              className="font-mono text-xs uppercase tracking-[0.2em] text-primary hover:text-accent transition"
+            >
+              {user ? "account →" : "log in →"}
+            </button>
             <button
               onClick={handleGoLive}
               className="font-mono text-xs uppercase tracking-[0.2em] text-foreground/70 hover:text-accent transition"
