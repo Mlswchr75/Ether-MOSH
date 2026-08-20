@@ -7,6 +7,7 @@ import { IsolationPanel } from "./IsolationPanel";
 import { MoshStickerTrigger } from "./MoshStickerTrigger";
 import { shareUrl } from "@/lib/share";
 import { toggleSystemAudio } from "@/engine/systemAudio";
+import { crossfadeLayers, MOSH_FADE_MS } from "@/engine/layerCrossfade";
 import { toast } from "sonner";
 
 
@@ -860,7 +861,7 @@ export function HotTriggers({
       </HotBtn>
     ),
     mosh: (
-      <HotBtn key="mosh" delay={0} label="Mosh" onClick={mosh} tint="12 90% 58%">
+      <HotBtn key="mosh" delay={0} label="Mosh" onClick={() => crossfadeLayers(mosh, MOSH_FADE_MS)} tint="12 90% 58%">
         <Sparkles className="h-4 w-4" strokeWidth={1.5} />
       </HotBtn>
     ),

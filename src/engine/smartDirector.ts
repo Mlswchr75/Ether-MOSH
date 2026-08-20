@@ -348,9 +348,23 @@ export function composeFromMood(
   m: Mood,
   rand: () => number = Math.random,
   intensityOverride?: number,
+  /** Optional id → score multiplier (0..1) applied before ranking is
+   *  truncated to the top 24. A caller with a memory of what it just
+   *  composed (Journey) can hand in a recency penalty so the same
+   *  load-bearing effect doesn't keep winning just because it always suits
+   *  the mood — everything else about scoring/composition is untouched, and
+   *  callers with nothing to penalize (Smart, tests) behave exactly as
+   *  before. */
+  recentPenalty?: ReadonlyMap<string, number>,
 ): DirectedLayer[] {
+  let ranked = rankEffects(m);
+  if (recentPenalty && recentPenalty.size) {
+    ranked = ranked
+      .map(r => ({ id: r.id, score: r.score * (recentPenalty.get(r.id) ?? 1) }))
+      .sort((a, b) => b.score - a.score);
+  }
   return composeStack({
-    ranked: rankEffects(m).slice(0, 24),
+    ranked: ranked.slice(0, 24),
     categoryOf: categoryOfEffect,
     intensity: intensityOverride ?? moodIntensity(m),
     rand,

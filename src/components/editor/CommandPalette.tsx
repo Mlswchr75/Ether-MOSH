@@ -2,6 +2,7 @@ import { Command } from "cmdk";
 import { useEffect, useMemo } from "react";
 import { useStore } from "@/store/useStore";
 import { EFFECTS } from "@/engine/effects";
+import { crossfadeLayers, MOSH_FADE_MS } from "@/engine/layerCrossfade";
 import type { AudioSource } from "@/store/types";
 
 type Props = {
@@ -90,7 +91,7 @@ export function CommandPalette(props: Props) {
               ))}
               <CmdItem onSelect={run(removeTopLayer)}>Remove top effect</CmdItem>
               <CmdItem onSelect={run(clearLayers)}>Clear effect stack</CmdItem>
-              <CmdItem onSelect={run(() => mosh())}>Randomize effect stack</CmdItem>
+              <CmdItem onSelect={run(() => crossfadeLayers(mosh, MOSH_FADE_MS))}>Randomize effect stack</CmdItem>
               <CmdItem onSelect={run(rerollSeed)} shortcut="Space">Reroll seed</CmdItem>
             </CmdGroup>
 

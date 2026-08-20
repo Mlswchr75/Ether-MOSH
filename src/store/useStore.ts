@@ -282,6 +282,7 @@ type Actions = {
   removeFavorite: (id: string) => void;
   renameFavorite: (id: string, name: string) => void;
   moshDirected: (layers: import("@/engine/compose").DirectedLayer[]) => void;
+  setLayersRaw: (layers: Layer[]) => void;
   moshStorm: (ids: string[], opts?: { explosive?: boolean; regions?: unknown }) => void;
   disrupt: (spec: DisruptSpec) => void;
   addStickerToGallery: (sticker: StickerEntry) => void;
@@ -1089,27 +1090,16 @@ export const useStore = create<State & Actions>((set, get) => ({
   moshDirected: (directed) => set(s => {
     const seed = generateSeed();
     const locked = s.layers.filter(l => l.locked);
-    const fresh: Layer[] = directed.flatMap((d) => {
-      const def = EFFECTS_BY_ID[d.effectId];
-      if (!def) return [];
-      const params: Record<string, number> = {};
-      for (const p of def.params) params[p.key] = p.default;
-      return [{
-        id: newId(),
-        effectId: d.effectId,
-        role: roleForEffect(d.effectId) ?? undefined,
-        hidden: false, locked: false,
-        blend: d.blend,
-        opacity: d.opacity,
-        region: d.region ?? null,
-        params,
-        mods: Object.fromEntries(def.params.map(p => [p.key, null])),
-        audioMaps: Object.fromEntries(def.params.map(p => [p.key, null])),
-      }];
-    });
+    const fresh = buildDirectedLayers(directed);
     const layers = [...locked, ...fresh];
     return { ...s, past: pushPast(s), future: [], layers, seed, ...resetRoleSelection(layers) };
   }),
+  // Bare `set({ layers })` — no undo push, no seed regen, no role-selection
+  // reset. Exists for the Journey crossfade driver (Editor.tsx), which needs
+  // to write interpolated opacities to the store every animation frame
+  // without spamming undo history; the transition's *end* still calls
+  // moshDirected() once for the real bookkeeping.
+  setLayersRaw: (layers) => set({ layers }),
 
   moshStorm: (ids) => set(s => {
     const seed = generateSeed();
@@ -1317,6 +1307,32 @@ function mapLayer(layers: Layer[], id: string, fn: (l: Layer) => Layer): Layer[]
 }
 function pushPast(s: State): Layer[][] {
   return [...s.past, s.layers].slice(-HISTORY_LIMIT);
+}
+
+/** Turns a composed stack (opacity/blend/region already decided by the
+ *  composition grammar) into real Layer objects — the construction half of
+ *  moshDirected, pulled out so the Journey crossfade driver (Editor.tsx) can
+ *  build the incoming arrangement once and animate its opacities in without
+ *  duplicating this logic. */
+export function buildDirectedLayers(directed: import("@/engine/compose").DirectedLayer[]): Layer[] {
+  return directed.flatMap((d) => {
+    const def = EFFECTS_BY_ID[d.effectId];
+    if (!def) return [];
+    const params: Record<string, number> = {};
+    for (const p of def.params) params[p.key] = p.default;
+    return [{
+      id: newId(),
+      effectId: d.effectId,
+      role: roleForEffect(d.effectId) ?? undefined,
+      hidden: false, locked: false,
+      blend: d.blend,
+      opacity: d.opacity,
+      region: d.region ?? null,
+      params,
+      mods: Object.fromEntries(def.params.map(p => [p.key, null])),
+      audioMaps: Object.fromEntries(def.params.map(p => [p.key, null])),
+    }];
+  });
 }
 
 function resetRoleSelection(layers: Layer[]) {
