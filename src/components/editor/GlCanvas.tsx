@@ -23,6 +23,20 @@ import { VrButton } from "./VrButton";
  *  computation was designed for, not an arbitrary choice. */
 const FORGE_AUDIO_FEATURES_INTERVAL_MS = 110;
 
+/** Forge's live-preview source canvas resolution. This was hardcoded at
+ *  256×256 and then magnified 5-10x by the GPU to fill the screen — the
+ *  main cause of Forge looking pixelated/blocky compared to its own PNG
+ *  export path (which renders up to 1024px). 512 is 4x the pixel count at a
+ *  cost the per-pixel Canvas2D generators (Shatter Field, Pour Bloom) can
+ *  still afford every frame; dropping to 384 on ≤4-core devices follows the
+ *  same hardwareConcurrency tiering already used for their cell/blob counts
+ *  (see forgeCompose.ts, pourBloom.ts, shatterField.ts, forgeSource.ts) so
+ *  low-end devices don't inherit a new frame-time regression. Cell/site
+ *  placement in every generator is in normalized [0,1) space, so this only
+ *  changes how finely the existing pattern is sampled — not its layout,
+ *  colors, or composition. */
+const FORGE_SOURCE_SIZE = (typeof navigator !== "undefined" && (navigator.hardwareConcurrency || 4) <= 4) ? 384 : 512;
+
 /**
  * Heuristic default audio map for any unmapped param. When the mic is on,
  * EVERY layer breathes — no manual wiring required. Users can still override
@@ -204,7 +218,7 @@ export function GlCanvas() {
       proceduralRef.current?.stop();
       if (!forgeCanvasRef.current) {
         const c = document.createElement("canvas");
-        c.width = 256; c.height = 256;
+        c.width = FORGE_SOURCE_SIZE; c.height = FORGE_SOURCE_SIZE;
         forgeCanvasRef.current = c;
         forgeCtxRef.current = c.getContext("2d");
       }
@@ -554,7 +568,15 @@ export function GlCanvas() {
       // Mosh intensity score: 0 = bare camera / no effects, 1 = fully cranked.
       // Drives the adaptive HDR finisher (pure passthrough at 0, ACES filmic at 1).
       const activeLayers = renderLayers.filter(l => !l.hidden && l.opacity > 0.02);
-      const moshScore = Math.min(1.0, activeLayers.reduce((s, l) => s + l.opacity, 0) / 3.0);
+      let moshScore = Math.min(1.0, activeLayers.reduce((s, l) => s + l.opacity, 0) / 3.0);
+      // Forge's generative output is the whole point of the mode, not a
+      // camera/photo waiting for effects to be stacked on — a bare Forge
+      // pattern with zero layers otherwise leaves this finisher fully
+      // passthrough (moshScore≈0), so the pattern itself never gets the
+      // ACES filmic tonemap + local-contrast lift the pipeline already
+      // does for everything else. A floor here only changes tone-mapping
+      // intensity, not what Forge draws.
+      if (sourceModeRef.current === "forge") moshScore = Math.max(moshScore, 0.55);
       rendererRef.current?.setHdrIntensity(moshScore);
       rendererRef.current?.setHdr(moshScore);
       // Re-applied per frame rather than once at setup: the renderer is

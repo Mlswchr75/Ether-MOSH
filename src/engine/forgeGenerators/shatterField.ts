@@ -19,6 +19,11 @@ function toroidalDelta(a: number, b: number): number {
   return d;
 }
 
+function smoothstep(edge0: number, edge1: number, x: number): number {
+  const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
+  return t * t * (3 - 2 * t);
+}
+
 function createState(seed: string): ShatterFieldState {
   const rand = rngFromSeed(seed);
   const cpuCount = typeof navigator !== "undefined" ? navigator.hardwareConcurrency || 4 : 4;
@@ -50,6 +55,10 @@ function render(gctx: ForgeGeneratorCtx, state: unknown) {
 
   const colors = [hexToRgb(palette[0]), hexToRgb(palette[1]), hexToRgb(palette[2])];
   const crackWidth = 0.006 + audio.dynamics * 0.01;
+  // Blend band width in the same normalized-distance units as crackWidth,
+  // sized to read as ~1.5 screen px regardless of the source canvas'
+  // resolution — keeps cracks a clean thin line instead of stair-stepping.
+  const aaBand = 1.5 / Math.max(w, h);
 
   const img = ctx.createImageData(w, h);
   const d = img.data;
@@ -76,19 +85,23 @@ function render(gctx: ForgeGeneratorCtx, state: unknown) {
       }
 
       const i4 = (y * w + x) * 4;
-      if (Math.sqrt(second) - Math.sqrt(best) < crackWidth) {
-        d[i4] = 4; d[i4 + 1] = 3; d[i4 + 2] = 6;
-      } else {
-        const col = colors[bestIdx % 3];
-        const cell = s.cells[bestIdx];
-        const cdx = toroidalDelta(u, cell.x);
-        const cdy = toroidalDelta(v, cell.y);
-        const distToCenter = Math.sqrt(cdx * cdx + cdy * cdy);
-        const light = Math.max(0, 1 - distToCenter * 3.2);
-        d[i4] = Math.min(255, col[0] * (0.55 + light * 0.6));
-        d[i4 + 1] = Math.min(255, col[1] * (0.55 + light * 0.6));
-        d[i4 + 2] = Math.min(255, col[2] * (0.55 + light * 0.6));
-      }
+      const col = colors[bestIdx % 3];
+      const cell = s.cells[bestIdx];
+      const cdx = toroidalDelta(u, cell.x);
+      const cdy = toroidalDelta(v, cell.y);
+      const distToCenter = Math.sqrt(cdx * cdx + cdy * cdy);
+      const light = Math.max(0, 1 - distToCenter * 3.2);
+      const cellR = Math.min(255, col[0] * (0.55 + light * 0.6));
+      const cellG = Math.min(255, col[1] * (0.55 + light * 0.6));
+      const cellB = Math.min(255, col[2] * (0.55 + light * 0.6));
+
+      // Smoothly blend into the crack color across a thin band instead of a
+      // hard threshold — the same Voronoi boundary, just anti-aliased.
+      const edgeDist = Math.sqrt(second) - Math.sqrt(best);
+      const crackMix = 1 - smoothstep(crackWidth - aaBand, crackWidth + aaBand, edgeDist);
+      d[i4] = crackMix * 4 + (1 - crackMix) * cellR;
+      d[i4 + 1] = crackMix * 3 + (1 - crackMix) * cellG;
+      d[i4 + 2] = crackMix * 6 + (1 - crackMix) * cellB;
       d[i4 + 3] = 255;
     }
   }
