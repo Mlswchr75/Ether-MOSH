@@ -22,15 +22,11 @@ const CAMERA_ERR: Record<CameraError, string> = {
 };
 
 /**
- * Which source feeds the renderer — upload, camera, or forge — as a
- * permanent fixture, not another `.ui-chrome` trigger. Everything in
- * HotTriggers fades to invisible and unclickable after 2s idle by design
- * (chrome gets out of the way of the visualization), which is right for
- * effect controls but wrong for the one control that gets you OUT of a mode:
- * switching from a live camera or a loaded photo is exactly the moment
- * you're not mid-gesture, so idle-fade is guaranteed to have kicked in by
- * the time you reach for it. Styled after VrButton — the other control in
- * this app that's deliberately exempt from the fade for the same reason.
+ * Which source feeds the renderer — upload, camera, or forge. Idle-fades
+ * with the rest of the chrome (`.ui-chrome`), same as everything else in the
+ * editor — U/L/Y keyboard shortcuts (see Editor.tsx's onKey) reach the same
+ * three modes without needing this visible, so idle-fade no longer needs an
+ * exemption here.
  */
 export function SourceModeToggle() {
   const sourceMode = useStore(s => s.sourceMode);
@@ -78,10 +74,23 @@ export function SourceModeToggle() {
     if (!useStore.getState().forge.stack.length) randomiseForge();
   };
 
+  // U / L / Y keyboard shortcuts (Editor.tsx onKey) dispatch this instead of
+  // calling pick() directly — it's the one function that already handles
+  // camera permission errors and the forge auto-randomize, so both paths
+  // (click and keyboard) go through the exact same logic.
+  useEffect(() => {
+    const onSwitch = (e: Event) => {
+      const mode = (e as CustomEvent<SourceMode>).detail;
+      if (mode) pick(mode);
+    };
+    window.addEventListener("mosh:switch-mode", onSwitch);
+    return () => window.removeEventListener("mosh:switch-mode", onSwitch);
+  }, [sourceMode]);
+
   const Icon = MODE_META[sourceMode].icon;
 
   return (
-    <div ref={wrapRef} className="pointer-events-auto absolute top-3 left-3 z-40 safe-top safe-left">
+    <div ref={wrapRef} className="ui-chrome pointer-events-auto absolute top-3 left-3 z-40 safe-top safe-left">
       <button
         type="button"
         onClick={() => setOpen(o => !o)}

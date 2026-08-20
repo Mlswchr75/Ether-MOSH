@@ -932,14 +932,22 @@
     transition-duration: 100ms;
   }
 
-  /* Single idle stage: fade to fully invisible after 2s of inactivity.
+  /* Single idle stage: fade to fully invisible after 2.5s of inactivity.
      The UI is deliberately semi-transparent at rest (0.18) so it camouflages
      into the visualizer. On the slightest movement or hover, it pops back to
-     full opacity instantly. After 2s completely silent, it vanishes entirely
+     full opacity instantly. After 2.5s completely silent, it vanishes entirely
      to show pure visualization. */
   [data-idle="hidden"] .ui-chrome {
     --chrome-op: 0;
     pointer-events: none;
+  }
+
+  /* The OS cursor is chrome too — it hides with everything else at 2.5s idle
+     and snaps back the instant the mouse moves (useIdleFade listens for
+     pointermove, so this and .ui-chrome always toggle in lockstep). Scoped to
+     the editor shell only — the rest of the app keeps a normal cursor. */
+  .editor-shell[data-idle="hidden"] {
+    cursor: none;
   }
 
   @media (prefers-reduced-motion: reduce) {

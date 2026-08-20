@@ -17,7 +17,16 @@ const SECTIONS: Section[] = [
     rows: [
       { keys: ["P"], label: "Performance mode" },
       { keys: ["F"], label: "Performance · alias" },
+      { keys: ["Shift", "P"], label: "Fullscreen · plain browser" },
       { keys: ["H"], label: "Toggle UI / peek" },
+    ],
+  },
+  {
+    name: "Source mode",
+    rows: [
+      { keys: ["U"], label: "Upload" },
+      { keys: ["L"], label: "Live camera" },
+      { keys: ["Y"], label: "Forge" },
     ],
   },
   {
@@ -28,11 +37,15 @@ const SECTIONS: Section[] = [
       { keys: ["A"], label: "Auto-shuffle · toggle" },
       { keys: ["Shift", "A"], label: "Cycle shuffle timing" },
       { keys: ["X"], label: "Mosh · randomize" },
+      { keys: ["Shift", "X"], label: "Clear FX" },
       { keys: ["S"], label: "★ Save favorite" },
       { keys: ["Shift", "S"], label: "★ Open favorites list" },
       { keys: ["Z"], label: "Freeze · slow-mo" },
       { keys: ["C"], label: "Capture screenshot" },
       { keys: ["G"], label: "GIF · 7s seamless loop" },
+      { keys: ["Alt", "G"], label: "GIF · 5s" },
+      { keys: ["Shift", "G"], label: "GIF · 3s" },
+      { keys: ["V"], label: "Share current frame" },
     ],
   },
   {
@@ -58,7 +71,7 @@ const SECTIONS: Section[] = [
       { keys: ["⌘/Ctrl", "Z"], label: "Undo" },
       { keys: ["⌘/Ctrl", "Y"], label: "Redo" },
       { keys: ["⌘/Ctrl", "⇧", "Z"], label: "Redo · alt" },
-      { keys: ["⌘/Ctrl", "S"], label: "Save preset" },
+      { keys: ["⌘/Ctrl", "S"], label: "★ Save favorite · alias" },
       { keys: ["⌘/Ctrl", "E"], label: "Export" },
     ],
   },

@@ -54,6 +54,7 @@ import { ForgePanel } from "@/components/editor/ForgePanel";
 import { SourceModeToggle } from "@/components/editor/SourceModeToggle";
 import { HotTriggers } from "@/components/editor/HotTriggers";
 import { ActionConfirmation } from "@/components/editor/ActionConfirmation";
+import { showExportSuccessToast } from "@/components/editor/ExportShareToast";
 import { scanForBestFrame } from "@/engine/screenshotScanner";
 import { AccountChip } from "@/components/AccountChip";
 import { usePaywall } from "@/hooks/usePaywall";
@@ -146,8 +147,9 @@ export default function Editor() {
   // fresh drop-in, not a loop of wherever it happened to be.
   useEffect(() => { trackPlayer.noteModeEntry(); }, []);
 
-  // UI chrome fades to fully invisible after 2s of inactivity.
-  const idleStage = useIdleFade(2_000);
+  // UI chrome (and the cursor, see index.css) fades to fully invisible
+  // after 2.5s of inactivity.
+  const idleStage = useIdleFade(2_500);
   const focusTune = useCallback((layerId: string) => {
     useStore.getState().selectLayer(layerId);
     setHideUI(false);
@@ -346,8 +348,11 @@ export default function Editor() {
       const blob = await exportCanvas(remastered, { format: "png", scale: 1, aspect: null });
       const filename = `mosh-${Date.now()}_${tileMode === "none" ? "still" : "tileable-remaster"}.png`;
       shareOrDownload(blob, filename);
-      toast.success(tileMode === "none" ? "Still ready" : "Best seamless frame ready", {
+      showExportSuccessToast({
+        message: tileMode === "none" ? "Still ready" : "Best seamless frame ready",
         description: canNativeShare() ? "Share sheet opening…" : "Saved to downloads",
+        blob,
+        filename,
       });
     } catch {
       toast.error("Export failed");
@@ -631,8 +636,11 @@ export default function Editor() {
           const blob = await exportCanvas(result.bestCanvas, { format: "png", scale, aspect: null });
           const filename = `mosh-${Date.now()}.png`;
           shareOrDownload(blob, filename);
-          toast.success(paywall.isSupporter ? "Screenshot ready" : "Screenshot ready (720p · unlock for full res)", {
+          showExportSuccessToast({
+            message: paywall.isSupporter ? "Screenshot ready" : "Screenshot ready (720p · unlock for full res)",
             description: canNativeShare() ? "Share sheet opening…" : "Saved to downloads",
+            blob,
+            filename,
           });
         } catch (e) {
           toast.error("Screenshot failed");
@@ -691,9 +699,15 @@ export default function Editor() {
               setGifProgress(phase === "capture" ? p * 0.7 : 0.7 + p * 0.3);
             },
           });
-          downloadBlob(result.blob, `mosh-${Date.now()}_${seconds}s_loop.gif`);
+          const filename = `mosh-${Date.now()}_${seconds}s_loop.gif`;
+          downloadBlob(result.blob, filename);
           const quality = result.loopScore > 0.85 ? "tight loop" : result.loopScore > 0.6 ? "clean loop" : "loop";
-          toast.success(`${seconds}s GIF saved · ${result.frameCount}f · ${quality}`, { id: t });
+          showExportSuccessToast({
+            message: `${seconds}s GIF saved · ${result.frameCount}f · ${quality}`,
+            blob: result.blob,
+            filename,
+            id: t,
+          });
         } catch (e) {
           toast.error("GIF capture failed", { id: t });
         } finally {
@@ -752,11 +766,14 @@ export default function Editor() {
         setIsRecording(false);
         const filename = `mosh-${Date.now()}.${rec.extension()}`;
         shareOrDownload(blob, filename);
-        toast.success("Recording ready", {
+        showExportSuccessToast({
+          message: "Recording ready",
           duration: 10000,
           description: canNativeShare()
             ? "Share sheet opening — post to TikTok, Instagram, Snapchat…"
             : "Saved to downloads",
+          blob,
+          filename,
         });
       } catch (e) {
         toast.error("Could not stop recording");
@@ -804,7 +821,7 @@ export default function Editor() {
       if (e.ctrlKey || e.metaKey) {
         if (e.key === "z" || e.key === "Z") { e.preventDefault(); if (e.shiftKey) redo(); else undo(); return; }
         if (e.key === "y" || e.key === "Y") { e.preventDefault(); redo(); return; }
-        if (e.key === "s" || e.key === "S") { e.preventDefault(); toast.message("Save preset — coming soon"); return; }
+        if (e.key === "s" || e.key === "S") { e.preventDefault(); saveFavoriteNow(); return; }
         if (e.key === "l" || e.key === "L") { e.preventDefault(); copyPresetLink(); return; }
         if (e.key === "e" || e.key === "E") { e.preventDefault(); exportBestStill(); return; }
         return; // don't override other browser shortcuts
@@ -840,8 +857,11 @@ export default function Editor() {
       // ————————————— Hot-trigger single-key shortcuts —————————————
       // Mnemonic mapping — matches the icon rack in the top-right corner.
       //   R = Record · M = Mic · A = Auto-shuffle · X = mosh (eXplode)
-      //   S = Save favorite · Shift+S = open favorites list
-      //   Z = freeZe · C = Capture (screenshot) · P/F = Perf · H = Hide UI
+      //   S = Save favorite · Shift+S = open favorites list · Shift+X = clear FX
+      //   Z = freeZe · C = Capture (screenshot) · P/F = Perf · Shift+P = fullscreen
+      //   G = GIF 7s · Alt+G = GIF 5s · Shift+G = GIF 3s
+      //   U/L/Y = source mode (Upload/Live camera/forge — Y has no better letter free)
+      //   V = share current frame · I = Journey · H = Hide UI
 
       // M => mic toggle
       if (!e.shiftKey && (e.key === "m" || e.key === "M")) {
@@ -873,7 +893,7 @@ export default function Editor() {
       // S => save current mosh as favorite
       if (!e.shiftKey && (e.key === "s" || e.key === "S")) {
         e.preventDefault();
-        useStore.getState().saveFavorite();
+        saveFavoriteNow();
         return;
       }
       // Z => freeze / slow-mo
@@ -891,7 +911,14 @@ export default function Editor() {
         takeScreenshot();
         return;
       }
-      // G => GIF loop capture (7s seamless)
+      // Alt+G => GIF loop capture, 5s (checked by e.code — Option composes
+      // e.key into an accented character on Mac layouts, e.code doesn't).
+      if (e.altKey && !e.shiftKey && e.code === "KeyG") {
+        e.preventDefault();
+        captureGif(5);
+        return;
+      }
+      // G => GIF loop capture (7s seamless) · Shift+G => 3s (below)
       if (!e.shiftKey && (e.key === "g" || e.key === "G")) {
         e.preventDefault();
         captureGif();
@@ -903,8 +930,32 @@ export default function Editor() {
         toggleJourney();
         return;
       }
+      // U / L / Y => switch source mode (upload / live camera / forge) —
+      // mirrors the top-left mode switcher, which idle-fades like everything
+      // else, so these are the reliable way in once it's faded out.
+      if (!e.shiftKey && (e.key === "u" || e.key === "U")) {
+        e.preventDefault();
+        window.dispatchEvent(new CustomEvent("mosh:switch-mode", { detail: "upload" }));
+        return;
+      }
+      if (!e.shiftKey && (e.key === "l" || e.key === "L")) {
+        e.preventDefault();
+        window.dispatchEvent(new CustomEvent("mosh:switch-mode", { detail: "camera" }));
+        return;
+      }
+      if (!e.shiftKey && (e.key === "y" || e.key === "Y")) {
+        e.preventDefault();
+        window.dispatchEvent(new CustomEvent("mosh:switch-mode", { detail: "forge" }));
+        return;
+      }
+      // V => share current frame
+      if (!e.shiftKey && (e.key === "v" || e.key === "V")) {
+        e.preventDefault();
+        shareCurrent();
+        return;
+      }
 
-      // P / F => toggle Performance Mode
+      // P / F => toggle Performance Mode · Shift+P => plain browser fullscreen (below)
       if (!e.shiftKey && (e.key === "p" || e.key === "P" || e.key === "f" || e.key === "F")) {
         e.preventDefault();
         togglePerf();
@@ -963,10 +1014,13 @@ export default function Editor() {
         setIconFlash({ icon: "loop", label: on ? "Loop · 8s" : "Loop Off", key: performance.now() });
         return;
       }
+      if (e.shiftKey && (e.key === "G" || e.key === "g")) { e.preventDefault(); captureGif(3); return; }
+      if (e.shiftKey && (e.key === "P" || e.key === "p")) { e.preventDefault(); toggleFullscreen(); return; }
+      if (e.shiftKey && (e.key === "X" || e.key === "x")) { e.preventDefault(); clearAllFx(); return; }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [mosh, undo, redo, setMicEnabled, paletteOpen, shortcutsOpen, saveSlot, loadSlot, rerollSeed, flashSlot, exportBestStill, captureGif]);
+  }, [mosh, undo, redo, setMicEnabled, paletteOpen, shortcutsOpen, saveSlot, loadSlot, rerollSeed, flashSlot, exportBestStill, captureGif, saveFavoriteNow, toggleFullscreen, shareCurrent, clearAllFx, toggleJourney]);
 
   // First-load shortcuts hint (3s)
   useEffect(() => {
@@ -1386,9 +1440,11 @@ export default function Editor() {
 
       </div>
 
-      {/* Unified menu rack — utility bar + tabs + panel. Lives below the fold. */}
+      {/* Unified menu rack — utility bar + tabs + panel. Lives below the fold.
+          ui-chrome idle-fades it on inactivity, same as everything else;
+          hideUI (H key / long-press) is the separate manual full-hide. */}
       {!isFullscreen && !hideUI && (
-        <div className="relative z-10 flex flex-col border-t border-[hsl(var(--border-default))] bg-[hsl(var(--surface-1)/0.92)] backdrop-blur-md animate-in slide-in-from-bottom-4 duration-200">
+        <div className="ui-chrome relative z-10 flex flex-col border-t border-[hsl(var(--border-default))] bg-[hsl(var(--surface-1)/0.92)] backdrop-blur-md animate-in slide-in-from-bottom-4 duration-200">
           {/* Thin utility bar */}
           <div className="flex h-10 items-center justify-between gap-2 border-b border-[hsl(var(--border-default))] px-2">
             <div className="flex items-center gap-1">
@@ -1549,7 +1605,7 @@ export default function Editor() {
 
       {shortcutsOpen && <ShortcutsOverlay onClose={() => setShortcutsOpen(false)} />}
 
-      <AboutTrigger hidden={hideUI || isPerformanceMode || isOverlay} />
+      <AboutTrigger hidden={hideUI || isPerformanceMode || isOverlay || idleStage === "hidden"} />
 
 
       <CommandPalette
@@ -1563,7 +1619,7 @@ export default function Editor() {
         onExportDeliverable={exportDeliverable}
         onSaveSetlist={saveSetlist}
         onLoadSetlist={loadSetlist}
-        onSavePreset={() => toast.message("Save preset — coming soon")}
+        onSavePreset={saveFavoriteNow}
         onLoadPreset={() => toast.message("Load preset — coming soon")}
         onLoadImage={() => navigate("/")}
       />

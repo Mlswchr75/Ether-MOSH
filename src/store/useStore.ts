@@ -42,6 +42,21 @@ import { upscaleImage } from "@/engine/upscaler";
 import { trackPlayer } from "@/engine/trackPlayer";
 import { toast } from "sonner";
 
+/**
+ * Names a new favorite after what's actually in the stack (e.g. "Chroma
+ * Bleed + Pixel Storm") instead of a bland timestamp, so the list stays
+ * scannable as it grows. Falls back to a timestamp when there's nothing to
+ * name it after (empty stack).
+ */
+function generateFavoriteName(layers: Layer[]): string {
+  const names = [...new Set(
+    layers.map(l => EFFECTS_BY_ID[l.effectId]?.name).filter((n): n is string => !!n),
+  )];
+  if (!names.length) return `Preset ${new Date().toLocaleTimeString()}`;
+  const shown = names.slice(0, 2).join(" + ");
+  return names.length > 2 ? `${shown} +${names.length - 2}` : shown;
+}
+
 const HISTORY_LIMIT = 20;
 /** How many recently-used effects a full mosh avoids reaching for. */
 const MOSH_MEMORY = 8;
@@ -968,7 +983,7 @@ export const useStore = create<State & Actions>((set, get) => ({
     const link = presetToUrl({ layers, seed: s.seed }, `${window.location.origin}/edit`);
     const fav: Favorite = {
       id,
-      name: `Preset ${new Date().toLocaleTimeString()}`,
+      name: generateFavoriteName(layers),
       layers,
       seed: s.seed,
       createdAt: new Date().toISOString(),
@@ -980,6 +995,12 @@ export const useStore = create<State & Actions>((set, get) => ({
       try { localStorage.setItem("cathedral_favorites_v1", JSON.stringify(next)); } catch {}
       return { favorites: next };
     });
+    // Lets the favorites panel open itself and highlight the new entry,
+    // regardless of which trigger (keyboard, hold-gesture, panel button)
+    // called saveFavorite.
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("mosh:favorite-saved", { detail: { id } }));
+    }
     return fav;
   },
 

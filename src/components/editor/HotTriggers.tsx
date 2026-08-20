@@ -241,6 +241,8 @@ export function HotTriggers({ isRecording, onToggleRecord, onScreenshot, onFreez
   const [favOpen, setFavOpen] = useState(false);
   const [renameId, setRenameId] = useState<string | null>(null);
   const [renameVal, setRenameVal] = useState("");
+  const [justSavedId, setJustSavedId] = useState<string | null>(null);
+  const favPanelRef = useRef<HTMLDivElement>(null);
   const favorites = useStore(s => s.favorites);
   const saveFavorite = useStore(s => s.saveFavorite);
   const applyFavorite = useStore(s => s.applyFavorite);
@@ -359,6 +361,27 @@ export function HotTriggers({ isRecording, onToggleRecord, onScreenshot, onFreez
     };
   }, []);
 
+  // Any successful favorite save (keyboard, hold-gesture, or the panel's own
+  // "+ save current mosh" button) opens the list with the new entry
+  // highlighted and scrolled into view — new saves are appended, so it's
+  // always the last item.
+  useEffect(() => {
+    const onSaved = (e: Event) => {
+      const id = (e as CustomEvent<{ id: string }>).detail?.id;
+      if (!id) return;
+      setFavOpen(true);
+      setJustSavedId(id);
+      window.setTimeout(() => {
+        favPanelRef.current
+          ?.querySelector<HTMLElement>(`[data-fav-id="${id}"]`)
+          ?.scrollIntoView({ block: "nearest" });
+      }, 0);
+      window.setTimeout(() => setJustSavedId(cur => (cur === id ? null : cur)), 4000);
+    };
+    window.addEventListener("mosh:favorite-saved", onSaved);
+    return () => window.removeEventListener("mosh:favorite-saved", onSaved);
+  }, []);
+
 
   const startHold = () => {
     heldRef.current = false;
@@ -382,7 +405,8 @@ export function HotTriggers({ isRecording, onToggleRecord, onScreenshot, onFreez
     if (favHoldTimerRef.current) window.clearTimeout(favHoldTimerRef.current);
     favHoldTimerRef.current = window.setTimeout(() => {
       favHeldRef.current = true;
-      // Long-press = quick save without opening the panel (power-user shortcut).
+      // Long-press = quick save. The panel then opens itself (see the
+      // mosh:favorite-saved listener above) with the new entry highlighted.
       (onSaveFavorite ?? saveFavorite)();
       try { (navigator as any).vibrate?.(15); } catch {}
     }, 480);
@@ -653,6 +677,7 @@ export function HotTriggers({ isRecording, onToggleRecord, onScreenshot, onFreez
           </button>
           {favOpen && (
             <div
+              ref={favPanelRef}
               data-fav-panel
               className="absolute right-full mr-2 top-0 z-40 w-64 max-h-[70vh] overflow-y-auto rounded-md border border-white/10 bg-black/85 p-2 backdrop-blur-md panel-in-3d"
             >
@@ -690,8 +715,15 @@ export function HotTriggers({ isRecording, onToggleRecord, onScreenshot, onFreez
                 <ul className="flex flex-col gap-0.5">
                   {favorites.map((f) => {
                     const renaming = renameId === f.id;
+                    const justSaved = justSavedId === f.id;
                     return (
-                      <li key={f.id} className="group flex items-center gap-1 rounded px-1 py-1 hover:bg-white/5">
+                      <li
+                        key={f.id}
+                        data-fav-id={f.id}
+                        className={`group flex items-center gap-1 rounded px-1 py-1 hover:bg-white/5 transition-colors ${
+                          justSaved ? "bg-[hsl(var(--accent))]/15 ring-1 ring-[hsl(var(--accent))]/50" : ""
+                        }`}
+                      >
                         {renaming ? (
                           <input
                             autoFocus
