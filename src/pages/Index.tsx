@@ -1,7 +1,7 @@
 import { Link, useNavigate } from "react-router-dom";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Helmet } from "react-helmet-async";
-import { Camera, Upload } from "lucide-react";
+import { Flame, Upload, Video } from "lucide-react";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
 import { useStore } from "@/store/useStore";
@@ -249,7 +249,16 @@ const Index = () => {
                   className="relative flex h-16 w-16 items-center justify-center rounded-full border border-accent/70 bg-background/30 text-accent backdrop-blur-[2px] transition hover:scale-105"
                   style={{ boxShadow: "0 0 40px hsl(var(--accent) / 0.45)" }}
                 >
-                  <Camera className="h-7 w-7" aria-hidden="true" />
+                  <Video className="h-7 w-7" aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); navigate("/forge"); }}
+                  aria-label="Open Forge mode"
+                  className="relative flex h-16 w-16 items-center justify-center rounded-full border border-accent/70 bg-background/30 text-accent backdrop-blur-[2px] transition hover:scale-105"
+                  style={{ boxShadow: "0 0 40px hsl(var(--accent) / 0.45)" }}
+                >
+                  <Flame className="h-7 w-7" aria-hidden="true" />
                 </button>
               </motion.div>
 
@@ -313,18 +322,6 @@ const Index = () => {
               className="font-mono text-xs uppercase tracking-[0.2em] text-primary hover:text-accent transition"
             >
               {user ? "account →" : "log in →"}
-            </button>
-            <button
-              onClick={handleGoLive}
-              className="font-mono text-xs uppercase tracking-[0.2em] text-foreground/70 hover:text-accent transition"
-            >
-              go live →
-            </button>
-            <button
-              onClick={(e) => { e.stopPropagation(); navigate("/forge"); }}
-              className="font-mono text-xs uppercase tracking-[0.2em] text-foreground/70 hover:text-primary transition"
-            >
-              forge →
             </button>
             <button
               onClick={(e) => { e.stopPropagation(); navigate("/install"); }}
