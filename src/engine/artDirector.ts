@@ -723,10 +723,10 @@ const ROLE_OPACITY: Record<Role, [number, number]> = {
   // compositor starts from the source frame, so holding the grade under 1.0
   // leaves the real image showing through — which is the difference between
   // grading a shot and painting over it.
-  grade:  [0.6, 0.88],
-  form:   [0.72, 0.95],
-  accent: [0.45, 0.75],
-  finish: [0.4, 0.8],
+  grade:  [0.6, 0.92],
+  form:   [0.72, 1.0],
+  accent: [0.45, 0.98],
+  finish: [0.4, 0.95],
 };
 
 /** Blend pools that flatter each role. */
@@ -1024,7 +1024,11 @@ export function opacityForRole(
   // case entirely: it only covers part of the frame, so the layers beneath
   // still read everywhere else, and it may go as loud as it likes.
   if (!opts.regioned && (role === "accent" || role === "finish")) {
-    v = Math.min(v, 0.84);
+    // A restrained roll still holds the old 0.84 ceiling so a calm frame
+    // stays calm, but a wild roll is explicitly asking to risk the mud —
+    // let it climb all the way to full strength instead of being capped
+    // no matter how hard wildness pushes everything else.
+    v = Math.min(v, 0.84 + wildness * 0.16);
   }
 
   return Math.max(0.22, Math.min(1, v));
