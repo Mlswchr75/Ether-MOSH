@@ -30,6 +30,7 @@ import { useKaossStore } from "@/store/kaossStore";
 import { EFFECTS_BY_ID } from "@/engine/effects";
 import type { Role } from "@/engine/artDirector";
 import { ROLE_COPY, groupLayersByRole, resolveLayerRole } from "@/engine/effectRoles";
+import { crossfadeLayers, MOSH_FADE_MS } from "@/engine/layerCrossfade";
 import {
   applyAxisDelta,
   axisTargets,
@@ -286,7 +287,7 @@ export function QuadrantSurface({ onRoll, onTogglePerf, onTune = () => {} }: Pro
     // "locked", which isn't true and isn't discoverable. Seed the stack with
     // a full mosh instead — that's what an empty canvas actually needs.
     if (useStore.getState().layers.length === 0) {
-      useStore.getState().mosh();
+      crossfadeLayers(() => useStore.getState().mosh(), MOSH_FADE_MS);
       return;
     }
 

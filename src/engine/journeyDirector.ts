@@ -284,6 +284,15 @@ export class JourneyDirector {
   private section: Section = "intro";
   private sectionSince = 0;
 
+  /** Composition memory — without it, a long run can drift back to a
+   *  near-identical arrangement just because it still suits the mood best.
+   *  Structural (load-bearing) ids get the strongest, most-recent-weighted
+   *  penalty since that's what actually defines a composition's identity;
+   *  everything else gets a lighter flat one. Reset on stop() so a fresh
+   *  engagement isn't biased by an unrelated earlier run. */
+  private recentStructural: string[] = [];
+  private recentAccent: string[] = [];
+
   private lastComposeAt = 0;
   private holdMs = 6_000;
   private lastDisruptAt = 0;
@@ -337,6 +346,29 @@ export class JourneyDirector {
     this.tracker.reset();
     this.audio.clear();
     this.prevPixels = null;
+    this.recentStructural = [];
+    this.recentAccent = [];
+  }
+
+  /** Id → score multiplier (0..1) fed to composeFromMood so a recently-used
+   *  effect has to earn its way back in rather than simply winning again. */
+  private recentPenalty(): Map<string, number> {
+    const penalty = new Map<string, number>();
+    this.recentStructural.forEach((id, i) => {
+      const mult = Math.min(1, 0.12 + i * 0.18); // most recent: 0.12, decaying outward
+      if (!penalty.has(id) || mult < (penalty.get(id) as number)) penalty.set(id, mult);
+    });
+    for (const id of this.recentAccent) if (!penalty.has(id)) penalty.set(id, 0.65);
+    return penalty;
+  }
+
+  private rememberComposition(layers: DirectedLayer[]) {
+    const structural = layers.find(l => l.role === "structural")?.effectId;
+    if (structural) {
+      this.recentStructural = [structural, ...this.recentStructural.filter(id => id !== structural)].slice(0, 5);
+    }
+    const others = layers.filter(l => l.role !== "structural").map(l => l.effectId);
+    this.recentAccent = [...others, ...this.recentAccent].slice(0, 10);
   }
 
   getState(): JourneyDirectorState { return { ...this.state }; }
@@ -411,7 +443,9 @@ export class JourneyDirector {
       mood,
       this.opts.rand,
       Math.max(0.1, Math.min(1, Math.max(mood.motion, mood.bass, features.energy) - frame.load * 0.35)),
+      this.recentPenalty(),
     );
+    this.rememberComposition(layers);
 
     this.lastComposeAt = now;
     // Hold the opening arrangement briefly: it is chosen before any audio has

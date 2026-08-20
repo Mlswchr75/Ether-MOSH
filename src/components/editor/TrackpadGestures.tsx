@@ -11,6 +11,7 @@
 import { useEffect, useRef } from "react";
 import { useStore } from "@/store/useStore";
 import { useKaossStore } from "@/store/kaossStore";
+import { crossfadeLayers, MOSH_FADE_MS } from "@/engine/layerCrossfade";
 
 const PINCH_THRESHOLD = 0.22;
 const COOLDOWN_MS = 600;
@@ -64,7 +65,7 @@ export function TrackpadGestures({ targetRef, onTogglePerf }: Props) {
       if (kaossOn) return;
       if (e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return;
       e.preventDefault();
-      mosh();
+      crossfadeLayers(mosh, MOSH_FADE_MS);
     };
 
     // Safari pinch

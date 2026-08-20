@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
 import { ArrowLeft, Download, Layers, Sparkles, Sliders, Music, Eye, Undo2, Redo2, Maximize2, Minimize2, Circle, Mic, MicOff, MonitorSpeaker, Snowflake, Rewind, Repeat, Keyboard, X } from "lucide-react";
 import { useStore } from "@/store/useStore";
+import { crossfadeLayers, cancelLayerCrossfade, MOSH_FADE_MS, DIRECTED_FADE_MS } from "@/engine/layerCrossfade";
 import { GlCanvas } from "@/components/editor/GlCanvas";
 
 import { LayerStack } from "@/components/editor/LayerStack";
@@ -492,7 +493,7 @@ export default function Editor() {
 
     const fire = () => {
       if (cancelled) return;
-      useStore.getState().mosh();
+      crossfadeLayers(() => useStore.getState().mosh(), MOSH_FADE_MS);
       beatsSinceMosh = 0;
       lastMoshAt = performance.now();
       recomputeTargetBeats();
@@ -547,6 +548,10 @@ export default function Editor() {
   const journeyRef = useRef<JourneyDirector | null>(null);
   const journeyPrevShuffleRef = useRef<number | null>(null);
 
+  const crossfadeToComposition = useCallback((directed: import("@/engine/compose").DirectedLayer[]) => {
+    crossfadeLayers(() => useStore.getState().moshDirected(directed), DIRECTED_FADE_MS);
+  }, []);
+
   const toggleJourney = useCallback(() => {
     if (!paywall.isSupporter) {
       paywall.require("Journey mode");
@@ -571,7 +576,7 @@ export default function Editor() {
         return m && m.enabled ? m : null;
       },
       onCompose: (layers) => {
-        useStore.getState().moshDirected(layers);
+        crossfadeToComposition(layers);
         setJourneyFlashKey(performance.now());
       },
       onDisrupt: (d) => {
@@ -594,6 +599,9 @@ export default function Editor() {
     return () => {
       director.stop();
       journeyRef.current = null;
+      // Don't leave an in-flight crossfade writing to the store after
+      // Journey's been turned off — it'd stomp on whatever comes next.
+      cancelLayerCrossfade();
       // Restore prior auto-shuffle if it wasn't touched while journey ran.
       const cur = useStore.getState().shuffleSec;
       if (cur == null && journeyPrevShuffleRef.current != null) {
@@ -601,7 +609,7 @@ export default function Editor() {
       }
       journeyPrevShuffleRef.current = null;
     };
-  }, [journeyOn]);
+  }, [journeyOn, crossfadeToComposition]);
 
   // If the user manually re-enables auto-shuffle, gracefully step out.
   useEffect(() => {
@@ -901,7 +909,7 @@ export default function Editor() {
       // X => mosh / randomize
       if (!e.shiftKey && (e.key === "x" || e.key === "X")) {
         e.preventDefault();
-        mosh();
+        crossfadeLayers(mosh, MOSH_FADE_MS);
         return;
       }
       // S => save current mosh as favorite
@@ -986,7 +994,7 @@ export default function Editor() {
       }
 
       // ————————————— Shift combos —————————————
-      if (e.shiftKey && (e.key === "M" || e.key === "m")) { e.preventDefault(); mosh(); return; }
+      if (e.shiftKey && (e.key === "M" || e.key === "m")) { e.preventDefault(); crossfadeLayers(mosh, MOSH_FADE_MS); return; }
       if (e.shiftKey && (e.key === "I" || e.key === "i")) {
         e.preventDefault();
         const next = !useStore.getState().micEnabled;
@@ -1260,7 +1268,7 @@ export default function Editor() {
             window.addEventListener("pointerup", onUp);
             return;
           }
-          if (e.shiftKey) { e.preventDefault(); mosh(); }
+          if (e.shiftKey) { e.preventDefault(); crossfadeLayers(mosh, MOSH_FADE_MS); }
         }}
         className={`relative bg-background select-none w-full h-[100dvh] shrink-0 no-touch-scroll ${isCameraLive ? "live-ring" : ""}`}
 

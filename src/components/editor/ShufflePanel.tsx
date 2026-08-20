@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Shuffle, Clock, Zap } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { haptic } from "@/hooks/useHaptics";
+import { crossfadeLayers, MOSH_FADE_MS } from "@/engine/layerCrossfade";
 
 
 const OPTIONS: { sec: number; label: string }[] = [
@@ -26,7 +27,7 @@ export function ShufflePanel() {
 
   const handleMoshNow = () => {
     haptic([10, 16, 22]);
-    mosh();
+    crossfadeLayers(mosh, MOSH_FADE_MS);
   };
 
 
