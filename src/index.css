@@ -987,6 +987,14 @@
   .editor-shell[data-idle="hidden"] {
     cursor: none;
   }
+  /* `cursor` is inherited, so the rule above is enough almost everywhere —
+     but Forge mode puts `cursor-pointer` directly on the <canvas> itself
+     (to hint "click to reshuffle"), and a declaration on the element always
+     wins over an inherited one no matter how specific the ancestor selector
+     is. Target it explicitly so idle hides the cursor in Forge too. */
+  .editor-shell[data-idle="hidden"] canvas {
+    cursor: none !important;
+  }
 
   /* Once idle (see Editor.tsx's matching contextmenu listener), the whole
      document stops offering text selection — no drag-select, no double-tap

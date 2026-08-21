@@ -1482,8 +1482,6 @@ export default function Editor() {
           if (e.shiftKey) { e.preventDefault(); crossfadeLayers(mosh, MOSH_FADE_MS); }
         }}
         className={`relative bg-background select-none w-full h-[100dvh] shrink-0 no-touch-scroll ${isCameraLive ? "live-ring" : ""}`}
-
-        title="Shift+Click to MOSH"
       >
         <div data-tap-fade-target className="absolute inset-0 opacity-100">
           <GlCanvas />
@@ -1594,7 +1592,7 @@ export default function Editor() {
           <input
             type="range" min={0} max={1} step={0.001} value={beforeAfterSplit}
             onChange={(e) => setBeforeAfterSplit(+e.target.value)}
-            className="absolute left-1/2 -translate-x-1/2 bottom-6 w-2/3 accent-primary z-30"
+            className="ui-chrome absolute left-1/2 -translate-x-1/2 bottom-6 w-2/3 accent-primary z-30"
           />
         )}
         {isPerformanceMode && (
