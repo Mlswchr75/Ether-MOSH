@@ -310,7 +310,7 @@ type Actions = {
 const newId = () => Math.random().toString(36).slice(2, 9);
 
 /** A layer at the effect's own defaults — used when the user adds one by hand. */
-function makeLayer(effectId: string, opts: Partial<Layer> = {}): Layer {
+export function makeLayer(effectId: string, opts: Partial<Layer> = {}): Layer {
   const def = EFFECTS_BY_ID[effectId];
   const params: Record<string, number> = {};
   const mods: Record<string, Modulator | null> = {};
