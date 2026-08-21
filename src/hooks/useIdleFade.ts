@@ -34,11 +34,25 @@ export function useIdleFade(hideMs = 2_000): IdleStage {
     };
 
     ACTIVITY.forEach(e => window.addEventListener(e, reset, { passive: true, capture: true }));
+    // The activity list above only covers events that fire *on this page*.
+    // A native file/camera/color picker steals focus for as long as the user
+    // takes to use it — no pointermove or keydown reaches the window while
+    // it's open — so a slow pick (very normal) can let the idle timer fire
+    // while the dialog is up. The chrome then comes back hidden the moment
+    // the picker closes and stays that way until some later, unrelated
+    // mouse move, which reads as "the hot triggers vanished after I
+    // uploaded an image." Regaining focus/visibility is itself a clear
+    // sign the user is back, so it counts as activity too.
+    const onVisible = () => { if (document.visibilityState === "visible") reset(); };
+    window.addEventListener("focus", reset);
+    document.addEventListener("visibilitychange", onVisible);
     arm();
 
     return () => {
       disarm();
       ACTIVITY.forEach(e => window.removeEventListener(e, reset, { capture: true }));
+      window.removeEventListener("focus", reset);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [hideMs]);
 
