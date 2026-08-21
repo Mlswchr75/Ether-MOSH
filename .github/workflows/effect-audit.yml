@@ -6,6 +6,12 @@ on:
     branches:
       - codex/role-controls-effect-audit
 
+# Only checkout + artifact upload happen here — no writes to the repo, no PR
+# comments, no releases — so the default (often broader) GITHUB_TOKEN grant
+# is more access than this job ever uses.
+permissions:
+  contents: read
+
 jobs:
   audit:
     runs-on: ubuntu-latest

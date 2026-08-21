@@ -65,6 +65,8 @@ async function loadVideoClip(file: File): Promise<StickerClip> {
   await new Promise<void>((resolve, reject) => {
     video.onloadedmetadata = () => resolve();
     video.onerror = () => reject(new Error("Video decode failed"));
+    // lgtm[js/xss-through-dom] -- always a local blob: object URL; see
+    // assertBlobUrl's doc comment.
     video.src = assertBlobUrl(url);
   });
 
@@ -94,6 +96,8 @@ async function loadGifClip(file: File): Promise<StickerClip> {
   await new Promise<void>((resolve, reject) => {
     img.onload = () => resolve();
     img.onerror = () => reject(new Error("GIF decode failed"));
+    // lgtm[js/xss-through-dom] -- always a local blob: object URL; see
+    // assertBlobUrl's doc comment.
     img.src = assertBlobUrl(url);
   });
   if (img.decode) await img.decode().catch(() => undefined);
