@@ -160,6 +160,24 @@ export default function Editor() {
   // after 2.5s of inactivity.
   const idleStage = useIdleFade(2_500);
 
+  // Once idle, the page has to stop offering anything the browser itself
+  // would interrupt the visual with: no right-click "Save image as…" menu,
+  // no accidental text-selection (and the mobile copy/share bubble that
+  // comes with it). Native `title`-attribute tooltips don't need separate
+  // handling — the chrome they'd hover over already goes pointer-events:none
+  // at the same idle mark (see .ui-chrome in index.css), so they can't be
+  // triggered at all once hidden. Same 2.5s mark as everything else fading,
+  // deliberately — a second, slightly different timer here would just
+  // desync from the fade and read as a bug.
+  useEffect(() => {
+    const idle = idleStage === "hidden";
+    document.body.classList.toggle("idle-locked", idle);
+    if (!idle) return;
+    const onContextMenu = (e: MouseEvent) => e.preventDefault();
+    document.addEventListener("contextmenu", onContextMenu);
+    return () => document.removeEventListener("contextmenu", onContextMenu);
+  }, [idleStage]);
+
   // Pro Mode: flipping it on hides everything immediately; flipping it off
   // brings it back. While it's on, the ambient single-finger long-press and
   // plain H-key hideUI toggles are suspended (see their own effects below) —

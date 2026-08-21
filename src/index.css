@@ -988,6 +988,15 @@
     cursor: none;
   }
 
+  /* Once idle (see Editor.tsx's matching contextmenu listener), the whole
+     document stops offering text selection — no drag-select, no double-tap
+     word-select, no mobile copy/share bubble riding along with it. */
+  body.idle-locked {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .ui-chrome { transition: none; }
   }
