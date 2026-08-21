@@ -2090,6 +2090,143 @@ export const EFFECTS: EffectDef[] = [
     rel = mat2(ca, -sa, sa, ca) * rel * z;
     gl_FragColor = vec4(texture2D(uTex, clamp(rel + 0.5, 0.0, 1.0)).rgb, 1.0);
     `),
+
+  // ── PAINT & FIRE ──────────────────────────────────────────────────
+  // Both built around the same idea the rest of the catalog just got tuned
+  // for: uAmount is not a volume knob. It sweeps through genuinely different
+  // physical regimes via continuous curves rather than hard cuts, so 0 is a
+  // true no-op and 100 looks structurally different from 50, not just louder.
+
+  fx("acrylicBleed", "Acrylic Bleed", "color", "Jewel-tone paint rivers bleed from the image's own colors, flowing from a light stain to a full digital flood.",
+    [{ key: "amount", label: "Amount", min: 0, max: 1, default: 0.55 },
+     { key: "viscosity", label: "Viscosity", min: 0, max: 1, default: 0.2 },
+     { key: "glitch", label: "Glitch", min: 0, max: 1, default: 0.3 }],
+    `
+    vec4 src = texture2D(uTex, vUv);
+
+    // Local detail/edge density stands in for "how photoreal is this patch":
+    // busy, high-contrast areas read as real; flat regions read as flat.
+    // Rivers concentrate on the former until uAmount pushes into the top of
+    // its range, where the gate relaxes and paint floods everywhere.
+    vec2 texel = 1.0 / uResolution;
+    float lx = dot(texture2D(uTex, vUv + vec2(texel.x, 0.0)).rgb - src.rgb, vec3(0.299,0.587,0.114));
+    float ly = dot(texture2D(uTex, vUv + vec2(0.0, texel.y)).rgb - src.rgb, vec3(0.299,0.587,0.114));
+    float detail = clamp((abs(lx) + abs(ly)) * 6.0, 0.0, 1.0);
+    float detailGate = mix(detail, 1.0, smoothstep(0.75, 1.0, uAmount));
+
+    // Viscosity trades flow speed for river thickness: thin, fast rivers at
+    // the low default (a "low viscosity liquid"), slow heavy pours as it climbs.
+    float speed = mix(0.5, 0.08, uViscosity);
+    float thick = mix(0.045, 0.14, uViscosity);
+    float sc = mix(2.0, 5.0, 1.0 - uViscosity);
+    float t = uTime * speed;
+    float e = 0.02;
+
+    // Curl of a scalar noise field is divergence-free, so paint advects along
+    // smooth closed streamlines in every direction instead of smearing along
+    // one axis -- see Ink Flow above for the same technique.
+    vec2 p = vUv * sc;
+    vec2 curl = vec2(noise(p + vec2(0.0, e) + t) - noise(p - vec2(0.0, e) + t),
+                    -(noise(p + vec2(e, 0.0) - t) - noise(p - vec2(e, 0.0) - t))) / (2.0 * e);
+    float flow = noise(vUv * sc * 1.4 + curl * 1.8);
+
+    // Coverage ramps steeply, not linearly, so low amounts stay a light
+    // stain and only the top of the range floods the frame.
+    float coverage = pow(uAmount, 1.6);
+    float edge = mix(0.15, 0.85, coverage);
+    float mask = (1.0 - smoothstep(edge - thick, edge + thick, flow)) * detailGate;
+
+    // The trailing edge breaks into isolated puddle-drops instead of a hard
+    // cutoff -- a bump just past the river's own reach.
+    vec2 dc = floor(vUv * 22.0);
+    float dropletHit = step(0.55, rand(dc));
+    float dropletBand = smoothstep(edge, edge + thick, flow) * (1.0 - smoothstep(edge + thick, edge + thick * 3.0, flow));
+    mask = clamp(mask + dropletHit * dropletBand * detailGate * smoothstep(0.12, 0.5, uAmount), 0.0, 1.0);
+
+    // Colour re-samples live from a point advected along the same current,
+    // so a river's hue drifts as it crosses different-coloured parts of the
+    // image -- then snaps to the nearest of six jewel-tone primaries.
+    vec2 pickUv = clamp(vUv + curl * 0.05, 0.0, 1.0);
+    vec3 hsv = rgb2hsv(texture2D(uTex, pickUv).rgb);
+    hsv.x = floor(hsv.x * 6.0 + 0.5) / 6.0;
+    hsv.y = clamp(mix(hsv.y, 1.0, 0.65 + coverage * 0.35), 0.0, 1.0);
+    hsv.z = clamp(mix(hsv.z, 1.0, 0.3), 0.0, 1.0);
+    vec3 jewel = hsv2rgb(hsv);
+
+    // Photoreal <-> 8-bit VHS glitch is its own dial, independent of
+    // coverage -- but the very top of uAmount also forces it in, so the
+    // flood regime looks like it's coming apart rather than just bigger.
+    float glitchAmt = clamp(uGlitch + smoothstep(0.72, 1.0, uAmount) * 0.6, 0.0, 1.0);
+    vec3 posterized = floor(jewel * 5.0) / 4.0;
+    vec3 split = vec3(
+      texture2D(uTex, pickUv + vec2(0.006, 0.0) * glitchAmt).r,
+      texture2D(uTex, pickUv).g,
+      texture2D(uTex, pickUv - vec2(0.006, 0.0) * glitchAmt).b
+    );
+    float scan = step(0.5, fract((vUv.y + uTime * 0.6) * uResolution.y * 0.12));
+    vec3 glitchLook = mix(posterized, split, 0.4) * mix(1.0, 0.3 + scan * 1.3, glitchAmt);
+    vec3 paint = mix(jewel, glitchLook, glitchAmt);
+
+    gl_FragColor = vec4(mix(src.rgb, paint, mask * clamp(uAmount * 1.4, 0.0, 1.0)), src.a);
+    `),
+
+  fx("prismFlame", "Prism Flame", "dimension", "The subject's silhouette catches fire in countless rainbow gemstone facets, from a thin neon halo to structural digital breakdown.",
+    [{ key: "amount", label: "Amount", min: 0, max: 1, default: 0.5 },
+     { key: "spectrumSpeed", label: "Spectrum Speed", min: 0, max: 3, default: 1.0 },
+     { key: "facetSize", label: "Facet Size", min: 0, max: 1, default: 0.4 }],
+    `
+    vec4 src = texture2D(uTex, vUv);
+    float d = depthAt(vUv); // 1 = subject, 0 = the room behind them
+
+    // A soft bump right at the silhouette's transition zone: the rim the
+    // flame roots from, not the subject's whole body.
+    float rim = smoothstep(0.08, 0.4, d) * (1.0 - smoothstep(0.4, 0.92, d));
+
+    // Turbulence drifts upward and outward into the background -- (1.0 - d)
+    // keeps it away from the subject's own body -- reach growing steeply
+    // with amount so Ember stays a thin halo and Flood genuinely engulfs.
+    vec2 drift = vec2(noise(vUv * 3.0 + uTime * 0.35) - 0.5, -noise(vUv * 3.2 + 11.0 + uTime * 0.45)) * 0.22;
+    vec2 fUv = vUv + drift * (1.0 - d);
+    float turb = noise(fUv * 6.0 - vec2(0.0, uTime * 0.9)) * 0.6
+               + noise(fUv * 13.0 - vec2(0.0, uTime * 1.4)) * 0.4;
+    float reach = mix(0.05, 0.7, pow(uAmount, 1.4));
+    float core = clamp(rim + turb * reach * (1.0 - d), 0.0, 1.0);
+    // A wider, softer pass of the same fields for the neon glow halo -- cheap,
+    // since it reuses the noise already evaluated rather than a texture blur.
+    float glow = clamp(rim * 1.4 + turb * reach * 2.2 * (1.0 - d), 0.0, 1.0);
+
+    // Faceted gemstone shading: nearest-cell hash gives each facet its own
+    // flicker and hue offset instead of one smooth flame body.
+    vec2 fp = fUv * mix(6.0, 46.0, uFacetSize);
+    vec2 fi = floor(fp);
+    float facetFlicker = rand(fi + floor(uTime * 2.2));
+    float hue = fract(d * 0.15 + facetFlicker * 0.5 + uTime * uSpectrumSpeed * 0.12);
+    vec3 jewel = hsv2rgb(vec3(hue, 0.85, 1.0));
+
+    // Peel: past the middle of the range, a second layer of facets drifts
+    // further along the same current -- reads as flakes that have detached
+    // from the main body rather than more of the same flame.
+    float peelAmt = smoothstep(0.55, 0.85, uAmount);
+    vec2 peelUv = fUv + drift * 1.8;
+    float peelTurb = noise(peelUv * 8.0 - vec2(0.0, uTime * 1.1));
+    float peelMask = smoothstep(0.5, 0.75, peelTurb) * peelAmt * (1.0 - d);
+    core = clamp(core + peelMask, 0.0, 1.0);
+
+    // Disruption: only the very top of the range, the frame itself starts to
+    // tear -- block-glitch offsets sampling for a fraction of cells that
+    // grows with amount, so Flood ends in structural breakdown rather than
+    // just being brighter.
+    float discRegime = smoothstep(0.82, 1.0, uAmount);
+    vec2 blockUv = floor(vUv * 26.0) / 26.0;
+    float blockRoll = rand(blockUv + floor(uTime * 5.0));
+    float tearHit = step(1.0 - discRegime * 0.5, blockRoll);
+    vec2 tear = (vec2(rand(blockUv + 3.1), rand(blockUv + 7.2)) - 0.5) * 0.06 * tearHit * discRegime;
+    vec3 base = texture2D(uTex, clamp(vUv + tear, 0.0, 1.0)).rgb;
+
+    vec3 lit = base + jewel * glow * mix(0.5, 1.6, uAmount) * (1.0 + uPulse * 0.6);
+    float influence = clamp(core + glow * 0.4, 0.0, 1.0);
+    gl_FragColor = vec4(mix(base, lit, influence), src.a);
+    `),
 ];
 
 export const EFFECTS_BY_ID: Record<string, EffectDef> = Object.fromEntries(EFFECTS.map(e => [e.id, e]));

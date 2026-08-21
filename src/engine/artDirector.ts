@@ -309,6 +309,7 @@ const CRAFT: Record<string, Craft> = {
   duotone:         { role: "grade", fidelity: "cinematic", gives: { color: 0.7, contrast: 0.6 }, cost: 0.4, replaces: 0.6 },
   infraredDream:   { role: "grade", fidelity: "cinematic", gives: { color: 0.85 }, cost: 0.4, replaces: 0.8 },
   oilSlick:        { role: "grade", fidelity: "cinematic", gives: { color: 0.9 }, cost: 0.35, replaces: 0.85 },
+  acrylicBleed:    { role: "grade", fidelity: "cinematic", gives: { color: 0.9, contrast: 0.2 }, cost: 0.45, gpu: 3.6, replaces: 0.75 },
   liquidChrome:    { role: "grade", fidelity: "cinematic", gives: { contrast: 0.8, light: 0.6 }, cost: 0.5, gpu: 3.5, replaces: 0.55 },
   prismDispersion: { role: "grade", fidelity: "cinematic", gives: { color: 0.85, light: 0.4 }, cost: 0.25, gpu: 5.9 },
   colorQuake:      { role: "grade", fidelity: "neutral",   gives: { color: 0.8, contrast: 0.4 }, cost: 0.35, replaces: 0.5 },
@@ -438,6 +439,7 @@ const CRAFT: Record<string, Craft> = {
   crtPhosphor:     { role: "finish", fidelity: "lofi",      gives: { contrast: 0.5 }, cost: 0.5, gpu: 4.4, replaces: 0.4 },
   volumetricShaft: { role: "finish", fidelity: "cinematic", gives: { light: 1.0 }, cost: 0.3, gpu: 6.0 },
   emberField:      { role: "finish", fidelity: "cinematic", gives: { light: 0.8, color: 0.4 }, cost: 0.3, gpu: 2.6 },
+  prismFlame:      { role: "finish", fidelity: "cinematic", gives: { light: 0.9, color: 0.7 }, cost: 0.5, gpu: 6.0 },
 };
 
 export function craftOf(id: string): Craft | null {
