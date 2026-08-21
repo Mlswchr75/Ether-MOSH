@@ -1,4 +1,4 @@
-import { Mic, MicOff, Circle, Square, Sparkles, Scissors, Snowflake, Camera, Shuffle, Star, Play, Pencil, Trash2, X, Film, Lock, Share2, Compass, Maximize2, Minimize2, Gem, Home, SwitchCamera, Crosshair, Eraser, Link2, Upload, Music, Music2, Shuffle as ShuffleIcon, Undo2, Redo2, Gauge, ChevronDown, MonitorSpeaker, Heart, GripVertical, RotateCcw } from "lucide-react";
+import { Mic, MicOff, Circle, Square, Sparkles, Scissors, Snowflake, Camera, Shuffle, Star, Play, Pencil, Trash2, X, Film, Lock, Share2, Compass, Maximize2, Minimize2, Gem, Home, SwitchCamera, Crosshair, Eraser, Link2, Upload, Music, Music2, Shuffle as ShuffleIcon, Undo2, Redo2, Gauge, ChevronDown, MonitorSpeaker, Heart, GripVertical, RotateCcw, EyeOff } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useStore } from "@/store/useStore";
 import { trackPlayer, DEFAULT_TRACK_TITLE } from "@/engine/trackPlayer";
@@ -64,13 +64,14 @@ const DEFAULT_ORDER = [
   "audio", "sensitivity",
   "freeze", "record", "screenshot", "gif", "share",
   "mosh-sticker", "sticker-mode", "isolation", "theme-track",
-  "favorites", "fullscreen", "switch-camera", "support",
+  "favorites", "fullscreen", "pro-mode", "switch-camera", "support",
 ] as const;
 
 const TRIGGER_LABELS: Record<string, string> = {
   home: "Back to start", undo: "Undo", redo: "Redo",
   mosh: "Mosh", "auto-mosh": "Auto-Mosh", "clear-fx": "Clear FX", journey: "Journey",
   audio: "Audio (mic / device / beat sync)", sensitivity: "Sensitivity",
+  "pro-mode": "Pro Mode — hide all UI",
   freeze: "Freeze", record: "Record", screenshot: "Screenshot", gif: "GIF loop", share: "Share",
   "mosh-sticker": "Mosh sticker", "sticker-mode": "Sticker capture", isolation: "AI isolation",
   "theme-track": "Theme track", favorites: "Favorites", fullscreen: "Fullscreen",
@@ -706,6 +707,8 @@ export function HotTriggers({
   const isolationMode = useStore(s => s.isolationMode);
   const stickerMode = useStore(s => s.stickerMode);
   const setStickerMode = useStore(s => s.setStickerMode);
+  const proModeEnabled = useStore(s => s.proModeEnabled);
+  const setProModeEnabled = useStore(s => s.setProModeEnabled);
   const [isoOpen, setIsoOpen] = useState(false);
 
   useEffect(() => {
@@ -1026,6 +1029,18 @@ export function HotTriggers({
         tint="96 55% 62%"
       >
         <Scissors className="h-4 w-4" strokeWidth={1.5} />
+      </HotBtn>
+    ),
+    "pro-mode": (
+      <HotBtn
+        key="pro-mode"
+        delay={0}
+        label="Pro Mode — hide all UI"
+        active={proModeEnabled}
+        onClick={() => setProModeEnabled(!proModeEnabled)}
+        tint="0 0% 70%"
+      >
+        <EyeOff className="h-4 w-4" strokeWidth={1.5} />
       </HotBtn>
     ),
     isolation: (

@@ -135,6 +135,10 @@ type State = {
   sensitivity: number;
   isPerformanceMode: boolean;
   showMetersInPerformance: boolean;
+  /** Hides all chrome by default; the only way back in is the deliberate
+   *  hold+second-tap (touch) or hold-Shift (desktop) gesture — see
+   *  Editor.tsx's pro-mode-gated input handlers. */
+  proModeEnabled: boolean;
   /** Auto-mosh shuffle interval in seconds (null = off). */
   shuffleSec: number | null;
   past: Layer[][];
@@ -249,6 +253,7 @@ type Actions = {
   setPerformanceMode: (b: boolean) => void;
   togglePerformanceMode: () => void;
   setShowMetersInPerformance: (b: boolean) => void;
+  setProModeEnabled: (b: boolean) => void;
 
   shuffleSec: number | null;
   setShuffleSec: (sec: number | null) => void;
@@ -430,6 +435,7 @@ export const useStore = create<State & Actions>((set, get) => ({
   sensitivity: 1,
   isPerformanceMode: false,
   showMetersInPerformance: typeof localStorage !== "undefined" && localStorage.getItem("cathedral_meters_in_perf") === "1",
+  proModeEnabled: typeof localStorage !== "undefined" && localStorage.getItem("cathedral_pro_mode") === "1",
   shuffleSec: null,
   past: [],
   future: [],
@@ -924,6 +930,10 @@ export const useStore = create<State & Actions>((set, get) => ({
   setShowMetersInPerformance: (b) => {
     try { localStorage.setItem("cathedral_meters_in_perf", b ? "1" : "0"); } catch {}
     set({ showMetersInPerformance: b });
+  },
+  setProModeEnabled: (b) => {
+    try { localStorage.setItem("cathedral_pro_mode", b ? "1" : "0"); } catch {}
+    set({ proModeEnabled: b });
   },
 
   setShuffleSec: (sec) => set({ shuffleSec: sec }),

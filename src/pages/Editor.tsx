@@ -93,6 +93,7 @@ export default function Editor() {
   const setSystemAudioEnabled = useStore(s => s.setSystemAudioEnabled);
   const isPerformanceMode = useStore(s => s.isPerformanceMode);
   const setPerformanceMode = useStore(s => s.setPerformanceMode);
+  const proModeEnabled = useStore(s => s.proModeEnabled);
   const saveSlot = useStore(s => s.saveSlot);
   const loadSlot = useStore(s => s.loadSlot);
   const rerollSeed = useStore(s => s.rerollSeed);
@@ -158,6 +159,21 @@ export default function Editor() {
   // UI chrome (and the cursor, see index.css) fades to fully invisible
   // after 2.5s of inactivity.
   const idleStage = useIdleFade(2_500);
+
+  // Pro Mode: flipping it on hides everything immediately; flipping it off
+  // brings it back. While it's on, the ambient single-finger long-press and
+  // plain H-key hideUI toggles are suspended (see their own effects below) —
+  // the deliberate hold+second-tap / hold-Shift gestures become the only way
+  // back in, so the menu can never surface by accident mid-performance.
+  // Skips its own first run — this only reacts to an actual toggle, never to
+  // mounting with proModeEnabled already false, which would otherwise stomp
+  // on the ordinary hideUI-starts-true-until-revealed default for everyone
+  // who has never touched Pro Mode at all.
+  const proModeMounted = useRef(false);
+  useEffect(() => {
+    if (!proModeMounted.current) { proModeMounted.current = true; return; }
+    setHideUI(proModeEnabled);
+  }, [proModeEnabled]);
   const focusTune = useCallback((layerId: string) => {
     useStore.getState().selectLayer(layerId);
     setHideUI(false);
@@ -1029,9 +1045,10 @@ export default function Editor() {
         return;
       }
 
-      // H => toggle UI hide / peek
+      // H => toggle UI hide / peek. Suspended in Pro Mode — hold-Shift is
+      // the only way back in there (see the dedicated Pro Mode effect).
       if (!e.shiftKey && (e.key === "h" || e.key === "H")) {
-        if (!useStore.getState().isPerformanceMode) {
+        if (!useStore.getState().isPerformanceMode && !useStore.getState().proModeEnabled) {
           e.preventDefault();
           setHideUI(v => !v);
         }
@@ -1127,9 +1144,13 @@ export default function Editor() {
     return () => window.removeEventListener("aegis:bpm-detected", onBpm);
   }, []);
 
-  // Mobile gesture: swipe-up requests UI hide toggle
+  // Mobile gesture: swipe-up requests UI hide toggle. Suspended in Pro
+  // Mode — same reasoning as the H key above.
   useEffect(() => {
-    const onToggleUI = () => setHideUI(v => !v);
+    const onToggleUI = () => {
+      if (useStore.getState().proModeEnabled) return;
+      setHideUI(v => !v);
+    };
     window.addEventListener("aegis:toggle-ui", onToggleUI);
     return () => window.removeEventListener("aegis:toggle-ui", onToggleUI);
   }, []);
@@ -1175,6 +1196,10 @@ export default function Editor() {
     };
     const onDown = (e: PointerEvent) => {
       if (timer) return; // already tracking
+      // Suspended in Pro Mode — the deliberate hold+second-tap gesture
+      // (see the dedicated Pro Mode effect below) is the only way in there,
+      // so a single-finger hold anywhere must stay fully inert.
+      if (useStore.getState().proModeEnabled) return;
       if (e.pointerType === "mouse" && e.button !== 0) return;
       if (e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return;
       const t = e.target as HTMLElement | null;
@@ -1197,6 +1222,68 @@ export default function Editor() {
     return () => {
       cancel();
       el.removeEventListener("pointerdown", onDown);
+    };
+  }, []);
+
+  // Pro Mode, desktop: holding bare Shift (no other key, no modifiers)
+  // shows the menu instantly; releasing it hides it instantly. A true hold,
+  // not a toggle-with-timer, so it's as fast to flash and dismiss as
+  // physically possible. Forces the UI back to hidden on blur/visibility
+  // change too, so alt-tabbing away mid-hold can never strand it open.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!useStore.getState().proModeEnabled) return;
+      if (e.key !== "Shift" || e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      setHideUI(false);
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (!useStore.getState().proModeEnabled) return;
+      if (e.key !== "Shift") return;
+      setHideUI(true);
+    };
+    const forceHidden = () => {
+      if (useStore.getState().proModeEnabled) setHideUI(true);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", forceHidden);
+    document.addEventListener("visibilitychange", forceHidden);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", forceHidden);
+      document.removeEventListener("visibilitychange", forceHidden);
+    };
+  }, []);
+
+  // Pro Mode, touch: hold one finger down, tap with a second while the
+  // first is still held — toggles the menu. No timer on the first finger;
+  // "holding" just means it hasn't lifted yet when the second one lands.
+  useEffect(() => {
+    const el = canvasContainerRef.current;
+    if (!el) return;
+    const activeTouches = new Set<number>();
+    const onDown = (e: PointerEvent) => {
+      if (e.pointerType !== "touch") return;
+      if (!useStore.getState().proModeEnabled) return;
+      const t = e.target as HTMLElement | null;
+      if (t && t.closest("button, a, input, textarea, [role='slider'], [data-no-longpress]")) return;
+      if (activeTouches.size >= 1) {
+        setHideUI(v => !v);
+        try { if ("vibrate" in navigator) (navigator as any).vibrate?.(15); } catch {}
+      }
+      activeTouches.add(e.pointerId);
+    };
+    const onUp = (e: PointerEvent) => { activeTouches.delete(e.pointerId); };
+    el.addEventListener("pointerdown", onDown);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    return () => {
+      el.removeEventListener("pointerdown", onDown);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
     };
   }, []);
 
@@ -1335,7 +1422,7 @@ export default function Editor() {
             triggers, this is how you get OUT of whichever mode you're in,
             and idle-fade would have hidden it by the exact moment you
             reach for it. */}
-        {!isPerformanceMode && !isOverlay && <SourceModeToggle />}
+        {!isPerformanceMode && !isOverlay && <SourceModeToggle hidden={hideUI} />}
         <TrackpadGestures
           targetRef={canvasContainerRef}
           onTogglePerf={togglePerf}
@@ -1347,7 +1434,7 @@ export default function Editor() {
         <SourceTransition trigger={transitionKey} />
         
         {/* TapToBegin removed — StartCameraOverlay is the live-first empty state and TapToBegin's centered button used to intercept clicks meant for "go live". */} 
-        {!isPerformanceMode && !isOverlay && (
+        {!isPerformanceMode && !isOverlay && !hideUI && (
           <HotTriggers
             isRecording={isRecording}
             onToggleRecord={toggleRecord}

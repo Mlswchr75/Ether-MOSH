@@ -1,15 +1,18 @@
 import { useEffect, useRef, useState } from "react";
-import { Upload, Video, Wand2 } from "lucide-react";
+import { Upload, Video, Flame } from "lucide-react";
 import { toast } from "sonner";
 import { useStore } from "@/store/useStore";
 import type { SourceMode } from "@/store/types";
 import { requestCameraStream, defaultFacing, type CameraError } from "@/hooks/useCamera";
 import { loadImageFile } from "@/lib/sourceLoader";
 
-const MODE_META: Record<SourceMode, { label: string; icon: typeof Upload }> = {
-  upload: { label: "Upload", icon: Upload },
-  camera: { label: "Camera", icon: Video },
-  forge: { label: "Forge", icon: Wand2 },
+/** Matches the title screen's Upload / Video / Flame trio — same icons, same
+ *  primary-vs-accent coloring — so this reads as the same instrument
+ *  reappearing in the editor's corner rather than a different control. */
+const MODE_META: Record<SourceMode, { label: string; icon: typeof Upload; tint: "primary" | "accent" }> = {
+  upload: { label: "Upload", icon: Upload, tint: "primary" },
+  camera: { label: "Camera", icon: Video, tint: "accent" },
+  forge: { label: "Forge", icon: Flame, tint: "accent" },
 };
 
 const CAMERA_ERR: Record<CameraError, string> = {
@@ -21,34 +24,31 @@ const CAMERA_ERR: Record<CameraError, string> = {
   unknown: "Couldn't access camera — try again",
 };
 
+type Props = {
+  /** Pro Mode / the manual full-hide (hideUI) drives this from Editor.tsx —
+   *  same "persistent chrome that still disappears on demand" contract as
+   *  AboutTrigger. */
+  hidden?: boolean;
+};
+
 /**
- * Which source feeds the renderer — upload, camera, or forge. Idle-fades
- * with the rest of the chrome (`.ui-chrome`), same as everything else in the
- * editor — U/L/Y keyboard shortcuts (see Editor.tsx's onKey) reach the same
- * three modes without needing this visible, so idle-fade no longer needs an
- * exemption here.
+ * Which source feeds the renderer — upload, camera, or forge. Always three
+ * separate buttons (not a collapsed dropdown) so it reads as the title
+ * screen's own trio persisting into the editor, not a settings menu.
+ * Idle-fades with the rest of the chrome (`.ui-chrome`) and hides fully
+ * whenever the rest of the menu does (`hidden`) — U/L/Y keyboard shortcuts
+ * (see Editor.tsx's onKey) reach the same three modes without needing this
+ * visible at all.
  */
-export function SourceModeToggle() {
+export function SourceModeToggle({ hidden = false }: Props) {
   const sourceMode = useStore(s => s.sourceMode);
   const setSourceMode = useStore(s => s.setSourceMode);
   const setVideoSource = useStore(s => s.setVideoSource);
   const randomiseForge = useStore(s => s.randomiseForge);
-  const [open, setOpen] = useState(false);
   const [starting, setStarting] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
-  const wrapRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: PointerEvent) => {
-      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
-    };
-    window.addEventListener("pointerdown", onDown);
-    return () => window.removeEventListener("pointerdown", onDown);
-  }, [open]);
 
   const pick = async (mode: SourceMode) => {
-    setOpen(false);
     if (mode === sourceMode) return;
 
     if (mode === "upload") {
@@ -87,50 +87,46 @@ export function SourceModeToggle() {
     return () => window.removeEventListener("mosh:switch-mode", onSwitch);
   }, [sourceMode]);
 
-  const Icon = MODE_META[sourceMode].icon;
+  if (hidden) return null;
 
   return (
-    <div ref={wrapRef} className="ui-chrome pointer-events-auto absolute top-3 left-3 z-40 safe-top safe-left">
-      <button
-        type="button"
-        onClick={() => setOpen(o => !o)}
-        aria-label={`Source: ${MODE_META[sourceMode].label} — tap to switch`}
-        aria-expanded={open || undefined}
-        aria-haspopup="menu"
-        title="Switch source — upload, camera, or forge"
-        disabled={starting}
-        className="flex items-center gap-2 rounded-full border border-white/15 bg-black/55 px-3 py-2 backdrop-blur-md transition hover:border-[hsl(var(--accent))]/60 disabled:opacity-60"
-      >
-        <Icon className="h-4 w-4 text-[hsl(var(--accent))]" strokeWidth={1.5} />
-        <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-white/85">
-          {starting ? "starting…" : MODE_META[sourceMode].label}
-        </span>
-      </button>
-
-      {open && (
-        <div
-          className="panel-in-3d absolute left-0 top-full z-40 mt-2 flex items-center gap-1 rounded-sm border border-[hsl(var(--border-default))] bg-black/85 p-1 backdrop-blur-md"
-          role="menu"
-          aria-label="Source mode"
-        >
-          {(Object.keys(MODE_META) as SourceMode[]).map((m) => {
-            const MIcon = MODE_META[m].icon;
-            return (
-              <button
-                key={m}
-                type="button"
-                role="menuitem"
-                onClick={() => pick(m)}
-                data-active={sourceMode === m || undefined}
-                className="flex min-w-[56px] flex-col items-center gap-1 rounded-sm border border-transparent px-2 py-1.5 font-mono text-[9px] uppercase tracking-[0.12em] text-[hsl(var(--text-secondary))] transition hover:border-[hsl(var(--accent))] hover:text-[hsl(var(--accent))] data-[active]:border-[hsl(var(--accent))] data-[active]:text-[hsl(var(--accent))]"
-              >
-                <MIcon className="h-3.5 w-3.5" strokeWidth={1.5} />
-                {MODE_META[m].label}
-              </button>
-            );
-          })}
-        </div>
-      )}
+    <div className="ui-chrome pointer-events-auto absolute top-3 left-3 z-40 flex items-center gap-2.5 safe-top safe-left">
+      {(Object.keys(MODE_META) as SourceMode[]).map((m) => {
+        const meta = MODE_META[m];
+        const Icon = meta.icon;
+        const active = sourceMode === m;
+        const isPrimary = meta.tint === "primary";
+        const busy = m === "camera" && starting;
+        return (
+          <button
+            key={m}
+            type="button"
+            onClick={() => pick(m)}
+            aria-label={`${meta.label}${active ? " (active)" : ""}`}
+            aria-pressed={active}
+            title={meta.label}
+            disabled={busy}
+            className="relative flex h-10 w-10 items-center justify-center rounded-full border bg-background/30 backdrop-blur-[2px] transition hover:scale-105 disabled:opacity-60 disabled:hover:scale-100"
+            style={{
+              borderColor: isPrimary
+                ? `hsl(var(--primary) / ${active ? 0.9 : 0.5})`
+                : `hsl(var(--accent) / ${active ? 0.9 : 0.5})`,
+              color: isPrimary ? "hsl(var(--primary))" : "hsl(var(--accent))",
+              boxShadow: active
+                ? `0 0 22px hsl(var(${isPrimary ? "--primary" : "--accent"}) / 0.55)`
+                : `0 0 10px hsl(var(${isPrimary ? "--primary" : "--accent"}) / 0.25)`,
+            }}
+          >
+            <Icon className="h-4 w-4" strokeWidth={1.5} aria-hidden="true" />
+            {active && (
+              <span
+                className="pointer-events-none absolute inset-0 rounded-full ring-1 animate-pulse-soft"
+                style={{ boxShadow: `inset 0 0 12px hsl(var(${isPrimary ? "--primary" : "--accent"}) / 0.3)` }}
+              />
+            )}
+          </button>
+        );
+      })}
 
       <input
         ref={fileRef}
