@@ -16,6 +16,9 @@
 # CSP's script-src never governs.
 # style-src: 'unsafe-inline' is required by the Netlify inline-critical-css
 # plugin, which inlines a real <style> block into every page.
+# img-src: cdn.shopify.com is the demo reel — public/demo-reel.json is 522
+# product photos from the real Shopify store, fetched at runtime by
+# DemoReelPanel, not bundled at build time (so grepping src/ alone misses it).
 # connect-src: Supabase (data + edge functions, http and ws), Stripe's
 # API, and the same MediaPipe hosts above (model/wasm fetch, not just
 # script load).
@@ -28,7 +31,7 @@
       script-src 'self' https://js.stripe.com https://cdn.jsdelivr.net 'wasm-unsafe-eval';
       style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
       font-src 'self' https://fonts.gstatic.com;
-      img-src 'self' data: blob:;
+      img-src 'self' data: blob: https://cdn.shopify.com;
       media-src 'self' blob:;
       connect-src 'self' https://udtrjwredttzvdixtwla.supabase.co wss://udtrjwredttzvdixtwla.supabase.co https://api.stripe.com https://cdn.jsdelivr.net https://storage.googleapis.com;
       frame-src https://js.stripe.com;
