@@ -1,4 +1,4 @@
-import { Mic, MicOff, Circle, Square, Sparkles, Scissors, Snowflake, Camera, Shuffle, Star, Play, Pencil, Trash2, X, Film, Lock, Share2, Compass, Maximize2, Minimize2, Gem, Home, SwitchCamera, Crosshair, Eraser, Link2, Upload, Music, Music2, Shuffle as ShuffleIcon, Undo2, Redo2, Gauge, ChevronDown, MonitorSpeaker, Heart, GripVertical, RotateCcw, EyeOff } from "lucide-react";
+import { Mic, MicOff, Circle, Square, Sparkles, Scissors, Snowflake, Camera, Shuffle, Star, Play, Pencil, Trash2, X, Film, Lock, Share2, Compass, Maximize2, Minimize2, Gem, Home, SwitchCamera, Crosshair, Eraser, Link2, Upload, Music, Music2, Shuffle as ShuffleIcon, Undo2, Redo2, Gauge, ChevronDown, MonitorSpeaker, Heart, GripVertical, RotateCcw, EyeOff, HelpCircle } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useStore } from "@/store/useStore";
 import { trackPlayer, DEFAULT_TRACK_TITLE } from "@/engine/trackPlayer";
@@ -62,7 +62,7 @@ const DEFAULT_ORDER = [
   "home", "undo", "redo",
   "mosh", "auto-mosh", "clear-fx", "journey",
   "audio", "sensitivity",
-  "freeze", "record", "screenshot", "gif", "share",
+  "freeze", "capture", "gif", "share",
   "mosh-sticker", "sticker-mode", "isolation", "theme-track",
   "favorites", "fullscreen", "pro-mode", "switch-camera", "support",
 ] as const;
@@ -72,7 +72,7 @@ const TRIGGER_LABELS: Record<string, string> = {
   mosh: "Mosh", "auto-mosh": "Auto-Mosh", "clear-fx": "Clear FX", journey: "Journey",
   audio: "Audio (mic / device / beat sync)", sensitivity: "Sensitivity",
   "pro-mode": "Pro Mode — hide all UI",
-  freeze: "Freeze", record: "Record", screenshot: "Screenshot", gif: "GIF loop", share: "Share",
+  freeze: "Freeze", capture: "Capture — tap for a still, hold to record", gif: "GIF loop", share: "Share",
   "mosh-sticker": "Mosh sticker", "sticker-mode": "Sticker capture", isolation: "AI isolation",
   "theme-track": "Theme track", favorites: "Favorites", fullscreen: "Fullscreen",
   "switch-camera": "Switch camera", support: "Support MOSH",
@@ -111,6 +111,7 @@ function saveOrder(order: string[]) {
  */
 function HotBtn({
   label, active, onClick, children, delay, tint, disabled,
+  onPointerDown, onPointerUp, onPointerCancel,
 }: {
   label: string;
   active?: boolean;
@@ -119,11 +120,20 @@ function HotBtn({
   children: ReactNode;
   tint?: string;
   disabled?: boolean;
+  /** Optional hold gesture, layered on top of the plain click — see the
+   *  Pro Mode button for the one caller that uses these. */
+  onPointerDown?: () => void;
+  onPointerUp?: () => void;
+  onPointerCancel?: () => void;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      onPointerDown={onPointerDown}
+      onPointerUp={onPointerUp}
+      onPointerLeave={onPointerCancel}
+      onPointerCancel={onPointerCancel}
       disabled={disabled}
       aria-label={label}
       aria-pressed={active ? true : undefined}
@@ -645,6 +655,10 @@ export function HotTriggers({
   const renameFavorite = useStore(s => s.renameFavorite);
   const heldRef = useRef(false);
   const holdTimerRef = useRef<number | null>(null);
+  const proHeldRef = useRef(false);
+  const proHoldTimerRef = useRef<number | null>(null);
+  const captureHeldRef = useRef(false);
+  const captureHoldTimerRef = useRef<number | null>(null);
   const favHeldRef = useRef(false);
   const favHoldTimerRef = useRef<number | null>(null);
 
@@ -709,6 +723,8 @@ export function HotTriggers({
   const setStickerMode = useStore(s => s.setStickerMode);
   const proModeEnabled = useStore(s => s.proModeEnabled);
   const setProModeEnabled = useStore(s => s.setProModeEnabled);
+  const helpModeEnabled = useStore(s => s.helpModeEnabled);
+  const setHelpModeEnabled = useStore(s => s.setHelpModeEnabled);
   const [isoOpen, setIsoOpen] = useState(false);
 
   useEffect(() => {
@@ -993,23 +1009,38 @@ export function HotTriggers({
         <Snowflake className="h-4 w-4" strokeWidth={1.5} />
       </HotBtn>
     ),
-    record: (
+    capture: (
       <HotBtn
-        key="record"
+        key="capture"
         delay={0}
-        label={isRecording ? "Stop recording" : "One-tap record"}
+        label={isRecording ? "Stop recording" : "Capture — tap for a still, hold to record"}
         active={isRecording}
-        onClick={onToggleRecord}
-        tint="var(--signal-live)"
+        onClick={() => {
+          // While recording, tap stops it regardless of hold state — the
+          // fast, discoverable way out always works. Otherwise, a hold
+          // already started the recording (see onPointerDown) and this
+          // plain click is the tap path: an instant smart-still capture.
+          if (isRecording) { onToggleRecord(); return; }
+          if (captureHeldRef.current) return;
+          onScreenshot();
+        }}
+        onPointerDown={() => {
+          if (isRecording) return;
+          captureHeldRef.current = false;
+          if (captureHoldTimerRef.current) window.clearTimeout(captureHoldTimerRef.current);
+          captureHoldTimerRef.current = window.setTimeout(() => {
+            captureHeldRef.current = true;
+            onToggleRecord();
+            try { (navigator as any).vibrate?.(12); } catch {}
+          }, 420);
+        }}
+        onPointerUp={() => { if (captureHoldTimerRef.current) { window.clearTimeout(captureHoldTimerRef.current); captureHoldTimerRef.current = null; } }}
+        onPointerCancel={() => { if (captureHoldTimerRef.current) { window.clearTimeout(captureHoldTimerRef.current); captureHoldTimerRef.current = null; } }}
+        tint={isRecording ? "var(--signal-live)" : "40 20% 84%"}
       >
         {isRecording
           ? <Square className="h-3.5 w-3.5 fill-current" strokeWidth={1.5} />
-          : <Circle className="h-4 w-4" strokeWidth={1.5} />}
-      </HotBtn>
-    ),
-    screenshot: (
-      <HotBtn key="screenshot" delay={0} label="Screenshot" onClick={onScreenshot} tint="40 20% 84%">
-        <Camera className="h-4 w-4" strokeWidth={1.5} />
+          : <Camera className="h-4 w-4" strokeWidth={1.5} />}
       </HotBtn>
     ),
     gif: <GifButton key="gif" onGif={onGif} gifBusy={gifBusy} gifProgress={gifProgress} />,
@@ -1035,12 +1066,23 @@ export function HotTriggers({
       <HotBtn
         key="pro-mode"
         delay={0}
-        label="Pro Mode — hide all UI"
-        active={proModeEnabled}
-        onClick={() => setProModeEnabled(!proModeEnabled)}
-        tint="0 0% 70%"
+        label={helpModeEnabled ? "Pro Mode (hold: Help Mode is ON)" : "Pro Mode — hide all UI (hold for Help Mode)"}
+        active={proModeEnabled || helpModeEnabled}
+        onClick={() => { if (proHeldRef.current) return; setProModeEnabled(!proModeEnabled); }}
+        onPointerDown={() => {
+          proHeldRef.current = false;
+          if (proHoldTimerRef.current) window.clearTimeout(proHoldTimerRef.current);
+          proHoldTimerRef.current = window.setTimeout(() => {
+            proHeldRef.current = true;
+            setHelpModeEnabled(!helpModeEnabled);
+            try { (navigator as any).vibrate?.(10); } catch {}
+          }, 420);
+        }}
+        onPointerUp={() => { if (proHoldTimerRef.current) { window.clearTimeout(proHoldTimerRef.current); proHoldTimerRef.current = null; } }}
+        onPointerCancel={() => { if (proHoldTimerRef.current) { window.clearTimeout(proHoldTimerRef.current); proHoldTimerRef.current = null; } }}
+        tint={helpModeEnabled ? "200 90% 65%" : "0 0% 70%"}
       >
-        <EyeOff className="h-4 w-4" strokeWidth={1.5} />
+        {helpModeEnabled ? <HelpCircle className="h-4 w-4" strokeWidth={1.5} /> : <EyeOff className="h-4 w-4" strokeWidth={1.5} />}
       </HotBtn>
     ),
     isolation: (

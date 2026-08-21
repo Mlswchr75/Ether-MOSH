@@ -56,7 +56,6 @@ import { SourceModeToggle } from "@/components/editor/SourceModeToggle";
 import { HotTriggers } from "@/components/editor/HotTriggers";
 import { ActionConfirmation } from "@/components/editor/ActionConfirmation";
 import { showExportSuccessToast } from "@/components/editor/ExportShareToast";
-import { scanForBestFrame } from "@/engine/screenshotScanner";
 import { AccountChip } from "@/components/AccountChip";
 import { usePaywall } from "@/hooks/usePaywall";
 import { useCloudFavorites } from "@/hooks/useCloudFavorites";
@@ -94,6 +93,8 @@ export default function Editor() {
   const isPerformanceMode = useStore(s => s.isPerformanceMode);
   const setPerformanceMode = useStore(s => s.setPerformanceMode);
   const proModeEnabled = useStore(s => s.proModeEnabled);
+  const helpModeEnabled = useStore(s => s.helpModeEnabled);
+  const [helpCaption, setHelpCaption] = useState<{ text: string; x: number; y: number } | null>(null);
   const saveSlot = useStore(s => s.saveSlot);
   const loadSlot = useStore(s => s.loadSlot);
   const rerollSeed = useStore(s => s.rerollSeed);
@@ -177,6 +178,58 @@ export default function Editor() {
     document.addEventListener("contextmenu", onContextMenu);
     return () => document.removeEventListener("contextmenu", onContextMenu);
   }, [idleStage]);
+
+  // Help Mode (hold the Pro Mode trigger to reach it): a single delegated
+  // listener rather than touching every button's own JSX — every hot
+  // trigger and menu control already carries a real aria-label/title, this
+  // just surfaces that text immediately instead of waiting on the browser's
+  // slow native tooltip delay (and gives touch a path at all, since touch
+  // has no hover state for native tooltips to ever trigger from).
+  useEffect(() => {
+    if (!helpModeEnabled) { setHelpCaption(null); return; }
+    const describe = (start: EventTarget | null): string | null => {
+      let el = start as HTMLElement | null;
+      while (el) {
+        const label = el.getAttribute?.("aria-label") || el.getAttribute?.("title");
+        if (label) return label;
+        el = el.parentElement;
+      }
+      return null;
+    };
+    const onMove = (e: PointerEvent) => {
+      if (e.pointerType !== "mouse") return;
+      const text = describe(e.target);
+      setHelpCaption(text ? { text, x: e.clientX, y: e.clientY } : null);
+    };
+    let holdTimer: number | null = null;
+    const onDown = (e: PointerEvent) => {
+      if (e.pointerType !== "touch") return;
+      const target = e.target;
+      const x = e.clientX, y = e.clientY;
+      holdTimer = window.setTimeout(() => {
+        const text = describe(target);
+        if (text) {
+          setHelpCaption({ text, x, y });
+          try { if ("vibrate" in navigator) (navigator as any).vibrate?.(8); } catch {}
+        }
+      }, 380);
+    };
+    const onUp = () => {
+      if (holdTimer) { window.clearTimeout(holdTimer); holdTimer = null; }
+      setHelpCaption(null);
+    };
+    window.addEventListener("pointermove", onMove, { passive: true });
+    window.addEventListener("pointerdown", onDown, { passive: true });
+    window.addEventListener("pointerup", onUp, { passive: true });
+    window.addEventListener("pointercancel", onUp, { passive: true });
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerdown", onDown);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+      if (holdTimer) window.clearTimeout(holdTimer);
+    };
+  }, [helpModeEnabled]);
 
   // Pro Mode: flipping it on hides everything immediately; flipping it off
   // brings it back. While it's on, the ambient single-finger long-press and
@@ -688,13 +741,21 @@ export default function Editor() {
         toast.loading("Analyzing frames for best quality…", { duration: 1500 });
 
         try {
-          // Scan next 0.75s for the crispest frame
-          const result = await scanForBestFrame(c, 750);
+          // Scan the next ~0.9s for the best frame -- seam-aware when tile
+          // mode is on (captureBestFrame's preferSeamless scores edge
+          // continuity too, same mechanism exportBestStill already uses for
+          // seamless remasters), plain sharpness/colorfulness otherwise.
+          const bestCanvas = await captureBestFrame(c, {
+            durationMs: 900,
+            intervalMs: 80,
+            sampleSize: 128,
+            preferSeamless: tileMode !== "none",
+          });
 
           // Free tier caps export at 720px on the long edge. Supporters get full res.
-          const longEdge = Math.max(result.bestCanvas.width, result.bestCanvas.height);
+          const longEdge = Math.max(bestCanvas.width, bestCanvas.height);
           const scale = paywall.isSupporter ? 1 : Math.min(1, 720 / longEdge);
-          const blob = await exportCanvas(result.bestCanvas, { format: "png", scale, aspect: null });
+          const blob = await exportCanvas(bestCanvas, { format: "png", scale, aspect: null });
           const filename = `mosh-${Date.now()}.png`;
           shareOrDownload(blob, filename);
           showExportSuccessToast({
@@ -1782,6 +1843,15 @@ export default function Editor() {
       {shortcutsOpen && <ShortcutsOverlay onClose={() => setShortcutsOpen(false)} />}
 
       <AboutTrigger hidden={hideUI || isPerformanceMode || isOverlay || idleStage === "hidden"} />
+
+      {helpCaption && (
+        <div
+          className="pointer-events-none fixed z-[10001] max-w-[220px] rounded-sm border border-[hsl(var(--accent))]/50 bg-black/85 px-2 py-1 font-mono text-[10px] leading-snug text-white/90 backdrop-blur-md"
+          style={{ left: Math.min(helpCaption.x + 16, window.innerWidth - 232), top: helpCaption.y + 16 }}
+        >
+          {helpCaption.text}
+        </div>
+      )}
 
 
       <CommandPalette

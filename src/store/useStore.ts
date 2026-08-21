@@ -139,6 +139,10 @@ type State = {
    *  hold+second-tap (touch) or hold-Shift (desktop) gesture — see
    *  Editor.tsx's pro-mode-gated input handlers. */
   proModeEnabled: boolean;
+  /** Branches off the same hot trigger as Pro Mode (hold it) — shows a
+   *  description of whatever's hovered/long-pressed instead of native
+   *  title-attribute tooltips, which are slow and don't exist on touch. */
+  helpModeEnabled: boolean;
   /** Auto-mosh shuffle interval in seconds (null = off). */
   shuffleSec: number | null;
   past: Layer[][];
@@ -254,6 +258,7 @@ type Actions = {
   togglePerformanceMode: () => void;
   setShowMetersInPerformance: (b: boolean) => void;
   setProModeEnabled: (b: boolean) => void;
+  setHelpModeEnabled: (b: boolean) => void;
 
   shuffleSec: number | null;
   setShuffleSec: (sec: number | null) => void;
@@ -436,6 +441,7 @@ export const useStore = create<State & Actions>((set, get) => ({
   isPerformanceMode: false,
   showMetersInPerformance: typeof localStorage !== "undefined" && localStorage.getItem("cathedral_meters_in_perf") === "1",
   proModeEnabled: typeof localStorage !== "undefined" && localStorage.getItem("cathedral_pro_mode") === "1",
+  helpModeEnabled: false,
   shuffleSec: null,
   past: [],
   future: [],
@@ -935,6 +941,7 @@ export const useStore = create<State & Actions>((set, get) => ({
     try { localStorage.setItem("cathedral_pro_mode", b ? "1" : "0"); } catch {}
     set({ proModeEnabled: b });
   },
+  setHelpModeEnabled: (b) => set({ helpModeEnabled: b }),
 
   setShuffleSec: (sec) => set({ shuffleSec: sec }),
 
