@@ -18,6 +18,7 @@ import { StickerCapture } from "./StickerCapture";
 import { toast } from "sonner";
 import { vrMode } from "@/engine/vrMode";
 import { VrButton } from "./VrButton";
+import { cursorFx } from "@/engine/cursorFx";
 
 /** Matches JourneyDirector's default sampleMs — the cadence its AudioFeatures
  *  computation was designed for, not an arbitrary choice. */
@@ -164,6 +165,44 @@ export function GlCanvas() {
     return () => {
       canvas.removeEventListener("webglcontextlost", onLost);
       canvas.removeEventListener("webglcontextrestored", onRestored);
+    };
+  }, []);
+
+  // Ambient touch/click mosh — window-level and capture-phase so it fires
+  // for every press anywhere (canvas drag AND any hot-trigger/menu tap),
+  // regardless of what the target element does with the event afterward.
+  // Deliberately independent of Pro Mode / idle-lockdown / hideUI: this is
+  // feedback for the touch itself, not a menu interaction. Keyed by
+  // pointerId, which is exactly how the platform already distinguishes
+  // simultaneous touches — multitouch falls out for free.
+  useEffect(() => {
+    const toUv = (clientX: number, clientY: number) => {
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!rect || rect.width < 1 || rect.height < 1) return null;
+      const x = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+      const y = Math.min(1, Math.max(0, 1 - (clientY - rect.top) / rect.height));
+      return { x, y };
+    };
+    const onDown = (e: PointerEvent) => {
+      const uv = toUv(e.clientX, e.clientY);
+      if (!uv) return;
+      cursorFx.spawnAmbient(`ptr-${e.pointerId}`, uv.x, uv.y);
+    };
+    const onMove = (e: PointerEvent) => {
+      const uv = toUv(e.clientX, e.clientY);
+      if (!uv) return;
+      cursorFx.moveAmbient(`ptr-${e.pointerId}`, uv.x, uv.y);
+    };
+    const onUp = (e: PointerEvent) => cursorFx.release(`ptr-${e.pointerId}`);
+    window.addEventListener("pointerdown", onDown, { capture: true, passive: true });
+    window.addEventListener("pointermove", onMove, { capture: true, passive: true });
+    window.addEventListener("pointerup", onUp, { capture: true, passive: true });
+    window.addEventListener("pointercancel", onUp, { capture: true, passive: true });
+    return () => {
+      window.removeEventListener("pointerdown", onDown, { capture: true });
+      window.removeEventListener("pointermove", onMove, { capture: true });
+      window.removeEventListener("pointerup", onUp, { capture: true });
+      window.removeEventListener("pointercancel", onUp, { capture: true });
     };
   }, []);
 
@@ -564,6 +603,11 @@ export function GlCanvas() {
           region: l.region ?? null,
         };
       });
+
+      // Live touch/click distortion — appended last so it warps whatever the
+      // stack above already produced, "no matter what it may be". Empty
+      // whenever nothing is actively pressed, so this costs nothing at rest.
+      if (cursorFx.hasActive()) renderLayers.push(...cursorFx.getActiveLayers(now));
 
       // Mosh intensity score: 0 = bare camera / no effects, 1 = fully cranked.
       // Drives the adaptive HDR finisher (pure passthrough at 0, ACES filmic at 1).

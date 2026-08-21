@@ -34,6 +34,14 @@ export type EffectDef = {
    * Output gl_FragColor.
    */
   frag: string;
+  /** True for effects driven entirely by a runtime manager (params it alone
+   *  knows how to set, e.g. a live pointer position) rather than by a user
+   *  dragging sliders. Excluded from every user-facing catalog (FxPicker,
+   *  sticker layers, journey's random swap, the transition-boundary roll) —
+   *  picking one there would show a static blob frozen at its param defaults
+   *  instead of the manager's live-driven effect. Still fully renderable via
+   *  EFFECTS_BY_ID and still gets warmup-precompiled. */
+  internal?: boolean;
 };
 
 /** Common texture uniforms reserved by every effect shader. Keep scalar params
@@ -2227,7 +2235,86 @@ export const EFFECTS: EffectDef[] = [
     float influence = clamp(core + glow * 0.4, 0.0, 1.0);
     gl_FragColor = vec4(mix(base, lit, influence), src.a);
     `),
+
+  // ── INTERNAL — POINTER-DRIVEN ─────────────────────────────────────
+  /* Localized GPU distortion anchored to a live (x, y) point instead of
+     covering the frame. cursorFx.ts drives x/y/amount/chaos every frame from
+     active touch/click state; the shader itself is the only thing enforcing
+     "only near the point" — outside uRadius it falls back to an exact
+     passthrough, which is also why it's cheap to stack several of these at
+     once for multitouch. */
+  {
+    ...fx("cursorMosh", "Cursor Mosh", "corruption",
+      "Localized touch/cursor-point distortion — driven live, not by sliders.",
+      [
+        // Default is a visible 0.5, not 0: cursorFx.ts always overrides this
+        // live and per-frame while a point is active, and only ever appends
+        // this layer while one is — so the schema default is never actually
+        // seen at runtime. It only matters to the effect audit script, which
+        // renders every effect at its defaults and flags an exact passthrough
+        // as inert; 0 would fail that for an effect this is correct behavior
+        // for, so the default is picked to read clearly there instead.
+        { key: "amount", label: "Amount", min: 0, max: 1, default: 0.5 },
+        { key: "radius", label: "Radius", min: 0.02, max: 0.6, default: 0.16 },
+        { key: "x", label: "X", min: 0, max: 1, default: 0.5 },
+        { key: "y", label: "Y", min: 0, max: 1, default: 0.5 },
+        { key: "chaos", label: "Chaos", min: 0, max: 1, default: 0 },
+      ],
+      `
+      vec2 uv = vUv;
+      vec4 src = texture2D(uTex, uv);
+
+      float aspect = uResolution.x / max(1.0, uResolution.y);
+      vec2 asp = vec2(aspect, 1.0);
+      vec2 center = vec2(uX, uY);
+      vec2 d = (uv - center) * asp;
+      float dist = length(d);
+      float rad = max(0.015, uRadius);
+      float falloff = 1.0 - smoothstep(0.0, rad, dist);
+      falloff = pow(clamp(falloff, 0.0, 1.0), 1.5);
+
+      float strength = uAmount * falloff;
+      if (strength <= 0.001) { gl_FragColor = src; return; }
+
+      vec2 dirOut = dist > 0.0001 ? normalize(d) / asp : vec2(0.0);
+
+      // Flowing curl-ish noise for the ambient/drag character.
+      float n1 = noise(uv * 10.0 + uTime * 0.7);
+      float n2 = noise(uv * 10.0 + 47.0 - uTime * 0.7);
+      vec2 flowDisp = (vec2(n1, n2) - 0.5) * 2.0;
+
+      // Blend toward a straight radial push as uChaos rises -- flowing warp
+      // at 0, a sharper outward shove once a hold-branch burst sets it high.
+      vec2 mixedDisp = mix(flowDisp, dirOut, 0.25 + uChaos * 0.5);
+
+      vec2 offUv = clamp(uv + mixedDisp * strength * mix(0.05, 0.11, uChaos), 0.0, 1.0);
+      vec3 moshed = texture2D(uTex, offUv).rgb;
+
+      // Chromatic split, radiating outward from the point -- reads as a
+      // shockwave once uChaos pushes the offset wider.
+      vec2 chromaOff = dirOut * strength * mix(0.012, 0.03, uChaos);
+      float rCh = texture2D(uTex, clamp(offUv + chromaOff, 0.0, 1.0)).r;
+      float bCh = texture2D(uTex, clamp(offUv - chromaOff, 0.0, 1.0)).b;
+      vec3 split = vec3(rCh, moshed.g, bCh);
+
+      // Block glitch only bites as uChaos rises, so a plain drag stays a
+      // smooth warp and a hold-branch burst reads as circuitry breaking.
+      vec2 blockUv = floor(uv * 40.0) / 40.0;
+      float blockRoll = rand(blockUv + floor(uTime * 14.0));
+      float blockHit = step(1.0 - uChaos * 0.55, blockRoll) * falloff;
+      vec3 blocked = mix(split, split.brg, blockHit);
+
+      vec3 outc = mix(src.rgb, blocked, strength);
+      gl_FragColor = vec4(outc, src.a);
+      `),
+    internal: true,
+  },
 ];
+
+/** Every effect except the internal, manager-driven ones — what any
+ *  user-facing catalog (picker, sticker layer, random-swap/boundary rolls)
+ *  should iterate instead of the raw EFFECTS array. */
+export const PUBLIC_EFFECTS: EffectDef[] = EFFECTS.filter(e => !e.internal);
 
 export const EFFECTS_BY_ID: Record<string, EffectDef> = Object.fromEntries(EFFECTS.map(e => [e.id, e]));
 

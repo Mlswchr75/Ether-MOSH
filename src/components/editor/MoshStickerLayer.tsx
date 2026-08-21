@@ -11,7 +11,7 @@
  */
 import { useEffect, useMemo, useRef, type RefObject } from "react";
 import { Lock, Trash2, Unlock } from "lucide-react";
-import { EFFECTS, EFFECTS_BY_ID } from "@/engine/effects";
+import { PUBLIC_EFFECTS, EFFECTS_BY_ID } from "@/engine/effects";
 import { stickerRendererPool } from "@/engine/StickerRenderer";
 import { useMoshStickerStore, type MoshSticker } from "@/store/moshStickerStore";
 
@@ -233,7 +233,7 @@ function StickerNode({ sticker, containerRef, selected, onSelect }: NodeProps) {
   };
   const onRotateUp = () => { rotateBaseRef.current = null; };
 
-  const catalog = useMemo(() => EFFECTS.filter(e => e.category !== "dimension"), []);
+  const catalog = useMemo(() => PUBLIC_EFFECTS.filter(e => e.category !== "dimension"), []);
   const def = EFFECTS_BY_ID[effectId];
 
   return (

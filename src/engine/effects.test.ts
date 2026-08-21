@@ -22,8 +22,8 @@ const SIGNATURE_SET = [
 ];
 
 describe("effect registry", () => {
-  it("holds 107 effects", () => {
-    expect(EFFECTS.length).toBe(107);
+  it("holds 108 effects", () => {
+    expect(EFFECTS.length).toBe(108);
   });
 
   /** Effects with memory — they sample last frame via uFeedback. */

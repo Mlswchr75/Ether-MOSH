@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { rngFromSeed } from "./seed";
-import { EFFECTS_BY_ID } from "./effects";
+import { EFFECTS_BY_ID, PUBLIC_EFFECTS } from "./effects";
 import {
   LOOKS,
   NEUTRAL_STATS,
@@ -138,7 +138,10 @@ describe("the grammar", () => {
   });
 
   it("assigns every registered effect a role", () => {
-    for (const id of Object.keys(EFFECTS_BY_ID)) {
+    // Internal, manager-driven effects (e.g. cursorMosh) are deliberately
+    // outside the director's grammar — they never enter the auto-composed
+    // stack, so they carry no craft entry by design.
+    for (const { id } of PUBLIC_EFFECTS) {
       expect(craftOf(id), `${id} has no craft entry`).not.toBeNull();
     }
   });

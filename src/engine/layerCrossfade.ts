@@ -1,5 +1,5 @@
 import { useStore, makeLayer } from "@/store/useStore";
-import { EFFECTS, type EffectCategory } from "./effects";
+import { PUBLIC_EFFECTS, type EffectCategory } from "./effects";
 import { type LayerRegion, type BlendMode } from "./blend";
 import type { Layer } from "@/store/types";
 
@@ -76,8 +76,8 @@ const BOUNDARY_CATEGORY_WEIGHT: Partial<Record<EffectCategory, number>> = {
 };
 
 function rollBoundaryEffectId(): string {
-  const weighted = EFFECTS.flatMap(e => Array(BOUNDARY_CATEGORY_WEIGHT[e.category] ?? 1).fill(e.id));
-  return weighted[Math.floor(Math.random() * weighted.length)] ?? EFFECTS[0]!.id;
+  const weighted = PUBLIC_EFFECTS.flatMap(e => Array(BOUNDARY_CATEGORY_WEIGHT[e.category] ?? 1).fill(e.id));
+  return weighted[Math.floor(Math.random() * weighted.length)] ?? PUBLIC_EFFECTS[0]!.id;
 }
 
 const BOUNDARY_BLENDS: BlendMode[] = ["screen", "difference", "overlay", "hardLight", "additive"];

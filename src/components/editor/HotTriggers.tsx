@@ -8,7 +8,20 @@ import { MoshStickerTrigger } from "./MoshStickerTrigger";
 import { shareUrl } from "@/lib/share";
 import { toggleSystemAudio } from "@/engine/systemAudio";
 import { crossfadeLayers, MOSH_FADE_MS } from "@/engine/layerCrossfade";
+import { cursorFx } from "@/engine/cursorFx";
 import { toast } from "sonner";
+
+/** Viewport-normalized UV for a client point — used for the one-shot "digital
+ *  chaos" burst a hold-branch fires at. An approximation (viewport, not the
+ *  canvas's own rect): these buttons sit visually over the canvas in every
+ *  layout this app has, and the burst is a decorative one-shot, so the small
+ *  error possible in a windowed, non-fullscreen layout is imperceptible. */
+function clientToViewportUv(clientX: number, clientY: number) {
+  return {
+    x: Math.min(1, Math.max(0, clientX / Math.max(1, window.innerWidth))),
+    y: Math.min(1, Math.max(0, 1 - clientY / Math.max(1, window.innerHeight))),
+  };
+}
 
 
 
@@ -122,7 +135,7 @@ function HotBtn({
   disabled?: boolean;
   /** Optional hold gesture, layered on top of the plain click — see the
    *  Pro Mode button for the one caller that uses these. */
-  onPointerDown?: () => void;
+  onPointerDown?: (e: React.PointerEvent<HTMLButtonElement>) => void;
   onPointerUp?: () => void;
   onPointerCancel?: () => void;
 }) {
@@ -824,12 +837,15 @@ export function HotTriggers({
   }, []);
 
 
-  const startHold = () => {
+  const startHold = (e: React.PointerEvent) => {
     heldRef.current = false;
     if (holdTimerRef.current) window.clearTimeout(holdTimerRef.current);
+    const { clientX, clientY } = e;
     holdTimerRef.current = window.setTimeout(() => {
       heldRef.current = true;
       setPickerOpen(true);
+      const uv = clientToViewportUv(clientX, clientY);
+      cursorFx.chaos(uv.x, uv.y);
       try { (navigator as any).vibrate?.(10); } catch {}
     }, 420);
   };
@@ -841,14 +857,17 @@ export function HotTriggers({
     setShuffleSec(shuffleSec == null ? DEFAULT_AUTO_MOSH_SEC : null);
   };
 
-  const startFavHold = () => {
+  const startFavHold = (e: React.PointerEvent) => {
     favHeldRef.current = false;
     if (favHoldTimerRef.current) window.clearTimeout(favHoldTimerRef.current);
+    const { clientX, clientY } = e;
     favHoldTimerRef.current = window.setTimeout(() => {
       favHeldRef.current = true;
       // Long-press = quick save. The panel then opens itself (see the
       // mosh:favorite-saved listener above) with the new entry highlighted.
       (onSaveFavorite ?? saveFavorite)();
+      const uv = clientToViewportUv(clientX, clientY);
+      cursorFx.chaos(uv.x, uv.y);
       try { (navigator as any).vibrate?.(15); } catch {}
     }, 480);
   };
@@ -1024,13 +1043,16 @@ export function HotTriggers({
           if (captureHeldRef.current) return;
           onScreenshot();
         }}
-        onPointerDown={() => {
+        onPointerDown={(e) => {
           if (isRecording) return;
           captureHeldRef.current = false;
           if (captureHoldTimerRef.current) window.clearTimeout(captureHoldTimerRef.current);
+          const { clientX, clientY } = e;
           captureHoldTimerRef.current = window.setTimeout(() => {
             captureHeldRef.current = true;
             onToggleRecord();
+            const uv = clientToViewportUv(clientX, clientY);
+            cursorFx.chaos(uv.x, uv.y);
             try { (navigator as any).vibrate?.(12); } catch {}
           }, 420);
         }}
@@ -1069,12 +1091,15 @@ export function HotTriggers({
         label={helpModeEnabled ? "Pro Mode (hold: Help Mode is ON)" : "Pro Mode — hide all UI (hold for Help Mode)"}
         active={proModeEnabled || helpModeEnabled}
         onClick={() => { if (proHeldRef.current) return; setProModeEnabled(!proModeEnabled); }}
-        onPointerDown={() => {
+        onPointerDown={(e) => {
           proHeldRef.current = false;
           if (proHoldTimerRef.current) window.clearTimeout(proHoldTimerRef.current);
+          const { clientX, clientY } = e;
           proHoldTimerRef.current = window.setTimeout(() => {
             proHeldRef.current = true;
             setHelpModeEnabled(!helpModeEnabled);
+            const uv = clientToViewportUv(clientX, clientY);
+            cursorFx.chaos(uv.x, uv.y);
             try { (navigator as any).vibrate?.(10); } catch {}
           }, 420);
         }}

@@ -61,7 +61,7 @@ import { usePaywall } from "@/hooks/usePaywall";
 import { useCloudFavorites } from "@/hooks/useCloudFavorites";
 import { JourneyDirector, type JourneyDirectorState } from "@/engine/journeyDirector";
 import type { JourneyMic } from "@/engine/journeyCore";
-import { EFFECTS } from "@/engine/effects";
+import { PUBLIC_EFFECTS } from "@/engine/effects";
 import { useIdleFade } from "@/hooks/useIdleFade";
 import { captureQuickThumb } from "@/engine/quickThumb";
 
@@ -676,7 +676,7 @@ export default function Editor() {
            doesn't know the registry — it decides *that* something should
            change, not *what*. Picking here keeps the two concerns apart. */
         if (d.kind === "swap") {
-          const pick = EFFECTS[Math.floor(Math.random() * EFFECTS.length)];
+          const pick = PUBLIC_EFFECTS[Math.floor(Math.random() * PUBLIC_EFFECTS.length)];
           useStore.getState().disrupt({ kind: "swap", violence: d.violence, effectId: pick?.id });
           return;
         }
