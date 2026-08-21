@@ -13,6 +13,28 @@ export type IdleStage = "active" | "hidden";
 /** Anything that counts as "still here". Scroll included via `wheel`. */
 const ACTIVITY = ["pointermove", "pointerdown", "keydown", "touchstart", "wheel"] as const;
 
+/**
+ * Programmatic activity signal, for code paths the browser's own DOM events
+ * and focus/visibility signals can't be trusted to cover.
+ *
+ * Every native-dialog-steals-focus scenario (file picker, camera/mic
+ * permission prompt) is handled generically below via `focus`/
+ * `visibilitychange` — but the Web Share API's native share sheet
+ * (screenshot, GIF, recording, and favorite-link sharing all go through it,
+ * see src/lib/share.ts) doesn't reliably fire either of those on every
+ * platform when it closes. Rather than keep chasing each new dialog flavor
+ * that leaks through, this is the escape hatch: any async user-initiated
+ * action that might span an untrackable gap can call markUiActive() itself
+ * once it's done, and the chrome is guaranteed to be visible again
+ * regardless of what happened for however long in between. share.ts's
+ * helpers already call this on every path (success, fallback, cancelled,
+ * failed) — new code that awaits something focus-stealing should too.
+ */
+const ACTIVITY_EVENT = "mosh:ui-activity";
+export function markUiActive() {
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(ACTIVITY_EVENT));
+}
+
 export function useIdleFade(hideMs = 2_000): IdleStage {
   const [stage, setStage] = useState<IdleStage>("active");
 
@@ -46,6 +68,7 @@ export function useIdleFade(hideMs = 2_000): IdleStage {
     const onVisible = () => { if (document.visibilityState === "visible") reset(); };
     window.addEventListener("focus", reset);
     document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener(ACTIVITY_EVENT, reset);
     arm();
 
     return () => {
@@ -53,6 +76,7 @@ export function useIdleFade(hideMs = 2_000): IdleStage {
       ACTIVITY.forEach(e => window.removeEventListener(e, reset, { capture: true }));
       window.removeEventListener("focus", reset);
       document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener(ACTIVITY_EVENT, reset);
     };
   }, [hideMs]);
 

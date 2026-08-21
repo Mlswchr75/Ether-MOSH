@@ -62,7 +62,7 @@ import { useCloudFavorites } from "@/hooks/useCloudFavorites";
 import { JourneyDirector, type JourneyDirectorState } from "@/engine/journeyDirector";
 import type { JourneyMic } from "@/engine/journeyCore";
 import { PUBLIC_EFFECTS } from "@/engine/effects";
-import { useIdleFade } from "@/hooks/useIdleFade";
+import { useIdleFade, markUiActive } from "@/hooks/useIdleFade";
 import { captureQuickThumb } from "@/engine/quickThumb";
 
 // Unified one-screen control rack — no tabs.
@@ -776,6 +776,10 @@ export default function Editor() {
           toast.error("Screenshot failed");
         } finally {
           setScreenshotScanning(false);
+          // shareOrDownload already marks activity on its own exit paths —
+          // this covers the case where capture/export itself throws before
+          // ever reaching share, so the chrome can't be left hidden either way.
+          markUiActive();
         }
       },
     });
@@ -844,6 +848,7 @@ export default function Editor() {
           if (prevShuffle != null) useStore.getState().setShuffleSec(prevShuffle);
           setGifBusy(false);
           setGifProgress(0);
+          markUiActive();
         }
       },
     });

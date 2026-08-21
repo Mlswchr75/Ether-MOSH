@@ -1,4 +1,5 @@
 import { toast } from "sonner";
+import { markUiActive } from "@/hooks/useIdleFade";
 
 const APP_TITLE = "MOSH";
 const APP_TAGLINE = "brutalist webgl visualizer — mosh your camera & sound in real time";
@@ -33,27 +34,36 @@ export async function shareOrDownload(
   title = APP_TITLE,
   text = "Made with MOSH — real-time audio-reactive visual instrument",
 ): Promise<ShareResult> {
-  const file = new File([blob], filename, { type: blob.type });
+  try {
+    const file = new File([blob], filename, { type: blob.type });
 
-  if (canNativeShare() && (navigator as any).canShare({ files: [file] })) {
-    try {
-      await navigator.share({ files: [file], title, text } as ShareData);
-      return "shared";
-    } catch (err: unknown) {
-      if ((err as { name?: string })?.name === "AbortError") return "cancelled";
-      // share failed — fall through to download
+    if (canNativeShare() && (navigator as any).canShare({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], title, text } as ShareData);
+        return "shared";
+      } catch (err: unknown) {
+        if ((err as { name?: string })?.name === "AbortError") return "cancelled";
+        // share failed — fall through to download
+      }
     }
-  }
 
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1500);
-  return "downloaded";
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+    return "downloaded";
+  } finally {
+    // Whichever path this took — a completed/cancelled/failed native share
+    // sheet, or a plain download click — the user is definitely back and
+    // present the moment this resolves. See markUiActive's doc comment:
+    // the share sheet doesn't reliably fire focus/visibilitychange on every
+    // platform, so this is the one place that's guaranteed to run.
+    markUiActive();
+  }
 }
 
 /** Share a URL via Web Share API, falling back to clipboard copy. */
@@ -62,32 +72,40 @@ export async function shareUrl(
   title = APP_TITLE,
   text = "Real-time audio-reactive visual instrument — try it free",
 ): Promise<ShareResult> {
-  if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
-    try {
-      await navigator.share({ url, title, text });
-      return "shared";
-    } catch (err: unknown) {
-      if ((err as { name?: string })?.name === "AbortError") return "cancelled";
+  try {
+    if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
+      try {
+        await navigator.share({ url, title, text });
+        return "shared";
+      } catch (err: unknown) {
+        if ((err as { name?: string })?.name === "AbortError") return "cancelled";
+      }
     }
+    const ok = await copyToClipboard(url);
+    toast[ok ? "success" : "error"](ok ? "link copied to clipboard" : "share not supported", { position: "top-right" });
+    return "downloaded";
+  } finally {
+    markUiActive();
   }
-  const ok = await copyToClipboard(url);
-  toast[ok ? "success" : "error"](ok ? "link copied to clipboard" : "share not supported", { position: "top-right" });
-  return "downloaded";
 }
 
 /** Legacy: share the app URL. */
 export async function shareApp(url: string = typeof window !== "undefined" ? window.location.origin : ""): Promise<void> {
-  const data: ShareData = { title: APP_TITLE, text: APP_TAGLINE, url };
-  if (canShareData(data)) {
-    try {
-      await navigator.share(data);
-      return;
-    } catch (e: any) {
-      if (e?.name === "AbortError") return;
+  try {
+    const data: ShareData = { title: APP_TITLE, text: APP_TAGLINE, url };
+    if (canShareData(data)) {
+      try {
+        await navigator.share(data);
+        return;
+      } catch (e: any) {
+        if (e?.name === "AbortError") return;
+      }
     }
+    const ok = await copyToClipboard(url);
+    toast[ok ? "success" : "error"](ok ? "link copied to clipboard" : "share not supported", { position: "top-right" });
+  } finally {
+    markUiActive();
   }
-  const ok = await copyToClipboard(url);
-  toast[ok ? "success" : "error"](ok ? "link copied to clipboard" : "share not supported", { position: "top-right" });
 }
 
 /** Legacy: share a captured blob via Web Share API level 2. Returns true if shared. */
@@ -106,6 +124,8 @@ export async function shareBlob(blob: Blob, filename: string, opts?: { title?: s
     }
   } catch (e: any) {
     if (e?.name === "AbortError") return true;
+  } finally {
+    markUiActive();
   }
   return false;
 }
