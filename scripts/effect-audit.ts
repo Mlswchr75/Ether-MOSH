@@ -372,8 +372,8 @@ async function main() {
     uniqueIds: new Set(EFFECTS.map((effect) => effect.id)).size,
     uniqueNames: new Set(EFFECTS.map((effect) => effect.name)).size,
   };
-  if (registry.total !== 105 || registry.uniqueIds !== 105 || registry.uniqueNames !== 105) {
-    console.error(`Effect registry gate failed: expected 105 total/unique IDs/unique names; received ${registry.total}/${registry.uniqueIds}/${registry.uniqueNames}.`);
+  if (registry.total !== 108 || registry.uniqueIds !== 108 || registry.uniqueNames !== 108) {
+    console.error(`Effect registry gate failed: expected 108 total/unique IDs/unique names; received ${registry.total}/${registry.uniqueIds}/${registry.uniqueNames}.`);
     process.exitCode = 1;
     return;
   }

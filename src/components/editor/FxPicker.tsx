@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { EFFECTS, CATEGORY_LABELS, type EffectCategory } from "@/engine/effects";
+import { PUBLIC_EFFECTS, CATEGORY_LABELS, type EffectCategory } from "@/engine/effects";
 import { useStore } from "@/store/useStore";
 import { haptic } from "@/hooks/useHaptics";
 import { Plus } from "lucide-react";
@@ -9,7 +9,7 @@ const CATEGORIES: EffectCategory[] = ["corruption", "color", "geometry", "atmosp
 export function FxPicker() {
   const [cat, setCat] = useState<EffectCategory>("corruption");
   const addLayer = useStore(s => s.addLayer);
-  const items = EFFECTS.filter(e => e.category === cat);
+  const items = PUBLIC_EFFECTS.filter(e => e.category === cat);
 
   return (
     <div className="flex flex-col">

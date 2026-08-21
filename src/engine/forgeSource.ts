@@ -4,8 +4,26 @@ import { GENERATORS_BY_ID } from "./forgeGeneratorRegistry";
 import { DRIFT_FIELD } from "./forgeGenerators/driftField";
 import { applyKaleidoscope } from "./forgeKaleidoscope";
 import { applyFinishingGlow } from "./forgeFinishing";
-import { VolumetricBloomRenderer } from "./volumetricBloom";
+import type { VolumetricBloomRenderer } from "./volumetricBloom";
 import { hexToRgb } from "./seamlessSource";
+
+/**
+ * Lazy-loaded: volumetricBloom.ts pulls in all of Three.js for its own
+ * standalone WebGLRenderer, which is dead weight for every caller that
+ * never touches the volumetric generator (e.g. a Canvas2D-only embed).
+ * Loaded on first actual use instead of unconditionally at module init, so
+ * bundlers can code-split it into a chunk that's simply never fetched by
+ * callers who don't need it.
+ */
+let VolumetricBloomRendererCtor: typeof VolumetricBloomRenderer | null = null;
+let volumetricBloomLoading = false;
+function ensureVolumetricBloomLoaded() {
+  if (VolumetricBloomRendererCtor || volumetricBloomLoading) return;
+  volumetricBloomLoading = true;
+  void import("./volumetricBloom").then((mod) => {
+    VolumetricBloomRendererCtor = mod.VolumetricBloomRenderer;
+  });
+}
 import type { ForgeState } from "@/store/types";
 
 export const TRANSITION_MS = 2400;
@@ -105,7 +123,11 @@ function renderGeneratorInto(
   runtime: ForgeRuntime,
 ) {
   if (generatorId === VOLUMETRIC_BLOOM_ID) {
-    if (!runtime.volumetricFailed) {
+    if (!VolumetricBloomRendererCtor) {
+      ensureVolumetricBloomLoaded();
+      // Not loaded yet — fall through to the driftField fallback below for
+      // this frame; once the chunk resolves, subsequent frames pick it up.
+    } else if (!runtime.volumetricFailed) {
       try {
         if (!runtime.volumetricCanvas) {
           runtime.volumetricCanvas = document.createElement("canvas");
@@ -116,7 +138,7 @@ function renderGeneratorInto(
           if (runtime.volumetric) runtime.volumetric.resize(w, h);
         }
         if (!runtime.volumetric) {
-          runtime.volumetric = new VolumetricBloomRenderer(runtime.volumetricCanvas);
+          runtime.volumetric = new VolumetricBloomRendererCtor(runtime.volumetricCanvas);
           runtime.volumetric.resize(w, h);
         }
         const colorA = hexToRgb(palette[0]).map(c => c / 255) as [number, number, number];

@@ -34,6 +34,14 @@ export type EffectDef = {
    * Output gl_FragColor.
    */
   frag: string;
+  /** True for effects driven entirely by a runtime manager (params it alone
+   *  knows how to set, e.g. a live pointer position) rather than by a user
+   *  dragging sliders. Excluded from every user-facing catalog (FxPicker,
+   *  sticker layers, journey's random swap, the transition-boundary roll) —
+   *  picking one there would show a static blob frozen at its param defaults
+   *  instead of the manager's live-driven effect. Still fully renderable via
+   *  EFFECTS_BY_ID and still gets warmup-precompiled. */
+  internal?: boolean;
 };
 
 /** Common texture uniforms reserved by every effect shader. Keep scalar params
@@ -2090,7 +2098,223 @@ export const EFFECTS: EffectDef[] = [
     rel = mat2(ca, -sa, sa, ca) * rel * z;
     gl_FragColor = vec4(texture2D(uTex, clamp(rel + 0.5, 0.0, 1.0)).rgb, 1.0);
     `),
+
+  // ── PAINT & FIRE ──────────────────────────────────────────────────
+  // Both built around the same idea the rest of the catalog just got tuned
+  // for: uAmount is not a volume knob. It sweeps through genuinely different
+  // physical regimes via continuous curves rather than hard cuts, so 0 is a
+  // true no-op and 100 looks structurally different from 50, not just louder.
+
+  fx("acrylicBleed", "Acrylic Bleed", "color", "Jewel-tone paint rivers bleed from the image's own colors, flowing from a light stain to a full digital flood.",
+    [{ key: "amount", label: "Amount", min: 0, max: 1, default: 0.55 },
+     { key: "viscosity", label: "Viscosity", min: 0, max: 1, default: 0.2 },
+     { key: "glitch", label: "Glitch", min: 0, max: 1, default: 0.3 }],
+    `
+    vec4 src = texture2D(uTex, vUv);
+
+    // Local detail/edge density stands in for "how photoreal is this patch":
+    // busy, high-contrast areas read as real; flat regions read as flat.
+    // Rivers concentrate on the former until uAmount pushes into the top of
+    // its range, where the gate relaxes and paint floods everywhere.
+    vec2 texel = 1.0 / uResolution;
+    float lx = dot(texture2D(uTex, vUv + vec2(texel.x, 0.0)).rgb - src.rgb, vec3(0.299,0.587,0.114));
+    float ly = dot(texture2D(uTex, vUv + vec2(0.0, texel.y)).rgb - src.rgb, vec3(0.299,0.587,0.114));
+    float detail = clamp((abs(lx) + abs(ly)) * 6.0, 0.0, 1.0);
+    float detailGate = mix(detail, 1.0, smoothstep(0.75, 1.0, uAmount));
+
+    // Viscosity trades flow speed for river thickness: thin, fast rivers at
+    // the low default (a "low viscosity liquid"), slow heavy pours as it climbs.
+    float speed = mix(0.5, 0.08, uViscosity);
+    float thick = mix(0.045, 0.14, uViscosity);
+    float sc = mix(2.0, 5.0, 1.0 - uViscosity);
+    float t = uTime * speed;
+    float e = 0.02;
+
+    // Curl of a scalar noise field is divergence-free, so paint advects along
+    // smooth closed streamlines in every direction instead of smearing along
+    // one axis -- see Ink Flow above for the same technique.
+    vec2 p = vUv * sc;
+    vec2 curl = vec2(noise(p + vec2(0.0, e) + t) - noise(p - vec2(0.0, e) + t),
+                    -(noise(p + vec2(e, 0.0) - t) - noise(p - vec2(e, 0.0) - t))) / (2.0 * e);
+    float flow = noise(vUv * sc * 1.4 + curl * 1.8);
+
+    // Coverage ramps steeply, not linearly, so low amounts stay a light
+    // stain and only the top of the range floods the frame.
+    float coverage = pow(uAmount, 1.6);
+    float edge = mix(0.15, 0.85, coverage);
+    float mask = (1.0 - smoothstep(edge - thick, edge + thick, flow)) * detailGate;
+
+    // The trailing edge breaks into isolated puddle-drops instead of a hard
+    // cutoff -- a bump just past the river's own reach.
+    vec2 dc = floor(vUv * 22.0);
+    float dropletHit = step(0.55, rand(dc));
+    float dropletBand = smoothstep(edge, edge + thick, flow) * (1.0 - smoothstep(edge + thick, edge + thick * 3.0, flow));
+    mask = clamp(mask + dropletHit * dropletBand * detailGate * smoothstep(0.12, 0.5, uAmount), 0.0, 1.0);
+
+    // Colour re-samples live from a point advected along the same current,
+    // so a river's hue drifts as it crosses different-coloured parts of the
+    // image -- then snaps to the nearest of six jewel-tone primaries.
+    vec2 pickUv = clamp(vUv + curl * 0.05, 0.0, 1.0);
+    vec3 hsv = rgb2hsv(texture2D(uTex, pickUv).rgb);
+    hsv.x = floor(hsv.x * 6.0 + 0.5) / 6.0;
+    hsv.y = clamp(mix(hsv.y, 1.0, 0.65 + coverage * 0.35), 0.0, 1.0);
+    hsv.z = clamp(mix(hsv.z, 1.0, 0.3), 0.0, 1.0);
+    vec3 jewel = hsv2rgb(hsv);
+
+    // Photoreal <-> 8-bit VHS glitch is its own dial, independent of
+    // coverage -- but the very top of uAmount also forces it in, so the
+    // flood regime looks like it's coming apart rather than just bigger.
+    float glitchAmt = clamp(uGlitch + smoothstep(0.72, 1.0, uAmount) * 0.6, 0.0, 1.0);
+    vec3 posterized = floor(jewel * 5.0) / 4.0;
+    vec3 split = vec3(
+      texture2D(uTex, pickUv + vec2(0.006, 0.0) * glitchAmt).r,
+      texture2D(uTex, pickUv).g,
+      texture2D(uTex, pickUv - vec2(0.006, 0.0) * glitchAmt).b
+    );
+    float scan = step(0.5, fract((vUv.y + uTime * 0.6) * uResolution.y * 0.12));
+    vec3 glitchLook = mix(posterized, split, 0.4) * mix(1.0, 0.3 + scan * 1.3, glitchAmt);
+    vec3 paint = mix(jewel, glitchLook, glitchAmt);
+
+    gl_FragColor = vec4(mix(src.rgb, paint, mask * clamp(uAmount * 1.4, 0.0, 1.0)), src.a);
+    `),
+
+  fx("prismFlame", "Prism Flame", "dimension", "The subject's silhouette catches fire in countless rainbow gemstone facets, from a thin neon halo to structural digital breakdown.",
+    [{ key: "amount", label: "Amount", min: 0, max: 1, default: 0.5 },
+     { key: "spectrumSpeed", label: "Spectrum Speed", min: 0, max: 3, default: 1.0 },
+     { key: "facetSize", label: "Facet Size", min: 0, max: 1, default: 0.4 }],
+    `
+    vec4 src = texture2D(uTex, vUv);
+    float d = depthAt(vUv); // 1 = subject, 0 = the room behind them
+
+    // A soft bump right at the silhouette's transition zone: the rim the
+    // flame roots from, not the subject's whole body.
+    float rim = smoothstep(0.08, 0.4, d) * (1.0 - smoothstep(0.4, 0.92, d));
+
+    // Turbulence drifts upward and outward into the background -- (1.0 - d)
+    // keeps it away from the subject's own body -- reach growing steeply
+    // with amount so Ember stays a thin halo and Flood genuinely engulfs.
+    vec2 drift = vec2(noise(vUv * 3.0 + uTime * 0.35) - 0.5, -noise(vUv * 3.2 + 11.0 + uTime * 0.45)) * 0.22;
+    vec2 fUv = vUv + drift * (1.0 - d);
+    float turb = noise(fUv * 6.0 - vec2(0.0, uTime * 0.9)) * 0.6
+               + noise(fUv * 13.0 - vec2(0.0, uTime * 1.4)) * 0.4;
+    float reach = mix(0.05, 0.7, pow(uAmount, 1.4));
+    float core = clamp(rim + turb * reach * (1.0 - d), 0.0, 1.0);
+    // A wider, softer pass of the same fields for the neon glow halo -- cheap,
+    // since it reuses the noise already evaluated rather than a texture blur.
+    float glow = clamp(rim * 1.4 + turb * reach * 2.2 * (1.0 - d), 0.0, 1.0);
+
+    // Faceted gemstone shading: nearest-cell hash gives each facet its own
+    // flicker and hue offset instead of one smooth flame body.
+    vec2 fp = fUv * mix(6.0, 46.0, uFacetSize);
+    vec2 fi = floor(fp);
+    float facetFlicker = rand(fi + floor(uTime * 2.2));
+    float hue = fract(d * 0.15 + facetFlicker * 0.5 + uTime * uSpectrumSpeed * 0.12);
+    vec3 jewel = hsv2rgb(vec3(hue, 0.85, 1.0));
+
+    // Peel: past the middle of the range, a second layer of facets drifts
+    // further along the same current -- reads as flakes that have detached
+    // from the main body rather than more of the same flame.
+    float peelAmt = smoothstep(0.55, 0.85, uAmount);
+    vec2 peelUv = fUv + drift * 1.8;
+    float peelTurb = noise(peelUv * 8.0 - vec2(0.0, uTime * 1.1));
+    float peelMask = smoothstep(0.5, 0.75, peelTurb) * peelAmt * (1.0 - d);
+    core = clamp(core + peelMask, 0.0, 1.0);
+
+    // Disruption: only the very top of the range, the frame itself starts to
+    // tear -- block-glitch offsets sampling for a fraction of cells that
+    // grows with amount, so Flood ends in structural breakdown rather than
+    // just being brighter.
+    float discRegime = smoothstep(0.82, 1.0, uAmount);
+    vec2 blockUv = floor(vUv * 26.0) / 26.0;
+    float blockRoll = rand(blockUv + floor(uTime * 5.0));
+    float tearHit = step(1.0 - discRegime * 0.5, blockRoll);
+    vec2 tear = (vec2(rand(blockUv + 3.1), rand(blockUv + 7.2)) - 0.5) * 0.06 * tearHit * discRegime;
+    vec3 base = texture2D(uTex, clamp(vUv + tear, 0.0, 1.0)).rgb;
+
+    vec3 lit = base + jewel * glow * mix(0.5, 1.6, uAmount) * (1.0 + uPulse * 0.6);
+    float influence = clamp(core + glow * 0.4, 0.0, 1.0);
+    gl_FragColor = vec4(mix(base, lit, influence), src.a);
+    `),
+
+  // ── INTERNAL — POINTER-DRIVEN ─────────────────────────────────────
+  /* Localized GPU distortion anchored to a live (x, y) point instead of
+     covering the frame. cursorFx.ts drives x/y/amount/chaos every frame from
+     active touch/click state; the shader itself is the only thing enforcing
+     "only near the point" — outside uRadius it falls back to an exact
+     passthrough, which is also why it's cheap to stack several of these at
+     once for multitouch. */
+  {
+    ...fx("cursorMosh", "Cursor Mosh", "corruption",
+      "Localized touch/cursor-point distortion — driven live, not by sliders.",
+      [
+        // Default is a visible 0.5, not 0: cursorFx.ts always overrides this
+        // live and per-frame while a point is active, and only ever appends
+        // this layer while one is — so the schema default is never actually
+        // seen at runtime. It only matters to the effect audit script, which
+        // renders every effect at its defaults and flags an exact passthrough
+        // as inert; 0 would fail that for an effect this is correct behavior
+        // for, so the default is picked to read clearly there instead.
+        { key: "amount", label: "Amount", min: 0, max: 1, default: 0.5 },
+        { key: "radius", label: "Radius", min: 0.02, max: 0.6, default: 0.16 },
+        { key: "x", label: "X", min: 0, max: 1, default: 0.5 },
+        { key: "y", label: "Y", min: 0, max: 1, default: 0.5 },
+        { key: "chaos", label: "Chaos", min: 0, max: 1, default: 0 },
+      ],
+      `
+      vec2 uv = vUv;
+      vec4 src = texture2D(uTex, uv);
+
+      float aspect = uResolution.x / max(1.0, uResolution.y);
+      vec2 asp = vec2(aspect, 1.0);
+      vec2 center = vec2(uX, uY);
+      vec2 d = (uv - center) * asp;
+      float dist = length(d);
+      float rad = max(0.015, uRadius);
+      float falloff = 1.0 - smoothstep(0.0, rad, dist);
+      falloff = pow(clamp(falloff, 0.0, 1.0), 1.5);
+
+      float strength = uAmount * falloff;
+      if (strength <= 0.001) { gl_FragColor = src; return; }
+
+      vec2 dirOut = dist > 0.0001 ? normalize(d) / asp : vec2(0.0);
+
+      // Flowing curl-ish noise for the ambient/drag character.
+      float n1 = noise(uv * 10.0 + uTime * 0.7);
+      float n2 = noise(uv * 10.0 + 47.0 - uTime * 0.7);
+      vec2 flowDisp = (vec2(n1, n2) - 0.5) * 2.0;
+
+      // Blend toward a straight radial push as uChaos rises -- flowing warp
+      // at 0, a sharper outward shove once a hold-branch burst sets it high.
+      vec2 mixedDisp = mix(flowDisp, dirOut, 0.25 + uChaos * 0.5);
+
+      vec2 offUv = clamp(uv + mixedDisp * strength * mix(0.05, 0.11, uChaos), 0.0, 1.0);
+      vec3 moshed = texture2D(uTex, offUv).rgb;
+
+      // Chromatic split, radiating outward from the point -- reads as a
+      // shockwave once uChaos pushes the offset wider.
+      vec2 chromaOff = dirOut * strength * mix(0.012, 0.03, uChaos);
+      float rCh = texture2D(uTex, clamp(offUv + chromaOff, 0.0, 1.0)).r;
+      float bCh = texture2D(uTex, clamp(offUv - chromaOff, 0.0, 1.0)).b;
+      vec3 split = vec3(rCh, moshed.g, bCh);
+
+      // Block glitch only bites as uChaos rises, so a plain drag stays a
+      // smooth warp and a hold-branch burst reads as circuitry breaking.
+      vec2 blockUv = floor(uv * 40.0) / 40.0;
+      float blockRoll = rand(blockUv + floor(uTime * 14.0));
+      float blockHit = step(1.0 - uChaos * 0.55, blockRoll) * falloff;
+      vec3 blocked = mix(split, split.brg, blockHit);
+
+      vec3 outc = mix(src.rgb, blocked, strength);
+      gl_FragColor = vec4(outc, src.a);
+      `),
+    internal: true,
+  },
 ];
+
+/** Every effect except the internal, manager-driven ones — what any
+ *  user-facing catalog (picker, sticker layer, random-swap/boundary rolls)
+ *  should iterate instead of the raw EFFECTS array. */
+export const PUBLIC_EFFECTS: EffectDef[] = EFFECTS.filter(e => !e.internal);
 
 export const EFFECTS_BY_ID: Record<string, EffectDef> = Object.fromEntries(EFFECTS.map(e => [e.id, e]));
 

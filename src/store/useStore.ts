@@ -135,6 +135,14 @@ type State = {
   sensitivity: number;
   isPerformanceMode: boolean;
   showMetersInPerformance: boolean;
+  /** Hides all chrome by default; the only way back in is the deliberate
+   *  hold+second-tap (touch) or hold-Shift (desktop) gesture — see
+   *  Editor.tsx's pro-mode-gated input handlers. */
+  proModeEnabled: boolean;
+  /** Branches off the same hot trigger as Pro Mode (hold it) — shows a
+   *  description of whatever's hovered/long-pressed instead of native
+   *  title-attribute tooltips, which are slow and don't exist on touch. */
+  helpModeEnabled: boolean;
   /** Auto-mosh shuffle interval in seconds (null = off). */
   shuffleSec: number | null;
   past: Layer[][];
@@ -249,6 +257,8 @@ type Actions = {
   setPerformanceMode: (b: boolean) => void;
   togglePerformanceMode: () => void;
   setShowMetersInPerformance: (b: boolean) => void;
+  setProModeEnabled: (b: boolean) => void;
+  setHelpModeEnabled: (b: boolean) => void;
 
   shuffleSec: number | null;
   setShuffleSec: (sec: number | null) => void;
@@ -310,7 +320,7 @@ type Actions = {
 const newId = () => Math.random().toString(36).slice(2, 9);
 
 /** A layer at the effect's own defaults — used when the user adds one by hand. */
-function makeLayer(effectId: string, opts: Partial<Layer> = {}): Layer {
+export function makeLayer(effectId: string, opts: Partial<Layer> = {}): Layer {
   const def = EFFECTS_BY_ID[effectId];
   const params: Record<string, number> = {};
   const mods: Record<string, Modulator | null> = {};
@@ -430,6 +440,8 @@ export const useStore = create<State & Actions>((set, get) => ({
   sensitivity: 1,
   isPerformanceMode: false,
   showMetersInPerformance: typeof localStorage !== "undefined" && localStorage.getItem("cathedral_meters_in_perf") === "1",
+  proModeEnabled: typeof localStorage !== "undefined" && localStorage.getItem("cathedral_pro_mode") === "1",
+  helpModeEnabled: false,
   shuffleSec: null,
   past: [],
   future: [],
@@ -925,6 +937,11 @@ export const useStore = create<State & Actions>((set, get) => ({
     try { localStorage.setItem("cathedral_meters_in_perf", b ? "1" : "0"); } catch {}
     set({ showMetersInPerformance: b });
   },
+  setProModeEnabled: (b) => {
+    try { localStorage.setItem("cathedral_pro_mode", b ? "1" : "0"); } catch {}
+    set({ proModeEnabled: b });
+  },
+  setHelpModeEnabled: (b) => set({ helpModeEnabled: b }),
 
   setShuffleSec: (sec) => set({ shuffleSec: sec }),
 

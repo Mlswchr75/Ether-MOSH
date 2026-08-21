@@ -8,3 +8,37 @@
   from = "/*"
   to = "/index.html"
   status = 200
+
+# script-src: 'wasm-unsafe-eval' is for MediaPipe's segmentation WASM
+# (SegmentationEngine.ts), not general eval; cdn.jsdelivr.net is that
+# same WASM runtime's loader/binary host. No 'unsafe-inline' here — the
+# build's only inline <script> tags are inert application/ld+json, which
+# CSP's script-src never governs.
+# style-src: 'unsafe-inline' is required by the Netlify inline-critical-css
+# plugin, which inlines a real <style> block into every page.
+# img-src: cdn.shopify.com is the demo reel — public/demo-reel.json is 522
+# product photos from the real Shopify store, fetched at runtime by
+# DemoReelPanel, not bundled at build time (so grepping src/ alone misses it).
+# connect-src: Supabase (data + edge functions, http and ws), Stripe's
+# API, and the same MediaPipe hosts above (model/wasm fetch, not just
+# script load).
+# frame-src: Stripe's embedded checkout iframe.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Content-Security-Policy = '''
+      default-src 'self';
+      script-src 'self' https://js.stripe.com https://cdn.jsdelivr.net 'wasm-unsafe-eval';
+      style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+      font-src 'self' https://fonts.gstatic.com;
+      img-src 'self' data: blob: https://cdn.shopify.com;
+      media-src 'self' blob:;
+      connect-src 'self' https://udtrjwredttzvdixtwla.supabase.co wss://udtrjwredttzvdixtwla.supabase.co https://api.stripe.com https://cdn.jsdelivr.net https://storage.googleapis.com;
+      frame-src https://js.stripe.com;
+      worker-src 'self' blob:;
+      object-src 'none';
+      base-uri 'self';
+      form-action 'self';
+      frame-ancestors 'none';
+      upgrade-insecure-requests;
+    '''

@@ -56,13 +56,12 @@ import { SourceModeToggle } from "@/components/editor/SourceModeToggle";
 import { HotTriggers } from "@/components/editor/HotTriggers";
 import { ActionConfirmation } from "@/components/editor/ActionConfirmation";
 import { showExportSuccessToast } from "@/components/editor/ExportShareToast";
-import { scanForBestFrame } from "@/engine/screenshotScanner";
 import { AccountChip } from "@/components/AccountChip";
 import { usePaywall } from "@/hooks/usePaywall";
 import { useCloudFavorites } from "@/hooks/useCloudFavorites";
 import { JourneyDirector, type JourneyDirectorState } from "@/engine/journeyDirector";
 import type { JourneyMic } from "@/engine/journeyCore";
-import { EFFECTS } from "@/engine/effects";
+import { PUBLIC_EFFECTS } from "@/engine/effects";
 import { useIdleFade } from "@/hooks/useIdleFade";
 import { captureQuickThumb } from "@/engine/quickThumb";
 
@@ -93,6 +92,9 @@ export default function Editor() {
   const setSystemAudioEnabled = useStore(s => s.setSystemAudioEnabled);
   const isPerformanceMode = useStore(s => s.isPerformanceMode);
   const setPerformanceMode = useStore(s => s.setPerformanceMode);
+  const proModeEnabled = useStore(s => s.proModeEnabled);
+  const helpModeEnabled = useStore(s => s.helpModeEnabled);
+  const [helpCaption, setHelpCaption] = useState<{ text: string; x: number; y: number } | null>(null);
   const saveSlot = useStore(s => s.saveSlot);
   const loadSlot = useStore(s => s.loadSlot);
   const rerollSeed = useStore(s => s.rerollSeed);
@@ -106,7 +108,15 @@ export default function Editor() {
   
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const [hideUI, setHideUI] = useState(true);
+  // Starts visible. Nothing auto-reveals this on mount or on a fresh source
+  // load — H-key / long-press / Shift-hold only ever *toggle* it — so a
+  // `true` default here means the hot-trigger rail, the mode-switch icons,
+  // and the bottom menu rack (all gated on `!hideUI`) never mount for
+  // anyone who hasn't already discovered one of those gestures. Idle-fade
+  // (`.ui-chrome` + `idleStage`, a separate mechanism) is what actually
+  // makes the chrome disappear after 2.5s of inactivity — this flag is only
+  // the manual full-hide, so it should start open.
+  const [hideUI, setHideUI] = useState(false);
   const [holdProgress, setHoldProgress] = useState(0);
   const [shortcutsHint, setShortcutsHint] = useState(false);
   const [slotShake, setSlotShake] = useState<number | null>(null);
@@ -123,6 +133,11 @@ export default function Editor() {
   const [freezeOn, setFreezeOn] = useState(false);
   const recorderRef = useRef<CanvasRecorder | null>(null);
   const recCapRef = useRef<number | null>(null);
+  /** Set only when toggleRecord captured its own device-audio stream (the
+   *  user didn't already have "device audio" reactivity on) — stopped when
+   *  the recording ends. A borrowed reference to the reactive system-audio
+   *  stream is never stored here; that one's lifecycle belongs to GlCanvas. */
+  const recordAudioStreamRef = useRef<MediaStream | null>(null);
   const paywall = usePaywall();
   useCloudFavorites();
   const recStartRef = useRef(0);
@@ -153,6 +168,91 @@ export default function Editor() {
   // UI chrome (and the cursor, see index.css) fades to fully invisible
   // after 2.5s of inactivity.
   const idleStage = useIdleFade(2_500);
+
+  // Once idle, the page has to stop offering anything the browser itself
+  // would interrupt the visual with: no right-click "Save image as…" menu,
+  // no accidental text-selection (and the mobile copy/share bubble that
+  // comes with it). Native `title`-attribute tooltips don't need separate
+  // handling — the chrome they'd hover over already goes pointer-events:none
+  // at the same idle mark (see .ui-chrome in index.css), so they can't be
+  // triggered at all once hidden. Same 2.5s mark as everything else fading,
+  // deliberately — a second, slightly different timer here would just
+  // desync from the fade and read as a bug.
+  useEffect(() => {
+    const idle = idleStage === "hidden";
+    document.body.classList.toggle("idle-locked", idle);
+    if (!idle) return;
+    const onContextMenu = (e: MouseEvent) => e.preventDefault();
+    document.addEventListener("contextmenu", onContextMenu);
+    return () => document.removeEventListener("contextmenu", onContextMenu);
+  }, [idleStage]);
+
+  // Help Mode (hold the Pro Mode trigger to reach it): a single delegated
+  // listener rather than touching every button's own JSX — every hot
+  // trigger and menu control already carries a real aria-label/title, this
+  // just surfaces that text immediately instead of waiting on the browser's
+  // slow native tooltip delay (and gives touch a path at all, since touch
+  // has no hover state for native tooltips to ever trigger from).
+  useEffect(() => {
+    if (!helpModeEnabled) { setHelpCaption(null); return; }
+    const describe = (start: EventTarget | null): string | null => {
+      let el = start as HTMLElement | null;
+      while (el) {
+        const label = el.getAttribute?.("aria-label") || el.getAttribute?.("title");
+        if (label) return label;
+        el = el.parentElement;
+      }
+      return null;
+    };
+    const onMove = (e: PointerEvent) => {
+      if (e.pointerType !== "mouse") return;
+      const text = describe(e.target);
+      setHelpCaption(text ? { text, x: e.clientX, y: e.clientY } : null);
+    };
+    let holdTimer: number | null = null;
+    const onDown = (e: PointerEvent) => {
+      if (e.pointerType !== "touch") return;
+      const target = e.target;
+      const x = e.clientX, y = e.clientY;
+      holdTimer = window.setTimeout(() => {
+        const text = describe(target);
+        if (text) {
+          setHelpCaption({ text, x, y });
+          try { if ("vibrate" in navigator) (navigator as any).vibrate?.(8); } catch {}
+        }
+      }, 380);
+    };
+    const onUp = () => {
+      if (holdTimer) { window.clearTimeout(holdTimer); holdTimer = null; }
+      setHelpCaption(null);
+    };
+    window.addEventListener("pointermove", onMove, { passive: true });
+    window.addEventListener("pointerdown", onDown, { passive: true });
+    window.addEventListener("pointerup", onUp, { passive: true });
+    window.addEventListener("pointercancel", onUp, { passive: true });
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerdown", onDown);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+      if (holdTimer) window.clearTimeout(holdTimer);
+    };
+  }, [helpModeEnabled]);
+
+  // Pro Mode: flipping it on hides everything immediately; flipping it off
+  // brings it back. While it's on, the ambient single-finger long-press and
+  // plain H-key hideUI toggles are suspended (see their own effects below) —
+  // the deliberate hold+second-tap / hold-Shift gestures become the only way
+  // back in, so the menu can never surface by accident mid-performance.
+  // Skips its own first run — this only reacts to an actual toggle, never to
+  // mounting with proModeEnabled already false, which would otherwise stomp
+  // on the ordinary hideUI-starts-true-until-revealed default for everyone
+  // who has never touched Pro Mode at all.
+  const proModeMounted = useRef(false);
+  useEffect(() => {
+    if (!proModeMounted.current) { proModeMounted.current = true; return; }
+    setHideUI(proModeEnabled);
+  }, [proModeEnabled]);
   const focusTune = useCallback((layerId: string) => {
     useStore.getState().selectLayer(layerId);
     setHideUI(false);
@@ -584,7 +684,7 @@ export default function Editor() {
            doesn't know the registry — it decides *that* something should
            change, not *what*. Picking here keeps the two concerns apart. */
         if (d.kind === "swap") {
-          const pick = EFFECTS[Math.floor(Math.random() * EFFECTS.length)];
+          const pick = PUBLIC_EFFECTS[Math.floor(Math.random() * PUBLIC_EFFECTS.length)];
           useStore.getState().disrupt({ kind: "swap", violence: d.violence, effectId: pick?.id });
           return;
         }
@@ -649,13 +749,21 @@ export default function Editor() {
         toast.loading("Analyzing frames for best quality…", { duration: 1500 });
 
         try {
-          // Scan next 0.75s for the crispest frame
-          const result = await scanForBestFrame(c, 750);
+          // Scan the next ~0.9s for the best frame -- seam-aware when tile
+          // mode is on (captureBestFrame's preferSeamless scores edge
+          // continuity too, same mechanism exportBestStill already uses for
+          // seamless remasters), plain sharpness/colorfulness otherwise.
+          const bestCanvas = await captureBestFrame(c, {
+            durationMs: 900,
+            intervalMs: 80,
+            sampleSize: 128,
+            preferSeamless: tileMode !== "none",
+          });
 
           // Free tier caps export at 720px on the long edge. Supporters get full res.
-          const longEdge = Math.max(result.bestCanvas.width, result.bestCanvas.height);
+          const longEdge = Math.max(bestCanvas.width, bestCanvas.height);
           const scale = paywall.isSupporter ? 1 : Math.min(1, 720 / longEdge);
-          const blob = await exportCanvas(result.bestCanvas, { format: "png", scale, aspect: null });
+          const blob = await exportCanvas(bestCanvas, { format: "png", scale, aspect: null });
           const filename = `mosh-${Date.now()}.png`;
           shareOrDownload(blob, filename);
           showExportSuccessToast({
@@ -742,6 +850,14 @@ export default function Editor() {
   }, [gifBusy, paywall]);
 
 
+  /** Stops and clears the audio stream toggleRecord captured for itself, if
+   *  any — never touches the reactive system-audio stream, which GlCanvas
+   *  owns and stops independently via the "device audio" toggle. */
+  const stopOwnRecordAudioStream = () => {
+    recordAudioStreamRef.current?.getTracks().forEach(t => t.stop());
+    recordAudioStreamRef.current = null;
+  };
+
   const toggleRecord = async () => {
     const c = getCanvas();
     if (!c) return;
@@ -757,14 +873,43 @@ export default function Editor() {
         onConfirm: async () => {
           setActionConfirm(null);
           try {
-            rec.start(c, 30);
+            // Already-reactive device audio (the existing "device audio"
+            // toggle) is included for free, no extra prompt. Otherwise, try
+            // to capture it fresh right here — this is the only place left
+            // in the confirm flow with anything resembling a user gesture,
+            // so a browser that's strict about it may reject the request;
+            // that's caught below and just falls back to a silent
+            // recording rather than blocking the record action entirely.
+            let audioStream: MediaStream | null = null;
+            const activeSystemStream = (window as any).__aegisActiveSystemStream as MediaStream | undefined;
+            if (useStore.getState().systemAudioEnabled && activeSystemStream?.getAudioTracks().length) {
+              audioStream = activeSystemStream;
+            } else {
+              const md = navigator.mediaDevices as any;
+              if (md?.getDisplayMedia) {
+                try {
+                  const captured: MediaStream = await md.getDisplayMedia({ video: true, audio: true });
+                  if (captured.getAudioTracks().length > 0) {
+                    audioStream = captured;
+                    recordAudioStreamRef.current = captured;
+                  } else {
+                    captured.getTracks().forEach(t => t.stop());
+                  }
+                } catch {
+                  // Declined the share picker, or no permission — record
+                  // silent rather than failing the whole action.
+                }
+              }
+            }
+            rec.start(c, 30, { audioStream });
             recStartRef.current = performance.now();
             setRecElapsed(0);
             setIsRecording(true);
+            const audioNote = audioStream ? " · with device audio" : "";
             if (paywall.isSupporter) {
-              toast.success("Recording started · Shift+R to stop");
+              toast.success(`Recording started${audioNote} · Shift+R to stop`);
             } else {
-              toast.success("Recording started · 15s free cap · Shift+R to stop early");
+              toast.success(`Recording started${audioNote} · 15s free cap · Shift+R to stop early`);
               if (recCapRef.current) window.clearTimeout(recCapRef.current);
               recCapRef.current = window.setTimeout(() => {
                 recCapRef.current = null;
@@ -778,6 +923,7 @@ export default function Editor() {
             }
           } catch (e) {
             toast.error("Could not start recording");
+            stopOwnRecordAudioStream();
           }
         },
       });
@@ -800,6 +946,8 @@ export default function Editor() {
       } catch (e) {
         toast.error("Could not stop recording");
         setIsRecording(false);
+      } finally {
+        stopOwnRecordAudioStream();
       }
     }
   };
@@ -984,9 +1132,10 @@ export default function Editor() {
         return;
       }
 
-      // H => toggle UI hide / peek
+      // H => toggle UI hide / peek. Suspended in Pro Mode — hold-Shift is
+      // the only way back in there (see the dedicated Pro Mode effect).
       if (!e.shiftKey && (e.key === "h" || e.key === "H")) {
-        if (!useStore.getState().isPerformanceMode) {
+        if (!useStore.getState().isPerformanceMode && !useStore.getState().proModeEnabled) {
           e.preventDefault();
           setHideUI(v => !v);
         }
@@ -1082,9 +1231,13 @@ export default function Editor() {
     return () => window.removeEventListener("aegis:bpm-detected", onBpm);
   }, []);
 
-  // Mobile gesture: swipe-up requests UI hide toggle
+  // Mobile gesture: swipe-up requests UI hide toggle. Suspended in Pro
+  // Mode — same reasoning as the H key above.
   useEffect(() => {
-    const onToggleUI = () => setHideUI(v => !v);
+    const onToggleUI = () => {
+      if (useStore.getState().proModeEnabled) return;
+      setHideUI(v => !v);
+    };
     window.addEventListener("aegis:toggle-ui", onToggleUI);
     return () => window.removeEventListener("aegis:toggle-ui", onToggleUI);
   }, []);
@@ -1130,6 +1283,10 @@ export default function Editor() {
     };
     const onDown = (e: PointerEvent) => {
       if (timer) return; // already tracking
+      // Suspended in Pro Mode — the deliberate hold+second-tap gesture
+      // (see the dedicated Pro Mode effect below) is the only way in there,
+      // so a single-finger hold anywhere must stay fully inert.
+      if (useStore.getState().proModeEnabled) return;
       if (e.pointerType === "mouse" && e.button !== 0) return;
       if (e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return;
       const t = e.target as HTMLElement | null;
@@ -1152,6 +1309,68 @@ export default function Editor() {
     return () => {
       cancel();
       el.removeEventListener("pointerdown", onDown);
+    };
+  }, []);
+
+  // Pro Mode, desktop: holding bare Shift (no other key, no modifiers)
+  // shows the menu instantly; releasing it hides it instantly. A true hold,
+  // not a toggle-with-timer, so it's as fast to flash and dismiss as
+  // physically possible. Forces the UI back to hidden on blur/visibility
+  // change too, so alt-tabbing away mid-hold can never strand it open.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!useStore.getState().proModeEnabled) return;
+      if (e.key !== "Shift" || e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      setHideUI(false);
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (!useStore.getState().proModeEnabled) return;
+      if (e.key !== "Shift") return;
+      setHideUI(true);
+    };
+    const forceHidden = () => {
+      if (useStore.getState().proModeEnabled) setHideUI(true);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", forceHidden);
+    document.addEventListener("visibilitychange", forceHidden);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", forceHidden);
+      document.removeEventListener("visibilitychange", forceHidden);
+    };
+  }, []);
+
+  // Pro Mode, touch: hold one finger down, tap with a second while the
+  // first is still held — toggles the menu. No timer on the first finger;
+  // "holding" just means it hasn't lifted yet when the second one lands.
+  useEffect(() => {
+    const el = canvasContainerRef.current;
+    if (!el) return;
+    const activeTouches = new Set<number>();
+    const onDown = (e: PointerEvent) => {
+      if (e.pointerType !== "touch") return;
+      if (!useStore.getState().proModeEnabled) return;
+      const t = e.target as HTMLElement | null;
+      if (t && t.closest("button, a, input, textarea, [role='slider'], [data-no-longpress]")) return;
+      if (activeTouches.size >= 1) {
+        setHideUI(v => !v);
+        try { if ("vibrate" in navigator) (navigator as any).vibrate?.(15); } catch {}
+      }
+      activeTouches.add(e.pointerId);
+    };
+    const onUp = (e: PointerEvent) => { activeTouches.delete(e.pointerId); };
+    el.addEventListener("pointerdown", onDown);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    return () => {
+      el.removeEventListener("pointerdown", onDown);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
     };
   }, []);
 
@@ -1271,8 +1490,6 @@ export default function Editor() {
           if (e.shiftKey) { e.preventDefault(); crossfadeLayers(mosh, MOSH_FADE_MS); }
         }}
         className={`relative bg-background select-none w-full h-[100dvh] shrink-0 no-touch-scroll ${isCameraLive ? "live-ring" : ""}`}
-
-        title="Shift+Click to MOSH"
       >
         <div data-tap-fade-target className="absolute inset-0 opacity-100">
           <GlCanvas />
@@ -1290,7 +1507,7 @@ export default function Editor() {
             triggers, this is how you get OUT of whichever mode you're in,
             and idle-fade would have hidden it by the exact moment you
             reach for it. */}
-        {!isPerformanceMode && !isOverlay && <SourceModeToggle />}
+        {!isPerformanceMode && !isOverlay && <SourceModeToggle hidden={hideUI} />}
         <TrackpadGestures
           targetRef={canvasContainerRef}
           onTogglePerf={togglePerf}
@@ -1302,7 +1519,7 @@ export default function Editor() {
         <SourceTransition trigger={transitionKey} />
         
         {/* TapToBegin removed — StartCameraOverlay is the live-first empty state and TapToBegin's centered button used to intercept clicks meant for "go live". */} 
-        {!isPerformanceMode && !isOverlay && (
+        {!isPerformanceMode && !isOverlay && !hideUI && (
           <HotTriggers
             isRecording={isRecording}
             onToggleRecord={toggleRecord}
@@ -1383,7 +1600,7 @@ export default function Editor() {
           <input
             type="range" min={0} max={1} step={0.001} value={beforeAfterSplit}
             onChange={(e) => setBeforeAfterSplit(+e.target.value)}
-            className="absolute left-1/2 -translate-x-1/2 bottom-6 w-2/3 accent-primary z-30"
+            className="ui-chrome absolute left-1/2 -translate-x-1/2 bottom-6 w-2/3 accent-primary z-30"
           />
         )}
         {isPerformanceMode && (
@@ -1632,6 +1849,15 @@ export default function Editor() {
       {shortcutsOpen && <ShortcutsOverlay onClose={() => setShortcutsOpen(false)} />}
 
       <AboutTrigger hidden={hideUI || isPerformanceMode || isOverlay || idleStage === "hidden"} />
+
+      {helpCaption && (
+        <div
+          className="pointer-events-none fixed z-[10001] max-w-[220px] rounded-sm border border-[hsl(var(--accent))]/50 bg-black/85 px-2 py-1 font-mono text-[10px] leading-snug text-white/90 backdrop-blur-md"
+          style={{ left: Math.min(helpCaption.x + 16, window.innerWidth - 232), top: helpCaption.y + 16 }}
+        >
+          {helpCaption.text}
+        </div>
+      )}
 
 
       <CommandPalette

@@ -44,11 +44,23 @@ export class CanvasRecorder {
     return new CanvasRecorder().pickMime(preferMp4);
   }
 
-  start(canvas: HTMLCanvasElement, fps = 30, opts: { preferMp4?: boolean } = {}) {
+  /**
+   * `audioStream` — an already-live MediaStream to pull audio tracks from
+   * (e.g. a getDisplayMedia() capture of device/tab audio). canvas.captureStream()
+   * is video-only; canvases have no audio of their own, so without this the
+   * recording is always silent regardless of what's playing. Passing a
+   * stream with no audio tracks is a harmless no-op — the recording is just
+   * video, same as calling this without the option at all.
+   */
+  start(canvas: HTMLCanvasElement, fps = 30, opts: { preferMp4?: boolean; audioStream?: MediaStream | null } = {}) {
     if (this.state === "recording") return;
     if (!CanvasRecorder.isSupported()) throw new Error("Recording not supported in this browser");
 
-    const stream = canvas.captureStream(fps);
+    const videoStream = canvas.captureStream(fps);
+    const audioTracks = opts.audioStream?.getAudioTracks() ?? [];
+    const stream = audioTracks.length > 0
+      ? new MediaStream([...videoStream.getVideoTracks(), ...audioTracks])
+      : videoStream;
     this.mimeType = this.pickMime(opts.preferMp4);
     this.chunks = [];
     this.mediaRecorder = new MediaRecorder(stream, {

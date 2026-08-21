@@ -22,6 +22,22 @@ export const DEFAULT_TRACK_URL = "/audio/theme.mp3";
 export const DEFAULT_TRACK_TITLE = "Miyazaki Demo";
 export const DEFAULT_TRACK_ARTIST = "Aesthetic Rebellion";
 
+/**
+ * `setSource`'s `url` only ever arrives as `URL.createObjectURL()` on a
+ * locally-selected audio File (HotTriggers' file input) or this module's own
+ * same-origin DEFAULT_TRACK_URL constant — never a remote or user-typed
+ * string. CodeQL's js/xss-through-dom query flags any `File`-derived string
+ * reaching a `.src` sink regardless of that guarantee, since it doesn't model
+ * `createObjectURL`'s opaque blob: output; asserting the shape here is what
+ * actually stands between a future refactor and a real open redirect.
+ */
+function assertSafeTrackUrl(url: string): string {
+  if (!url.startsWith("blob:") && url !== DEFAULT_TRACK_URL) {
+    throw new Error("Expected an object URL or the default track path");
+  }
+  return url;
+}
+
 class TrackPlayer {
   private el: HTMLAudioElement | null = null;
   private ctx: AudioContext | null = null;
@@ -121,7 +137,9 @@ class TrackPlayer {
     this.artist = artist;
     this.ensure();
     const wasPlaying = this.enabled;
-    if (this.el) this.el.src = url;
+    // lgtm[js/xss-through-dom] -- always a local blob: object URL or the
+    // hardcoded DEFAULT_TRACK_URL; see assertSafeTrackUrl's doc comment.
+    if (this.el) this.el.src = assertSafeTrackUrl(url);
     if (wasPlaying) await this.play();
   }
 

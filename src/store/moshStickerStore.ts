@@ -7,7 +7,7 @@
  */
 import { create } from "zustand";
 import { toast } from "sonner";
-import { EFFECTS, EFFECTS_BY_ID } from "@/engine/effects";
+import { PUBLIC_EFFECTS, EFFECTS_BY_ID } from "@/engine/effects";
 
 export const MAX_STICKERS = 5;
 export const MIN_CLIP_SECONDS = 5;
@@ -91,7 +91,7 @@ function defaultParams(effectId: string): Record<string, number> {
  *  effects lean on the main renderer's depth/flow proxies in a load-bearing way
  *  that a small isolated sticker renderer doesn't provide. */
 function defaultEffectId(): string {
-  return EFFECTS.find(e => e.category !== "dimension")?.id ?? EFFECTS[0]?.id ?? "";
+  return PUBLIC_EFFECTS.find(e => e.category !== "dimension")?.id ?? PUBLIC_EFFECTS[0]?.id ?? "";
 }
 
 let nextId = 0;
