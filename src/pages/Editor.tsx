@@ -108,7 +108,15 @@ export default function Editor() {
   
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const [hideUI, setHideUI] = useState(true);
+  // Starts visible. Nothing auto-reveals this on mount or on a fresh source
+  // load — H-key / long-press / Shift-hold only ever *toggle* it — so a
+  // `true` default here means the hot-trigger rail, the mode-switch icons,
+  // and the bottom menu rack (all gated on `!hideUI`) never mount for
+  // anyone who hasn't already discovered one of those gestures. Idle-fade
+  // (`.ui-chrome` + `idleStage`, a separate mechanism) is what actually
+  // makes the chrome disappear after 2.5s of inactivity — this flag is only
+  // the manual full-hide, so it should start open.
+  const [hideUI, setHideUI] = useState(false);
   const [holdProgress, setHoldProgress] = useState(0);
   const [shortcutsHint, setShortcutsHint] = useState(false);
   const [slotShake, setSlotShake] = useState<number | null>(null);
