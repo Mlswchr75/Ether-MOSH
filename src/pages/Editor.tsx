@@ -123,6 +123,11 @@ export default function Editor() {
   const [freezeOn, setFreezeOn] = useState(false);
   const recorderRef = useRef<CanvasRecorder | null>(null);
   const recCapRef = useRef<number | null>(null);
+  /** Set only when toggleRecord captured its own device-audio stream (the
+   *  user didn't already have "device audio" reactivity on) — stopped when
+   *  the recording ends. A borrowed reference to the reactive system-audio
+   *  stream is never stored here; that one's lifecycle belongs to GlCanvas. */
+  const recordAudioStreamRef = useRef<MediaStream | null>(null);
   const paywall = usePaywall();
   useCloudFavorites();
   const recStartRef = useRef(0);
@@ -742,6 +747,14 @@ export default function Editor() {
   }, [gifBusy, paywall]);
 
 
+  /** Stops and clears the audio stream toggleRecord captured for itself, if
+   *  any — never touches the reactive system-audio stream, which GlCanvas
+   *  owns and stops independently via the "device audio" toggle. */
+  const stopOwnRecordAudioStream = () => {
+    recordAudioStreamRef.current?.getTracks().forEach(t => t.stop());
+    recordAudioStreamRef.current = null;
+  };
+
   const toggleRecord = async () => {
     const c = getCanvas();
     if (!c) return;
@@ -757,14 +770,43 @@ export default function Editor() {
         onConfirm: async () => {
           setActionConfirm(null);
           try {
-            rec.start(c, 30);
+            // Already-reactive device audio (the existing "device audio"
+            // toggle) is included for free, no extra prompt. Otherwise, try
+            // to capture it fresh right here — this is the only place left
+            // in the confirm flow with anything resembling a user gesture,
+            // so a browser that's strict about it may reject the request;
+            // that's caught below and just falls back to a silent
+            // recording rather than blocking the record action entirely.
+            let audioStream: MediaStream | null = null;
+            const activeSystemStream = (window as any).__aegisActiveSystemStream as MediaStream | undefined;
+            if (useStore.getState().systemAudioEnabled && activeSystemStream?.getAudioTracks().length) {
+              audioStream = activeSystemStream;
+            } else {
+              const md = navigator.mediaDevices as any;
+              if (md?.getDisplayMedia) {
+                try {
+                  const captured: MediaStream = await md.getDisplayMedia({ video: true, audio: true });
+                  if (captured.getAudioTracks().length > 0) {
+                    audioStream = captured;
+                    recordAudioStreamRef.current = captured;
+                  } else {
+                    captured.getTracks().forEach(t => t.stop());
+                  }
+                } catch {
+                  // Declined the share picker, or no permission — record
+                  // silent rather than failing the whole action.
+                }
+              }
+            }
+            rec.start(c, 30, { audioStream });
             recStartRef.current = performance.now();
             setRecElapsed(0);
             setIsRecording(true);
+            const audioNote = audioStream ? " · with device audio" : "";
             if (paywall.isSupporter) {
-              toast.success("Recording started · Shift+R to stop");
+              toast.success(`Recording started${audioNote} · Shift+R to stop`);
             } else {
-              toast.success("Recording started · 15s free cap · Shift+R to stop early");
+              toast.success(`Recording started${audioNote} · 15s free cap · Shift+R to stop early`);
               if (recCapRef.current) window.clearTimeout(recCapRef.current);
               recCapRef.current = window.setTimeout(() => {
                 recCapRef.current = null;
@@ -778,6 +820,7 @@ export default function Editor() {
             }
           } catch (e) {
             toast.error("Could not start recording");
+            stopOwnRecordAudioStream();
           }
         },
       });
@@ -800,6 +843,8 @@ export default function Editor() {
       } catch (e) {
         toast.error("Could not stop recording");
         setIsRecording(false);
+      } finally {
+        stopOwnRecordAudioStream();
       }
     }
   };
