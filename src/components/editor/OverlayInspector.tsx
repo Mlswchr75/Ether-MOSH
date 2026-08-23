@@ -5,6 +5,7 @@ import type { OverlayCompositingMode, OverlayTrackingTarget } from "@/engine/ove
 import { makeLayer } from "@/store/useStore";
 import { useOverlayStore } from "@/store/useOverlayStore";
 import { addOwnFxLayer, MAX_OVERLAY_FX, moveOwnFxLayer, removeOwnFxLayer, replaceOwnFxLayer } from "@/engine/overlay/ownFxStack";
+import { OverlayLottieControls } from "./OverlayLottieControls";
 
 const TRACK_OPTIONS: Array<{ value: "off" | OverlayTrackingTarget; label: string }> = [
   { value: "off", label: "Track off" },
@@ -67,6 +68,8 @@ export function OverlayInspector() {
           <option value="own-fx">Own FX</option>
         </select>
       </label>
+
+      <OverlayLottieControls entity={entity} />
 
       {entity.compositing === "own-fx" && (
         <div className="flex flex-wrap items-center gap-1 rounded-lg border border-fuchsia-300/20 bg-fuchsia-500/5 p-1">
