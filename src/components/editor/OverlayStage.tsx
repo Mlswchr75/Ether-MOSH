@@ -5,6 +5,9 @@ import { OverlayVault } from "./OverlayVault";
 import { OverlayTrackingSampler } from "./OverlayTrackingSampler";
 import { OverlayInspector } from "./OverlayInspector";
 import { useOverlayStore } from "@/store/useOverlayStore";
+import { installBeforeFxBridge } from "@/engine/overlay/beforeFxBridge";
+
+installBeforeFxBridge();
 
 /**
  * Transparent interaction surface intended to sit over GlCanvas.
