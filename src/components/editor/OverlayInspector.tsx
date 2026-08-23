@@ -1,9 +1,10 @@
-import { Eye, EyeOff, Lock, Unlock, Layers3, Crosshair, WandSparkles } from "lucide-react";
+import { Eye, EyeOff, Lock, Unlock, Layers3, Crosshair, WandSparkles, Plus, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { BLEND_MODES, type BlendMode } from "@/engine/blend";
 import { PUBLIC_EFFECTS } from "@/engine/effects";
 import type { OverlayCompositingMode, OverlayTrackingTarget } from "@/engine/overlay/types";
 import { makeLayer } from "@/store/useStore";
 import { useOverlayStore } from "@/store/useOverlayStore";
+import { addOwnFxLayer, MAX_OVERLAY_FX, moveOwnFxLayer, removeOwnFxLayer, replaceOwnFxLayer } from "@/engine/overlay/ownFxStack";
 
 const TRACK_OPTIONS: Array<{ value: "off" | OverlayTrackingTarget; label: string }> = [
   { value: "off", label: "Track off" },
@@ -43,8 +44,6 @@ export function OverlayInspector() {
     patchEntity(entity.id, { compositing: mode });
   };
 
-  const ownEffectId = entity.ownFx[0]?.effectId ?? DEFAULT_OWN_FX;
-
   return (
     <div className="pointer-events-auto absolute left-3 top-3 z-[90] flex max-w-[calc(100vw-1.5rem)] flex-wrap items-center gap-1 rounded-xl border border-white/15 bg-black/75 p-1.5 shadow-xl backdrop-blur-md">
       <span className="max-w-28 truncate px-1.5 font-mono text-[8px] uppercase tracking-[0.12em] text-white/45" title={entity.asset.name}>{entity.asset.name || "Sticker"}</span>
@@ -70,17 +69,20 @@ export function OverlayInspector() {
       </label>
 
       {entity.compositing === "own-fx" && (
-        <label className="flex items-center gap-1 rounded-full border border-fuchsia-300/25 px-2 py-1 text-fuchsia-200" title="Independent sticker effect">
-          <WandSparkles size={9} />
-          <select
-            aria-label="Independent sticker effect"
-            value={ownEffectId}
-            onChange={event => patchEntity(entity.id, { ownFx: [makeLayer(event.target.value)] })}
-            className="max-w-36 bg-transparent font-mono text-[7px] uppercase text-inherit outline-none"
-          >
-            {OWN_FX.map(effect => <option key={effect.id} value={effect.id}>{effect.name}</option>)}
-          </select>
-        </label>
+        <div className="flex flex-wrap items-center gap-1 rounded-lg border border-fuchsia-300/20 bg-fuchsia-500/5 p-1">
+          <WandSparkles size={9} className="mx-1 text-fuchsia-200" />
+          {entity.ownFx.map((layer, index) => (
+            <div key={layer.id} className="flex items-center gap-0.5 rounded-full border border-fuchsia-300/20 px-1 py-0.5 text-fuchsia-100">
+              <select aria-label={`Own FX layer ${index + 1}`} value={layer.effectId} onChange={event => patchEntity(entity.id, { ownFx: replaceOwnFxLayer(entity.ownFx, layer.id, event.target.value) })} className="max-w-28 bg-transparent font-mono text-[7px] uppercase outline-none">
+                {OWN_FX.map(effect => <option key={effect.id} value={effect.id}>{effect.name}</option>)}
+              </select>
+              <button type="button" disabled={index === 0} onClick={() => patchEntity(entity.id, { ownFx: moveOwnFxLayer(entity.ownFx, layer.id, -1) })} className="rounded p-0.5 disabled:opacity-20" title="Move effect earlier"><ChevronLeft size={8} /></button>
+              <button type="button" disabled={index === entity.ownFx.length - 1} onClick={() => patchEntity(entity.id, { ownFx: moveOwnFxLayer(entity.ownFx, layer.id, 1) })} className="rounded p-0.5 disabled:opacity-20" title="Move effect later"><ChevronRight size={8} /></button>
+              <button type="button" onClick={() => patchEntity(entity.id, { ownFx: removeOwnFxLayer(entity.ownFx, layer.id) })} className="rounded p-0.5 text-red-300/70" title="Remove effect"><X size={8} /></button>
+            </div>
+          ))}
+          <button type="button" disabled={entity.ownFx.length >= MAX_OVERLAY_FX || !DEFAULT_OWN_FX} onClick={() => patchEntity(entity.id, { ownFx: addOwnFxLayer(entity.ownFx, DEFAULT_OWN_FX) })} className="flex items-center gap-1 rounded-full border border-fuchsia-300/20 px-1.5 py-1 font-mono text-[7px] uppercase text-fuchsia-200 disabled:opacity-25" title={`Add effect (${entity.ownFx.length}/${MAX_OVERLAY_FX})`}><Plus size={8} />FX</button>
+        </div>
       )}
 
       <button type="button" onClick={() => patchEntity(entity.id, { hidden: !entity.hidden })} className="rounded-full p-1.5 text-white/55 hover:bg-white/10 hover:text-white" title={entity.hidden ? "Show sticker" : "Hide sticker"}>{entity.hidden ? <EyeOff size={11} /> : <Eye size={11} />}</button>
