@@ -29,13 +29,12 @@ export function classifyOverlayFile(file: Pick<File, "name" | "type">): OverlayA
 export async function importOverlayFile(file: File): Promise<OverlayAsset> {
   const kind = classifyOverlayFile(file);
 
-  if (kind === "lottie-json") {
-    await validateLottieJson(file);
-  }
+  if (kind === "lottie-json") await validateLottieJson(file);
 
   const url = URL.createObjectURL(file);
   try {
     const size = isImageKind(kind) ? await readImageSize(url) : undefined;
+    const rasterAnimated = kind === "raster" ? await detectRasterAnimation(file) : false;
     return {
       id: crypto.randomUUID(),
       name: file.name,
@@ -44,7 +43,7 @@ export async function importOverlayFile(file: File): Promise<OverlayAsset> {
       mimeType: file.type || fallbackMime(kind),
       width: size?.width,
       height: size?.height,
-      animated: kind === "gif" || kind === "lottie-json" || kind === "dotlottie",
+      animated: rasterAnimated || kind === "gif" || kind === "lottie-json" || kind === "dotlottie",
       createdAt: Date.now(),
       objectUrl: true,
     };
@@ -55,9 +54,7 @@ export async function importOverlayFile(file: File): Promise<OverlayAsset> {
 }
 
 export function disposeOverlayAsset(asset: OverlayAsset): void {
-  if (asset.objectUrl && asset.url.startsWith("blob:")) {
-    URL.revokeObjectURL(asset.url);
-  }
+  if (asset.objectUrl && asset.url.startsWith("blob:")) URL.revokeObjectURL(asset.url);
 }
 
 async function validateLottieJson(file: File): Promise<void> {
@@ -68,9 +65,7 @@ async function validateLottieJson(file: File): Promise<void> {
     throw new OverlayImportError("That JSON file is not valid Lottie animation data.");
   }
 
-  if (!value || typeof value !== "object") {
-    throw new OverlayImportError("That JSON file is not valid Lottie animation data.");
-  }
+  if (!value || typeof value !== "object") throw new OverlayImportError("That JSON file is not valid Lottie animation data.");
 
   const obj = value as Record<string, unknown>;
   const hasVersion = typeof obj.v === "string";
@@ -81,16 +76,27 @@ async function validateLottieJson(file: File): Promise<void> {
   }
 }
 
+/**
+ * Detect animation without decoding every frame. WebP stores an `ANIM` chunk;
+ * APNG stores an `acTL` chunk. Native <img> then handles playback efficiently.
+ */
+export async function detectRasterAnimation(file: Pick<File, "type" | "arrayBuffer">): Promise<boolean> {
+  const mime = file.type.toLowerCase();
+  if (mime !== "image/webp" && mime !== "image/png") return false;
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const needle = mime === "image/webp" ? [65, 78, 73, 77] : [97, 99, 84, 76]; // ANIM / acTL
+  for (let i = 0; i <= bytes.length - needle.length; i++) {
+    let match = true;
+    for (let j = 0; j < needle.length; j++) {
+      if (bytes[i + j] !== needle[j]) { match = false; break; }
+    }
+    if (match) return true;
+  }
+  return false;
+}
+
 function isAcceptedMime(mime: string): boolean {
-  return [
-    "image/png",
-    "image/webp",
-    "image/gif",
-    "image/svg+xml",
-    "application/json",
-    "application/zip",
-    "application/x-lottie",
-  ].includes(mime);
+  return ["image/png", "image/webp", "image/gif", "image/svg+xml", "application/json", "application/zip", "application/x-lottie"].includes(mime);
 }
 
 function isImageKind(kind: OverlayAssetKind): boolean {
