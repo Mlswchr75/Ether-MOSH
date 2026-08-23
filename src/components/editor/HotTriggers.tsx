@@ -57,6 +57,9 @@ type Props = {
   onMicNudgeYes?: () => void;
   onMicNudgeNo?: () => void;
   onMicNudgeExpire?: () => void;
+  /** After a minute of silent play, invite the user to start a soundtrack. */
+  showTrackNudge?: boolean;
+  onTrackNudgeDismiss?: () => void;
 };
 
 /** Auto-Mosh / auto-shuffle interval options — the one list every surface
@@ -173,7 +176,53 @@ function HotBtn({
  * idle/inactivity fade the row it's mounted in already has — no separate
  * timeout logic here.
  */
-function TrackTrigger({ delay }: { delay: number }) {
+function TrackNudgeToast({ onPlay, onDismiss }: { onPlay: () => void; onDismiss: () => void }) {
+  const [leaving, setLeaving] = useState(false);
+
+  useEffect(() => {
+    const t = window.setTimeout(() => setLeaving(true), 30_000);
+    return () => window.clearTimeout(t);
+  }, []);
+
+  useEffect(() => {
+    if (!leaving) return;
+    const t = window.setTimeout(onDismiss, 520);
+    return () => window.clearTimeout(t);
+  }, [leaving, onDismiss]);
+
+  return (
+    <div
+      role="status"
+      className={`absolute right-full mr-2 top-0 z-50 w-56 rounded-md border border-[hsl(var(--accent))]/40 bg-black/90 p-2.5 backdrop-blur-md panel-in-3d ${leaving ? "bg-glitch-pulse" : ""}`}
+      style={leaving ? undefined : { animation: "panel-in 180ms ease-out both" }}
+    >
+      <div className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-[hsl(var(--accent))]">
+        <Music2 className="h-3 w-3" strokeWidth={1.5} /> need a soundtrack?
+      </div>
+      <p className="mt-1 text-[10px] leading-tight text-white/60">
+        Start the music trigger and MOSH will pick a track at random.
+      </p>
+      <div className="mt-2 flex gap-1.5">
+        <button
+          type="button"
+          onClick={onPlay}
+          className="flex-1 rounded-sm border border-[hsl(var(--accent))]/50 bg-[hsl(var(--accent))]/10 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-[hsl(var(--accent))] transition hover:bg-[hsl(var(--accent))]/20"
+        >
+          Play random
+        </button>
+        <button
+          type="button"
+          onClick={onDismiss}
+          className="flex-1 rounded-sm border border-white/15 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-white/60 transition hover:text-white"
+        >
+          Not now
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function TrackTrigger({ delay, showNudge, onNudgeDismiss }: { delay: number; showNudge?: boolean; onNudgeDismiss?: () => void }) {
   const trackEnabled = useStore(s => s.trackEnabled);
   const trackTitle = useStore(s => s.trackTitle);
   const setTrackEnabled = useStore(s => s.setTrackEnabled);
@@ -181,6 +230,11 @@ function TrackTrigger({ delay }: { delay: number }) {
   const [open, setOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
+
+  const startRandomTrack = () => {
+    runTrackAction(() => trackPlayer.shuffleShowcaseTrack());
+    onNudgeDismiss?.();
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -195,15 +249,15 @@ function TrackTrigger({ delay }: { delay: number }) {
     <div ref={wrapRef} className="relative" data-shuffle-picker>
       <button
         type="button"
-        aria-label={trackEnabled ? `Pause ${trackTitle}` : "Play theme track"}
+        aria-label={trackEnabled ? `Pause ${trackTitle}` : "Play a random MOSH track"}
         aria-pressed={trackEnabled}
-        title={trackEnabled ? `Pause · ${trackTitle}` : "Play theme track"}
+        title={trackEnabled ? `Pause · ${trackTitle}` : "Play a random track"}
         data-active={trackEnabled || undefined}
         data-tint=""
         data-no-longpress
         className="hot-trigger"
         style={{ animationDelay: `${delay}ms`, ["--ht-tint" as string]: "262 68% 72%" }}
-        onClick={() => setTrackEnabled(!trackEnabled)}
+        onClick={() => trackEnabled ? setTrackEnabled(false) : startRandomTrack()}
       >
         <span className="hot-trigger__glitch" aria-hidden>
           {trackEnabled ? <Music className="h-4 w-4" strokeWidth={1.5} /> : <Music2 className="h-4 w-4" strokeWidth={1.5} />}
@@ -212,6 +266,7 @@ function TrackTrigger({ delay }: { delay: number }) {
           {trackEnabled ? <Music className="h-4 w-4" strokeWidth={1.5} /> : <Music2 className="h-4 w-4" strokeWidth={1.5} />}
         </span>
       </button>
+      {showNudge && <TrackNudgeToast onPlay={startRandomTrack} onDismiss={() => onNudgeDismiss?.()} />}
       <button
         type="button"
         onPointerDown={(e) => e.stopPropagation()}
@@ -706,7 +761,7 @@ function CustomizeTrigger({
 export function HotTriggers({
   isRecording, onToggleRecord, onScreenshot, onFreeze, onGif, onShare, onSupport, gifBusy, gifProgress,
   onMicFlash, journeyOn, onToggleJourney, journeyLocked, journeyPreview, isFullscreen, onToggleFullscreen, onHome,
-  onClearFx, hasFx, onSaveFavorite, showMicNudge, onMicNudgeYes, onMicNudgeNo, onMicNudgeExpire,
+  onClearFx, hasFx, onSaveFavorite, showMicNudge, onMicNudgeYes, onMicNudgeNo, onMicNudgeExpire, showTrackNudge, onTrackNudgeDismiss,
 }: Props) {
   const mosh = useStore(s => s.mosh);
   const undo = useStore(s => s.undo);
@@ -1188,7 +1243,7 @@ export function HotTriggers({
         )}
       </div>
     ),
-    "theme-track": <TrackTrigger key="theme-track" delay={0} />,
+    "theme-track": <TrackTrigger key="theme-track" delay={0} showNudge={showTrackNudge} onNudgeDismiss={onTrackNudgeDismiss} />,
     favorites: (
       <div key="favorites" className="relative" data-fav-panel>
         <button

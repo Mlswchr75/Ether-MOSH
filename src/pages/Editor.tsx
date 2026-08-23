@@ -109,6 +109,7 @@ export default function Editor() {
   const setMicEnabled = useStore(s => s.setMicEnabled);
   const systemAudioEnabled = useStore(s => s.systemAudioEnabled);
   const setSystemAudioEnabled = useStore(s => s.setSystemAudioEnabled);
+  const trackEnabled = useStore(s => s.trackEnabled);
   const isPerformanceMode = useStore(s => s.isPerformanceMode);
   const setPerformanceMode = useStore(s => s.setPerformanceMode);
   const proModeEnabled = useStore(s => s.proModeEnabled);
@@ -190,6 +191,8 @@ export default function Editor() {
   const [showMicHint, setShowMicHint] = useState(false);
   const [showMicNudge, setShowMicNudge] = useState(false);
   const micNudgeShownRef = useRef(false);
+  const [showTrackNudge, setShowTrackNudge] = useState(false);
+  const trackNudgeShownRef = useRef(false);
   const [showPerfHint, setShowPerfHint] = useState(false);
   const [transitionKey, setTransitionKey] = useState(0);
   const prevImageRef = useRef<HTMLImageElement | null>(null);
@@ -545,6 +548,18 @@ export default function Editor() {
     micNudgeShownRef.current = true;
     setShowMicNudge(true);
   }, [hasSource, micEnabled, systemAudioEnabled]);
+
+  // If someone has been looking at an active visual for a full minute with
+  // no audio source at all, point them to the music trigger. This is a
+  // consentful prompt, not autoplay: the actual start remains a user click.
+  useEffect(() => {
+    if (!hasSource || micEnabled || systemAudioEnabled || trackEnabled || trackNudgeShownRef.current) return;
+    const timer = window.setTimeout(() => {
+      trackNudgeShownRef.current = true;
+      setShowTrackNudge(true);
+    }, 60_000);
+    return () => window.clearTimeout(timer);
+  }, [hasSource, micEnabled, systemAudioEnabled, trackEnabled]);
 
   // Source-load film cut transition + onboarding abort
   useEffect(() => {
@@ -1693,6 +1708,8 @@ export default function Editor() {
             onMicNudgeYes={() => { setMicEnabled(true); setMicFlash({ on: true, key: performance.now() }); setShowMicNudge(false); }}
             onMicNudgeNo={() => setShowMicNudge(false)}
             onMicNudgeExpire={() => setShowMicNudge(false)}
+            showTrackNudge={showTrackNudge}
+            onTrackNudgeDismiss={() => setShowTrackNudge(false)}
             journeyOn={journeyOn}
             journeyLocked={!paywall.isSupporter && !isForge}
             journeyPreview={isForge && !paywall.isSupporter}

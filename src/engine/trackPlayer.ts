@@ -41,6 +41,28 @@ export type ShowcaseTrack = { id: string; url: string; title: string; artist: st
  */
 export const SHOWCASE_TRACKS: ShowcaseTrack[] = [
   { id: "theme", url: DEFAULT_TRACK_URL, title: DEFAULT_TRACK_TITLE, artist: DEFAULT_TRACK_ARTIST },
+  { id: "blackbox-psalm", url: "/audio/Blackbox Psalm.mp3", title: "Blackbox Psalm", artist: "MOSH" },
+  { id: "corrupted-ivory", url: "/audio/Corrupted Ivory.mp3", title: "Corrupted Ivory", artist: "MOSH" },
+  { id: "cybernetic-metamorphosis", url: "/audio/Cybernetic Metamorphosis.mp3", title: "Cybernetic Metamorphosis", artist: "MOSH" },
+  { id: "iron-lament", url: "/audio/Iron Lament.mp3", title: "Iron Lament", artist: "MOSH" },
+  { id: "iron-liturgy-reimagined", url: "/audio/Iron Liturgy (Reimagined).mp3", title: "Iron Liturgy (Reimagined)", artist: "MOSH" },
+  { id: "iron-lullaby", url: "/audio/Iron Lullaby.mp3", title: "Iron Lullaby", artist: "MOSH" },
+  { id: "iron-requiem", url: "/audio/Iron Requiem.mp3", title: "Iron Requiem", artist: "MOSH" },
+  { id: "iron-waltz", url: "/audio/Iron Waltz.mp3", title: "Iron Waltz", artist: "MOSH" },
+  { id: "ivory-protocol", url: "/audio/Ivory Protocol.mp3", title: "Ivory Protocol", artist: "MOSH" },
+  { id: "jitterbug", url: "/audio/Jitterbug.mp3", title: "Jitterbug", artist: "MOSH" },
+  { id: "long-desired", url: "/audio/Long Desired.mp3", title: "Long Desired", artist: "MOSH" },
+  { id: "mechanical-requiem-guitar-cover", url: "/audio/Mechanical Requiem (Guitar Cover) (Cover).mp3", title: "Mechanical Requiem — Guitar Cover", artist: "MOSH" },
+  { id: "mechanical-requiem", url: "/audio/Mechanical Requiem.mp3", title: "Mechanical Requiem", artist: "MOSH" },
+  { id: "motor-spit", url: "/audio/Motor Spit.mp3", title: "Motor Spit", artist: "MOSH" },
+  { id: "plex-on-em", url: "/audio/Plex On Em.mp3", title: "Plex On Em", artist: "MOSH" },
+  { id: "restitude", url: "/audio/Restitude.mp3", title: "Restitude", artist: "MOSH" },
+  { id: "retro-clay-bouncehouse", url: "/audio/Retro Clay Bouncehouse.mp3", title: "Retro Clay Bouncehouse", artist: "MOSH" },
+  { id: "synthetic-requiem", url: "/audio/Synthetic Requiem.mp3", title: "Synthetic Requiem", artist: "MOSH" },
+  { id: "terminal-decay", url: "/audio/Terminal Decay.mp3", title: "Terminal Decay", artist: "MOSH" },
+  { id: "cold-rite", url: "/audio/The Cold Rite.mp3", title: "The Cold Rite", artist: "MOSH" },
+  { id: "silent-steppe", url: "/audio/The Silent Steppe.mp3", title: "The Silent Steppe", artist: "MOSH" },
+  { id: "still-point", url: "/audio/The Still Point.mp3", title: "The Still Point", artist: "MOSH" },
 ];
 
 /**
