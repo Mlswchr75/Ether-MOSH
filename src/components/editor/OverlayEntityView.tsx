@@ -49,12 +49,7 @@ export function OverlayEntityView({ entity, selected, index, count }: Props) {
     if (entity.locked) return;
     event.currentTarget.setPointerCapture(event.pointerId);
     pointers.current.set(event.pointerId, pointOf(event));
-    if (!gesture.current) {
-      gesture.current = {
-        startTransform: { ...entity.transform },
-        startPointers: new Map(pointers.current),
-      };
-    } else if (pointers.current.size === 2) {
+    if (!gesture.current || pointers.current.size === 2) {
       gesture.current = {
         startTransform: { ...entity.transform },
         startPointers: new Map(pointers.current),
@@ -74,8 +69,7 @@ export function OverlayEntityView({ entity, selected, index, count }: Props) {
       const pinched = applyPinch(gesture.current.startTransform, initial[0], initial[1], current[0], current[1]);
       const a = midpoint(initial[0], initial[1]);
       const b = midpoint(current[0], current[1]);
-      const moved = translateNormalized(pinched, { x: b.x - a.x, y: b.y - a.y }, stage);
-      patchTransform(entity.id, moved);
+      patchTransform(entity.id, translateNormalized(pinched, { x: b.x - a.x, y: b.y - a.y }, stage));
       return;
     }
 
@@ -95,8 +89,9 @@ export function OverlayEntityView({ entity, selected, index, count }: Props) {
       gesture.current = null;
       return;
     }
+    const latest = useOverlayStore.getState().entities.find(e => e.id === entity.id)?.transform ?? entity.transform;
     gesture.current = {
-      startTransform: { ...useOverlayStore.getState().entities.find(e => e.id === entity.id)?.transform ?? entity.transform },
+      startTransform: { ...latest },
       startPointers: new Map(pointers.current),
     };
   };
