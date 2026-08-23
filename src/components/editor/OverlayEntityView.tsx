@@ -9,7 +9,7 @@ import { applyTrackedTarget, getTrackedTarget } from "@/engine/overlay/tracking"
 import { overlayCssBlend } from "@/engine/overlay/compositing";
 import { getAudioData } from "@/engine/audioAnalyzer";
 import { useOverlayStore } from "@/store/useOverlayStore";
-import { LottieOverlay } from "@/components/editor/LottieOverlay";
+import { OverlayMedia } from "@/components/editor/OverlayMedia";
 import { OverlaySwarm } from "@/components/editor/OverlaySwarm";
 
 type Props = { entity: OverlayEntity; selected: boolean; index: number; count: number };
@@ -136,7 +136,7 @@ export function OverlayEntityView({ entity, selected, index, count }: Props) {
   return (
     <div ref={rootRef} style={style} className={`group select-none ${selected ? "outline outline-1 outline-cyan-300/80" : ""}`} onPointerDown={begin} onPointerMove={move} onPointerUp={end} onPointerCancel={end} onDoubleClick={() => duplicateEntity(entity.id)}>
       <OverlaySwarm entity={entity} />
-      {isLottie ? <LottieOverlay asset={entity.asset} playback={entity.playback} className="pointer-events-none h-full w-full" /> : <img src={entity.asset.url} alt={entity.asset.name || "sticker"} draggable={false} className="pointer-events-none h-full w-full object-contain" />}
+      <OverlayMedia entity={entity} />
 
       {selected && (
         <div className="absolute left-1/2 top-full mt-2 flex min-w-max max-w-[min(94vw,52rem)] -translate-x-1/2 flex-wrap items-center justify-center gap-1 rounded-xl border border-white/15 bg-black/80 p-1 shadow-xl backdrop-blur-md" onPointerDown={event => event.stopPropagation()}>
