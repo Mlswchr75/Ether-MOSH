@@ -15,19 +15,15 @@ export type OverlayVaultRecord = {
   createdAt: number;
   savedAt: number;
   blob: Blob;
+  favorite?: boolean;
+  tags?: string[];
 };
 
 function openVault(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    if (typeof indexedDB === "undefined") {
-      reject(new Error("Sticker Vault is not supported in this browser."));
-      return;
-    }
+    if (typeof indexedDB === "undefined") { reject(new Error("Sticker Vault is not supported in this browser.")); return; }
     const request = indexedDB.open(DB_NAME, DB_VERSION);
-    request.onupgradeneeded = () => {
-      const db = request.result;
-      if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: "id" });
-    };
+    request.onupgradeneeded = () => { const db = request.result; if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: "id" }); };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error ?? new Error("Could not open Sticker Vault."));
   });
@@ -50,9 +46,10 @@ async function blobForAsset(asset: OverlayAsset): Promise<Blob> {
 }
 
 export async function saveOverlayAsset(asset: OverlayAsset): Promise<OverlayVaultRecord> {
+  const existing = await getOverlayVaultRecord(asset.id).catch(() => null);
   const record: OverlayVaultRecord = {
     id: asset.id,
-    name: asset.name,
+    name: existing?.name || asset.name,
     kind: asset.kind,
     mimeType: asset.mimeType,
     width: asset.width,
@@ -61,6 +58,8 @@ export async function saveOverlayAsset(asset: OverlayAsset): Promise<OverlayVaul
     createdAt: asset.createdAt,
     savedAt: Date.now(),
     blob: await blobForAsset(asset),
+    favorite: existing?.favorite ?? false,
+    tags: existing?.tags ?? [],
   };
   await transact<void>("readwrite", (store, resolve, reject) => {
     const request = store.put(record);
@@ -68,6 +67,31 @@ export async function saveOverlayAsset(asset: OverlayAsset): Promise<OverlayVaul
     request.onerror = () => reject(request.error);
   });
   return record;
+}
+
+export async function getOverlayVaultRecord(id: string): Promise<OverlayVaultRecord | null> {
+  return transact<OverlayVaultRecord | null>("readonly", (store, resolve, reject) => {
+    const request = store.get(id);
+    request.onsuccess = () => resolve((request.result as OverlayVaultRecord | undefined) ?? null);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+export async function updateOverlayVaultMeta(id: string, patch: { name?: string; favorite?: boolean; tags?: string[] }): Promise<OverlayVaultRecord> {
+  const current = await getOverlayVaultRecord(id);
+  if (!current) throw new Error("Vault item no longer exists.");
+  const next: OverlayVaultRecord = {
+    ...current,
+    ...(patch.name !== undefined ? { name: patch.name.trim() || current.name } : {}),
+    ...(patch.favorite !== undefined ? { favorite: patch.favorite } : {}),
+    ...(patch.tags !== undefined ? { tags: [...new Set(patch.tags.map(tag => tag.trim()).filter(Boolean))].slice(0, 12) } : {}),
+  };
+  await transact<void>("readwrite", (store, resolve, reject) => {
+    const request = store.put(next);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+  return next;
 }
 
 export async function removeOverlayAsset(id: string): Promise<void> {
@@ -87,27 +111,8 @@ export async function listOverlayVault(): Promise<OverlayVaultRecord[]> {
 }
 
 export function assetFromVaultRecord(record: OverlayVaultRecord): OverlayAsset {
-  return {
-    id: record.id,
-    name: record.name,
-    kind: record.kind,
-    url: URL.createObjectURL(record.blob),
-    mimeType: record.mimeType,
-    width: record.width,
-    height: record.height,
-    animated: record.animated,
-    createdAt: record.createdAt,
-    objectUrl: true,
-  };
+  return { id: record.id, name: record.name, kind: record.kind, url: URL.createObjectURL(record.blob), mimeType: record.mimeType, width: record.width, height: record.height, animated: record.animated, createdAt: record.createdAt, objectUrl: true };
 }
 
-export async function loadOverlayVaultAssets(): Promise<OverlayAsset[]> {
-  const records = await listOverlayVault();
-  return records.map(assetFromVaultRecord);
-}
-
-export function disposeOverlayAssets(assets: OverlayAsset[]): void {
-  for (const asset of assets) {
-    if (asset.objectUrl && asset.url.startsWith("blob:")) URL.revokeObjectURL(asset.url);
-  }
-}
+export async function loadOverlayVaultAssets(): Promise<OverlayAsset[]> { const records = await listOverlayVault(); return records.map(assetFromVaultRecord); }
+export function disposeOverlayAssets(assets: OverlayAsset[]): void { for (const asset of assets) if (asset.objectUrl && asset.url.startsWith("blob:")) URL.revokeObjectURL(asset.url); }
