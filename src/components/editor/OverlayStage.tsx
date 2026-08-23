@@ -3,6 +3,7 @@ import { OverlayEntityView } from "./OverlayEntityView";
 import { OverlayImporter } from "./OverlayImporter";
 import { OverlayVault } from "./OverlayVault";
 import { OverlayTrackingSampler } from "./OverlayTrackingSampler";
+import { OverlayInspector } from "./OverlayInspector";
 import { useOverlayStore } from "@/store/useOverlayStore";
 
 /**
@@ -44,6 +45,7 @@ export function OverlayStage() {
       }}
     >
       <OverlayTrackingSampler />
+      <OverlayInspector />
       {entities.map((entity, index) => (
         <OverlayEntityView key={entity.id} entity={entity} selected={selectedId === entity.id} index={index} count={entities.length} />
       ))}
