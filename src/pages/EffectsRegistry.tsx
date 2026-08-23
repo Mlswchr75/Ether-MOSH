@@ -54,7 +54,7 @@ export default function EffectsRegistry() {
       <Helmet>
         <title>Effect Registry · MOSH</title>
         <meta name="description" content="Every MOSH effect — human description, parameters, and GLSL source — exportable as a spreadsheet or JSON." />
-        <link rel="canonical" href="https://ether-mosh.netlify.app/effects" />
+        <link rel="canonical" href="https://ether-mosh.online/effects" />
         <meta name="robots" content="noindex" />
       </Helmet>
       <main className="min-h-dvh bg-background text-foreground">

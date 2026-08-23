@@ -1,7 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
 
-const LAST_UPDATED = "July 2026";
+const LAST_UPDATED = "August 2026";
 
 export default function Privacy() {
   const navigate = useNavigate();
@@ -10,6 +10,7 @@ export default function Privacy() {
     <main className="min-h-screen bg-background text-foreground">
       <Helmet>
         <title>Privacy Policy — MOSH</title>
+        <link rel="canonical" href="https://ether-mosh.online/privacy" />
       </Helmet>
 
       <div className="flex items-center justify-between px-6 pt-6">
@@ -38,9 +39,9 @@ export default function Privacy() {
               The short version
             </h2>
             <p>
-              Your images and camera feed never leave your device. MOSH processes
-              everything locally in your browser. The only data that touches our servers is
-              what's strictly necessary for payment processing.
+              Your uploads, camera feed, and audio stay on your device. MOSH processes
+              visual and audio-reactive work locally in your browser. Account and payment
+              information are used only to operate your unlock and payment.
             </p>
           </section>
 
@@ -54,7 +55,8 @@ export default function Privacy() {
             <ul className="mt-3 space-y-2">
               <li>· <span className="text-foreground/90">Payment data</span> — processed by Stripe. We receive only a payment confirmation and a customer identifier. We never see your card number.</li>
               <li>· <span className="text-foreground/90">Entitlement status</span> — we store whether your account has unlocked MOSH (yes/no) in Supabase to enable access across devices.</li>
-              <li>· <span className="text-foreground/90">Preset slots</span> — saved locally in your browser's localStorage. We do not have access to these.</li>
+              <li>· <span className="text-foreground/90">Account information</span> — the email address and authentication data required to sign in and restore an unlock.</li>
+              <li>· <span className="text-foreground/90">Browser settings</span> — preset slots, UI preferences, and the current free-preview state are saved locally in your browser. We do not receive these values.</li>
             </ul>
           </section>
 
@@ -63,9 +65,9 @@ export default function Privacy() {
               What we do not collect
             </h2>
             <ul className="space-y-2">
-              <li>· Your images or video — processed only on your device.</li>
+              <li>· Your uploads, images, or video — processed only on your device. MOSH does not upload them to our servers.</li>
               <li>· Your camera feed — accessed only locally; never streamed to a server.</li>
-              <li>· Audio input — processed only on your device for reactivity.</li>
+              <li>· Audio input and browser-shared system audio — processed only on your device for reactivity.</li>
               <li>· Behavioural analytics or tracking pixels.</li>
               <li>· Advertising IDs.</li>
             </ul>
@@ -100,6 +102,12 @@ export default function Privacy() {
               </a>
               .
             </p>
+            <p className="mt-3">
+              <span className="text-foreground/90">Google MediaPipe</span> — optional on-device background-isolation models may be fetched from Google-hosted model infrastructure. The image itself remains in your browser.
+            </p>
+            <p className="mt-3">
+              <span className="text-foreground/90">Shopify CDN</span> — the optional demo reel loads public product imagery from our Shopify storefront. Your own uploads are never sent there.
+            </p>
           </section>
 
           <section>
@@ -107,10 +115,10 @@ export default function Privacy() {
               Cookies and storage
             </h2>
             <p>
-              MOSH uses browser localStorage to store your preset slots and UI preferences.
-              No tracking cookies are set. If you clear your browser data, your local
-              presets will be deleted; your unlock status is stored server-side and can
-              be restored by signing back in.
+              MOSH uses browser localStorage and sessionStorage for preset slots, UI preferences,
+              and the current Forge Journey free preview. No advertising or behavioral-tracking
+              cookies are set. If you clear browser data, local presets and any free-preview state
+              are deleted; your unlock status can be restored by signing back in.
             </p>
           </section>
 

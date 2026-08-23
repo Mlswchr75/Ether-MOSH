@@ -10,17 +10,19 @@ import { useEntitlements } from "@/hooks/useEntitlements";
 const EASE = [0.22, 1, 0.36, 1] as const;
 
 const FEATURES_FREE = [
-  "105 GPU shader effects",
+  "107 GPU shader effects",
   "Live camera source (front / rear / webcam)",
   "Drag-and-drop or paste any image",
+  "Forge source exploration + one five-minute Journey preview",
   "Beat sync + mic reactivity",
-  "PNG still export",
+  "PNG still export for image and camera sources",
   "9 preset slots (local)",
 ];
 
 const FEATURES_UNLOCK = [
   "Everything in free",
-  "Journey mode (directs itself from motion & sound)",
+  "Uninterrupted Forge Journey ambient walls",
+  "Forge stills, recording, sharing, and deliverable export",
   "Seamless GIF loop capture (7-second perfect loops)",
   "Unlimited recording length (free is capped at 15s)",
   "Full-resolution screenshot exports (free is capped at 720p)",
@@ -70,7 +72,8 @@ export default function Pricing() {
     <main className="min-h-screen bg-background text-foreground">
       <Helmet>
         <title>Pricing — MOSH</title>
-        <meta name="description" content="MOSH is free to use. Unlock video export and advanced features for a one-time $4.99 payment." />
+        <meta name="description" content="Explore MOSH free. Support Forge Journey, uninterrupted ambient walls, and clean Forge output for a one-time $4.99 payment." />
+        <link rel="canonical" href="https://ether-mosh.online/pricing" />
       </Helmet>
 
       <div className="flex items-center justify-between px-6 pt-6">

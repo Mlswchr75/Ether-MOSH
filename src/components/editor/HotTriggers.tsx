@@ -1,7 +1,8 @@
-import { Mic, MicOff, Circle, Square, Sparkles, Scissors, Snowflake, Camera, Shuffle, Star, Play, Pencil, Trash2, X, Film, Lock, Share2, Compass, Maximize2, Minimize2, Gem, Home, SwitchCamera, Crosshair, Eraser, Link2, Upload, Music, Music2, Shuffle as ShuffleIcon, Undo2, Redo2, Gauge, ChevronDown, MonitorSpeaker, Heart, GripVertical, RotateCcw, EyeOff, HelpCircle } from "lucide-react";
+import { Mic, MicOff, Circle, Square, Sparkles, Scissors, Snowflake, Camera, Shuffle, Star, Play, Pencil, Trash2, X, Film, Lock, Share2, Compass, Maximize2, Minimize2, Gem, Home, SwitchCamera, Crosshair, Eraser, Link2, Upload, Music, Music2, Shuffle as ShuffleIcon, Undo2, Redo2, Gauge, ChevronDown, MonitorSpeaker, Heart, GripVertical, RotateCcw, EyeOff, HelpCircle, SkipBack, SkipForward } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useStore } from "@/store/useStore";
-import { trackPlayer, DEFAULT_TRACK_TITLE } from "@/engine/trackPlayer";
+import { trackPlayer, DEFAULT_TRACK_TITLE, SHOWCASE_TRACKS } from "@/engine/trackPlayer";
+import { runTrackAction } from "@/engine/trackActions";
 import { requestCameraStream, type CameraFacing } from "@/hooks/useCamera";
 import { IsolationPanel } from "./IsolationPanel";
 import { MoshStickerTrigger } from "./MoshStickerTrigger";
@@ -39,6 +40,7 @@ type Props = {
   journeyOn?: boolean;
   onToggleJourney?: () => void;
   journeyLocked?: boolean;
+  journeyPreview?: boolean;
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;
   onHome?: () => void;
@@ -236,6 +238,65 @@ function TrackTrigger({ delay }: { delay: number }) {
           </div>
           <div className="mt-0.5 truncate text-[12px] font-semibold text-[hsl(var(--text-primary))]" title={trackTitle}>
             {trackTitle}
+          </div>
+
+          {/* Bigger, obviously-tappable transport row — the small text
+              menu items below are fine for occasional actions, but
+              skip/shuffle are meant to be reached for repeatedly. */}
+          <div className="mt-2.5 flex items-center justify-center gap-2">
+            <button
+              type="button"
+              role="menuitem"
+              data-no-longpress
+              aria-label="Previous showcase track ([ key)"
+              title="Previous track — ["
+              onClick={() => runTrackAction(() => trackPlayer.prevShowcaseTrack())}
+              className="flex h-9 w-9 items-center justify-center rounded-full border border-[hsl(var(--border-default))] text-[hsl(var(--text-secondary))] transition hover:border-[hsl(var(--accent))] hover:text-[hsl(var(--accent))] active:scale-95"
+            >
+              <SkipBack className="h-4 w-4" strokeWidth={1.5} />
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              data-no-longpress
+              aria-label="Shuffle showcase tracks (\ key)"
+              title="Shuffle — \"
+              onClick={() => runTrackAction(() => trackPlayer.shuffleShowcaseTrack())}
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-[hsl(var(--accent))]/50 text-[hsl(var(--accent))] transition hover:bg-[hsl(var(--accent))]/10 active:scale-95"
+            >
+              <ShuffleIcon className="h-4 w-4" strokeWidth={1.5} />
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              data-no-longpress
+              aria-label="Next showcase track (] key)"
+              title="Next track — ]"
+              onClick={() => runTrackAction(() => trackPlayer.nextShowcaseTrack())}
+              className="flex h-9 w-9 items-center justify-center rounded-full border border-[hsl(var(--border-default))] text-[hsl(var(--text-secondary))] transition hover:border-[hsl(var(--accent))] hover:text-[hsl(var(--accent))] active:scale-95"
+            >
+              <SkipForward className="h-4 w-4" strokeWidth={1.5} />
+            </button>
+          </div>
+
+          <div className="mt-2.5 mb-1 font-mono text-[9px] uppercase tracking-[0.18em] text-[hsl(var(--text-tertiary))]">
+            showcase
+          </div>
+          <div className="flex flex-col gap-0.5">
+            {SHOWCASE_TRACKS.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                role="menuitem"
+                data-no-longpress
+                data-active={trackEnabled && trackTitle === t.title || undefined}
+                onClick={() => { setOpen(false); runTrackAction(() => trackPlayer.useShowcaseTrack(t.id)); }}
+                className="flex w-full items-center gap-2 rounded-sm border border-transparent px-2 py-1.5 text-left font-mono text-[10px] uppercase tracking-[0.1em] text-[hsl(var(--text-secondary))] transition hover:border-[hsl(var(--accent))] hover:text-[hsl(var(--accent))] data-[active]:border-[hsl(var(--accent))]/40 data-[active]:text-[hsl(var(--accent))]"
+              >
+                <Music2 className="h-3 w-3 shrink-0" strokeWidth={1.5} />
+                <span className="truncate">{t.title}</span>
+              </button>
+            ))}
           </div>
 
           <button
@@ -644,7 +705,7 @@ function CustomizeTrigger({
  */
 export function HotTriggers({
   isRecording, onToggleRecord, onScreenshot, onFreeze, onGif, onShare, onSupport, gifBusy, gifProgress,
-  onMicFlash, journeyOn, onToggleJourney, journeyLocked, isFullscreen, onToggleFullscreen, onHome,
+  onMicFlash, journeyOn, onToggleJourney, journeyLocked, journeyPreview, isFullscreen, onToggleFullscreen, onHome,
   onClearFx, hasFx, onSaveFavorite, showMicNudge, onMicNudgeYes, onMicNudgeNo, onMicNudgeExpire,
 }: Props) {
   const mosh = useStore(s => s.mosh);
@@ -986,10 +1047,12 @@ export function HotTriggers({
         key="journey"
         type="button"
         onClick={onToggleJourney}
-        aria-label={journeyLocked ? "Journey (supporter unlock)" : (journeyOn ? "Journey mode on" : "Journey mode off")}
+        aria-label={journeyLocked ? "Journey (supporter unlock)" : (journeyPreview ? "Forge Journey free preview" : (journeyOn ? "Journey mode on" : "Journey mode off"))}
         aria-pressed={journeyOn || undefined}
         title={journeyLocked
           ? "Journey · supporter unlock (I)"
+          : journeyPreview
+            ? (journeyOn ? "Forge Journey on · five-minute preview (I)" : "Forge Journey · five-minute free preview (I)")
           : (journeyOn ? "Journey on · directing itself from motion & sound (I)" : "Journey · sit back, it directs itself (I)")}
         data-active={journeyOn || undefined}
         data-tint=""

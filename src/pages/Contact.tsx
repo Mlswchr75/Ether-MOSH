@@ -6,7 +6,7 @@ const Contact = () => (
   <LegalLayout
     title="Contact"
     description="Get in touch with the MOSH team for support, billing questions, or partnership inquiries."
-    canonical="https://ether-mosh.netlify.app/contact"
+    canonical="https://ether-mosh.online/contact"
     eyebrow="support"
   >
     <section>

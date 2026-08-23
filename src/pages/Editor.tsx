@@ -1,12 +1,11 @@
 import * as THREE from "three";
 (window as any).THREE = THREE;
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
-import { ArrowLeft, Download, Layers, Sparkles, Sliders, Music, Eye, Undo2, Redo2, Maximize2, Minimize2, Circle, Mic, MicOff, MonitorSpeaker, Snowflake, Rewind, Repeat, Keyboard, X } from "lucide-react";
+import { ArrowLeft, Download, Layers, Sparkles, Sliders, Music, Eye, Undo2, Redo2, Maximize2, Minimize2, Circle, Mic, MicOff, MonitorSpeaker, Snowflake, Rewind, Repeat, Keyboard, X, ChevronDown, ChevronUp } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { crossfadeLayers, cancelLayerCrossfade, MOSH_FADE_MS, DIRECTED_FADE_MS } from "@/engine/layerCrossfade";
-import { GlCanvas } from "@/components/editor/GlCanvas";
 
 import { LayerStack } from "@/components/editor/LayerStack";
 import { FxPicker } from "@/components/editor/FxPicker";
@@ -42,6 +41,7 @@ import { QuadrantSurface } from "@/components/editor/QuadrantSurface";
 import { TrackpadGestures } from "@/components/editor/TrackpadGestures";
 import { toggleSystemAudio } from "@/engine/systemAudio";
 import { trackPlayer } from "@/engine/trackPlayer";
+import { runTrackAction } from "@/engine/trackActions";
 import { loadImageFile, loadImageFromClipboard } from "@/lib/sourceLoader";
 import { SystemAudioHud } from "@/components/editor/SystemAudioHud";
 
@@ -64,6 +64,24 @@ import type { JourneyMic } from "@/engine/journeyCore";
 import { PUBLIC_EFFECTS } from "@/engine/effects";
 import { useIdleFade, markUiActive } from "@/hooks/useIdleFade";
 import { captureQuickThumb } from "@/engine/quickThumb";
+import {
+  FORGE_JOURNEY_STORAGE_KEY,
+  FORGE_JOURNEY_WARNING_MS,
+  formatForgeJourneyRemaining,
+  readForgeJourneyPreview,
+  remainingForgeJourneyMs,
+  startForgeJourneyPreview,
+  stopForgeJourneyPreview,
+  type ForgeJourneyPreview,
+} from "@/engine/forgeJourneyPreview";
+
+// Three/WebGL and the renderer are the heaviest part of MOSH. Keeping them
+// behind this editor-local boundary lets the surrounding shell, controls, and
+// source chooser become interactive before the GPU pipeline finishes loading.
+const GlCanvas = lazy(async () => {
+  const module = await import("@/components/editor/GlCanvas");
+  return { default: module.GlCanvas };
+});
 
 // Unified one-screen control rack — no tabs.
 
@@ -117,6 +135,13 @@ export default function Editor() {
   // makes the chrome disappear after 2.5s of inactivity — this flag is only
   // the manual full-hide, so it should start open.
   const [hideUI, setHideUI] = useState(false);
+  // Persistent reveal pin — the always-visible top-right toggle that keeps
+  // the hot-trigger rail and menu rack on screen regardless of idle-fade or
+  // Pro Mode's hold-Shift gesture, for anyone who wouldn't otherwise
+  // discover either. Pinning reveals immediately; unpinning folds away
+  // immediately — a plain on/off, not just "stop protecting from the next
+  // auto-hide."
+  const [chromePinned, setChromePinned] = useState(false);
   const [holdProgress, setHoldProgress] = useState(0);
   const [shortcutsHint, setShortcutsHint] = useState(false);
   const [slotShake, setSlotShake] = useState<number | null>(null);
@@ -139,6 +164,15 @@ export default function Editor() {
    *  stream is never stored here; that one's lifecycle belongs to GlCanvas. */
   const recordAudioStreamRef = useRef<MediaStream | null>(null);
   const paywall = usePaywall();
+  const forgePreviewRef = useRef<ForgeJourneyPreview>(
+    typeof window === "undefined"
+      ? { usedMs: 0, startedAt: null }
+      : readForgeJourneyPreview(window.sessionStorage.getItem(FORGE_JOURNEY_STORAGE_KEY)),
+  );
+  const [forgePreviewRemainingMs, setForgePreviewRemainingMs] = useState(() =>
+    remainingForgeJourneyMs(forgePreviewRef.current),
+  );
+  const forgePreviewWarningRef = useRef(false);
   useCloudFavorites();
   const recStartRef = useRef(0);
   const [gifBusy, setGifBusy] = useState(false);
@@ -168,6 +202,10 @@ export default function Editor() {
   // UI chrome (and the cursor, see index.css) fades to fully invisible
   // after 2.5s of inactivity.
   const idleStage = useIdleFade(2_500);
+  // Pinning bypasses idle-fade entirely — real inactivity no longer fades
+  // .ui-chrome while pinned, independent of hideUI (a separate mechanism;
+  // see chromePinned's declaration for how the two combine).
+  const effectiveIdleStage = chromePinned ? "active" : idleStage;
 
   // Once idle, the page has to stop offering anything the browser itself
   // would interrupt the visual with: no right-click "Save image as…" menu,
@@ -179,13 +217,13 @@ export default function Editor() {
   // deliberately — a second, slightly different timer here would just
   // desync from the fade and read as a bug.
   useEffect(() => {
-    const idle = idleStage === "hidden";
+    const idle = effectiveIdleStage === "hidden";
     document.body.classList.toggle("idle-locked", idle);
     if (!idle) return;
     const onContextMenu = (e: MouseEvent) => e.preventDefault();
     document.addEventListener("contextmenu", onContextMenu);
     return () => document.removeEventListener("contextmenu", onContextMenu);
-  }, [idleStage]);
+  }, [effectiveIdleStage]);
 
   // Help Mode (hold the Pro Mode trigger to reach it): a single delegated
   // listener rather than touching every button's own JSX — every hot
@@ -251,8 +289,9 @@ export default function Editor() {
   const proModeMounted = useRef(false);
   useEffect(() => {
     if (!proModeMounted.current) { proModeMounted.current = true; return; }
+    if (chromePinned) return; // the reveal pin outranks Pro Mode's auto-hide-on-enable
     setHideUI(proModeEnabled);
-  }, [proModeEnabled]);
+  }, [proModeEnabled, chromePinned]);
   const focusTune = useCallback((layerId: string) => {
     useStore.getState().selectLayer(layerId);
     setHideUI(false);
@@ -343,6 +382,10 @@ export default function Editor() {
      asked for, because browsers substitute codecs silently and the mismatch
      is otherwise discovered at the rejection. */
   const exportDeliverable = useCallback(async (specId: string) => {
+    if (isForge && !paywall.isSupporter) {
+      paywall.require("Forge deliverable export");
+      return;
+    }
     const spec = DELIVERABLES_BY_ID[specId];
     const canvas = useStore.getState().glCanvas;
     if (!spec || !canvas) { toast.error("Nothing to export yet"); return; }
@@ -374,7 +417,7 @@ export default function Editor() {
       setExportBusy(false);
       setExportProgress(0);
     }
-  }, [exportBusy]);
+  }, [exportBusy, isForge, paywall]);
 
   const copyPresetLink = useCallback(async () => {
     if (!useStore.getState().layers.length) {
@@ -433,6 +476,10 @@ export default function Editor() {
     (canvasContainerRef.current?.querySelector("canvas") ?? null) as HTMLCanvasElement | null;
 
   const exportBestStill = useCallback(async () => {
+    if (isForge && !paywall.isSupporter) {
+      paywall.require("Forge still export");
+      return;
+    }
     if (exportBusy) return;
     const c = getCanvas();
     if (!c) return;
@@ -463,7 +510,7 @@ export default function Editor() {
       setExportBusy(false);
       setExportProgress(0);
     }
-  }, [exportBusy, tileMode]);
+  }, [exportBusy, isForge, paywall, tileMode]);
 
   // Enter/exit perf mode side effects
   const enterPerf = async () => {
@@ -628,7 +675,7 @@ export default function Editor() {
     };
   }, [shuffleSec]);
 
-  // ── Journey director (supporter feature) ─────────────────────────────
+  // ── Journey director ────────────────────────────────────────────────
   /* Smart and Storm, combined. Offline, no network.
 
      They were halves of one idea. Smart read the room well but then left the
@@ -648,17 +695,74 @@ export default function Editor() {
   const journeyRef = useRef<JourneyDirector | null>(null);
   const journeyPrevShuffleRef = useRef<number | null>(null);
 
+  const persistForgePreview = useCallback((preview: ForgeJourneyPreview) => {
+    forgePreviewRef.current = preview;
+    setForgePreviewRemainingMs(remainingForgeJourneyMs(preview));
+    try {
+      window.sessionStorage.setItem(FORGE_JOURNEY_STORAGE_KEY, JSON.stringify(preview));
+    } catch {
+      // Private browsing can deny storage; the current in-memory session still works.
+    }
+  }, []);
+
   const crossfadeToComposition = useCallback((directed: import("@/engine/compose").DirectedLayer[]) => {
     crossfadeLayers(() => useStore.getState().moshDirected(directed), DIRECTED_FADE_MS);
   }, []);
 
   const toggleJourney = useCallback(() => {
-    if (!paywall.isSupporter) {
+    if (journeyOn) {
+      setJourneyOn(false);
+      return;
+    }
+    if (paywall.isSupporter) {
+      setJourneyOn(true);
+      return;
+    }
+    if (!isForge) {
       paywall.require("Journey mode");
       return;
     }
-    setJourneyOn(v => !v);
-  }, [paywall]);
+    if (remainingForgeJourneyMs(forgePreviewRef.current) === 0) {
+      paywall.require("Forge Journey beyond the free preview");
+      return;
+    }
+    setJourneyOn(true);
+  }, [isForge, journeyOn, paywall]);
+
+  // Forge gets one five-minute, session-persistent Journey preview. The clock
+  // follows active Journey time and is paused as soon as the director stops.
+  useEffect(() => {
+    if (!journeyOn || !isForge || paywall.isSupporter) return;
+
+    persistForgePreview(startForgeJourneyPreview(forgePreviewRef.current));
+    const tick = () => {
+      const remaining = remainingForgeJourneyMs(forgePreviewRef.current);
+      setForgePreviewRemainingMs(remaining);
+      if (remaining <= FORGE_JOURNEY_WARNING_MS && !forgePreviewWarningRef.current) {
+        forgePreviewWarningRef.current = true;
+        toast.message("One minute left in your Forge Journey preview", {
+          description: "Support MOSH to keep the ambient wall running and export it.",
+          action: { label: "Support", onClick: () => navigate("/pricing?unlock=1") },
+          duration: 10_000,
+        });
+      }
+      if (remaining === 0) {
+        persistForgePreview(stopForgeJourneyPreview(forgePreviewRef.current));
+        setJourneyOn(false);
+        toast.message("Forge Journey preview complete", {
+          description: "Support MOSH for uninterrupted ambient walls and clean output.",
+          action: { label: "Support", onClick: () => navigate("/pricing?unlock=1") },
+          duration: 12_000,
+        });
+      }
+    };
+    tick();
+    const timer = window.setInterval(tick, 1_000);
+    return () => {
+      window.clearInterval(timer);
+      persistForgePreview(stopForgeJourneyPreview(forgePreviewRef.current));
+    };
+  }, [isForge, journeyOn, navigate, paywall.isSupporter, persistForgePreview]);
 
   useEffect(() => {
     if (!journeyOn) { setJourneyState(null); return; }
@@ -738,6 +842,10 @@ export default function Editor() {
   }, []);
 
   const takeScreenshot = async () => {
+    if (isForge && !paywall.isSupporter) {
+      paywall.require("Forge screenshot export");
+      return;
+    }
     const c = getCanvas();
     if (!c) return;
 
@@ -786,6 +894,10 @@ export default function Editor() {
   };
 
   const shareCurrent = useCallback(async () => {
+    if (isForge && !paywall.isSupporter) {
+      paywall.require("Forge sharing");
+      return;
+    }
     const c = getCanvas();
     if (!c) { shareApp(); return; }
     try {
@@ -804,7 +916,7 @@ export default function Editor() {
     } catch {
       await shareApp();
     }
-  }, []);
+  }, [isForge, paywall]);
 
   /** Seconds the GIF button captures on a plain tap. Long-press picks another. */
   const captureGif = useCallback(async (seconds = 7) => {
@@ -864,6 +976,10 @@ export default function Editor() {
   };
 
   const toggleRecord = async () => {
+    if (!isRecording && isForge && !paywall.isSupporter) {
+      paywall.require("Forge recording export");
+      return;
+    }
     const c = getCanvas();
     if (!c) return;
     if (!CanvasRecorder.isSupported()) {
@@ -1147,6 +1263,16 @@ export default function Editor() {
         return;
       }
 
+      // Theme-track transport — [ previous, ] next, \ shuffle. Every letter
+      // (bare and Shift-combo) is already spoken for elsewhere in this map,
+      // so this borrows the standard media-player bracket convention
+      // instead. Works regardless of whether the track panel is open, and
+      // always ends up playing (matching an ordinary "next" button), so
+      // these work as a real transport control, not just a picker shortcut.
+      if (!e.shiftKey && e.key === "[") { e.preventDefault(); runTrackAction(() => trackPlayer.prevShowcaseTrack()); return; }
+      if (!e.shiftKey && e.key === "]") { e.preventDefault(); runTrackAction(() => trackPlayer.nextShowcaseTrack()); return; }
+      if (!e.shiftKey && e.key === "\\") { e.preventDefault(); runTrackAction(() => trackPlayer.shuffleShowcaseTrack()); return; }
+
       // ————————————— Shift combos —————————————
       if (e.shiftKey && (e.key === "M" || e.key === "m")) { e.preventDefault(); crossfadeLayers(mosh, MOSH_FADE_MS); return; }
       if (e.shiftKey && (e.key === "I" || e.key === "i")) {
@@ -1333,9 +1459,11 @@ export default function Editor() {
     const onKeyUp = (e: KeyboardEvent) => {
       if (!useStore.getState().proModeEnabled) return;
       if (e.key !== "Shift") return;
+      if (chromePinned) return; // pin overrides the release-to-hide gesture
       setHideUI(true);
     };
     const forceHidden = () => {
+      if (chromePinned) return;
       if (useStore.getState().proModeEnabled) setHideUI(true);
     };
     window.addEventListener("keydown", onKeyDown);
@@ -1348,7 +1476,7 @@ export default function Editor() {
       window.removeEventListener("blur", forceHidden);
       document.removeEventListener("visibilitychange", forceHidden);
     };
-  }, []);
+  }, [chromePinned]);
 
   // Pro Mode, touch: hold one finger down, tap with a second while the
   // first is still held — toggles the menu. No timer on the first finger;
@@ -1428,7 +1556,7 @@ export default function Editor() {
     <main
       ref={shellRef}
       // Drives the two-stage fade of everything carrying `.ui-chrome`.
-      data-idle={idleStage}
+      data-idle={effectiveIdleStage}
       className={`editor-shell bg-background text-foreground ${
         isPerformanceMode
           ? "fixed inset-0 z-[9999] flex flex-col overflow-hidden"
@@ -1438,10 +1566,10 @@ export default function Editor() {
       <Helmet>
         <title>Editor — MOSH</title>
         <meta name="description" content="Stack GPU effects, map audio to parameters, and perform live in the MOSH visual editor." />
-        <link rel="canonical" href="https://ether-mosh.netlify.app/edit" />
+        <link rel="canonical" href="https://ether-mosh.online/edit" />
         <meta property="og:title" content="MOSH Editor — Real-time visual instrument" />
-        <meta property="og:description" content="Stack 105 GPU effects, sync to audio, export stills and video." />
-        <meta property="og:url" content="https://ether-mosh.netlify.app/edit" />
+        <meta property="og:description" content="Stack 107 GPU effects, sync to audio, export stills and video." />
+        <meta property="og:url" content="https://ether-mosh.online/edit" />
       </Helmet>
       <h1 className="sr-only">MOSH Editor</h1>
       {/* Canvas — fills the viewport by default. All menu UI lives below the fold. */}
@@ -1497,7 +1625,19 @@ export default function Editor() {
         className={`relative bg-background select-none w-full h-[100dvh] shrink-0 no-touch-scroll ${isCameraLive ? "live-ring" : ""}`}
       >
         <div data-tap-fade-target className="absolute inset-0 opacity-100">
-          <GlCanvas />
+          <Suspense
+            fallback={
+              <div
+                role="status"
+                aria-live="polite"
+                className="flex h-full items-center justify-center bg-background font-mono text-[10px] uppercase tracking-[0.28em] text-[hsl(var(--text-tertiary))]"
+              >
+                warming the visual engine…
+              </div>
+            }
+          >
+            <GlCanvas />
+          </Suspense>
         </div>
         {!hasSource && !isOverlay && <StartCameraOverlay />}
         <SystemAudioHud visible={systemAudioEnabled && !isOverlay} />
@@ -1547,7 +1687,8 @@ export default function Editor() {
             onMicNudgeNo={() => setShowMicNudge(false)}
             onMicNudgeExpire={() => setShowMicNudge(false)}
             journeyOn={journeyOn}
-            journeyLocked={!paywall.isSupporter}
+            journeyLocked={!paywall.isSupporter && !isForge}
+            journeyPreview={isForge && !paywall.isSupporter}
             onToggleJourney={toggleJourney}
             isFullscreen={isBrowserFs}
             onToggleFullscreen={toggleFullscreen}
@@ -1591,12 +1732,43 @@ export default function Editor() {
               {journeyState.lastDisruption?.reason ?? "settling"}
               {` · next ${(journeyState.nextDisruptMs / 1000).toFixed(1)}s`}
             </p>
+            {isForge && !paywall.isSupporter && (
+              <p className="mt-1 font-mono text-[9px] uppercase tracking-[0.16em] text-[hsl(var(--accent))]">
+                free preview · {formatForgeJourneyRemaining(forgePreviewRemainingMs)} remaining
+              </p>
+            )}
           </div>
         )}
         {!isPerformanceMode && !hideUI && (
           <div className="ui-chrome absolute top-3 right-3 z-40 pointer-events-auto">
             <AccountChip />
           </div>
+        )}
+        {/* Persistent reveal pin — deliberately NOT wrapped in .ui-chrome
+            and NOT gated on !hideUI, since its entire job is to be the one
+            thing that's always reachable when everything else is hidden
+            (idle-fade, or Pro Mode's hold-Shift, which not everyone knows
+            about). Subtle by default (low opacity, brightens on hover/when
+            pinned) so it doesn't compete with the chrome it's rescuing. */}
+        {!isPerformanceMode && !isOverlay && (
+          <button
+            type="button"
+            onClick={() => {
+              const next = !chromePinned;
+              setChromePinned(next);
+              setHideUI(!next); // pin -> reveal now; unpin -> fold away now
+            }}
+            aria-label={chromePinned ? "Unpin controls (fold away)" : "Pin controls (keep on screen)"}
+            aria-pressed={chromePinned}
+            title={chromePinned ? "Controls pinned — click to fold away" : "Keep controls on screen"}
+            className={`absolute top-3 right-14 z-40 flex h-6 w-6 items-center justify-center rounded-full border transition pointer-events-auto ${
+              chromePinned
+                ? "border-[hsl(var(--accent))]/60 bg-[hsl(var(--accent))]/15 text-[hsl(var(--accent))]"
+                : "border-white/15 text-white/35 hover:border-white/35 hover:text-white/70"
+            }`}
+          >
+            {chromePinned ? <ChevronUp className="h-3.5 w-3.5" strokeWidth={1.5} /> : <ChevronDown className="h-3.5 w-3.5" strokeWidth={1.5} />}
+          </button>
         )}
         {onboardingActive && !hasSource && (
           <OnboardingPrompts onComplete={() => { setOnboardingActive(false); markOnboardingSeen(); }} />
@@ -1853,7 +2025,7 @@ export default function Editor() {
 
       {shortcutsOpen && <ShortcutsOverlay onClose={() => setShortcutsOpen(false)} />}
 
-      <AboutTrigger hidden={hideUI || isPerformanceMode || isOverlay || idleStage === "hidden"} />
+      <AboutTrigger hidden={hideUI || isPerformanceMode || isOverlay || effectiveIdleStage === "hidden"} />
 
       {helpCaption && (
         <div

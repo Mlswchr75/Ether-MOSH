@@ -120,7 +120,7 @@ export default function Auth() {
       <Helmet>
         <title>Sign in — MOSH</title>
         <meta name="description" content="Sign in to MOSH to unlock supporter features and sync them across devices." />
-        <link rel="canonical" href="https://ether-mosh.netlify.app/auth" />
+        <link rel="canonical" href="https://ether-mosh.online/auth" />
       </Helmet>
 
       <Link to="/" className="absolute top-6 left-6 inline-flex items-center gap-2 text-foreground/60 hover:text-foreground transition">

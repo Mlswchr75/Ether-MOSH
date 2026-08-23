@@ -1,7 +1,7 @@
 {
   "name": "MOSH — Audio-Reactive Visual Instrument",
   "short_name": "MOSH",
-  "description": "105 GPU effects. Beat-synced chaos. Live camera moshing in your browser.",
+  "description": "107 GPU effects. Beat-synced chaos. Live camera moshing in your browser.",
   "start_url": "/",
   "display": "standalone",
   "orientation": "any",

@@ -10,6 +10,7 @@ export default function Terms() {
     <main className="min-h-screen bg-background text-foreground">
       <Helmet>
         <title>Terms of Service — MOSH</title>
+        <link rel="canonical" href="https://ether-mosh.online/terms" />
       </Helmet>
 
       <div className="flex items-center justify-between px-6 pt-6">

@@ -2,7 +2,7 @@ import { Helmet } from "react-helmet-async";
 import { Link } from "react-router-dom";
 import LegalLayout from "@/components/LegalLayout";
 
-const canonical = "https://ether-mosh.netlify.app/guides";
+const canonical = "https://ether-mosh.online/guides";
 const title = "Guides";
 const description =
   "Tutorials and guides for making audio-reactive music videos, datamosh clips, glitch TikToks and live VJ visuals with MOSH.";

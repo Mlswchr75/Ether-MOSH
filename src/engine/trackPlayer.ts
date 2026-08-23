@@ -22,18 +22,41 @@ export const DEFAULT_TRACK_URL = "/audio/theme.mp3";
 export const DEFAULT_TRACK_TITLE = "Miyazaki Demo";
 export const DEFAULT_TRACK_ARTIST = "Aesthetic Rebellion";
 
+export type ShowcaseTrack = { id: string; url: string; title: string; artist: string };
+
+/**
+ * The showcase library — every track offered from the theme-track panel's
+ * showcase list, not just the one bundled default.
+ *
+ * Deliberately a hardcoded array literal, not a manifest fetched at runtime:
+ * assertSafeTrackUrl below only accepts a URL that's either a local blob: or
+ * a member of this exact list, and that guarantee only holds if the list
+ * itself is compile-time-known — a JSON file loaded over the network would
+ * put arbitrary-at-runtime strings back into a `.src` sink, exactly what
+ * assertSafeTrackUrl exists to rule out. See its own doc comment.
+ *
+ * To add a showcase track: drop the mp3 in public/audio/ and add a row here
+ * with a matching url. Nothing else needs to change — the panel in
+ * HotTriggers.tsx renders this list directly.
+ */
+export const SHOWCASE_TRACKS: ShowcaseTrack[] = [
+  { id: "theme", url: DEFAULT_TRACK_URL, title: DEFAULT_TRACK_TITLE, artist: DEFAULT_TRACK_ARTIST },
+];
+
 /**
  * `setSource`'s `url` only ever arrives as `URL.createObjectURL()` on a
- * locally-selected audio File (HotTriggers' file input) or this module's own
- * same-origin DEFAULT_TRACK_URL constant — never a remote or user-typed
- * string. CodeQL's js/xss-through-dom query flags any `File`-derived string
- * reaching a `.src` sink regardless of that guarantee, since it doesn't model
- * `createObjectURL`'s opaque blob: output; asserting the shape here is what
- * actually stands between a future refactor and a real open redirect.
+ * locally-selected audio File (HotTriggers' file input) or one of this
+ * module's own same-origin SHOWCASE_TRACKS paths — never a remote or
+ * user-typed string. CodeQL's js/xss-through-dom query flags any
+ * `File`-derived string reaching a `.src` sink regardless of that guarantee,
+ * since it doesn't model `createObjectURL`'s opaque blob: output; asserting
+ * the shape here is what actually stands between a future refactor and a
+ * real open redirect.
  */
 function assertSafeTrackUrl(url: string): string {
-  if (!url.startsWith("blob:") && url !== DEFAULT_TRACK_URL) {
-    throw new Error("Expected an object URL or the default track path");
+  const known = url.startsWith("blob:") || SHOWCASE_TRACKS.some(t => t.url === url);
+  if (!known) {
+    throw new Error("Expected an object URL or a known showcase track path");
   }
   return url;
 }
@@ -112,6 +135,7 @@ class TrackPlayer {
       el.loop = true;
       el.src = this.url;
       this.el = el;
+      this.setupMediaSession();
     }
     if (!this.ctx) {
       const AC = window.AudioContext || (window as any).webkitAudioContext;
@@ -129,6 +153,35 @@ class TrackPlayer {
     }
   }
 
+  /**
+   * Hooks the Media Session API — real OS/hardware media keys (dedicated
+   * keyboard media keys, Bluetooth headphone/earbud controls, the OS media
+   * overlay and lock-screen controls on mobile) — up to the same actions the
+   * in-app controls use. Guarded: not every browser implements this (older
+   * Safari desktop notably didn't), so this is additive, never required for
+   * play/pause/next/prev to work — the on-screen buttons and `[`/`]`/`\`
+   * keyboard shortcuts work regardless of MediaSession support.
+   */
+  private setupMediaSession() {
+    if (typeof navigator === "undefined" || !("mediaSession" in navigator)) return;
+    try {
+      navigator.mediaSession.setActionHandler("play", () => { this.play(); });
+      navigator.mediaSession.setActionHandler("pause", () => { this.pause(); });
+      navigator.mediaSession.setActionHandler("previoustrack", () => { this.prevShowcaseTrack(); });
+      navigator.mediaSession.setActionHandler("nexttrack", () => { this.nextShowcaseTrack(); });
+    } catch {
+      // Some browsers implement the interface but throw on unsupported
+      // actions (e.g. previoustrack/nexttrack) — play/pause still get set.
+    }
+  }
+
+  private updateMediaSessionMetadata() {
+    if (typeof navigator === "undefined" || !("mediaSession" in navigator)) return;
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata({ title: this.title, artist: this.artist });
+    } catch {}
+  }
+
   /** Swap the active track (e.g. a user-uploaded file). Keeps playing through
    *  the swap if it was already playing. */
   async setSource(url: string, title: string, artist = "") {
@@ -140,12 +193,65 @@ class TrackPlayer {
     // lgtm[js/xss-through-dom] -- always a local blob: object URL or the
     // hardcoded DEFAULT_TRACK_URL; see assertSafeTrackUrl's doc comment.
     if (this.el) this.el.src = assertSafeTrackUrl(url);
+    this.updateMediaSessionMetadata();
     if (wasPlaying) await this.play();
   }
 
   /** Restore the bundled default track. */
   async useDefaultTrack() {
     await this.setSource(DEFAULT_TRACK_URL, DEFAULT_TRACK_TITLE, DEFAULT_TRACK_ARTIST);
+  }
+
+  /** Load one of the bundled showcase tracks (see SHOWCASE_TRACKS) by id. */
+  async useShowcaseTrack(id: string) {
+    const t = SHOWCASE_TRACKS.find(x => x.id === id);
+    if (!t) return;
+    await this.setSource(t.url, t.title, t.artist);
+  }
+
+  /** Index of the current track within SHOWCASE_TRACKS, or -1 if the active
+   *  track isn't one of them (e.g. a user-uploaded file via "browse file"). */
+  private showcaseIndex(): number {
+    return SHOWCASE_TRACKS.findIndex(t => t.url === this.url);
+  }
+
+  /** Advances to the next showcase track, wrapping around. From a
+   *  non-showcase track (an uploaded file), starts at the first one. Always
+   *  ends up playing, matching ordinary media-player "next" semantics. */
+  async nextShowcaseTrack() {
+    if (!SHOWCASE_TRACKS.length) return;
+    const i = this.showcaseIndex();
+    const t = SHOWCASE_TRACKS[i === -1 ? 0 : (i + 1) % SHOWCASE_TRACKS.length];
+    await this.setSource(t.url, t.title, t.artist);
+    await this.play();
+  }
+
+  /** Same as nextShowcaseTrack, backwards. From a non-showcase track, starts
+   *  at the last one. */
+  async prevShowcaseTrack() {
+    if (!SHOWCASE_TRACKS.length) return;
+    const i = this.showcaseIndex();
+    const t = SHOWCASE_TRACKS[i === -1 ? SHOWCASE_TRACKS.length - 1 : (i - 1 + SHOWCASE_TRACKS.length) % SHOWCASE_TRACKS.length];
+    await this.setSource(t.url, t.title, t.artist);
+    await this.play();
+  }
+
+  /** Jumps to a random *different* showcase track (never repeats the one
+   *  already playing, unless it's the only one available). */
+  async shuffleShowcaseTrack() {
+    if (!SHOWCASE_TRACKS.length) return;
+    if (SHOWCASE_TRACKS.length === 1) {
+      const only = SHOWCASE_TRACKS[0];
+      await this.setSource(only.url, only.title, only.artist);
+      await this.play();
+      return;
+    }
+    const i = this.showcaseIndex();
+    let idx = i;
+    while (idx === i) idx = Math.floor(Math.random() * SHOWCASE_TRACKS.length);
+    const t = SHOWCASE_TRACKS[idx];
+    await this.setSource(t.url, t.title, t.artist);
+    await this.play();
   }
 
   duration(): number {
@@ -192,19 +298,60 @@ class TrackPlayer {
     } catch {}
   }
 
-  async play() {
+  private playInFlight: Promise<void> | null = null;
+
+  /**
+   * Coalesces concurrent callers onto the same attempt instead of firing a
+   * second el.play() while one is still in flight.
+   *
+   * This matters because HTMLMediaElement aborts an in-progress play() with
+   * "interrupted by a new load request" (or by a second play()) when
+   * another one lands on top of it — and setSource() calling play()
+   * internally to keep a track switch playing through, followed by a
+   * caller *also* calling play() right after (every current call site does
+   * this — the Play button's store action, "browse file", each showcase
+   * track), is exactly that pattern. On some browser/OS combinations that
+   * interruption doesn't reject cleanly, it leaves the returned promise
+   * hanging — wedging whatever awaited it with no error and no recovery
+   * short of a page reload. This is the reported "freezes, have to
+   * force-quit."
+   */
+  async play(): Promise<void> {
+    if (this.playInFlight) return this.playInFlight;
+    this.playInFlight = this.doPlay().finally(() => { this.playInFlight = null; });
+    return this.playInFlight;
+  }
+
+  private async doPlay(): Promise<void> {
     this.ensure();
     if (this.ctx?.state === "suspended") { try { await this.ctx.resume(); } catch {} }
-    await this.el?.play();
+    // Belt-and-suspenders for the same hang: even a *single*, uncontested
+    // el.play() call can fail to ever settle on some platforms. 6s is
+    // generous for a local same-origin file — past that the browser isn't
+    // going to resolve it on its own, so time out and let the caller's
+    // existing error handling (toast + state reset) recover instead of
+    // hanging forever.
+    await Promise.race([
+      this.el!.play(),
+      new Promise<never>((_, reject) => {
+        window.setTimeout(() => reject(new Error("track play() timed out")), 6_000);
+      }),
+    ]);
     this.enabled = true;
     this.everPlayed = true;
     if (!this.startedAt) this.startedAt = performance.now();
     this.fadeTo(this.volume, 0.5, 0.0001);
+    if (typeof navigator !== "undefined" && "mediaSession" in navigator) {
+      try { navigator.mediaSession.playbackState = "playing"; } catch {}
+    }
   }
 
   pause() {
     this.enabled = false;
     try { this.el?.pause(); } catch {}
+    if (typeof navigator !== "undefined" && "mediaSession" in navigator) {
+      try { navigator.mediaSession.playbackState = "paused"; } catch {}
+    }
     this.bassLevel = this.midLevel = this.trebleLevel = this.overallLevel = 0;
     this.envelope = 0;
     this.bands.fill(0);

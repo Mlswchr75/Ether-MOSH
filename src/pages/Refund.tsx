@@ -8,6 +8,7 @@ export default function Refund() {
     <main className="min-h-screen bg-background text-foreground">
       <Helmet>
         <title>Refund Policy — MOSH</title>
+        <link rel="canonical" href="https://ether-mosh.online/refund" />
       </Helmet>
 
       <div className="flex items-center justify-between px-6 pt-6">

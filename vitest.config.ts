@@ -14,5 +14,11 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     include: ["src/**/*.test.{ts,tsx}"],
+    // The visual engine uses dynamic Three/WebGL imports. Running every jsdom
+    // file at once lets one environment tear down while another is still
+    // resolving that import, producing flaky route failures and false errors.
+    fileParallelism: false,
+    testTimeout: 15_000,
+    hookTimeout: 15_000,
   },
 });

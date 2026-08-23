@@ -4,10 +4,10 @@ import { Helmet } from "react-helmet-async";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
 
-const canonical = "https://ether-mosh.netlify.app/install";
+const canonical = "https://ether-mosh.online/install";
 const title = "Install — MOSH";
 const description = "Install MOSH as a native-feeling app on iOS, Android, or desktop. No app store required.";
-const ogImage = "https://ether-mosh.netlify.app/og-image.png";
+const ogImage = "https://ether-mosh.online/og-image.png";
 
 const steps = {
   ios: [

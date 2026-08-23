@@ -5,7 +5,7 @@ const About = () => (
   <LegalLayout
     title="About Aesthetic Rebellion"
     description="The artistic journey, influences, and endeavors of Myles Whitcher and the Aesthetic Rebellion collective."
-    canonical="https://ether-mosh.netlify.app/about"
+    canonical="https://ether-mosh.online/about"
     eyebrow="about"
   >
     <section>
@@ -55,7 +55,7 @@ const About = () => (
       <LegalH2>Endeavors</LegalH2>
       <p className="mt-2">
         <strong>MOSH (Audio-Reactive Visual Instrument)</strong><br />
-        A real-time, GPU-accelerated instrument for live performance and creative exploration. 105 effects.
+        A real-time, GPU-accelerated instrument for live performance and creative exploration. 107 effects.
         Beat-synced chaos. Built in the browser. Free to use.
       </p>
       <p className="mt-4">

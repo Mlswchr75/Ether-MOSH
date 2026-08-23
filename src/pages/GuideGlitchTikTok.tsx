@@ -2,11 +2,11 @@ import { Helmet } from "react-helmet-async";
 import { Link } from "react-router-dom";
 import LegalLayout, { LegalH2 } from "@/components/LegalLayout";
 
-const canonical = "https://ether-mosh.netlify.app/guides/glitch-effect-video-tiktok";
+const canonical = "https://ether-mosh.online/guides/glitch-effect-video-tiktok";
 const title = "How to Make Glitch Effect Videos for TikTok (Free)";
 const description =
   "Make viral glitch effect videos for TikTok & Reels free — no app to download. Add RGB glitch, datamosh, and distortion to your clips with MOSH in your browser.";
-const ogImage = "https://ether-mosh.netlify.app/og-image.png";
+const ogImage = "https://ether-mosh.online/og-image.png";
 
 const articleJsonLd = {
   "@context": "https://schema.org",

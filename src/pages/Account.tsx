@@ -49,7 +49,7 @@ function AccountContent() {
       <Helmet>
         <title>Account — MOSH</title>
         <meta name="description" content="Manage your MOSH account and review your Supporter unlock and tips." />
-        <link rel="canonical" href="https://ether-mosh.netlify.app/account" />
+        <link rel="canonical" href="https://ether-mosh.online/account" />
       </Helmet>
 
       <header className="relative z-10 flex items-center justify-between px-5 pt-6">

@@ -18,10 +18,10 @@ describe("planReel", () => {
   it("keeps every reel inside the panel and moving at a visible rate", () => {
     for (let i = 0; i < 200; i++) {
       const plan = planReel(pool, i);
-      expect(plan.cx).toBeGreaterThanOrEqual(22);
-      expect(plan.cx).toBeLessThanOrEqual(78);
-      expect(plan.cy).toBeGreaterThanOrEqual(22);
-      expect(plan.cy).toBeLessThanOrEqual(78);
+      expect(plan.cx).toBeGreaterThanOrEqual(5);
+      expect(plan.cx).toBeLessThanOrEqual(95);
+      expect(plan.cy).toBeGreaterThanOrEqual(5);
+      expect(plan.cy).toBeLessThanOrEqual(95);
       expect(plan.speed).toBeGreaterThan(0);
       expect(Math.abs(plan.sign)).toBe(1);
     }
@@ -35,13 +35,13 @@ describe("planReel", () => {
     }
   });
 
-  it("reaches all eight headings across enough spawns", () => {
+  it("reaches all twenty headings across enough spawns", () => {
     const headings = new Set<string>();
     for (let i = 0; i < 400; i++) {
       const plan = planReel(pool, i);
       headings.add(`${plan.angle}/${plan.sign}`);
     }
-    expect(headings.size).toBe(8);
+    expect(headings.size).toBe(20);
   });
 
   it("draws a distinct handful of frames rather than the whole catalogue", () => {
@@ -63,7 +63,7 @@ describe("planReel", () => {
     expect(plan.id).toBe(7);
     expect(plan.angle).toBe(0);
     expect(plan.sign).toBe(-1);
-    expect(plan.cx).toBe(22);
-    expect(plan.cy).toBe(22);
+    expect(plan.cx).toBe(5);
+    expect(plan.cy).toBe(5);
   });
 });
