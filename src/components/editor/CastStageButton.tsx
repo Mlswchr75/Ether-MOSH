@@ -30,18 +30,12 @@ export function CastStageButton() {
       </button>
 
       {open && (
-        <div
-          className="fixed inset-0 z-[10020] grid place-items-center bg-black/70 p-4 backdrop-blur-sm"
-          role="presentation"
-          onMouseDown={() => setOpen(false)}
+        <section
+          role="dialog"
+          aria-modal="false"
+          aria-labelledby="cast-stage-title"
+          className="fixed right-3 top-14 z-[10020] w-[min(25rem,calc(100vw-1.5rem))] border border-[hsl(var(--accent)/0.38)] bg-[hsl(var(--surface-1)/0.97)] p-5 shadow-[0_0_42px_hsl(var(--accent)/0.18)] backdrop-blur-xl"
         >
-          <section
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="cast-stage-title"
-            className="w-full max-w-md border border-[hsl(var(--accent)/0.38)] bg-[hsl(var(--surface-1))] p-5 shadow-[0_0_42px_hsl(var(--accent)/0.18)]"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
             <div className="flex items-start justify-between gap-4">
               <div className="flex items-center gap-3">
                 <span className="grid h-9 w-9 place-items-center rounded-full border border-[hsl(var(--accent)/0.55)] bg-black/30">
@@ -63,7 +57,7 @@ export function CastStageButton() {
             </div>
 
             <p className="mt-4 text-sm leading-relaxed text-white/75">
-              Mirror this browser tab to put the exact live MOSH canvas on your TV or projector. It works with Upload, Camera, and Forge.
+              Mirror this browser tab to put the exact live MOSH canvas on your TV or projector. Your session stays live behind this panel and works with Upload, Camera, and Forge.
             </p>
 
             <ol className="mt-5 space-y-3 font-mono text-[11px] leading-relaxed text-white/75">
@@ -85,8 +79,7 @@ export function CastStageButton() {
               <Maximize2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[hsl(var(--accent))]" aria-hidden="true" />
               <p>Tab casting mirrors the live visual output. MOSH’s microphone is used to animate the image; it does not send microphone sound to the display.</p>
             </div>
-          </section>
-        </div>
+        </section>
       )}
     </>
   );
