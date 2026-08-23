@@ -1,9 +1,10 @@
 import { useMemo, useRef } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
-import { Copy, RotateCcw, Trash2, ChevronDown, ChevronUp } from "lucide-react";
+import { Copy, RotateCcw, Trash2, ChevronDown, ChevronUp, Play, Pause, Repeat, Rewind } from "lucide-react";
 import type { OverlayEntity, OverlayTransform } from "@/engine/overlay/types";
 import { applyPinch, midpoint, translateNormalized, type Point } from "@/engine/overlay/transform";
 import { useOverlayStore } from "@/store/useOverlayStore";
+import { LottieOverlay } from "@/components/editor/LottieOverlay";
 
 type Props = {
   entity: OverlayEntity;
@@ -19,6 +20,7 @@ type Gesture = {
 
 export function OverlayEntityView({ entity, selected, index, count }: Props) {
   const patchTransform = useOverlayStore(s => s.patchTransform);
+  const patchEntity = useOverlayStore(s => s.patchEntity);
   const selectEntity = useOverlayStore(s => s.selectEntity);
   const duplicateEntity = useOverlayStore(s => s.duplicateEntity);
   const removeEntity = useOverlayStore(s => s.removeEntity);
@@ -69,7 +71,8 @@ export function OverlayEntityView({ entity, selected, index, count }: Props) {
       const pinched = applyPinch(gesture.current.startTransform, initial[0], initial[1], current[0], current[1]);
       const a = midpoint(initial[0], initial[1]);
       const b = midpoint(current[0], current[1]);
-      patchTransform(entity.id, translateNormalized(pinched, { x: b.x - a.x, y: b.y - a.y }, stage));
+      const moved = translateNormalized(pinched, { x: b.x - a.x, y: b.y - a.y }, stage);
+      patchTransform(entity.id, moved);
       return;
     }
 
@@ -89,14 +92,16 @@ export function OverlayEntityView({ entity, selected, index, count }: Props) {
       gesture.current = null;
       return;
     }
-    const latest = useOverlayStore.getState().entities.find(e => e.id === entity.id)?.transform ?? entity.transform;
     gesture.current = {
-      startTransform: { ...latest },
+      startTransform: { ...(useOverlayStore.getState().entities.find(e => e.id === entity.id)?.transform ?? entity.transform) },
       startPointers: new Map(pointers.current),
     };
   };
 
   const isLottie = entity.asset.kind === "lottie-json" || entity.asset.kind === "dotlottie";
+  const setPlayback = (patch: Partial<OverlayEntity["playback"]>) => patchEntity(entity.id, {
+    playback: { ...entity.playback, ...patch },
+  });
 
   return (
     <div
@@ -109,9 +114,7 @@ export function OverlayEntityView({ entity, selected, index, count }: Props) {
       onDoubleClick={() => duplicateEntity(entity.id)}
     >
       {isLottie ? (
-        <div className="flex h-full w-full items-center justify-center rounded-xl border border-dashed border-white/25 bg-black/35 font-mono text-[9px] uppercase tracking-[0.2em] text-white/45">
-          Lottie ready
-        </div>
+        <LottieOverlay asset={entity.asset} playback={entity.playback} className="pointer-events-none h-full w-full" />
       ) : (
         <img
           src={entity.asset.url}
@@ -123,9 +126,44 @@ export function OverlayEntityView({ entity, selected, index, count }: Props) {
 
       {selected && (
         <div
-          className="absolute left-1/2 top-full mt-2 flex -translate-x-1/2 items-center gap-1 rounded-full border border-white/15 bg-black/80 p-1 shadow-xl backdrop-blur-md"
+          className="absolute left-1/2 top-full mt-2 flex min-w-max -translate-x-1/2 items-center gap-1 rounded-full border border-white/15 bg-black/80 p-1 shadow-xl backdrop-blur-md"
           onPointerDown={event => event.stopPropagation()}
         >
+          {isLottie && (
+            <>
+              <button
+                className="rounded-full p-1.5 text-white/65 hover:bg-white/10 hover:text-white"
+                title={entity.playback.playing ? "Pause animation" : "Play animation"}
+                onClick={() => setPlayback({ playing: !entity.playback.playing })}
+              >
+                {entity.playback.playing ? <Pause size={11} /> : <Play size={11} />}
+              </button>
+              <button
+                className={`rounded-full p-1.5 hover:bg-white/10 ${entity.playback.loop ? "text-cyan-200" : "text-white/40"}`}
+                title="Toggle loop"
+                onClick={() => setPlayback({ loop: !entity.playback.loop })}
+              ><Repeat size={11} /></button>
+              <button
+                className={`rounded-full p-1.5 hover:bg-white/10 ${entity.playback.direction < 0 ? "text-cyan-200" : "text-white/50"}`}
+                title="Reverse"
+                onClick={() => setPlayback({ direction: entity.playback.direction < 0 ? 1 : -1 })}
+              ><Rewind size={11} /></button>
+              <label className="flex items-center gap-1 px-1 font-mono text-[7px] uppercase tracking-wider text-white/40" title="Playback speed">
+                {entity.playback.speed.toFixed(1)}×
+                <input
+                  aria-label="Playback speed"
+                  type="range"
+                  min={0.1}
+                  max={4}
+                  step={0.1}
+                  value={entity.playback.speed}
+                  onChange={event => setPlayback({ speed: Number(event.target.value) })}
+                  className="w-14 accent-cyan-300"
+                />
+              </label>
+              <span className="mx-0.5 h-4 w-px bg-white/10" />
+            </>
+          )}
           <button className="rounded-full p-1.5 text-white/65 hover:bg-white/10 hover:text-white" title="Rotate 15°" onClick={() => patchTransform(entity.id, { rotation: entity.transform.rotation + 15 })}><RotateCcw size={11} /></button>
           <button className="rounded-full p-1.5 text-white/65 hover:bg-white/10 hover:text-white disabled:opacity-25" title="Move backward" disabled={index === 0} onClick={() => reorderEntity(entity.id, -1)}><ChevronDown size={11} /></button>
           <button className="rounded-full p-1.5 text-white/65 hover:bg-white/10 hover:text-white disabled:opacity-25" title="Move forward" disabled={index === count - 1} onClick={() => reorderEntity(entity.id, 1)}><ChevronUp size={11} /></button>
