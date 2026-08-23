@@ -89,9 +89,18 @@ export async function remasterCanvas(canvas: HTMLCanvasElement, scale = 2): Prom
 export function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = url; a.download = filename;
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1500);
+  a.href = url;
+  a.download = filename;
+  // Keep the link in the document for the click itself. Some mobile browsers
+  // ignore a detached link, which made otherwise-successful captures look as
+  // though they had vanished.
+  a.style.display = "none";
+  document.body.appendChild(a);
+  a.click();
+  window.setTimeout(() => {
+    a.remove();
+    URL.revokeObjectURL(url);
+  }, 10_000);
 }
 
 export async function copyBlobToClipboard(blob: Blob): Promise<boolean> {

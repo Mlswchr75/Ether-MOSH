@@ -895,12 +895,13 @@ export default function Editor() {
           const scale = paywall.isSupporter ? 1 : Math.min(1, 720 / longEdge);
           const blob = await exportCanvas(bestCanvas, { format: "png", scale, aspect: null });
           const filename = `mosh-${Date.now()}.png`;
-          shareOrDownload(blob, filename);
-          showExportSuccessToast({
-            message: paywall.isSupporter ? "Screenshot ready" : "Screenshot ready (720p · unlock for full res)",
-            description: canNativeShare() ? "Share sheet opening…" : "Saved to downloads",
-            blob,
-            filename,
+          // A capture should always export. Sharing first opened a native
+          // sheet on some devices and left users with no saved image at all.
+          // Sharing remains available from the dedicated Share trigger.
+          downloadBlob(blob, filename);
+          toast.success(paywall.isSupporter ? "Screenshot exported" : "Screenshot exported (720p · unlock for full res)", {
+            description: "Saved to downloads · C or three-finger tap to capture",
+            duration: 3200,
           });
         } catch (e) {
           toast.error("Screenshot failed");
@@ -1394,6 +1395,39 @@ export default function Editor() {
     window.addEventListener("aegis:toggle-ui", onToggleUI);
     return () => window.removeEventListener("aegis:toggle-ui", onToggleUI);
   }, []);
+
+  // Three-finger tap on the visualizer is the touch counterpart to C. It is
+  // intentionally scoped to the canvas and ignores UI controls so it cannot
+  // steal ordinary multi-touch interactions from the editor chrome.
+  useEffect(() => {
+    const el = canvasContainerRef.current;
+    if (!el) return;
+    const activeTouches = new Set<number>();
+    let fired = false;
+    const isCanvasTap = (target: EventTarget | null) =>
+      !(target instanceof HTMLElement) || !target.closest("button, a, input, textarea, [role='slider'], [data-no-longpress]");
+    const onDown = (e: PointerEvent) => {
+      if (e.pointerType !== "touch" || !isCanvasTap(e.target)) return;
+      activeTouches.add(e.pointerId);
+      if (activeTouches.size !== 3 || fired) return;
+      fired = true;
+      e.preventDefault();
+      try { (navigator as any).vibrate?.(10); } catch {}
+      takeScreenshot();
+    };
+    const onEnd = (e: PointerEvent) => {
+      activeTouches.delete(e.pointerId);
+      if (activeTouches.size === 0) fired = false;
+    };
+    el.addEventListener("pointerdown", onDown, { passive: false });
+    window.addEventListener("pointerup", onEnd, { passive: true });
+    window.addEventListener("pointercancel", onEnd, { passive: true });
+    return () => {
+      el.removeEventListener("pointerdown", onDown);
+      window.removeEventListener("pointerup", onEnd);
+      window.removeEventListener("pointercancel", onEnd);
+    };
+  }, [takeScreenshot]);
 
   // Long-press (1.5s) anywhere on the visualizer toggles the menu rack.
   // Listens on window after pointerdown so iOS/Safari can't drop move/up events

@@ -42,6 +42,7 @@ const SECTIONS: Section[] = [
       { keys: ["Shift", "S"], label: "★ Open favorites list" },
       { keys: ["Z"], label: "Freeze · slow-mo" },
       { keys: ["C"], label: "Capture screenshot" },
+      { keys: ["3-finger tap"], label: "Capture screenshot · visualizer" },
       { keys: ["G"], label: "GIF · 7s seamless loop" },
       { keys: ["Alt", "G"], label: "GIF · 5s" },
       { keys: ["Shift", "G"], label: "GIF · 3s" },
