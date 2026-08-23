@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { classifyOverlayFile, OverlayImportError } from "./importOverlay";
+import { classifyOverlayFile, detectRasterAnimation, OverlayImportError } from "./importOverlay";
 
 function fake(name: string, type = ""): Pick<File, "name" | "type"> {
   return { name, type };
+}
+
+function raster(type: string, ascii: string): Pick<File, "type" | "arrayBuffer"> {
+  const bytes = new TextEncoder().encode(ascii);
+  return { type, arrayBuffer: async () => bytes.buffer };
 }
 
 describe("classifyOverlayFile", () => {
@@ -23,9 +28,21 @@ describe("classifyOverlayFile", () => {
   });
 
   it("rejects unsupported files with a readable message", () => {
-    expect(() => classifyOverlayFile(fake("movie.mp4", "video/mp4")))
-      .toThrowError(OverlayImportError);
-    expect(() => classifyOverlayFile(fake("movie.mp4", "video/mp4")))
-      .toThrow(/PNG, WebP, GIF, SVG, Lottie JSON, or \.lottie/);
+    expect(() => classifyOverlayFile(fake("movie.mp4", "video/mp4"))).toThrowError(OverlayImportError);
+    expect(() => classifyOverlayFile(fake("movie.mp4", "video/mp4"))).toThrow(/PNG, WebP, GIF, SVG, Lottie JSON, or \.lottie/);
+  });
+});
+
+describe("detectRasterAnimation", () => {
+  it("detects the WebP ANIM chunk", async () => {
+    await expect(detectRasterAnimation(raster("image/webp", "RIFFxxxxWEBPANIMpayload"))).resolves.toBe(true);
+  });
+
+  it("detects the APNG acTL chunk", async () => {
+    await expect(detectRasterAnimation(raster("image/png", "PNGheaderacTLpayload"))).resolves.toBe(true);
+  });
+
+  it("leaves ordinary raster images static", async () => {
+    await expect(detectRasterAnimation(raster("image/webp", "RIFFxxxxWEBPVP8 payload"))).resolves.toBe(false);
   });
 });
