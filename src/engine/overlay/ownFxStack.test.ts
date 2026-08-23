@@ -12,7 +12,7 @@ describe("overlay own-fx stack", () => {
   it("removes and reorders layers by id", () => {
     const a = makeLayer("rgbShift");
     const b = makeLayer("scanlines");
-    const c = makeLayer("noise");
+    const c = makeLayer("jitter");
     expect(moveOwnFxLayer([a, b, c], c.id, -1).map(x => x.id)).toEqual([a.id, c.id, b.id]);
     expect(removeOwnFxLayer([a, b, c], b.id).map(x => x.id)).toEqual([a.id, c.id]);
   });
