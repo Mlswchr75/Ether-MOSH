@@ -81,7 +81,7 @@ const DEFAULT_ORDER = [
   "mosh", "auto-mosh", "clear-fx", "journey",
   "audio", "sensitivity",
   "freeze", "capture", "gif", "share",
-  "mosh-sticker", "sticker-mode", "isolation", "theme-track",
+  "mosh-sticker", "sticker-mode", "sticker-capture", "isolation", "theme-track",
   "favorites", "fullscreen", "pro-mode", "switch-camera", "support",
 ] as const;
 
@@ -92,6 +92,7 @@ const TRIGGER_LABELS: Record<string, string> = {
   "pro-mode": "Pro Mode — hide all UI",
   freeze: "Freeze", capture: "Capture — tap for a still, hold to record", gif: "GIF loop", share: "Share",
   "mosh-sticker": "Mosh sticker", "sticker-mode": "Sticker capture", isolation: "AI isolation",
+  "sticker-capture": "Capture sticker",
   "theme-track": "Theme track", favorites: "Favorites", fullscreen: "Fullscreen",
   "switch-camera": "Switch camera", support: "Support MOSH",
 };
@@ -1243,6 +1244,10 @@ export function HotTriggers({
         )}
       </div>
     ),
+    // StickerCapture owns the actual capture logic, but renders its compact
+    // control into this rail slot when the mode is on (rather than floating a
+    // second, oversized button over export feedback near the bottom-right).
+    "sticker-capture": stickerMode && <div key="sticker-capture" id="mosh-sticker-capture-slot" />,
     "theme-track": <TrackTrigger key="theme-track" delay={0} showNudge={showTrackNudge} onNudgeDismiss={onTrackNudgeDismiss} />,
     favorites: (
       <div key="favorites" className="relative" data-fav-panel>

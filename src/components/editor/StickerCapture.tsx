@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Sparkles, Download, X, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useStore } from '@/store/useStore';
@@ -179,6 +180,36 @@ export function StickerCapture() {
   const isCapturing = phase === 'capturing' || phase === 'encoding';
   const isPeaking   = glow > 0.75;
   const glowColor   = `hsl(${260 + glow * 60} 100% ${55 + glow * 12}%)`;
+  // The slot is rendered by HotTriggers only while capture mode is active.
+  // Query during render so a hide/reveal of the rail picks up its fresh DOM
+  // node without keeping a stale portal target around.
+  const railSlot = typeof document === 'undefined'
+    ? null
+    : document.getElementById('mosh-sticker-capture-slot');
+
+  const captureButton = (
+    <button
+      type="button"
+      aria-label={isRecording ? 'Finish animated sticker capture' : 'Capture sticker — tap for still, hold for animated'}
+      title={isRecording ? 'Release to finish animated sticker' : 'Capture sticker — tap for still, hold for animated'}
+      data-active={isCapturing || isRecording || undefined}
+      data-tint=""
+      data-no-longpress
+      className="hot-trigger relative"
+      style={{ ['--ht-tint' as string]: glow > 0.5 ? `${260 + glow * 60} 100% 70%` : '0 0% 60%' }}
+      onPointerDown={onPointerDown}
+      onPointerUp={onPointerUp}
+      onPointerLeave={() => { isPointerDown.current = false; if (holdTimer.current) clearTimeout(holdTimer.current); }}
+      onContextMenu={e => e.preventDefault()}
+      disabled={isCapturing}
+    >
+      <span className="hot-trigger__glitch" aria-hidden><Sparkles className="h-4 w-4" strokeWidth={1.5} /></span>
+      <span className="hot-trigger__ico"><Sparkles className={isCapturing ? 'h-4 w-4 animate-spin' : isRecording ? 'h-4 w-4 animate-pulse' : 'h-4 w-4'} strokeWidth={1.5} /></span>
+      {isPeaking && !isRecording && (
+        <span className="pointer-events-none absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full animate-ping" style={{ background: glowColor }} />
+      )}
+    </button>
+  );
 
   return (
     <>
@@ -187,53 +218,9 @@ export function StickerCapture() {
 
       {flash && <div className="pointer-events-none fixed inset-0 z-[200] bg-white/15 animate-pulse" style={{ animationDuration: '0.1s' }} />}
 
-      <div className="pointer-events-auto absolute right-4 z-50 flex flex-col items-end gap-2" style={{ bottom: '7rem' }}>
-        {isRecording && (
-          <div className="relative h-14 w-14 flex items-center justify-center">
-            <svg className="absolute inset-0 -rotate-90" viewBox="0 0 56 56">
-              <circle cx="28" cy="28" r="24" fill="none" stroke={glowColor} strokeWidth="2.5" strokeOpacity="0.2" />
-              <circle cx="28" cy="28" r="24" fill="none" stroke={glowColor} strokeWidth="2.5"
-                strokeDasharray={`${150.8 * recProg} 150.8`}
-                style={{ transition: 'stroke-dasharray 0.08s' }} />
-            </svg>
-            <span className="font-mono text-[7px] uppercase text-white/60">rec</span>
-          </div>
-        )}
-
-        <button
-          className="relative flex items-center justify-center rounded-full bg-black/75 backdrop-blur-sm ring-1 ring-white/15 transition-transform active:scale-90 disabled:opacity-50"
-          style={{
-            width: 52, height: 52,
-            boxShadow: glow > 0.35 ? `0 0 ${Math.round(glow * 28)}px ${Math.round(glow * 8)}px ${glowColor}40` : undefined,
-          }}
-          onPointerDown={onPointerDown}
-          onPointerUp={onPointerUp}
-          onPointerLeave={() => { isPointerDown.current = false; if (holdTimer.current) clearTimeout(holdTimer.current); }}
-          onContextMenu={e => e.preventDefault()}
-          disabled={isCapturing}
-        >
-          <Sparkles
-            size={20}
-            style={{ color: glow > 0.5 ? glowColor : 'hsl(0 0% 60%)' }}
-            className={isCapturing ? 'animate-spin' : isRecording ? 'animate-pulse' : undefined}
-          />
-          {isPeaking && !isRecording && (
-            <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full animate-ping"
-              style={{ background: glowColor }} />
-          )}
-        </button>
-
-        {glow > 0.25 && (
-          <div className="text-right" style={{ opacity: Math.min(glow * 1.5, 1), transition: 'opacity 0.4s' }}>
-            <div className="font-mono text-[7px] uppercase tracking-[0.15em]" style={{ color: glowColor }}>
-              {isRecording ? 'recording…' : isCapturing ? 'processing…' : isPeaking ? '✦ peak' : 'scanning'}
-            </div>
-            <div className="font-mono text-[6px] text-white/30 mt-0.5">
-              sat {Math.round(score.saturation * 100)} · fx {Math.round(score.complexity * 100)}
-            </div>
-          </div>
-        )}
-      </div>
+      {railSlot
+        ? createPortal(captureButton, railSlot)
+        : <div className="pointer-events-auto absolute right-3 top-14 z-30">{captureButton}</div>}
 
       {galleryOpen && gallery.length > 0 && (
         <div className="pointer-events-auto absolute bottom-4 left-0 right-0 z-50 flex items-center gap-1 px-3">
