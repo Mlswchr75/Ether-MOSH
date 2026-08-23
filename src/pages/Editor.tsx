@@ -82,6 +82,7 @@ const GlCanvas = lazy(async () => {
   const module = await import("@/components/editor/GlCanvas");
   return { default: module.GlCanvas };
 });
+import { CastStageButton } from "@/components/editor/CastStageButton";
 
 // Unified one-screen control rack — no tabs.
 
@@ -675,7 +676,7 @@ export default function Editor() {
     };
   }, [shuffleSec]);
 
-  // ── Journey director ────────────────────────────────────────────────
+  // ── Journey director (five-minute Forge preview, then supporter) ─────
   /* Smart and Storm, combined. Offline, no network.
 
      They were halves of one idea. Smart read the room well but then left the
@@ -819,6 +820,12 @@ export default function Editor() {
   useEffect(() => {
     if (journeyOn && shuffleSec != null) setJourneyOn(false);
   }, [shuffleSec, journeyOn]);
+
+  // The free preview is specifically Forge Journey. A Supporter can still
+  // direct uploaded artwork and camera input with Journey as before.
+  useEffect(() => {
+    if (journeyOn && !paywall.isSupporter && sourceMode !== "forge") setJourneyOn(false);
+  }, [journeyOn, paywall.isSupporter, sourceMode]);
 
   const clearAllFx = useCallback(() => {
     useStore.getState().clearAllFx();   // layers + auto-shuffle
@@ -1322,7 +1329,7 @@ export default function Editor() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [mosh, undo, redo, setMicEnabled, paletteOpen, shortcutsOpen, saveSlot, loadSlot, rerollSeed, flashSlot, exportBestStill, captureGif, saveFavoriteNow, toggleFullscreen, shareCurrent, clearAllFx, toggleJourney]);
+  }, [mosh, undo, redo, setMicEnabled, paletteOpen, shortcutsOpen, saveSlot, loadSlot, rerollSeed, flashSlot, exportBestStill, captureGif, saveFavoriteNow, toggleFullscreen, shareCurrent, clearAllFx, toggleJourney, sourceMode]);
 
   // First-load shortcuts hint (3s)
   useEffect(() => {
@@ -1960,6 +1967,7 @@ export default function Editor() {
               >
                 <Keyboard className="h-3.5 w-3.5" strokeWidth={1.5} />
               </button>
+              <CastStageButton />
               <div className="relative">
                 <button
                   onClick={enterPerf}
