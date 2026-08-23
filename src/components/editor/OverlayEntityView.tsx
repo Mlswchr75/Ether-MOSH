@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
-import { Copy, RotateCcw, Trash2, ChevronDown, ChevronUp, Play, Pause, Repeat, Rewind, Zap, Sparkles } from "lucide-react";
-import type { OverlayBehaviorKind, OverlayEntity, OverlayReaction, OverlayTransform } from "@/engine/overlay/types";
+import { Copy, RotateCcw, Trash2, ChevronDown, ChevronUp, Play, Pause, Repeat, Rewind, Zap, Sparkles, Crosshair } from "lucide-react";
+import type { OverlayBehaviorKind, OverlayEntity, OverlayReaction, OverlayTrackingTarget, OverlayTransform } from "@/engine/overlay/types";
 import { applyPinch, midpoint, translateNormalized, type Point } from "@/engine/overlay/transform";
 import { sampleBehavior } from "@/engine/overlay/behaviors";
 import { mapOverlayReactions, smoothReactionValue, sourceValue, type OverlayAudioSnapshot } from "@/engine/overlay/reactions";
+import { applyTrackedTarget, getTrackedTarget } from "@/engine/overlay/tracking";
+import { overlayCssBlend } from "@/engine/overlay/compositing";
 import { getAudioData } from "@/engine/audioAnalyzer";
 import { useOverlayStore } from "@/store/useOverlayStore";
 import { LottieOverlay } from "@/components/editor/LottieOverlay";
@@ -57,26 +59,26 @@ export function OverlayEntityView({ entity, selected, index, count }: Props) {
   const reactionSmoothRef = useRef<Record<string, number>>({});
 
   const style = useMemo<CSSProperties>(() => ({
-    position: "absolute",
-    left: `${entity.transform.x * 100}%`, top: `${entity.transform.y * 100}%`,
-    width: entity.asset.width ? Math.min(entity.asset.width, 512) : 220,
-    height: entity.asset.height ? Math.min(entity.asset.height, 512) : 220,
+    position: "absolute", left: `${entity.transform.x * 100}%`, top: `${entity.transform.y * 100}%`,
+    width: entity.asset.width ? Math.min(entity.asset.width, 512) : 220, height: entity.asset.height ? Math.min(entity.asset.height, 512) : 220,
     opacity: entity.transform.opacity,
     transform: `translate(-50%, -50%) scale(${entity.transform.scale}) rotate(${entity.transform.rotation}deg)`,
-    transformOrigin: "center", zIndex: 20 + index,
-    mixBlendMode: entity.blend as CSSProperties["mixBlendMode"], touchAction: "none",
+    transformOrigin: "center", zIndex: 20 + index, mixBlendMode: overlayCssBlend(entity.blend), touchAction: "none",
     display: entity.hidden ? "none" : undefined,
-    willChange: entity.behavior.kind === "none" && !entity.reactions.length ? undefined : "transform,left,top,opacity",
+    willChange: entity.behavior.kind === "none" && !entity.reactions.length && !entity.tracking?.enabled ? undefined : "transform,left,top,opacity",
   }), [entity, index]);
 
   useEffect(() => {
     const el = rootRef.current;
     if (!el || entity.hidden) return;
-    const animated = entity.behavior.kind !== "none" || entity.reactions.length > 0;
+    const animated = entity.behavior.kind !== "none" || entity.reactions.length > 0 || !!entity.tracking?.enabled;
     if (!animated) return;
     let raf = 0;
     const tick = (time: number) => {
-      const behavior = sampleBehavior(entity.behavior, time, entity.transform);
+      const trackedBase = entity.tracking?.enabled
+        ? applyTrackedTarget(entity.transform, entity.tracking, getTrackedTarget(entity.tracking.target))
+        : entity.transform;
+      const behavior = sampleBehavior(entity.behavior, time, trackedBase);
       const audioRaw = getAudioData();
       const audio: OverlayAudioSnapshot = { bass: audioRaw.bass, mid: audioRaw.mid, treble: audioRaw.high, overall: audioRaw.energy, beat: audioRaw.beat };
       const smoothed = reactionSmoothRef.current;
@@ -85,15 +87,15 @@ export function OverlayEntityView({ entity, selected, index, count }: Props) {
         smoothed[reaction.id] = smoothReactionValue(smoothed[reaction.id] ?? next, next, reaction.smoothing);
       }
       const react = mapOverlayReactions(entity.reactions, audio, smoothed);
-      el.style.left = `${(entity.transform.x + behavior.x) * 100}%`;
-      el.style.top = `${(entity.transform.y + behavior.y) * 100}%`;
-      el.style.opacity = String(Math.max(0, Math.min(1, entity.transform.opacity * behavior.opacity * react.opacity)));
-      el.style.transform = `translate(-50%, -50%) scale(${entity.transform.scale * behavior.scale * react.scale}) rotate(${entity.transform.rotation + behavior.rotation + react.rotation}deg)`;
+      el.style.left = `${(trackedBase.x + behavior.x) * 100}%`;
+      el.style.top = `${(trackedBase.y + behavior.y) * 100}%`;
+      el.style.opacity = String(Math.max(0, Math.min(1, trackedBase.opacity * behavior.opacity * react.opacity)));
+      el.style.transform = `translate(-50%, -50%) scale(${trackedBase.scale * behavior.scale * react.scale}) rotate(${trackedBase.rotation + behavior.rotation + react.rotation}deg)`;
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [entity.behavior, entity.hidden, entity.reactions, entity.transform]);
+  }, [entity.behavior, entity.hidden, entity.reactions, entity.tracking, entity.transform]);
 
   const pointOf = (event: ReactPointerEvent): Point => ({ x: event.clientX, y: event.clientY });
   const begin = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -103,8 +105,7 @@ export function OverlayEntityView({ entity, selected, index, count }: Props) {
   };
   const move = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (!pointers.current.has(event.pointerId) || !gesture.current || entity.locked) return;
-    pointers.current.set(event.pointerId, pointOf(event));
-    const stage = event.currentTarget.parentElement?.getBoundingClientRect(); if (!stage) return;
+    pointers.current.set(event.pointerId, pointOf(event)); const stage = event.currentTarget.parentElement?.getBoundingClientRect(); if (!stage) return;
     const current = [...pointers.current.values()], initial = [...gesture.current.startPointers.values()];
     if (current.length >= 2 && initial.length >= 2) {
       const pinched = applyPinch(gesture.current.startTransform, initial[0], initial[1], current[0], current[1]);
@@ -124,7 +125,13 @@ export function OverlayEntityView({ entity, selected, index, count }: Props) {
   const setPlayback = (patch: Partial<OverlayEntity["playback"]>) => patchEntity(entity.id, { playback: { ...entity.playback, ...patch } });
   const setBehavior = (patch: Partial<OverlayEntity["behavior"]>) => patchEntity(entity.id, { behavior: { ...entity.behavior, ...patch } });
   const setSwarm = (patch: Partial<OverlayEntity["swarm"]>) => patchEntity(entity.id, { swarm: { ...entity.swarm, ...patch } });
+  const setTracking = (target: "off" | OverlayTrackingTarget) => patchEntity(entity.id, {
+    tracking: target === "off" ? null : {
+      enabled: true, target, offsetX: 0, offsetY: 0, scaleWithTarget: target === "person", rotateWithTarget: false,
+    },
+  });
   const reactionPreset = identifyReactionPreset(entity.reactions);
+  const trackingValue: "off" | OverlayTrackingTarget = entity.tracking?.enabled ? entity.tracking.target : "off";
 
   return (
     <div ref={rootRef} style={style} className={`group select-none ${selected ? "outline outline-1 outline-cyan-300/80" : ""}`} onPointerDown={begin} onPointerMove={move} onPointerUp={end} onPointerCancel={end} onDoubleClick={() => duplicateEntity(entity.id)}>
@@ -132,7 +139,7 @@ export function OverlayEntityView({ entity, selected, index, count }: Props) {
       {isLottie ? <LottieOverlay asset={entity.asset} playback={entity.playback} className="pointer-events-none h-full w-full" /> : <img src={entity.asset.url} alt={entity.asset.name || "sticker"} draggable={false} className="pointer-events-none h-full w-full object-contain" />}
 
       {selected && (
-        <div className="absolute left-1/2 top-full mt-2 flex min-w-max max-w-[min(94vw,48rem)] -translate-x-1/2 flex-wrap items-center justify-center gap-1 rounded-xl border border-white/15 bg-black/80 p-1 shadow-xl backdrop-blur-md" onPointerDown={event => event.stopPropagation()}>
+        <div className="absolute left-1/2 top-full mt-2 flex min-w-max max-w-[min(94vw,52rem)] -translate-x-1/2 flex-wrap items-center justify-center gap-1 rounded-xl border border-white/15 bg-black/80 p-1 shadow-xl backdrop-blur-md" onPointerDown={event => event.stopPropagation()}>
           {isLottie && <>
             <button className="rounded-full p-1.5 text-white/65 hover:bg-white/10" title={entity.playback.playing ? "Pause animation" : "Play animation"} onClick={() => setPlayback({ playing: !entity.playback.playing })}>{entity.playback.playing ? <Pause size={11} /> : <Play size={11} />}</button>
             <button className={`rounded-full p-1.5 hover:bg-white/10 ${entity.playback.loop ? "text-cyan-200" : "text-white/40"}`} title="Toggle loop" onClick={() => setPlayback({ loop: !entity.playback.loop })}><Repeat size={11} /></button>
@@ -150,6 +157,8 @@ export function OverlayEntityView({ entity, selected, index, count }: Props) {
           </>}
 
           <label className={`flex items-center gap-1 rounded-full border px-2 py-1 font-mono text-[7px] uppercase ${reactionPreset === "off" ? "border-white/10 text-white/45" : "border-cyan-300/30 text-cyan-200"}`}><Zap size={9} /><select aria-label="Audio reaction preset" value={reactionPreset} onChange={e => patchEntity(entity.id, { reactions: reactionsForPreset(e.target.value as ReactionPreset) })} className="bg-transparent text-inherit outline-none"><option value="off">React off</option><option value="bass-pulse">Bass pulse</option><option value="beat-punch">Beat punch</option><option value="mid-spin">Mid spin</option><option value="treble-flicker">Treble flicker</option><option value="overall-breathe">Volume breathe</option></select></label>
+
+          <label className={`flex items-center gap-1 rounded-full border px-2 py-1 font-mono text-[7px] uppercase ${trackingValue === "off" ? "border-white/10 text-white/45" : "border-emerald-300/35 text-emerald-200"}`}><Crosshair size={9} /><select aria-label="Tracking target" value={trackingValue} onChange={e => setTracking(e.target.value as "off" | OverlayTrackingTarget)} className="bg-transparent text-inherit outline-none"><option value="off">Track off</option><option value="person">Subject</option><option value="object">Object</option><option value="journey">Journey focus</option></select></label>
 
           <button className={`flex items-center gap-1 rounded-full border px-2 py-1 font-mono text-[7px] uppercase ${entity.swarm.enabled ? "border-fuchsia-300/40 text-fuchsia-200" : "border-white/10 text-white/45"}`} title="Toggle Swarm" onClick={() => setSwarm({ enabled: !entity.swarm.enabled })}><Sparkles size={9} />Swarm</button>
           {entity.swarm.enabled && <>
