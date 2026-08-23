@@ -64,8 +64,8 @@ export function OverlayInspector() {
         <Layers3 size={9} />
         <select aria-label="Sticker compositing route" value={entity.compositing} onChange={event => setCompositing(event.target.value as OverlayCompositingMode)} className="bg-transparent font-mono text-[7px] uppercase text-inherit outline-none">
           <option value="after-fx">After FX</option>
+          <option value="before-fx">Before FX</option>
           <option value="own-fx">Own FX</option>
-          <option value="before-fx" disabled>Before FX · next</option>
         </select>
       </label>
 
