@@ -1,8 +1,9 @@
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import { Copy, RotateCcw, Trash2, ChevronDown, ChevronUp, Play, Pause, Repeat, Rewind } from "lucide-react";
-import type { OverlayEntity, OverlayTransform } from "@/engine/overlay/types";
+import type { OverlayBehaviorKind, OverlayEntity, OverlayTransform } from "@/engine/overlay/types";
 import { applyPinch, midpoint, translateNormalized, type Point } from "@/engine/overlay/transform";
+import { sampleBehavior } from "@/engine/overlay/behaviors";
 import { useOverlayStore } from "@/store/useOverlayStore";
 import { LottieOverlay } from "@/components/editor/LottieOverlay";
 
@@ -18,6 +19,18 @@ type Gesture = {
   startPointers: Map<number, Point>;
 };
 
+const BEHAVIORS: Array<{ value: OverlayBehaviorKind; label: string }> = [
+  { value: "none", label: "Still" },
+  { value: "float", label: "Float" },
+  { value: "pulse", label: "Pulse" },
+  { value: "wobble", label: "Wobble" },
+  { value: "orbit", label: "Orbit" },
+  { value: "bounce", label: "Bounce" },
+  { value: "flicker", label: "Flicker" },
+  { value: "jitter", label: "Jitter" },
+  { value: "random-walk", label: "Drift" },
+];
+
 export function OverlayEntityView({ entity, selected, index, count }: Props) {
   const patchTransform = useOverlayStore(s => s.patchTransform);
   const patchEntity = useOverlayStore(s => s.patchEntity);
@@ -27,6 +40,7 @@ export function OverlayEntityView({ entity, selected, index, count }: Props) {
   const reorderEntity = useOverlayStore(s => s.reorderEntity);
   const pointers = useRef(new Map<number, Point>());
   const gesture = useRef<Gesture | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
 
   const style = useMemo<CSSProperties>(() => ({
     position: "absolute",
@@ -41,7 +55,27 @@ export function OverlayEntityView({ entity, selected, index, count }: Props) {
     mixBlendMode: entity.blend as CSSProperties["mixBlendMode"],
     touchAction: "none",
     display: entity.hidden ? "none" : undefined,
+    willChange: entity.behavior.kind === "none" ? undefined : "transform,left,top,opacity",
   }), [entity, index]);
+
+  // Procedural behavior is written directly to this entity's DOM node. This is
+  // intentionally outside Zustand: Float/Pulse/etc can run at display refresh
+  // rate without causing a React/store update every frame.
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el || entity.behavior.kind === "none" || entity.hidden) return;
+    let raf = 0;
+    const tick = (time: number) => {
+      const delta = sampleBehavior(entity.behavior, time, entity.transform);
+      el.style.left = `${(entity.transform.x + delta.x) * 100}%`;
+      el.style.top = `${(entity.transform.y + delta.y) * 100}%`;
+      el.style.opacity = String(Math.max(0, Math.min(1, entity.transform.opacity * delta.opacity)));
+      el.style.transform = `translate(-50%, -50%) scale(${entity.transform.scale * delta.scale}) rotate(${entity.transform.rotation + delta.rotation}deg)`;
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [entity.behavior, entity.hidden, entity.transform]);
 
   const pointOf = (event: ReactPointerEvent): Point => ({ x: event.clientX, y: event.clientY });
 
@@ -102,9 +136,13 @@ export function OverlayEntityView({ entity, selected, index, count }: Props) {
   const setPlayback = (patch: Partial<OverlayEntity["playback"]>) => patchEntity(entity.id, {
     playback: { ...entity.playback, ...patch },
   });
+  const setBehavior = (patch: Partial<OverlayEntity["behavior"]>) => patchEntity(entity.id, {
+    behavior: { ...entity.behavior, ...patch },
+  });
 
   return (
     <div
+      ref={rootRef}
       style={style}
       className={`group select-none ${selected ? "outline outline-1 outline-cyan-300/80" : ""}`}
       onPointerDown={begin}
@@ -126,7 +164,7 @@ export function OverlayEntityView({ entity, selected, index, count }: Props) {
 
       {selected && (
         <div
-          className="absolute left-1/2 top-full mt-2 flex min-w-max -translate-x-1/2 items-center gap-1 rounded-full border border-white/15 bg-black/80 p-1 shadow-xl backdrop-blur-md"
+          className="absolute left-1/2 top-full mt-2 flex min-w-max -translate-x-1/2 flex-wrap items-center justify-center gap-1 rounded-xl border border-white/15 bg-black/80 p-1 shadow-xl backdrop-blur-md"
           onPointerDown={event => event.stopPropagation()}
         >
           {isLottie && (
@@ -164,6 +202,29 @@ export function OverlayEntityView({ entity, selected, index, count }: Props) {
               <span className="mx-0.5 h-4 w-px bg-white/10" />
             </>
           )}
+
+          <select
+            aria-label="Sticker behavior"
+            value={entity.behavior.kind}
+            onChange={event => setBehavior({ kind: event.target.value as OverlayBehaviorKind })}
+            className="rounded-full border border-white/10 bg-black/70 px-2 py-1 font-mono text-[7px] uppercase tracking-wider text-white/65 outline-none"
+            title="Behavior"
+          >
+            {BEHAVIORS.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}
+          </select>
+          {entity.behavior.kind !== "none" && (
+            <>
+              <label className="flex items-center gap-1 px-1 font-mono text-[7px] uppercase text-white/40" title="Behavior amount">
+                amt
+                <input aria-label="Behavior amount" type="range" min={0} max={1} step={0.05} value={entity.behavior.amount} onChange={event => setBehavior({ amount: Number(event.target.value) })} className="w-12 accent-cyan-300" />
+              </label>
+              <label className="flex items-center gap-1 px-1 font-mono text-[7px] uppercase text-white/40" title="Behavior speed">
+                spd
+                <input aria-label="Behavior speed" type="range" min={0.1} max={4} step={0.1} value={entity.behavior.speed} onChange={event => setBehavior({ speed: Number(event.target.value) })} className="w-12 accent-cyan-300" />
+              </label>
+            </>
+          )}
+          <span className="mx-0.5 h-4 w-px bg-white/10" />
           <button className="rounded-full p-1.5 text-white/65 hover:bg-white/10 hover:text-white" title="Rotate 15°" onClick={() => patchTransform(entity.id, { rotation: entity.transform.rotation + 15 })}><RotateCcw size={11} /></button>
           <button className="rounded-full p-1.5 text-white/65 hover:bg-white/10 hover:text-white disabled:opacity-25" title="Move backward" disabled={index === 0} onClick={() => reorderEntity(entity.id, -1)}><ChevronDown size={11} /></button>
           <button className="rounded-full p-1.5 text-white/65 hover:bg-white/10 hover:text-white disabled:opacity-25" title="Move forward" disabled={index === count - 1} onClick={() => reorderEntity(entity.id, 1)}><ChevronUp size={11} /></button>
