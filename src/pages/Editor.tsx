@@ -64,6 +64,7 @@ import type { JourneyMic } from "@/engine/journeyCore";
 import { PUBLIC_EFFECTS } from "@/engine/effects";
 import { useIdleFade, markUiActive } from "@/hooks/useIdleFade";
 import { captureQuickThumb } from "@/engine/quickThumb";
+import { CastStageButton } from "@/components/editor/CastStageButton";
 
 // Unified one-screen control rack — no tabs.
 
@@ -1594,7 +1595,8 @@ export default function Editor() {
           </div>
         )}
         {!isPerformanceMode && !hideUI && (
-          <div className="ui-chrome absolute top-3 right-3 z-40 pointer-events-auto">
+          <div className="ui-chrome absolute top-3 right-3 z-40 flex items-center gap-2 pointer-events-auto">
+            <CastStageButton />
             <AccountChip />
           </div>
         )}

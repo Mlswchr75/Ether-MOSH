@@ -1,0 +1,93 @@
+import { useState } from "react";
+import { Cast, Maximize2, X } from "lucide-react";
+
+/**
+ * Chrome intentionally does not expose an API for a webpage to begin tab
+ * mirroring itself. MOSH is a live WebGL instrument rather than a hosted
+ * media file, so tab casting is the only zero-latency route that carries the
+ * exact canvas through every source mode (upload, camera, and Forge).
+ *
+ * This control is deliberately an honest hand-off to Chrome's Cast UI, not a
+ * non-functional media-cast button. A native receiver/streaming relay can be
+ * added later without changing this stage-oriented entry point.
+ */
+export function CastStageButton() {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="ui-chrome flex h-9 items-center gap-2 rounded-full border border-[hsl(var(--accent)/0.48)] bg-black/45 px-3 font-mono text-[10px] uppercase tracking-[0.16em] text-white/85 shadow-[0_0_16px_hsl(var(--accent)/0.16)] backdrop-blur-md transition hover:border-[hsl(var(--accent)/0.9)] hover:bg-black/65 hover:text-white focus:outline-none focus:ring-2 focus:ring-[hsl(var(--accent)/0.75)] focus:ring-offset-2 focus:ring-offset-black"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-label="Cast MOSH to a display"
+        title="Cast / Stage"
+      >
+        <Cast className="h-3.5 w-3.5 text-[hsl(var(--accent))]" strokeWidth={1.6} aria-hidden="true" />
+        <span className="hidden sm:inline">Cast / Stage</span>
+      </button>
+
+      {open && (
+        <div
+          className="fixed inset-0 z-[10020] grid place-items-center bg-black/70 p-4 backdrop-blur-sm"
+          role="presentation"
+          onMouseDown={() => setOpen(false)}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="cast-stage-title"
+            className="w-full max-w-md border border-[hsl(var(--accent)/0.38)] bg-[hsl(var(--surface-1))] p-5 shadow-[0_0_42px_hsl(var(--accent)/0.18)]"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <span className="grid h-9 w-9 place-items-center rounded-full border border-[hsl(var(--accent)/0.55)] bg-black/30">
+                  <Cast className="h-4 w-4 text-[hsl(var(--accent))]" strokeWidth={1.6} aria-hidden="true" />
+                </span>
+                <div>
+                  <p className="font-mono text-[9px] uppercase tracking-[0.25em] text-[hsl(var(--accent))]">Live output</p>
+                  <h2 id="cast-stage-title" className="mt-1 font-mono text-sm uppercase tracking-[0.12em] text-white">Cast MOSH</h2>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="btn-icon h-8 w-8"
+                aria-label="Close casting instructions"
+              >
+                <X className="h-4 w-4" aria-hidden="true" />
+              </button>
+            </div>
+
+            <p className="mt-4 text-sm leading-relaxed text-white/75">
+              Mirror this browser tab to put the exact live MOSH canvas on your TV or projector. It works with Upload, Camera, and Forge.
+            </p>
+
+            <ol className="mt-5 space-y-3 font-mono text-[11px] leading-relaxed text-white/75">
+              <li className="flex gap-3">
+                <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full border border-[hsl(var(--accent)/0.55)] text-[9px] text-[hsl(var(--accent))]">1</span>
+                <span>In Chrome, open the <strong className="font-medium text-white">⋮ menu</strong> and choose <strong className="font-medium text-white">Cast</strong>.</span>
+              </li>
+              <li className="flex gap-3">
+                <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full border border-[hsl(var(--accent)/0.55)] text-[9px] text-[hsl(var(--accent))]">2</span>
+                <span>Open <strong className="font-medium text-white">Sources</strong>, choose <strong className="font-medium text-white">Cast tab</strong>, then select your display.</span>
+              </li>
+              <li className="flex gap-3">
+                <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full border border-[hsl(var(--accent)/0.55)] text-[9px] text-[hsl(var(--accent))]">3</span>
+                <span>For a clean wall, enter <strong className="font-medium text-white">Performance Mode</strong> after connecting.</span>
+              </li>
+            </ol>
+
+            <div className="mt-5 flex items-start gap-2 border-t border-[hsl(var(--border-subtle))] pt-4 text-[11px] leading-relaxed text-white/50">
+              <Maximize2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[hsl(var(--accent))]" aria-hidden="true" />
+              <p>Tab casting mirrors the live visual output. MOSH’s microphone is used to animate the image; it does not send microphone sound to the display.</p>
+            </div>
+          </section>
+        </div>
+      )}
+    </>
+  );
+}
