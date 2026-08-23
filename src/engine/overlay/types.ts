@@ -1,31 +1,11 @@
 import type { BlendMode } from "@/engine/blend";
 import type { Layer } from "@/store/types";
 
-export type OverlayAssetKind =
-  | "raster"
-  | "svg"
-  | "gif"
-  | "lottie-json"
-  | "dotlottie";
-
+export type OverlayAssetKind = "raster" | "svg" | "gif" | "lottie-json" | "dotlottie";
 export type OverlayCompositingMode = "before-fx" | "after-fx" | "own-fx";
-export type OverlayBehaviorKind =
-  | "none"
-  | "float"
-  | "pulse"
-  | "wobble"
-  | "orbit"
-  | "bounce"
-  | "flicker"
-  | "jitter"
-  | "random-walk";
+export type OverlayBehaviorKind = "none" | "float" | "pulse" | "wobble" | "orbit" | "bounce" | "flicker" | "jitter" | "random-walk";
 export type OverlayReactionSource = "bass" | "mid" | "treble" | "overall" | "beat";
-export type OverlayReactionTarget =
-  | "scale"
-  | "rotation"
-  | "opacity"
-  | "playback-speed"
-  | "playback-position";
+export type OverlayReactionTarget = "scale" | "rotation" | "opacity" | "playback-speed" | "playback-position";
 export type OverlayTrackingTarget = "hand" | "face" | "person" | "object" | "journey";
 
 export type OverlayAsset = {
@@ -85,6 +65,14 @@ export type OverlayTrackingBinding = {
   rotateWithTarget: boolean;
 };
 
+export type OverlaySwarm = {
+  enabled: boolean;
+  count: number;
+  spread: number;
+  chaos: number;
+  seed: number;
+};
+
 export type OverlayEntity = {
   id: string;
   asset: OverlayAsset;
@@ -97,37 +85,17 @@ export type OverlayEntity = {
   behavior: OverlayBehavior;
   reactions: OverlayReaction[];
   tracking: OverlayTrackingBinding | null;
+  swarm: OverlaySwarm;
   ownFx: Layer[];
   createdAt: number;
 };
 
-export const DEFAULT_OVERLAY_TRANSFORM: OverlayTransform = {
-  x: 0.5,
-  y: 0.5,
-  scale: 1,
-  rotation: 0,
-  opacity: 1,
-};
+export const DEFAULT_OVERLAY_TRANSFORM: OverlayTransform = { x: 0.5, y: 0.5, scale: 1, rotation: 0, opacity: 1 };
+export const DEFAULT_OVERLAY_PLAYBACK: OverlayPlayback = { playing: true, loop: true, speed: 1, direction: 1, segment: null };
+export const DEFAULT_OVERLAY_BEHAVIOR: OverlayBehavior = { kind: "none", amount: 0.5, speed: 1, seed: 0 };
+export const DEFAULT_OVERLAY_SWARM: OverlaySwarm = { enabled: false, count: 8, spread: 1, chaos: 0.5, seed: 0 };
 
-export const DEFAULT_OVERLAY_PLAYBACK: OverlayPlayback = {
-  playing: true,
-  loop: true,
-  speed: 1,
-  direction: 1,
-  segment: null,
-};
-
-export const DEFAULT_OVERLAY_BEHAVIOR: OverlayBehavior = {
-  kind: "none",
-  amount: 0.5,
-  speed: 1,
-  seed: 0,
-};
-
-export function makeOverlayEntity(
-  asset: OverlayAsset,
-  overrides: Partial<OverlayEntity> = {},
-): OverlayEntity {
+export function makeOverlayEntity(asset: OverlayAsset, overrides: Partial<OverlayEntity> = {}): OverlayEntity {
   const id = overrides.id ?? crypto.randomUUID();
   return {
     id,
@@ -138,39 +106,27 @@ export function makeOverlayEntity(
     blend: overrides.blend ?? "normal",
     hidden: overrides.hidden ?? false,
     locked: overrides.locked ?? false,
-    behavior: {
-      ...DEFAULT_OVERLAY_BEHAVIOR,
-      seed: DEFAULT_OVERLAY_BEHAVIOR.seed || hashOverlaySeed(id),
-      ...(overrides.behavior ?? {}),
-    },
+    behavior: { ...DEFAULT_OVERLAY_BEHAVIOR, seed: hashOverlaySeed(id), ...(overrides.behavior ?? {}) },
     reactions: overrides.reactions?.map(r => ({ ...r })) ?? [],
     tracking: overrides.tracking ? { ...overrides.tracking } : null,
-    ownFx: overrides.ownFx?.map(layer => ({
-      ...layer,
-      params: { ...layer.params },
-      mods: { ...layer.mods },
-      audioMaps: { ...(layer.audioMaps ?? {}) },
-    })) ?? [],
+    swarm: { ...DEFAULT_OVERLAY_SWARM, seed: hashOverlaySeed(`${id}:swarm`), ...(overrides.swarm ?? {}) },
+    ownFx: overrides.ownFx?.map(layer => ({ ...layer, params: { ...layer.params }, mods: { ...layer.mods }, audioMaps: { ...(layer.audioMaps ?? {}) } })) ?? [],
     createdAt: overrides.createdAt ?? Date.now(),
   };
 }
 
 export function duplicateOverlayEntity(source: OverlayEntity): OverlayEntity {
+  const id = crypto.randomUUID();
   return makeOverlayEntity(source.asset, {
     ...source,
-    id: crypto.randomUUID(),
+    id,
     transform: { ...source.transform, x: Math.min(1, source.transform.x + 0.03), y: Math.min(1, source.transform.y + 0.03) },
     playback: { ...source.playback },
-    behavior: { ...source.behavior, seed: hashOverlaySeed(crypto.randomUUID()) },
+    behavior: { ...source.behavior, seed: hashOverlaySeed(`${id}:behavior`) },
     reactions: source.reactions.map(r => ({ ...r, id: crypto.randomUUID() })),
     tracking: source.tracking ? { ...source.tracking } : null,
-    ownFx: source.ownFx.map(layer => ({
-      ...layer,
-      id: crypto.randomUUID(),
-      params: { ...layer.params },
-      mods: { ...layer.mods },
-      audioMaps: { ...(layer.audioMaps ?? {}) },
-    })),
+    swarm: { ...source.swarm, seed: hashOverlaySeed(`${id}:swarm`) },
+    ownFx: source.ownFx.map(layer => ({ ...layer, id: crypto.randomUUID(), params: { ...layer.params }, mods: { ...layer.mods }, audioMaps: { ...(layer.audioMaps ?? {}) } })),
     createdAt: Date.now(),
   });
 }
