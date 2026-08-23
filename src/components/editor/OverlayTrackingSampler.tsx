@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { segmentationEngine } from "@/engine/SegmentationEngine";
 import { setTrackedTarget, targetFromMask, targetFromPoint } from "@/engine/overlay/tracking";
 import { useOverlayStore } from "@/store/useOverlayStore";
@@ -11,10 +11,11 @@ import { useStore } from "@/store/useStore";
  */
 export function OverlayTrackingSampler() {
   const video = useStore(s => s.videoElement);
-  const trackedKinds = useOverlayStore(s => Array.from(new Set(
-    s.entities.filter(entity => entity.tracking?.enabled).map(entity => entity.tracking!.target),
-  )));
-  const key = trackedKinds.sort().join("|");
+  const entities = useOverlayStore(s => s.entities);
+  const trackedKinds = useMemo(() => Array.from(new Set(
+    entities.filter(entity => entity.tracking?.enabled).map(entity => entity.tracking!.target),
+  )).sort(), [entities]);
+  const key = trackedKinds.join("|");
 
   useEffect(() => {
     if (!video || !trackedKinds.length) return;
@@ -37,9 +38,6 @@ export function OverlayTrackingSampler() {
         if (trackedKinds.includes("object")) setTrackedTarget("object", target);
         if (trackedKinds.includes("journey")) setTrackedTarget("journey", target);
       }
-
-      // Hand/face intentionally stay unset until semantic landmark models are
-      // added; presenting saliency as a "hand" would be dishonest tracking.
     };
 
     const loop = () => {
@@ -52,7 +50,7 @@ export function OverlayTrackingSampler() {
       window.clearTimeout(timer);
       for (const kind of trackedKinds) setTrackedTarget(kind, null);
     };
-    // key is a stable semantic signature; trackedKinds itself is recreated by selector.
+    // key is the stable semantic signature for which detectors are needed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [video, key]);
 
