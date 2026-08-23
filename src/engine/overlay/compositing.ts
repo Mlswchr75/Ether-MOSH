@@ -1,6 +1,7 @@
+import type { CSSProperties } from "react";
 import type { BlendMode } from "@/engine/blend";
 
-export function overlayCssBlend(mode: BlendMode): React.CSSProperties["mixBlendMode"] {
+export function overlayCssBlend(mode: BlendMode): CSSProperties["mixBlendMode"] {
   switch (mode) {
     case "hardLight": return "hard-light";
     case "additive": return "screen";
