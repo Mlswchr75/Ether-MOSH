@@ -1,5 +1,6 @@
 import { useEffect, useMemo } from "react";
 import { segmentationEngine } from "@/engine/SegmentationEngine";
+import { semanticTrackingEngine } from "@/engine/overlay/SemanticTrackingEngine";
 import { setTrackedTarget, targetFromMask, targetFromPoint } from "@/engine/overlay/tracking";
 import { useOverlayStore } from "@/store/useOverlayStore";
 import { useStore } from "@/store/useStore";
@@ -21,7 +22,10 @@ export function OverlayTrackingSampler() {
     if (!video || !trackedKinds.length) return;
     let cancelled = false;
     let timer = 0;
-    void segmentationEngine.loadAuto();
+
+    if (trackedKinds.includes("person")) void segmentationEngine.loadAuto();
+    if (trackedKinds.includes("hand")) void semanticTrackingEngine.loadHands();
+    if (trackedKinds.includes("face")) void semanticTrackingEngine.loadFaces();
 
     const sample = () => {
       if (cancelled || !video || video.readyState < 2) return;
@@ -30,6 +34,14 @@ export function OverlayTrackingSampler() {
       if (trackedKinds.includes("person")) {
         const mask = segmentationEngine.segmentAuto(video, now);
         setTrackedTarget("person", mask ? targetFromMask(mask, 0.45, now) : null);
+      }
+
+      if (trackedKinds.includes("hand")) {
+        setTrackedTarget("hand", semanticTrackingEngine.detectHand(video, now));
+      }
+
+      if (trackedKinds.includes("face")) {
+        setTrackedTarget("face", semanticTrackingEngine.detectFace(video, now));
       }
 
       if (trackedKinds.includes("object") || trackedKinds.includes("journey")) {
@@ -42,6 +54,9 @@ export function OverlayTrackingSampler() {
 
     const loop = () => {
       sample();
+      // Semantic landmark calls are synchronous on web and block the UI thread;
+      // ~8Hz is a deliberate budget, while the overlay itself follows the last
+      // target at display cadence in its own RAF.
       timer = window.setTimeout(loop, 120);
     };
     loop();
