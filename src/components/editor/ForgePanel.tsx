@@ -8,6 +8,7 @@ import { FORGE_PALETTES } from "@/engine/forgePalettes";
 import { seamScore } from "@/engine/tileSafety";
 import { healToSeamless, renderSizeFor, DEFAULT_HEAL_BAND } from "@/engine/seamlessHeal";
 import { downloadBlob } from "@/engine/export";
+import { usePaywall } from "@/hooks/usePaywall";
 
 /**
  * Print sizes. 2048 covers most garment panels at 150 DPI; 4096 is there for
@@ -23,6 +24,7 @@ const EXPORT_SIZES = [1024, 2048, 4096] as const;
  * place.
  */
 export function ForgePanel() {
+  const paywall = usePaywall();
   const forge = useStore(s => s.forge);
   const setForgePaletteIdx = useStore(s => s.setForgePaletteIdx);
   const setForgeIntensity = useStore(s => s.setForgeIntensity);
@@ -57,6 +59,7 @@ export function ForgePanel() {
    */
   const exportAt = useCallback(async (size: number) => {
     if (exporting) return;
+    if (!paywall.require("Forge tile export")) return;
     setExporting(true);
     const seamless = useStore.getState().forge.seamless;
     const t0 = toast.loading(seamless ? "Finding the cleanest frame…" : `Rendering ${size}x${size}…`);
@@ -173,7 +176,7 @@ export function ForgePanel() {
       runtime.volumetric?.dispose();
       setExporting(false);
     }
-  }, [exporting]);
+  }, [exporting, paywall]);
 
   return (
     <div className="ui-chrome pointer-events-auto absolute left-3 top-14 z-20 flex max-h-[calc(100dvh-6rem)] w-44 flex-col gap-4 overflow-y-auto rounded-sm border border-[hsl(var(--border-default))] bg-black/70 p-3 backdrop-blur-md safe-top safe-left safe-bottom">

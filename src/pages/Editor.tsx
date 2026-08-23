@@ -68,6 +68,30 @@ import { CastStageButton } from "@/components/editor/CastStageButton";
 
 // Unified one-screen control rack — no tabs.
 
+const FORGE_JOURNEY_PREVIEW_MS = 5 * 60 * 1000;
+const FORGE_JOURNEY_PREVIEW_KEY = "mosh_forge_journey_preview_started_at";
+
+function forgeJourneyPreviewRemainingMs(): number {
+  try {
+    const started = Number(sessionStorage.getItem(FORGE_JOURNEY_PREVIEW_KEY));
+    if (!Number.isFinite(started) || started <= 0) return FORGE_JOURNEY_PREVIEW_MS;
+    return Math.max(0, FORGE_JOURNEY_PREVIEW_MS - (Date.now() - started));
+  } catch {
+    // Private browsing can deny sessionStorage. The running timer is still a
+    // valid preview boundary in that case; it simply cannot survive a reload.
+    return FORGE_JOURNEY_PREVIEW_MS;
+  }
+}
+
+function beginForgeJourneyPreview(): number {
+  try {
+    if (!sessionStorage.getItem(FORGE_JOURNEY_PREVIEW_KEY)) {
+      sessionStorage.setItem(FORGE_JOURNEY_PREVIEW_KEY, String(Date.now()));
+    }
+  } catch {}
+  return forgeJourneyPreviewRemainingMs();
+}
+
 export default function Editor() {
   const navigate = useNavigate();
   const imageElement = useStore(s => s.imageElement);
@@ -435,6 +459,7 @@ export default function Editor() {
 
   const exportBestStill = useCallback(async () => {
     if (exportBusy) return;
+    if (sourceMode === "forge" && !paywall.require("Forge export")) return;
     const c = getCanvas();
     if (!c) return;
     setExportBusy(true);
@@ -464,7 +489,7 @@ export default function Editor() {
       setExportBusy(false);
       setExportProgress(0);
     }
-  }, [exportBusy, tileMode]);
+  }, [exportBusy, tileMode, sourceMode, paywall]);
 
   // Enter/exit perf mode side effects
   const enterPerf = async () => {
@@ -629,7 +654,7 @@ export default function Editor() {
     };
   }, [shuffleSec]);
 
-  // ── Journey director (supporter feature) ─────────────────────────────
+  // ── Journey director (five-minute Forge preview, then supporter) ─────
   /* Smart and Storm, combined. Offline, no network.
 
      They were halves of one idea. Smart read the room well but then left the
@@ -646,20 +671,70 @@ export default function Editor() {
   const [journeyOn, setJourneyOn] = useState(false);
   const [journeyFlashKey, setJourneyFlashKey] = useState(0);
   const [journeyState, setJourneyState] = useState<JourneyDirectorState | null>(null);
+  const [journeyPreviewRemaining, setJourneyPreviewRemaining] = useState<number | null>(null);
   const journeyRef = useRef<JourneyDirector | null>(null);
   const journeyPrevShuffleRef = useRef<number | null>(null);
+  const journeyPreviewWarnedRef = useRef(false);
 
   const crossfadeToComposition = useCallback((directed: import("@/engine/compose").DirectedLayer[]) => {
     crossfadeLayers(() => useStore.getState().moshDirected(directed), DIRECTED_FADE_MS);
   }, []);
 
   const toggleJourney = useCallback(() => {
-    if (!paywall.isSupporter) {
-      paywall.require("Journey mode");
+    if (!paywall.isSupporter && sourceMode !== "forge") {
+      toast("Forge Journey preview is available in Forge mode", {
+        description: "Switch to Forge to start your five-minute ambient preview.",
+        action: { label: "Enter Forge", onClick: () => window.dispatchEvent(new CustomEvent("mosh:switch-mode", { detail: "forge" })) },
+      });
+      return;
+    }
+    if (!paywall.isSupporter && forgeJourneyPreviewRemainingMs() <= 0) {
+      paywall.require("Uninterrupted Forge Journey");
       return;
     }
     setJourneyOn(v => !v);
-  }, [paywall]);
+  }, [paywall, sourceMode]);
+
+  // A free visitor gets one five-minute preview per browser tab. It keeps
+  // counting while paused, so toggling Journey cannot turn one preview into an
+  // endless series of fresh five-minute sessions. Supporters never enter this
+  // effect and have no time boundary.
+  useEffect(() => {
+    if (!journeyOn || paywall.isSupporter) {
+      setJourneyPreviewRemaining(null);
+      return;
+    }
+
+    const remainingAtStart = beginForgeJourneyPreview();
+    if (remainingAtStart <= 0) {
+      setJourneyOn(false);
+      paywall.require("Uninterrupted Forge Journey");
+      return;
+    }
+
+    const tick = () => {
+      const remaining = forgeJourneyPreviewRemainingMs();
+      setJourneyPreviewRemaining(remaining);
+      if (remaining <= 60_000 && !journeyPreviewWarnedRef.current) {
+        journeyPreviewWarnedRef.current = true;
+        toast("Forge Journey preview · one minute left", {
+          description: "Support MOSH for an uninterrupted ambient wall.",
+        });
+      }
+      if (remaining <= 0) {
+        setJourneyOn(false);
+        toast("Forge Journey preview paused", {
+          description: "Support MOSH to keep the ambient wall alive.",
+          action: { label: "Unlock", onClick: () => paywall.purchase() },
+          duration: 12_000,
+        });
+      }
+    };
+
+    tick();
+    const interval = window.setInterval(tick, 1_000);
+    return () => window.clearInterval(interval);
+  }, [journeyOn, paywall.isSupporter]);
 
   useEffect(() => {
     if (!journeyOn) { setJourneyState(null); return; }
@@ -717,6 +792,12 @@ export default function Editor() {
     if (journeyOn && shuffleSec != null) setJourneyOn(false);
   }, [shuffleSec, journeyOn]);
 
+  // The free preview is specifically Forge Journey. A Supporter can still
+  // direct uploaded artwork and camera input with Journey as before.
+  useEffect(() => {
+    if (journeyOn && !paywall.isSupporter && sourceMode !== "forge") setJourneyOn(false);
+  }, [journeyOn, paywall.isSupporter, sourceMode]);
+
   const clearAllFx = useCallback(() => {
     useStore.getState().clearAllFx();   // layers + auto-shuffle
     setJourneyOn(false);
@@ -739,6 +820,7 @@ export default function Editor() {
   }, []);
 
   const takeScreenshot = async () => {
+    if (sourceMode === "forge" && !paywall.require("Forge export")) return;
     const c = getCanvas();
     if (!c) return;
 
@@ -787,6 +869,7 @@ export default function Editor() {
   };
 
   const shareCurrent = useCallback(async () => {
+    if (sourceMode === "forge" && !paywall.require("Forge export")) return;
     const c = getCanvas();
     if (!c) { shareApp(); return; }
     try {
@@ -805,7 +888,7 @@ export default function Editor() {
     } catch {
       await shareApp();
     }
-  }, []);
+  }, [sourceMode, paywall]);
 
   /** Seconds the GIF button captures on a plain tap. Long-press picks another. */
   const captureGif = useCallback(async (seconds = 7) => {
@@ -874,6 +957,7 @@ export default function Editor() {
     if (!recorderRef.current) recorderRef.current = new CanvasRecorder();
     const rec = recorderRef.current;
     if (rec.state === "idle") {
+      if (sourceMode === "forge" && !paywall.require("Forge motion export")) return;
       setActionConfirm({
         type: "record",
         onConfirm: async () => {
@@ -1197,7 +1281,7 @@ export default function Editor() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [mosh, undo, redo, setMicEnabled, paletteOpen, shortcutsOpen, saveSlot, loadSlot, rerollSeed, flashSlot, exportBestStill, captureGif, saveFavoriteNow, toggleFullscreen, shareCurrent, clearAllFx, toggleJourney]);
+  }, [mosh, undo, redo, setMicEnabled, paletteOpen, shortcutsOpen, saveSlot, loadSlot, rerollSeed, flashSlot, exportBestStill, captureGif, saveFavoriteNow, toggleFullscreen, shareCurrent, clearAllFx, toggleJourney, sourceMode]);
 
   // First-load shortcuts hint (3s)
   useEffect(() => {
@@ -1548,7 +1632,10 @@ export default function Editor() {
             onMicNudgeNo={() => setShowMicNudge(false)}
             onMicNudgeExpire={() => setShowMicNudge(false)}
             journeyOn={journeyOn}
-            journeyLocked={!paywall.isSupporter}
+            // Journey is no longer a hard lock: Forge gets a visible
+            // five-minute preview, with the entitlement boundary applied by
+            // toggleJourney and the timer above.
+            journeyLocked={false}
             onToggleJourney={toggleJourney}
             isFullscreen={isBrowserFs}
             onToggleFullscreen={toggleFullscreen}
@@ -1592,6 +1679,11 @@ export default function Editor() {
               {journeyState.lastDisruption?.reason ?? "settling"}
               {` · next ${(journeyState.nextDisruptMs / 1000).toFixed(1)}s`}
             </p>
+            {journeyPreviewRemaining !== null && (
+              <p className="mt-1 font-mono text-[9px] uppercase tracking-[0.12em] text-[hsl(var(--accent))]">
+                free preview · {Math.ceil(journeyPreviewRemaining / 1000)}s left
+              </p>
+            )}
           </div>
         )}
         {!isPerformanceMode && !hideUI && (

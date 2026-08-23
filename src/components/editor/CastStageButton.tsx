@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { Cast, Maximize2, X } from "lucide-react";
+import { useStore } from "@/store/useStore";
+import { usePaywall } from "@/hooks/usePaywall";
 
 /**
  * Chrome intentionally does not expose an API for a webpage to begin tab
@@ -13,12 +15,19 @@ import { Cast, Maximize2, X } from "lucide-react";
  */
 export function CastStageButton() {
   const [open, setOpen] = useState(false);
+  const sourceMode = useStore(s => s.sourceMode);
+  const paywall = usePaywall();
+
+  const openCastingHelp = () => {
+    if (sourceMode === "forge" && !paywall.require("Forge stage output")) return;
+    setOpen(true);
+  };
 
   return (
     <span className="relative">
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={openCastingHelp}
         className="btn-icon h-7 w-7"
         aria-haspopup="dialog"
         aria-expanded={open}
