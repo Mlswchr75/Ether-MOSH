@@ -79,6 +79,13 @@ export class TimeController {
     this.state.freezeUntil = now + durationMs;
   }
 
+  /** End a freeze early (for an explicit unfreeze gesture). */
+  cancelFreeze() {
+    this.state.freezing = false;
+    this.state.freezeUntil = 0;
+    this.state.freezeStartedAt = 0;
+  }
+
   toggleReverse(): boolean {
     this.state.reversed = !this.state.reversed;
     return this.state.reversed;

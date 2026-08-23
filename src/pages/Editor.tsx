@@ -84,6 +84,22 @@ const GlCanvas = lazy(async () => {
 });
 import { CastStageButton } from "@/components/editor/CastStageButton";
 
+/** Paints the high-resolution frame selected by Smart Freeze above the live
+ * renderer, without changing its source or interrupting camera playback. */
+function FrozenFrame({ frame }: { frame: HTMLCanvasElement }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const target = ref.current;
+    if (!target) return;
+    target.width = frame.width;
+    target.height = frame.height;
+    const ctx = target.getContext("2d");
+    if (!ctx) return;
+    ctx.drawImage(frame, 0, 0);
+  }, [frame]);
+  return <canvas ref={ref} aria-hidden className="pointer-events-none absolute inset-0 z-30 h-full w-full" />;
+}
+
 // Unified one-screen control rack — no tabs.
 
 export default function Editor() {
@@ -158,6 +174,11 @@ export default function Editor() {
   const [reverseOn, setReverseOn] = useState(false);
   const [loopSec, setLoopSec] = useState(0);
   const [freezeOn, setFreezeOn] = useState(false);
+  // A captured final render, rather than merely a paused shader clock. This
+  // lets a quality freeze hold a crisp video/Forge frame too.
+  const [freezeFrame, setFreezeFrame] = useState<HTMLCanvasElement | null>(null);
+  const freezeTimerRef = useRef<number | null>(null);
+  const freezeBusyRef = useRef(false);
   const recorderRef = useRef<CanvasRecorder | null>(null);
   const recCapRef = useRef<number | null>(null);
   /** Set only when toggleRecord captured its own device-audio stream (the
@@ -478,6 +499,53 @@ export default function Editor() {
 
   const getCanvas = () =>
     (canvasContainerRef.current?.querySelector("canvas") ?? null) as HTMLCanvasElement | null;
+
+  const clearSmartFreeze = useCallback(() => {
+    if (freezeTimerRef.current) {
+      window.clearTimeout(freezeTimerRef.current);
+      freezeTimerRef.current = null;
+    }
+    timeController.cancelFreeze();
+    setFreezeFrame(null);
+    setFreezeOn(false);
+  }, []);
+
+  /** Scan briefly for the cleanest rendered frame, then freeze that exact
+   * output. A second invocation releases it immediately. */
+  const toggleSmartFreeze = useCallback(async () => {
+    if (freezeFrame) {
+      clearSmartFreeze();
+      setIconFlash({ icon: "freeze", label: "Unfreeze", key: performance.now() });
+      return;
+    }
+    if (freezeBusyRef.current) return;
+    const canvas = getCanvas();
+    if (!canvas) return;
+
+    freezeBusyRef.current = true;
+    const notice = toast.loading("Finding the cleanest freeze…", { duration: 1500 });
+    try {
+      const frame = await captureBestFrame(canvas, {
+        durationMs: 1000,
+        intervalMs: 80,
+        sampleSize: 128,
+        preferSeamless: tileMode !== "none",
+      });
+      setFreezeFrame(frame);
+      setFreezeOn(true);
+      timeController.triggerFreeze(1600);
+      setIconFlash({ icon: "freeze", label: "Freeze", key: performance.now() });
+      freezeTimerRef.current = window.setTimeout(clearSmartFreeze, 1600);
+      toast.success("Freeze locked", { id: notice, duration: 1100 });
+    } catch {
+      toast.error("Could not lock a frame", { id: notice });
+      clearSmartFreeze();
+    } finally {
+      freezeBusyRef.current = false;
+    }
+  }, [clearSmartFreeze, freezeFrame, tileMode]);
+
+  useEffect(() => () => clearSmartFreeze(), [clearSmartFreeze]);
 
   const exportBestStill = useCallback(async () => {
     if (isForge && !paywall.isSupporter) {
@@ -1213,10 +1281,7 @@ export default function Editor() {
       // Z => freeze / slow-mo
       if (!e.shiftKey && (e.key === "z" || e.key === "Z")) {
         e.preventDefault();
-        timeController.triggerFreeze(1400);
-        setFreezeOn(true);
-        window.setTimeout(() => setFreezeOn(false), 1400);
-        setIconFlash({ icon: "freeze", label: "Freeze", key: performance.now() });
+        toggleSmartFreeze();
         return;
       }
       // C => capture screenshot
@@ -1319,10 +1384,7 @@ export default function Editor() {
       }
       if (e.shiftKey && (e.key === "F" || e.key === "f")) {
         e.preventDefault();
-        timeController.triggerFreeze(1400);
-        setFreezeOn(true);
-        window.setTimeout(() => setFreezeOn(false), 1400);
-        setIconFlash({ icon: "freeze", label: "Freeze", key: performance.now() });
+        toggleSmartFreeze();
         return;
       }
       if (e.shiftKey && (e.key === "R" || e.key === "r")) {
@@ -1345,7 +1407,7 @@ export default function Editor() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [mosh, undo, redo, setMicEnabled, paletteOpen, shortcutsOpen, saveSlot, loadSlot, rerollSeed, flashSlot, exportBestStill, captureGif, saveFavoriteNow, toggleFullscreen, shareCurrent, clearAllFx, toggleJourney, sourceMode]);
+  }, [mosh, undo, redo, setMicEnabled, paletteOpen, shortcutsOpen, saveSlot, loadSlot, rerollSeed, flashSlot, exportBestStill, captureGif, saveFavoriteNow, toggleFullscreen, shareCurrent, clearAllFx, toggleJourney, sourceMode, toggleSmartFreeze]);
 
   // First-load shortcuts hint (3s)
   useEffect(() => {
@@ -1429,7 +1491,94 @@ export default function Editor() {
     };
   }, [takeScreenshot]);
 
-  // Long-press (1.5s) anywhere on the visualizer toggles the menu rack.
+  // Touch-only performance navigation. A two-finger tap toggles Smart Freeze;
+  // a deliberate horizontal swipe walks the undo/redo timeline. At the newest
+  // point, swiping forward creates a fresh Mosh instead of becoming a dead end.
+  useEffect(() => {
+    const el = canvasContainerRef.current;
+    if (!el) return;
+    type Point = { x: number; y: number };
+    const points = new Map<number, Point>();
+    let start: Point[] = [];
+    let startedAt = 0;
+    let maxTravel = 0;
+    let invalid = false;
+    let handled = false;
+    const isCanvasTouch = (target: EventTarget | null) =>
+      !(target instanceof HTMLElement) || !target.closest("button, a, input, textarea, [role='slider'], [data-no-longpress]");
+    const average = (items: Point[]) => items.reduce((sum, p) => ({ x: sum.x + p.x, y: sum.y + p.y }), { x: 0, y: 0 });
+    const onDown = (e: PointerEvent) => {
+      if (e.pointerType !== "touch" || !isCanvasTouch(e.target)) return;
+      points.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (points.size === 2) {
+        start = [...points.values()].map(p => ({ ...p }));
+        startedAt = performance.now();
+        maxTravel = 0;
+        invalid = false;
+        handled = false;
+      } else if (points.size > 2) {
+        // Three fingers belong to screenshot capture, never to this gesture.
+        invalid = true;
+      }
+    };
+    const onMove = (e: PointerEvent) => {
+      const p = points.get(e.pointerId);
+      if (!p) return;
+      p.x = e.clientX;
+      p.y = e.clientY;
+      if (start.length !== 2) return;
+      const now = [...points.values()];
+      if (now.length !== 2) return;
+      for (let i = 0; i < 2; i++) {
+        maxTravel = Math.max(maxTravel, Math.hypot(now[i].x - start[i].x, now[i].y - start[i].y));
+      }
+    };
+    const onEnd = (e: PointerEvent) => {
+      const point = points.get(e.pointerId);
+      if (!point) return;
+      point.x = e.clientX;
+      point.y = e.clientY;
+      if (!handled && !invalid && points.size === 2 && start.length === 2) {
+        handled = true;
+        const from = average(start);
+        const to = average([...points.values()]);
+        const dx = to.x / 2 - from.x / 2;
+        const dy = to.y / 2 - from.y / 2;
+        const elapsed = performance.now() - startedAt;
+        if (Math.abs(dx) >= 72 && Math.abs(dx) > Math.abs(dy) * 1.35) {
+          try { (navigator as any).vibrate?.(10); } catch {}
+          const state = useStore.getState();
+          if (dx < 0) {
+            if (state.future.length) state.redo();
+            else crossfadeLayers(() => useStore.getState().mosh(), MOSH_FADE_MS);
+          } else if (state.past.length) {
+            state.undo();
+          }
+        } else if (elapsed <= 420 && maxTravel <= 20) {
+          try { (navigator as any).vibrate?.(10); } catch {}
+          toggleSmartFreeze();
+        }
+      }
+      points.delete(e.pointerId);
+      if (points.size === 0) {
+        start = [];
+        invalid = false;
+        handled = false;
+      }
+    };
+    el.addEventListener("pointerdown", onDown, { passive: true });
+    window.addEventListener("pointermove", onMove, { passive: true });
+    window.addEventListener("pointerup", onEnd, { passive: true });
+    window.addEventListener("pointercancel", onEnd, { passive: true });
+    return () => {
+      el.removeEventListener("pointerdown", onDown);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onEnd);
+      window.removeEventListener("pointercancel", onEnd);
+    };
+  }, [toggleSmartFreeze]);
+
+  // Touch-only long-press anywhere on the visualizer toggles the menu rack.
   // Listens on window after pointerdown so iOS/Safari can't drop move/up events
   // even when overlays (MobileGestures, Kaoss) capture the pointer.
   useEffect(() => {
@@ -1469,12 +1618,17 @@ export default function Editor() {
       cancel();
     };
     const onDown = (e: PointerEvent) => {
-      if (timer) return; // already tracking
+      // A second finger is reserved for mobile performance gestures, never a
+      // one-finger menu hold.
+      if (timer) {
+        if (e.pointerType === "touch" && e.pointerId !== activeId) cancel();
+        return;
+      }
+      if (e.pointerType !== "touch") return;
       // Suspended in Pro Mode — the deliberate hold+second-tap gesture
       // (see the dedicated Pro Mode effect below) is the only way in there,
       // so a single-finger hold anywhere must stay fully inert.
       if (useStore.getState().proModeEnabled) return;
-      if (e.pointerType === "mouse" && e.button !== 0) return;
       if (e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return;
       const t = e.target as HTMLElement | null;
       if (t && t.closest("button, a, input, textarea, [role='slider'], [data-no-longpress]")) return;
@@ -1695,6 +1849,7 @@ export default function Editor() {
             <GlCanvas />
           </Suspense>
         </div>
+        {freezeFrame && <FrozenFrame frame={freezeFrame} />}
         {!hasSource && !isOverlay && <StartCameraOverlay />}
         <SystemAudioHud visible={systemAudioEnabled && !isOverlay} />
         {hasSource && !isForge && !isOverlay && (
@@ -1731,12 +1886,7 @@ export default function Editor() {
             onSupport={() => navigate("/pricing")}
             gifBusy={gifBusy}
             gifProgress={gifProgress}
-            onFreeze={() => {
-              timeController.triggerFreeze(1400);
-              setFreezeOn(true);
-              window.setTimeout(() => setFreezeOn(false), 1400);
-              setIconFlash({ icon: "freeze", label: "Freeze", key: performance.now() });
-            }}
+            onFreeze={toggleSmartFreeze}
             onMicFlash={(on) => setMicFlash({ on, key: performance.now() })}
             showMicNudge={showMicNudge}
             onMicNudgeYes={() => { setMicEnabled(true); setMicFlash({ on: true, key: performance.now() }); setShowMicNudge(false); }}
