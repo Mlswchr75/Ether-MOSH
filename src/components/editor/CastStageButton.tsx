@@ -15,18 +15,17 @@ export function CastStageButton() {
   const [open, setOpen] = useState(false);
 
   return (
-    <>
+    <span className="relative">
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="ui-chrome flex h-9 items-center gap-2 rounded-full border border-[hsl(var(--accent)/0.48)] bg-black/45 px-3 font-mono text-[10px] uppercase tracking-[0.16em] text-white/85 shadow-[0_0_16px_hsl(var(--accent)/0.16)] backdrop-blur-md transition hover:border-[hsl(var(--accent)/0.9)] hover:bg-black/65 hover:text-white focus:outline-none focus:ring-2 focus:ring-[hsl(var(--accent)/0.75)] focus:ring-offset-2 focus:ring-offset-black"
+        className="btn-icon h-7 w-7"
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-label="Cast MOSH to a display"
-        title="Cast / Stage"
+        title="Casting help"
       >
-        <Cast className="h-3.5 w-3.5 text-[hsl(var(--accent))]" strokeWidth={1.6} aria-hidden="true" />
-        <span className="hidden sm:inline">Cast / Stage</span>
+        <Cast className="h-3.5 w-3.5" strokeWidth={1.6} aria-hidden="true" />
       </button>
 
       {open && (
@@ -34,7 +33,7 @@ export function CastStageButton() {
           role="dialog"
           aria-modal="false"
           aria-labelledby="cast-stage-title"
-          className="fixed right-3 top-14 z-[10020] w-[min(25rem,calc(100vw-1.5rem))] border border-[hsl(var(--accent)/0.38)] bg-[hsl(var(--surface-1)/0.97)] p-5 shadow-[0_0_42px_hsl(var(--accent)/0.18)] backdrop-blur-xl"
+          className="absolute right-0 top-full z-[10020] mt-2 w-[min(25rem,calc(100vw-1.5rem))] border border-[hsl(var(--accent)/0.38)] bg-[hsl(var(--surface-1)/0.97)] p-5 shadow-[0_0_42px_hsl(var(--accent)/0.18)] backdrop-blur-xl"
         >
             <div className="flex items-start justify-between gap-4">
               <div className="flex items-center gap-3">
@@ -81,6 +80,6 @@ export function CastStageButton() {
             </div>
         </section>
       )}
-    </>
+    </span>
   );
 }

@@ -1595,8 +1595,7 @@ export default function Editor() {
           </div>
         )}
         {!isPerformanceMode && !hideUI && (
-          <div className="ui-chrome absolute top-3 right-3 z-40 flex items-center gap-2 pointer-events-auto">
-            <CastStageButton />
+          <div className="ui-chrome absolute top-3 right-3 z-40 pointer-events-auto">
             <AccountChip />
           </div>
         )}
@@ -1790,6 +1789,7 @@ export default function Editor() {
               >
                 <Keyboard className="h-3.5 w-3.5" strokeWidth={1.5} />
               </button>
+              <CastStageButton />
               <div className="relative">
                 <button
                   onClick={enterPerf}
