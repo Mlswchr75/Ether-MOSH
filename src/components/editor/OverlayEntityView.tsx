@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
-import { Copy, RotateCcw, Trash2, ChevronDown, ChevronUp, Play, Pause, Repeat, Rewind, Zap } from "lucide-react";
+import { Copy, RotateCcw, Trash2, ChevronDown, ChevronUp, Play, Pause, Repeat, Rewind, Zap, Sparkles } from "lucide-react";
 import type { OverlayBehaviorKind, OverlayEntity, OverlayReaction, OverlayTransform } from "@/engine/overlay/types";
 import { applyPinch, midpoint, translateNormalized, type Point } from "@/engine/overlay/transform";
 import { sampleBehavior } from "@/engine/overlay/behaviors";
@@ -8,37 +8,21 @@ import { mapOverlayReactions, smoothReactionValue, sourceValue, type OverlayAudi
 import { getAudioData } from "@/engine/audioAnalyzer";
 import { useOverlayStore } from "@/store/useOverlayStore";
 import { LottieOverlay } from "@/components/editor/LottieOverlay";
+import { OverlaySwarm } from "@/components/editor/OverlaySwarm";
 
-type Props = {
-  entity: OverlayEntity;
-  selected: boolean;
-  index: number;
-  count: number;
-};
-
-type Gesture = {
-  startTransform: OverlayTransform;
-  startPointers: Map<number, Point>;
-};
+type Props = { entity: OverlayEntity; selected: boolean; index: number; count: number };
+type Gesture = { startTransform: OverlayTransform; startPointers: Map<number, Point> };
 
 const BEHAVIORS: Array<{ value: OverlayBehaviorKind; label: string }> = [
-  { value: "none", label: "Still" },
-  { value: "float", label: "Float" },
-  { value: "pulse", label: "Pulse" },
-  { value: "wobble", label: "Wobble" },
-  { value: "orbit", label: "Orbit" },
-  { value: "bounce", label: "Bounce" },
-  { value: "flicker", label: "Flicker" },
-  { value: "jitter", label: "Jitter" },
-  { value: "random-walk", label: "Drift" },
+  { value: "none", label: "Still" }, { value: "float", label: "Float" }, { value: "pulse", label: "Pulse" },
+  { value: "wobble", label: "Wobble" }, { value: "orbit", label: "Orbit" }, { value: "bounce", label: "Bounce" },
+  { value: "flicker", label: "Flicker" }, { value: "jitter", label: "Jitter" }, { value: "random-walk", label: "Drift" },
 ];
 
 type ReactionPreset = "off" | "bass-pulse" | "beat-punch" | "mid-spin" | "treble-flicker" | "overall-breathe";
-
 function makeReaction(source: OverlayReaction["source"], target: OverlayReaction["target"], amount: number, smoothing: number): OverlayReaction {
   return { id: crypto.randomUUID(), source, target, amount, smoothing, invert: false };
 }
-
 function reactionsForPreset(preset: ReactionPreset): OverlayReaction[] {
   switch (preset) {
     case "bass-pulse": return [makeReaction("bass", "scale", 0.8, 0.3)];
@@ -49,7 +33,6 @@ function reactionsForPreset(preset: ReactionPreset): OverlayReaction[] {
     default: return [];
   }
 }
-
 function identifyReactionPreset(reactions: OverlayReaction[]): ReactionPreset {
   if (!reactions.length) return "off";
   const first = reactions[0];
@@ -75,23 +58,17 @@ export function OverlayEntityView({ entity, selected, index, count }: Props) {
 
   const style = useMemo<CSSProperties>(() => ({
     position: "absolute",
-    left: `${entity.transform.x * 100}%`,
-    top: `${entity.transform.y * 100}%`,
+    left: `${entity.transform.x * 100}%`, top: `${entity.transform.y * 100}%`,
     width: entity.asset.width ? Math.min(entity.asset.width, 512) : 220,
     height: entity.asset.height ? Math.min(entity.asset.height, 512) : 220,
     opacity: entity.transform.opacity,
     transform: `translate(-50%, -50%) scale(${entity.transform.scale}) rotate(${entity.transform.rotation}deg)`,
-    transformOrigin: "center",
-    zIndex: 20 + index,
-    mixBlendMode: entity.blend as CSSProperties["mixBlendMode"],
-    touchAction: "none",
+    transformOrigin: "center", zIndex: 20 + index,
+    mixBlendMode: entity.blend as CSSProperties["mixBlendMode"], touchAction: "none",
     display: entity.hidden ? "none" : undefined,
     willChange: entity.behavior.kind === "none" && !entity.reactions.length ? undefined : "transform,left,top,opacity",
   }), [entity, index]);
 
-  // Procedural motion and audio reactions share one direct-DOM animation loop.
-  // No per-frame Zustand writes: durable settings live in the store; rapidly
-  // changing sampled values stay local to this entity.
   useEffect(() => {
     const el = rootRef.current;
     if (!el || entity.hidden) return;
@@ -101,20 +78,13 @@ export function OverlayEntityView({ entity, selected, index, count }: Props) {
     const tick = (time: number) => {
       const behavior = sampleBehavior(entity.behavior, time, entity.transform);
       const audioRaw = getAudioData();
-      const audio: OverlayAudioSnapshot = {
-        bass: audioRaw.bass,
-        mid: audioRaw.mid,
-        treble: audioRaw.high,
-        overall: audioRaw.energy,
-        beat: audioRaw.beat,
-      };
+      const audio: OverlayAudioSnapshot = { bass: audioRaw.bass, mid: audioRaw.mid, treble: audioRaw.high, overall: audioRaw.energy, beat: audioRaw.beat };
       const smoothed = reactionSmoothRef.current;
       for (const reaction of entity.reactions) {
         const next = sourceValue(reaction, audio);
         smoothed[reaction.id] = smoothReactionValue(smoothed[reaction.id] ?? next, next, reaction.smoothing);
       }
       const react = mapOverlayReactions(entity.reactions, audio, smoothed);
-
       el.style.left = `${(entity.transform.x + behavior.x) * 100}%`;
       el.style.top = `${(entity.transform.y + behavior.y) * 100}%`;
       el.style.opacity = String(Math.max(0, Math.min(1, entity.transform.opacity * behavior.opacity * react.opacity)));
@@ -126,144 +96,74 @@ export function OverlayEntityView({ entity, selected, index, count }: Props) {
   }, [entity.behavior, entity.hidden, entity.reactions, entity.transform]);
 
   const pointOf = (event: ReactPointerEvent): Point => ({ x: event.clientX, y: event.clientY });
-
   const begin = (event: ReactPointerEvent<HTMLDivElement>) => {
-    event.stopPropagation();
-    selectEntity(entity.id);
-    if (entity.locked) return;
-    event.currentTarget.setPointerCapture(event.pointerId);
-    pointers.current.set(event.pointerId, pointOf(event));
-    if (!gesture.current || pointers.current.size === 2) {
-      gesture.current = {
-        startTransform: { ...entity.transform },
-        startPointers: new Map(pointers.current),
-      };
-    }
+    event.stopPropagation(); selectEntity(entity.id); if (entity.locked) return;
+    event.currentTarget.setPointerCapture(event.pointerId); pointers.current.set(event.pointerId, pointOf(event));
+    if (!gesture.current || pointers.current.size === 2) gesture.current = { startTransform: { ...entity.transform }, startPointers: new Map(pointers.current) };
   };
-
   const move = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (!pointers.current.has(event.pointerId) || !gesture.current || entity.locked) return;
     pointers.current.set(event.pointerId, pointOf(event));
-    const stage = event.currentTarget.parentElement?.getBoundingClientRect();
-    if (!stage) return;
-
-    const current = [...pointers.current.values()];
-    const initial = [...gesture.current.startPointers.values()];
+    const stage = event.currentTarget.parentElement?.getBoundingClientRect(); if (!stage) return;
+    const current = [...pointers.current.values()], initial = [...gesture.current.startPointers.values()];
     if (current.length >= 2 && initial.length >= 2) {
       const pinched = applyPinch(gesture.current.startTransform, initial[0], initial[1], current[0], current[1]);
-      const a = midpoint(initial[0], initial[1]);
-      const b = midpoint(current[0], current[1]);
-      const moved = translateNormalized(pinched, { x: b.x - a.x, y: b.y - a.y }, stage);
-      patchTransform(entity.id, moved);
-      return;
+      const a = midpoint(initial[0], initial[1]), b = midpoint(current[0], current[1]);
+      patchTransform(entity.id, translateNormalized(pinched, { x: b.x - a.x, y: b.y - a.y }, stage)); return;
     }
-
-    const start = initial[0];
-    const now = current[0];
-    if (!start || !now) return;
-    patchTransform(entity.id, translateNormalized(
-      gesture.current.startTransform,
-      { x: now.x - start.x, y: now.y - start.y },
-      stage,
-    ));
+    const start = initial[0], now = current[0]; if (!start || !now) return;
+    patchTransform(entity.id, translateNormalized(gesture.current.startTransform, { x: now.x - start.x, y: now.y - start.y }, stage));
   };
-
   const end = (event: ReactPointerEvent<HTMLDivElement>) => {
     pointers.current.delete(event.pointerId);
-    if (pointers.current.size === 0) {
-      gesture.current = null;
-      return;
-    }
-    gesture.current = {
-      startTransform: { ...(useOverlayStore.getState().entities.find(e => e.id === entity.id)?.transform ?? entity.transform) },
-      startPointers: new Map(pointers.current),
-    };
+    if (pointers.current.size === 0) { gesture.current = null; return; }
+    gesture.current = { startTransform: { ...(useOverlayStore.getState().entities.find(e => e.id === entity.id)?.transform ?? entity.transform) }, startPointers: new Map(pointers.current) };
   };
 
   const isLottie = entity.asset.kind === "lottie-json" || entity.asset.kind === "dotlottie";
-  const setPlayback = (patch: Partial<OverlayEntity["playback"]>) => patchEntity(entity.id, {
-    playback: { ...entity.playback, ...patch },
-  });
-  const setBehavior = (patch: Partial<OverlayEntity["behavior"]>) => patchEntity(entity.id, {
-    behavior: { ...entity.behavior, ...patch },
-  });
+  const setPlayback = (patch: Partial<OverlayEntity["playback"]>) => patchEntity(entity.id, { playback: { ...entity.playback, ...patch } });
+  const setBehavior = (patch: Partial<OverlayEntity["behavior"]>) => patchEntity(entity.id, { behavior: { ...entity.behavior, ...patch } });
+  const setSwarm = (patch: Partial<OverlayEntity["swarm"]>) => patchEntity(entity.id, { swarm: { ...entity.swarm, ...patch } });
   const reactionPreset = identifyReactionPreset(entity.reactions);
 
   return (
-    <div
-      ref={rootRef}
-      style={style}
-      className={`group select-none ${selected ? "outline outline-1 outline-cyan-300/80" : ""}`}
-      onPointerDown={begin}
-      onPointerMove={move}
-      onPointerUp={end}
-      onPointerCancel={end}
-      onDoubleClick={() => duplicateEntity(entity.id)}
-    >
-      {isLottie ? (
-        <LottieOverlay asset={entity.asset} playback={entity.playback} className="pointer-events-none h-full w-full" />
-      ) : (
-        <img
-          src={entity.asset.url}
-          alt={entity.asset.name || "sticker"}
-          draggable={false}
-          className="pointer-events-none h-full w-full object-contain"
-        />
-      )}
+    <div ref={rootRef} style={style} className={`group select-none ${selected ? "outline outline-1 outline-cyan-300/80" : ""}`} onPointerDown={begin} onPointerMove={move} onPointerUp={end} onPointerCancel={end} onDoubleClick={() => duplicateEntity(entity.id)}>
+      <OverlaySwarm entity={entity} />
+      {isLottie ? <LottieOverlay asset={entity.asset} playback={entity.playback} className="pointer-events-none h-full w-full" /> : <img src={entity.asset.url} alt={entity.asset.name || "sticker"} draggable={false} className="pointer-events-none h-full w-full object-contain" />}
 
       {selected && (
-        <div
-          className="absolute left-1/2 top-full mt-2 flex min-w-max max-w-[min(92vw,42rem)] -translate-x-1/2 flex-wrap items-center justify-center gap-1 rounded-xl border border-white/15 bg-black/80 p-1 shadow-xl backdrop-blur-md"
-          onPointerDown={event => event.stopPropagation()}
-        >
-          {isLottie && (
-            <>
-              <button className="rounded-full p-1.5 text-white/65 hover:bg-white/10 hover:text-white" title={entity.playback.playing ? "Pause animation" : "Play animation"} onClick={() => setPlayback({ playing: !entity.playback.playing })}>
-                {entity.playback.playing ? <Pause size={11} /> : <Play size={11} />}
-              </button>
-              <button className={`rounded-full p-1.5 hover:bg-white/10 ${entity.playback.loop ? "text-cyan-200" : "text-white/40"}`} title="Toggle loop" onClick={() => setPlayback({ loop: !entity.playback.loop })}><Repeat size={11} /></button>
-              <button className={`rounded-full p-1.5 hover:bg-white/10 ${entity.playback.direction < 0 ? "text-cyan-200" : "text-white/50"}`} title="Reverse" onClick={() => setPlayback({ direction: entity.playback.direction < 0 ? 1 : -1 })}><Rewind size={11} /></button>
-              <label className="flex items-center gap-1 px-1 font-mono text-[7px] uppercase tracking-wider text-white/40" title="Playback speed">
-                {entity.playback.speed.toFixed(1)}×
-                <input aria-label="Playback speed" type="range" min={0.1} max={4} step={0.1} value={entity.playback.speed} onChange={event => setPlayback({ speed: Number(event.target.value) })} className="w-14 accent-cyan-300" />
-              </label>
-              <span className="mx-0.5 h-4 w-px bg-white/10" />
-            </>
-          )}
+        <div className="absolute left-1/2 top-full mt-2 flex min-w-max max-w-[min(94vw,48rem)] -translate-x-1/2 flex-wrap items-center justify-center gap-1 rounded-xl border border-white/15 bg-black/80 p-1 shadow-xl backdrop-blur-md" onPointerDown={event => event.stopPropagation()}>
+          {isLottie && <>
+            <button className="rounded-full p-1.5 text-white/65 hover:bg-white/10" title={entity.playback.playing ? "Pause animation" : "Play animation"} onClick={() => setPlayback({ playing: !entity.playback.playing })}>{entity.playback.playing ? <Pause size={11} /> : <Play size={11} />}</button>
+            <button className={`rounded-full p-1.5 hover:bg-white/10 ${entity.playback.loop ? "text-cyan-200" : "text-white/40"}`} title="Toggle loop" onClick={() => setPlayback({ loop: !entity.playback.loop })}><Repeat size={11} /></button>
+            <button className={`rounded-full p-1.5 hover:bg-white/10 ${entity.playback.direction < 0 ? "text-cyan-200" : "text-white/50"}`} title="Reverse" onClick={() => setPlayback({ direction: entity.playback.direction < 0 ? 1 : -1 })}><Rewind size={11} /></button>
+            <label className="flex items-center gap-1 px-1 font-mono text-[7px] uppercase text-white/40">{entity.playback.speed.toFixed(1)}×<input aria-label="Playback speed" type="range" min={0.1} max={4} step={0.1} value={entity.playback.speed} onChange={e => setPlayback({ speed: Number(e.target.value) })} className="w-14 accent-cyan-300" /></label>
+            <span className="mx-0.5 h-4 w-px bg-white/10" />
+          </>}
 
-          <select aria-label="Sticker behavior" value={entity.behavior.kind} onChange={event => setBehavior({ kind: event.target.value as OverlayBehaviorKind })} className="rounded-full border border-white/10 bg-black/70 px-2 py-1 font-mono text-[7px] uppercase tracking-wider text-white/65 outline-none" title="Behavior">
+          <select aria-label="Sticker behavior" value={entity.behavior.kind} onChange={e => setBehavior({ kind: e.target.value as OverlayBehaviorKind })} className="rounded-full border border-white/10 bg-black/70 px-2 py-1 font-mono text-[7px] uppercase text-white/65 outline-none" title="Behavior">
             {BEHAVIORS.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}
           </select>
-          {entity.behavior.kind !== "none" && (
-            <>
-              <label className="flex items-center gap-1 px-1 font-mono text-[7px] uppercase text-white/40" title="Behavior amount">amt<input aria-label="Behavior amount" type="range" min={0} max={1} step={0.05} value={entity.behavior.amount} onChange={event => setBehavior({ amount: Number(event.target.value) })} className="w-12 accent-cyan-300" /></label>
-              <label className="flex items-center gap-1 px-1 font-mono text-[7px] uppercase text-white/40" title="Behavior speed">spd<input aria-label="Behavior speed" type="range" min={0.1} max={4} step={0.1} value={entity.behavior.speed} onChange={event => setBehavior({ speed: Number(event.target.value) })} className="w-12 accent-cyan-300" /></label>
-            </>
-          )}
+          {entity.behavior.kind !== "none" && <>
+            <label className="flex items-center gap-1 px-1 font-mono text-[7px] uppercase text-white/40">amt<input aria-label="Behavior amount" type="range" min={0} max={1} step={0.05} value={entity.behavior.amount} onChange={e => setBehavior({ amount: Number(e.target.value) })} className="w-12 accent-cyan-300" /></label>
+            <label className="flex items-center gap-1 px-1 font-mono text-[7px] uppercase text-white/40">spd<input aria-label="Behavior speed" type="range" min={0.1} max={4} step={0.1} value={entity.behavior.speed} onChange={e => setBehavior({ speed: Number(e.target.value) })} className="w-12 accent-cyan-300" /></label>
+          </>}
 
-          <label className={`flex items-center gap-1 rounded-full border px-2 py-1 font-mono text-[7px] uppercase tracking-wider ${reactionPreset === "off" ? "border-white/10 text-white/45" : "border-cyan-300/30 text-cyan-200"}`} title="Audio reaction preset">
-            <Zap size={9} />
-            <select
-              aria-label="Audio reaction preset"
-              value={reactionPreset}
-              onChange={event => patchEntity(entity.id, { reactions: reactionsForPreset(event.target.value as ReactionPreset) })}
-              className="bg-transparent text-inherit outline-none"
-            >
-              <option value="off">React off</option>
-              <option value="bass-pulse">Bass pulse</option>
-              <option value="beat-punch">Beat punch</option>
-              <option value="mid-spin">Mid spin</option>
-              <option value="treble-flicker">Treble flicker</option>
-              <option value="overall-breathe">Volume breathe</option>
-            </select>
-          </label>
+          <label className={`flex items-center gap-1 rounded-full border px-2 py-1 font-mono text-[7px] uppercase ${reactionPreset === "off" ? "border-white/10 text-white/45" : "border-cyan-300/30 text-cyan-200"}`}><Zap size={9} /><select aria-label="Audio reaction preset" value={reactionPreset} onChange={e => patchEntity(entity.id, { reactions: reactionsForPreset(e.target.value as ReactionPreset) })} className="bg-transparent text-inherit outline-none"><option value="off">React off</option><option value="bass-pulse">Bass pulse</option><option value="beat-punch">Beat punch</option><option value="mid-spin">Mid spin</option><option value="treble-flicker">Treble flicker</option><option value="overall-breathe">Volume breathe</option></select></label>
+
+          <button className={`flex items-center gap-1 rounded-full border px-2 py-1 font-mono text-[7px] uppercase ${entity.swarm.enabled ? "border-fuchsia-300/40 text-fuchsia-200" : "border-white/10 text-white/45"}`} title="Toggle Swarm" onClick={() => setSwarm({ enabled: !entity.swarm.enabled })}><Sparkles size={9} />Swarm</button>
+          {entity.swarm.enabled && <>
+            <label className="flex items-center gap-1 px-1 font-mono text-[7px] uppercase text-white/40">n {entity.swarm.count}<input aria-label="Swarm count" type="range" min={2} max={isLottie ? 12 : 32} step={1} value={entity.swarm.count} onChange={e => setSwarm({ count: Number(e.target.value) })} className="w-14 accent-fuchsia-300" /></label>
+            <label className="flex items-center gap-1 px-1 font-mono text-[7px] uppercase text-white/40">spread<input aria-label="Swarm spread" type="range" min={0.2} max={3} step={0.1} value={entity.swarm.spread} onChange={e => setSwarm({ spread: Number(e.target.value) })} className="w-12 accent-fuchsia-300" /></label>
+            <label className="flex items-center gap-1 px-1 font-mono text-[7px] uppercase text-white/40">chaos<input aria-label="Swarm chaos" type="range" min={0} max={1} step={0.05} value={entity.swarm.chaos} onChange={e => setSwarm({ chaos: Number(e.target.value) })} className="w-12 accent-fuchsia-300" /></label>
+          </>}
 
           <span className="mx-0.5 h-4 w-px bg-white/10" />
-          <button className="rounded-full p-1.5 text-white/65 hover:bg-white/10 hover:text-white" title="Rotate 15°" onClick={() => patchTransform(entity.id, { rotation: entity.transform.rotation + 15 })}><RotateCcw size={11} /></button>
-          <button className="rounded-full p-1.5 text-white/65 hover:bg-white/10 hover:text-white disabled:opacity-25" title="Move backward" disabled={index === 0} onClick={() => reorderEntity(entity.id, -1)}><ChevronDown size={11} /></button>
-          <button className="rounded-full p-1.5 text-white/65 hover:bg-white/10 hover:text-white disabled:opacity-25" title="Move forward" disabled={index === count - 1} onClick={() => reorderEntity(entity.id, 1)}><ChevronUp size={11} /></button>
-          <button className="rounded-full p-1.5 text-white/65 hover:bg-white/10 hover:text-white" title="Duplicate" onClick={() => duplicateEntity(entity.id)}><Copy size={11} /></button>
-          <button className="rounded-full p-1.5 text-red-300/75 hover:bg-red-500/15 hover:text-red-200" title="Delete" onClick={() => removeEntity(entity.id)}><Trash2 size={11} /></button>
+          <button className="rounded-full p-1.5 text-white/65 hover:bg-white/10" title="Rotate 15°" onClick={() => patchTransform(entity.id, { rotation: entity.transform.rotation + 15 })}><RotateCcw size={11} /></button>
+          <button className="rounded-full p-1.5 text-white/65 hover:bg-white/10 disabled:opacity-25" title="Move backward" disabled={index === 0} onClick={() => reorderEntity(entity.id, -1)}><ChevronDown size={11} /></button>
+          <button className="rounded-full p-1.5 text-white/65 hover:bg-white/10 disabled:opacity-25" title="Move forward" disabled={index === count - 1} onClick={() => reorderEntity(entity.id, 1)}><ChevronUp size={11} /></button>
+          <button className="rounded-full p-1.5 text-white/65 hover:bg-white/10" title="Duplicate" onClick={() => duplicateEntity(entity.id)}><Copy size={11} /></button>
+          <button className="rounded-full p-1.5 text-red-300/75 hover:bg-red-500/15" title="Delete" onClick={() => removeEntity(entity.id)}><Trash2 size={11} /></button>
         </div>
       )}
     </div>
