@@ -33,7 +33,7 @@
       font-src 'self' https://fonts.gstatic.com;
       img-src 'self' data: blob: https://cdn.shopify.com;
       media-src 'self' blob:;
-      connect-src 'self' https://udtrjwredttzvdixtwla.supabase.co wss://udtrjwredttzvdixtwla.supabase.co https://api.stripe.com https://cdn.jsdelivr.net https://storage.googleapis.com;
+      connect-src 'self' https://udtrjwredttzvdixtwla.supabase.co wss://udtrjwredttzvdixtwla.supabase.co https://api.stripe.com https://cdn.jsdelivr.net https://storage.googleapis.com https://cdn.shopify.com;
       frame-src https://js.stripe.com;
       worker-src 'self' blob:;
       object-src 'none';
