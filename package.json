@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
+    "@lottiefiles/dotlottie-web": "^0.79.2",
     "@lovable.dev/mcp-js": "0.26.2",
     "@mediapipe/tasks-vision": "^0.10.35",
     "@radix-ui/react-accordion": "^1.2.11",

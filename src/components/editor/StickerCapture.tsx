@@ -2,10 +2,17 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Sparkles, Download, X, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useStore } from '@/store/useStore';
+import { useOverlayStore } from '@/store/useOverlayStore';
 import { stickerEngine, type StickerScore } from '@/engine/StickerEngine';
 import { segmentationEngine } from '@/engine/SegmentationEngine';
+import { OverlayStage } from '@/components/editor/OverlayStage';
+import type { StickerEntry } from '@/store/types';
 
 type Phase = 'idle' | 'capturing' | 'recording' | 'encoding';
+
+function overlayUsesUrl(url: string): boolean {
+  return useOverlayStore.getState().entities.some(entity => entity.asset.url === url);
+}
 
 export function StickerCapture() {
   const stickerMode          = useStore(s => s.stickerMode);
@@ -34,8 +41,16 @@ export function StickerCapture() {
   useEffect(() => { vidRef.current = video; }, [video]);
 
   const setPhase = (p: Phase) => { phaseRef.current = p; _setPhase(p); };
-
   const doFlash = () => { setFlash(true); setTimeout(() => setFlash(false), 150); };
+
+  const publishSticker = useCallback((entry: StickerEntry) => {
+    addSticker(entry);
+    // StickerCapture remains a creation source, but its output now lands in
+    // the universal overlay scene immediately so the user can move, animate,
+    // react or mosh the result instead of only downloading it.
+    useOverlayStore.getState().importStickerEntry(entry);
+    setGalleryOpen(true);
+  }, [addSticker]);
 
   const finishRecording = useCallback(async () => {
     if (phaseRef.current !== 'recording') return;
@@ -53,8 +68,7 @@ export function StickerCapture() {
       doFlash();
       const blob = await stickerEngine.exportAPNG(enhanced, 28);
       const url = URL.createObjectURL(blob);
-      addSticker({ id: crypto.randomUUID(), url, animated: true, w: first.width, h: first.height, ts: Date.now() });
-      setGalleryOpen(true);
+      publishSticker({ id: crypto.randomUUID(), url, animated: true, w: first.width, h: first.height, ts: Date.now() });
     } catch (err) {
       console.error('[sticker] recording capture failed:', err);
       toast.error("Couldn't save that capture — try again");
@@ -62,7 +76,7 @@ export function StickerCapture() {
       setPhase('idle');
       setRecProg(0);
     }
-  }, [addSticker]);
+  }, [publishSticker]);
 
   useEffect(() => {
     if (!stickerMode) return;
@@ -74,12 +88,8 @@ export function StickerCapture() {
       const gl = glRef.current, vid = vidRef.current;
       if (!gl || !vid) return;
 
-      if (frameRef.current % 6 === 0) {
-        setScore(stickerEngine.scoreFrame(gl));
-      }
-      if (frameRef.current % 90 === 0) {
-        stickerEngine.refreshBestMask(vid);
-      }
+      if (frameRef.current % 6 === 0) setScore(stickerEngine.scoreFrame(gl));
+      if (frameRef.current % 90 === 0) stickerEngine.refreshBestMask(vid);
       if (phaseRef.current === 'recording') {
         const mask = stickerEngine.getBestMask();
         if (mask && recFrames.current.length < 30) {
@@ -111,15 +121,14 @@ export function StickerCapture() {
       const blob = await stickerEngine.exportWebP(enhanced, 2);
       doFlash();
       const url = URL.createObjectURL(blob);
-      addSticker({ id: crypto.randomUUID(), url, animated: false, w: enhanced.width * 2, h: enhanced.height * 2, ts: Date.now() });
-      setGalleryOpen(true);
+      publishSticker({ id: crypto.randomUUID(), url, animated: false, w: enhanced.width * 2, h: enhanced.height * 2, ts: Date.now() });
     } catch (err) {
       console.error('[sticker] static capture failed:', err);
       toast.error("Couldn't save that capture — try again");
     } finally {
       setPhase('idle');
     }
-  }, [addSticker]);
+  }, [publishSticker]);
 
   const startRecording = useCallback(() => {
     if (phaseRef.current !== 'idle') return;
@@ -151,11 +160,17 @@ export function StickerCapture() {
 
   const deleteSticker = (id: string) => {
     const item = gallery.find(s => s.id === id);
-    if (item) URL.revokeObjectURL(item.url);
+    // OverlayEntity may share the gallery's blob URL. Never revoke it while a
+    // placed overlay still references it.
+    if (item && !overlayUsesUrl(item.url)) URL.revokeObjectURL(item.url);
     removeSticker(id);
   };
 
-  useEffect(() => () => { gallery?.forEach(s => URL.revokeObjectURL(s.url)); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => {
+    gallery?.forEach(s => {
+      if (!overlayUsesUrl(s.url)) URL.revokeObjectURL(s.url);
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!stickerMode) return null;
 
@@ -167,6 +182,9 @@ export function StickerCapture() {
 
   return (
     <>
+      {/* Universal overlay interaction surface: imports + placed entities. */}
+      <OverlayStage />
+
       {flash && <div className="pointer-events-none fixed inset-0 z-[200] bg-white/15 animate-pulse" style={{ animationDuration: '0.1s' }} />}
 
       <div className="pointer-events-auto absolute right-4 z-50 flex flex-col items-end gap-2" style={{ bottom: '7rem' }}>
