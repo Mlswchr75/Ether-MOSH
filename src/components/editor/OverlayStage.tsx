@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { OverlayEntityView } from "./OverlayEntityView";
 import { OverlayImporter } from "./OverlayImporter";
+import { OverlayVault } from "./OverlayVault";
 import { useOverlayStore } from "@/store/useOverlayStore";
 
 /**
@@ -51,8 +52,9 @@ export function OverlayStage() {
         />
       ))}
 
-      <div className="absolute bottom-28 left-1/2 z-[80] -translate-x-1/2">
+      <div className="absolute bottom-28 left-1/2 z-[80] flex -translate-x-1/2 items-center gap-2">
         <OverlayImporter />
+        <OverlayVault />
       </div>
     </div>
   );
