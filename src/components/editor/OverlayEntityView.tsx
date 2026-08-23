@@ -4,10 +4,10 @@ import { Copy, RotateCcw, Trash2, ChevronDown, ChevronUp, Play, Pause, Repeat, R
 import type { OverlayBehaviorKind, OverlayEntity, OverlayReaction, OverlayTrackingTarget, OverlayTransform } from "@/engine/overlay/types";
 import { applyPinch, midpoint, translateNormalized, type Point } from "@/engine/overlay/transform";
 import { sampleBehavior } from "@/engine/overlay/behaviors";
-import { mapOverlayReactions, smoothReactionValue, sourceValue, type OverlayAudioSnapshot } from "@/engine/overlay/reactions";
+import { mapOverlayReactions, smoothReactionValue, sourceValue } from "@/engine/overlay/reactions";
+import { getOverlayAudioData } from "@/engine/overlay/audioBridge";
 import { applyTrackedTarget, getTrackedTarget } from "@/engine/overlay/tracking";
 import { overlayCssBlend } from "@/engine/overlay/compositing";
-import { getAudioData } from "@/engine/audioAnalyzer";
 import { useOverlayStore } from "@/store/useOverlayStore";
 import { OverlayMedia } from "@/components/editor/OverlayMedia";
 import { OverlaySwarm } from "@/components/editor/OverlaySwarm";
@@ -79,8 +79,7 @@ export function OverlayEntityView({ entity, selected, index, count }: Props) {
         ? applyTrackedTarget(entity.transform, entity.tracking, getTrackedTarget(entity.tracking.target))
         : entity.transform;
       const behavior = sampleBehavior(entity.behavior, time, trackedBase);
-      const audioRaw = getAudioData();
-      const audio: OverlayAudioSnapshot = { bass: audioRaw.bass, mid: audioRaw.mid, treble: audioRaw.high, overall: audioRaw.energy, beat: audioRaw.beat };
+      const audio = getOverlayAudioData();
       const smoothed = reactionSmoothRef.current;
       for (const reaction of entity.reactions) {
         const next = sourceValue(reaction, audio);
@@ -127,7 +126,7 @@ export function OverlayEntityView({ entity, selected, index, count }: Props) {
   const setSwarm = (patch: Partial<OverlayEntity["swarm"]>) => patchEntity(entity.id, { swarm: { ...entity.swarm, ...patch } });
   const setTracking = (target: "off" | OverlayTrackingTarget) => patchEntity(entity.id, {
     tracking: target === "off" ? null : {
-      enabled: true, target, offsetX: 0, offsetY: 0, scaleWithTarget: target === "person", rotateWithTarget: false,
+      enabled: true, target, offsetX: 0, offsetY: 0, scaleWithTarget: target === "person" || target === "hand" || target === "face", rotateWithTarget: target === "hand" || target === "face",
     },
   });
   const reactionPreset = identifyReactionPreset(entity.reactions);
@@ -158,7 +157,7 @@ export function OverlayEntityView({ entity, selected, index, count }: Props) {
 
           <label className={`flex items-center gap-1 rounded-full border px-2 py-1 font-mono text-[7px] uppercase ${reactionPreset === "off" ? "border-white/10 text-white/45" : "border-cyan-300/30 text-cyan-200"}`}><Zap size={9} /><select aria-label="Audio reaction preset" value={reactionPreset} onChange={e => patchEntity(entity.id, { reactions: reactionsForPreset(e.target.value as ReactionPreset) })} className="bg-transparent text-inherit outline-none"><option value="off">React off</option><option value="bass-pulse">Bass pulse</option><option value="beat-punch">Beat punch</option><option value="mid-spin">Mid spin</option><option value="treble-flicker">Treble flicker</option><option value="overall-breathe">Volume breathe</option></select></label>
 
-          <label className={`flex items-center gap-1 rounded-full border px-2 py-1 font-mono text-[7px] uppercase ${trackingValue === "off" ? "border-white/10 text-white/45" : "border-emerald-300/35 text-emerald-200"}`}><Crosshair size={9} /><select aria-label="Tracking target" value={trackingValue} onChange={e => setTracking(e.target.value as "off" | OverlayTrackingTarget)} className="bg-transparent text-inherit outline-none"><option value="off">Track off</option><option value="person">Subject</option><option value="object">Object</option><option value="journey">Journey focus</option></select></label>
+          <label className={`flex items-center gap-1 rounded-full border px-2 py-1 font-mono text-[7px] uppercase ${trackingValue === "off" ? "border-white/10 text-white/45" : "border-emerald-300/35 text-emerald-200"}`}><Crosshair size={9} /><select aria-label="Tracking target" value={trackingValue} onChange={e => setTracking(e.target.value as "off" | OverlayTrackingTarget)} className="bg-transparent text-inherit outline-none"><option value="off">Track off</option><option value="hand">Hand</option><option value="face">Face</option><option value="person">Subject</option><option value="object">Object</option><option value="journey">Journey focus</option></select></label>
 
           <button className={`flex items-center gap-1 rounded-full border px-2 py-1 font-mono text-[7px] uppercase ${entity.swarm.enabled ? "border-fuchsia-300/40 text-fuchsia-200" : "border-white/10 text-white/45"}`} title="Toggle Swarm" onClick={() => setSwarm({ enabled: !entity.swarm.enabled })}><Sparkles size={9} />Swarm</button>
           {entity.swarm.enabled && <>
