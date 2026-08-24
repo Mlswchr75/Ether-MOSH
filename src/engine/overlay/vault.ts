@@ -3,6 +3,11 @@ import type { OverlayAsset } from "./types";
 const DB_NAME = "ether-mosh-overlay-vault";
 const DB_VERSION = 1;
 const STORE = "assets";
+export const OVERLAY_VAULT_CHANGED_EVENT = "mosh:overlay-vault-changed";
+
+function notifyVaultChanged() {
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(OVERLAY_VAULT_CHANGED_EVENT));
+}
 
 export type OverlayVaultRecord = {
   id: string;
@@ -33,9 +38,30 @@ function transact<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore, reso
   return openVault().then(db => new Promise<T>((resolve, reject) => {
     const tx = db.transaction(STORE, mode);
     const store = tx.objectStore(STORE);
-    tx.oncomplete = () => db.close();
-    tx.onerror = () => { db.close(); reject(tx.error ?? new Error("Sticker Vault transaction failed.")); };
-    run(store, resolve, reject);
+    let result!: T;
+    let hasResult = false;
+    let settled = false;
+    const finishReject = (error: unknown) => {
+      if (settled) return;
+      settled = true;
+      db.close();
+      reject(error);
+    };
+    tx.oncomplete = () => {
+      if (settled) return;
+      settled = true;
+      db.close();
+      if (hasResult) resolve(result);
+      else reject(new Error("Sticker Vault transaction completed without a result."));
+    };
+    tx.onerror = () => finishReject(tx.error ?? new Error("Sticker Vault transaction failed."));
+    tx.onabort = () => finishReject(tx.error ?? new Error("Sticker Vault transaction was interrupted."));
+    try {
+      run(store, value => { result = value; hasResult = true; }, finishReject);
+    } catch (error) {
+      try { tx.abort(); } catch {}
+      finishReject(error);
+    }
   }));
 }
 
@@ -66,6 +92,7 @@ export async function saveOverlayAsset(asset: OverlayAsset, sourceBlob?: Blob): 
     request.onsuccess = () => resolve();
     request.onerror = () => reject(request.error);
   });
+  notifyVaultChanged();
   return record;
 }
 
@@ -91,6 +118,7 @@ export async function updateOverlayVaultMeta(id: string, patch: { name?: string;
     request.onsuccess = () => resolve();
     request.onerror = () => reject(request.error);
   });
+  notifyVaultChanged();
   return next;
 }
 
@@ -100,6 +128,7 @@ export async function removeOverlayAsset(id: string): Promise<void> {
     request.onsuccess = () => resolve();
     request.onerror = () => reject(request.error);
   });
+  notifyVaultChanged();
 }
 
 export async function listOverlayVault(): Promise<OverlayVaultRecord[]> {

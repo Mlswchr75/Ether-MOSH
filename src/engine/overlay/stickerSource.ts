@@ -32,6 +32,30 @@ export function resolveStickerSource({
   return { kind: "forge-render", canvas: forgeCanvas };
 }
 
+/** Subject isolation improves a Forge capture, but must never be a hard
+ * dependency for saving it. Mobile browsers can reject or run out of memory
+ * while loading the segmentation model; in that case the complete rendered
+ * composition remains a valid sticker source. */
+export async function withOptionalForgeIsolation(
+  source: Exclude<StickerSource, null>,
+  isolate: (canvas: HTMLCanvasElement) => Promise<MaskResult[]>,
+  onFallback?: (error: unknown) => void,
+): Promise<Exclude<StickerSource, null>> {
+  if (source.kind !== "forge-render") return source;
+  try {
+    const subjects = await isolate(source.canvas);
+    return resolveStickerSource({
+      selectedOverlay: null,
+      sourceMode: "forge",
+      forgeCanvas: source.canvas,
+      isolatedSubjects: subjects,
+    }) ?? source;
+  } catch (error) {
+    onFallback?.(error);
+    return source;
+  }
+}
+
 function mergeSubjects(subjects: MaskResult[]): MaskResult | null {
   const first = subjects[0];
   if (!first) return null;
@@ -45,24 +69,27 @@ function mergeSubjects(subjects: MaskResult[]): MaskResult | null {
 
 async function blobFromCanvas(canvas: HTMLCanvasElement): Promise<Blob> {
   const copy = document.createElement("canvas");
-  copy.width = canvas.width;
-  copy.height = canvas.height;
+  const maxDimension = 1536;
+  const scale = Math.min(1, maxDimension / Math.max(canvas.width, canvas.height));
+  copy.width = Math.max(1, Math.round(canvas.width * scale));
+  copy.height = Math.max(1, Math.round(canvas.height * scale));
   const ctx = copy.getContext("2d");
   if (!ctx) throw new Error("Could not prepare the Forge render.");
-  ctx.drawImage(canvas, 0, 0);
-  return new Promise((resolve, reject) => copy.toBlob(
-    blob => blob ? resolve(blob) : reject(new Error("Could not encode the Forge render.")),
-    "image/webp",
-    0.94,
-  ));
+  ctx.drawImage(canvas, 0, 0, copy.width, copy.height);
+  const encode = (type: string, quality?: number) => new Promise<Blob | null>(resolve => copy.toBlob(resolve, type, quality));
+  const webp = await encode("image/webp", 0.9);
+  if (webp) return webp;
+  const png = await encode("image/png");
+  if (png) return png;
+  throw new Error("This browser could not encode the Forge render.");
 }
 
 export async function assetFromStickerSource(source: Exclude<StickerSource, null>): Promise<{ asset: OverlayAsset; blob?: Blob; revoke: () => void }> {
   if (source.kind === "overlay") return { asset: source.asset, revoke: () => undefined };
 
   let blob: Blob;
-  let width = source.canvas.width;
-  let height = source.canvas.height;
+  let width = Math.min(source.canvas.width, Math.round(source.canvas.width * Math.min(1, 1536 / Math.max(source.canvas.width, source.canvas.height))));
+  let height = Math.min(source.canvas.height, Math.round(source.canvas.height * Math.min(1, 1536 / Math.max(source.canvas.width, source.canvas.height))));
   if (source.kind === "forge-subject") {
     const mask = mergeSubjects(source.subjects);
     const composited = mask && stickerEngine.compositeFrame(source.canvas, mask.data, mask.width, mask.height);

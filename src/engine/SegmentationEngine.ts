@@ -1,6 +1,9 @@
 import { FilesetResolver, ImageSegmenter, InteractiveSegmenter } from "@mediapipe/tasks-vision";
 
-const WASM = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.15/wasm";
+// Keep the WASM graph runtime aligned with the installed JS package. Mixing
+// 0.10.35 JS with the old 0.10.15 graph registry made InteractiveSegmenter
+// fail with "No registered object ... InteractiveSegmenterGraphV2".
+const WASM = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/wasm";
 const SELFIE_MODEL = "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite";
 const TOUCH_MODEL  = "https://storage.googleapis.com/mediapipe-models/interactive_segmenter/magic_touch/float32/1/magic_touch.tflite";
 

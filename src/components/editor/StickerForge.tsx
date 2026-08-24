@@ -10,7 +10,7 @@ import { buildVectorStickerLottie } from "@/engine/overlay/vectorLottie";
 import { currentOverlayPerformanceBudget } from "@/engine/overlay/performanceBudget";
 import { useStore } from "@/store/useStore";
 import { segmentationEngine } from "@/engine/SegmentationEngine";
-import { assetFromStickerSource, resolveStickerSource } from "@/engine/overlay/stickerSource";
+import { assetFromStickerSource, resolveStickerSource, withOptionalForgeIsolation } from "@/engine/overlay/stickerSource";
 
 type Mode = "auto" | "universal" | "vector";
 const PRESETS: StickerLottiePreset[] = ["float", "pulse", "wobble", "spin", "bounce", "flicker", "breathe", "orbit", "jitter", "glitch"];
@@ -49,14 +49,12 @@ export function StickerForge() {
       const liveCanvas = glCanvas ?? document.querySelector<HTMLCanvasElement>("canvas[data-mosh-canvas]");
       let resolved = resolveStickerSource({ selectedOverlay: selected, sourceMode, forgeCanvas: liveCanvas });
       if (!resolved) throw new Error("The Forge render is not ready yet.");
-      if (resolved.kind === "forge-render") {
+      resolved = await withOptionalForgeIsolation(resolved, async canvas => {
         await segmentationEngine.loadTap();
-        if (segmentationEngine.isTapReady()) {
-          const points = segmentationEngine.analyzeSaliency(resolved.canvas, 3);
-          const subjects = await segmentationEngine.segmentMultiPoint(resolved.canvas, points);
-          resolved = resolveStickerSource({ selectedOverlay: null, sourceMode, forgeCanvas: resolved.canvas, isolatedSubjects: subjects }) ?? resolved;
-        }
-      }
+        if (!segmentationEngine.isTapReady()) return [];
+        const points = segmentationEngine.analyzeSaliency(canvas, 3);
+        return segmentationEngine.segmentMultiPoint(canvas, points);
+      }, error => console.warn("[sticker-forge] subject isolation unavailable; animating complete Forge render", error));
       const prepared = await assetFromStickerSource(resolved);
       revokePrepared = prepared.revoke;
       const sourceBlob: Blob = prepared.blob ?? await fetch(prepared.asset.url).then(r => { if (!r.ok) throw new Error(`Source unavailable (${r.status})`); return r.blob(); });
@@ -87,7 +85,7 @@ export function StickerForge() {
   };
 
   return <div className="pointer-events-auto relative">
-    <button type="button" disabled={!selected && !forgeAvailable} onClick={() => setOpen(v => !v)} className="flex items-center gap-1.5 rounded-full border border-violet-300/25 bg-black/70 px-2.5 py-2 font-mono text-[8px] uppercase tracking-[0.12em] text-violet-100 backdrop-blur-md disabled:opacity-25"><WandSparkles size={11}/> Forge</button>
+    <button type="button" disabled={!selected && !forgeAvailable} onClick={() => setOpen(v => !v)} title="Animate the selected sticker or current Forge render as a transparent Lottie" className="flex items-center gap-1.5 rounded-full border border-violet-300/25 bg-black/70 px-2.5 py-2 font-mono text-[8px] uppercase tracking-[0.12em] text-violet-100 backdrop-blur-md disabled:opacity-25"><WandSparkles size={11}/> Forge Lottie</button>
     {open && <div className="absolute bottom-11 left-1/2 z-[120] w-[min(92vw,22rem)] -translate-x-1/2 rounded-2xl border border-violet-300/20 bg-black/95 p-3 shadow-2xl backdrop-blur-xl">
       <div className="flex items-start justify-between gap-2"><div><p className="font-mono text-[9px] uppercase tracking-[0.2em] text-violet-200">Sticker Forge</p><p className="mt-1 font-mono text-[7px] uppercase tracking-[0.1em] text-white/35">transparent animated Lottie output</p></div><button type="button" onClick={() => setOpen(false)} className="rounded-full p-1.5 text-white/45 hover:bg-white/10 hover:text-white"><X size={12}/></button></div>
       <div className="mt-3 grid grid-cols-3 gap-1">{(["auto","universal","vector"] as Mode[]).map(v => <button key={v} type="button" onClick={() => setMode(v)} className={`rounded-full border px-2 py-1.5 font-mono text-[7px] uppercase ${mode===v ? "border-violet-300/45 bg-violet-400/10 text-violet-100" : "border-white/10 text-white/45"}`}>{v}</button>)}</div>

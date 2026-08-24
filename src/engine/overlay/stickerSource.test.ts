@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { OverlayEntity } from "./types";
-import { resolveStickerSource } from "./stickerSource";
+import { resolveStickerSource, withOptionalForgeIsolation } from "./stickerSource";
 
 const canvas = Object.assign(document.createElement("canvas"), { width: 512, height: 512 });
 const overlay = { asset: { id: "overlay-asset" } } as OverlayEntity;
@@ -39,5 +39,20 @@ describe("resolveStickerSource", () => {
       sourceMode: "forge",
       forgeCanvas: canvas,
     })?.kind).toBe("forge-render");
+  });
+
+  it("falls back to the complete Forge render when isolation fails", async () => {
+    const source = resolveStickerSource({ selectedOverlay: null, sourceMode: "forge", forgeCanvas: canvas });
+    const fallback = vi.fn();
+    const resolved = await withOptionalForgeIsolation(source!, async () => { throw new Error("model unavailable"); }, fallback);
+    expect(resolved).toEqual({ kind: "forge-render", canvas });
+    expect(fallback).toHaveBeenCalledOnce();
+  });
+
+  it("keeps every detected subject for a multi-subject Forge sticker", async () => {
+    const source = resolveStickerSource({ selectedOverlay: null, sourceMode: "forge", forgeCanvas: canvas });
+    const subjects = [subject, { ...subject, data: new Float32Array([0.25]) }];
+    const resolved = await withOptionalForgeIsolation(source!, async () => subjects);
+    expect(resolved).toMatchObject({ kind: "forge-subject", subjects });
   });
 });

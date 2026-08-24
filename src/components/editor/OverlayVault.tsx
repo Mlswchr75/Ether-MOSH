@@ -7,16 +7,14 @@ import {
   removeOverlayAsset,
   saveOverlayAsset,
   updateOverlayVaultMeta,
+  OVERLAY_VAULT_CHANGED_EVENT,
   type OverlayVaultRecord,
 } from "@/engine/overlay/vault";
 import { filterVaultRecords } from "@/engine/overlay/vaultSearch";
-import { blobToPngDataUrl, buildStickerLottie, lottieJsonBlob, type StickerLottiePreset } from "@/engine/overlay/stickerLottie";
 import { useOverlayStore } from "@/store/useOverlayStore";
 import { useStore } from "@/store/useStore";
 import { segmentationEngine } from "@/engine/SegmentationEngine";
-import { assetFromStickerSource, resolveStickerSource } from "@/engine/overlay/stickerSource";
-
-const LOTTIE_PRESETS: StickerLottiePreset[] = ["float", "pulse", "wobble", "spin", "bounce", "flicker"];
+import { assetFromStickerSource, resolveStickerSource, withOptionalForgeIsolation } from "@/engine/overlay/stickerSource";
 
 export function OverlayVault() {
   const [open, setOpen] = useState(false);
@@ -24,7 +22,6 @@ export function OverlayVault() {
   const [busy, setBusy] = useState(false);
   const [query, setQuery] = useState("");
   const [favoritesOnly, setFavoritesOnly] = useState(false);
-  const [lottiePreset, setLottiePreset] = useState<StickerLottiePreset>("float");
   const selectedId = useOverlayStore(s => s.selectedId);
   const selected = useOverlayStore(s => s.entities.find(entity => entity.id === selectedId) ?? null);
   const addAsset = useOverlayStore(s => s.addAsset);
@@ -37,6 +34,11 @@ export function OverlayVault() {
     catch (error) { console.warn("[overlay-vault] load failed", error); }
   }, []);
   useEffect(() => { if (open) void refresh(); }, [open, refresh]);
+  useEffect(() => {
+    const changed = () => { if (open) void refresh(); };
+    window.addEventListener(OVERLAY_VAULT_CHANGED_EVENT, changed);
+    return () => window.removeEventListener(OVERLAY_VAULT_CHANGED_EVENT, changed);
+  }, [open, refresh]);
 
   const visibleRecords = useMemo(() => filterVaultRecords(records, query, favoritesOnly), [records, query, favoritesOnly]);
   const previews = useMemo(() => {
@@ -53,14 +55,12 @@ export function OverlayVault() {
       const liveCanvas = glCanvas ?? document.querySelector<HTMLCanvasElement>("canvas[data-mosh-canvas]");
       let resolved = resolveStickerSource({ selectedOverlay: selected, sourceMode, forgeCanvas: liveCanvas });
       if (!resolved) throw new Error("The Forge render is not ready yet.");
-      if (resolved.kind === "forge-render") {
+      resolved = await withOptionalForgeIsolation(resolved, async canvas => {
         await segmentationEngine.loadTap();
-        if (segmentationEngine.isTapReady()) {
-          const points = segmentationEngine.analyzeSaliency(resolved.canvas, 3);
-          const subjects = await segmentationEngine.segmentMultiPoint(resolved.canvas, points);
-          resolved = resolveStickerSource({ selectedOverlay: null, sourceMode, forgeCanvas: resolved.canvas, isolatedSubjects: subjects }) ?? resolved;
-        }
-      }
+        if (!segmentationEngine.isTapReady()) return [];
+        const points = segmentationEngine.analyzeSaliency(canvas, 3);
+        return segmentationEngine.segmentMultiPoint(canvas, points);
+      }, error => console.warn("[overlay-vault] subject isolation unavailable; saving complete Forge render", error));
       const prepared = await assetFromStickerSource(resolved);
       try { await saveOverlayAsset(prepared.asset, prepared.blob); }
       finally { prepared.revoke(); }
@@ -69,48 +69,7 @@ export function OverlayVault() {
       setOpen(true);
     } catch (error) {
       console.error("[overlay-vault] save failed", error);
-      toast.error("Couldn't forge that sticker into the Vault.");
-    } finally { setBusy(false); }
-  };
-
-  const forgeLottie = async () => {
-    if (!selected || busy) return;
-    if (selected.asset.kind === "lottie-json" || selected.asset.kind === "dotlottie") {
-      toast.info("That overlay is already a Lottie.");
-      return;
-    }
-    setBusy(true);
-    try {
-      const sourceBlob = await fetch(selected.asset.url).then(response => {
-        if (!response.ok) throw new Error(`Sticker source unavailable (${response.status})`);
-        return response.blob();
-      });
-      const imageDataUrl = await blobToPngDataUrl(sourceBlob);
-      const width = selected.asset.width ?? 512;
-      const height = selected.asset.height ?? 512;
-      const name = `${selected.asset.name || "MOSH Sticker"} · ${lottiePreset}`;
-      const json = buildStickerLottie({ name, width, height, imageDataUrl, preset: lottiePreset });
-      const blob = lottieJsonBlob(json);
-      const asset = {
-        id: crypto.randomUUID(),
-        name,
-        kind: "lottie-json" as const,
-        url: URL.createObjectURL(blob),
-        mimeType: "application/json",
-        width,
-        height,
-        animated: true,
-        createdAt: Date.now(),
-        objectUrl: true,
-      };
-      addAsset(asset);
-      await saveOverlayAsset(asset);
-      await refresh();
-      setOpen(true);
-      toast.success(`Transparent ${lottiePreset} Lottie forged`);
-    } catch (error) {
-      console.error("[overlay-vault] Lottie forge failed", error);
-      toast.error("Couldn't forge that sticker as a Lottie.");
+      toast.error(error instanceof Error ? `Couldn't save sticker: ${error.message}` : "Couldn't save that sticker to the Vault.");
     } finally { setBusy(false); }
   };
 
@@ -136,13 +95,7 @@ export function OverlayVault() {
 
   return <>
     <div className="pointer-events-auto flex flex-wrap items-center gap-1">
-      <button type="button" disabled={(!selected && !forgeAvailable) || busy} onClick={() => void saveSelected()} className="flex items-center gap-1.5 rounded-full border border-cyan-300/20 bg-black/70 px-2.5 py-2 font-mono text-[8px] uppercase tracking-[0.12em] text-cyan-100 backdrop-blur-md transition hover:border-cyan-300/45 disabled:opacity-25" title={selected ? "Save selected overlay as a reusable sticker" : forgeAvailable ? "Forge the current render as a reusable sticker" : "Choose a visual source first"}><WandSparkles size={11} /> Make Sticker</button>
-      <label className="flex items-center rounded-full border border-violet-300/20 bg-black/70 pl-2 font-mono text-[8px] uppercase text-violet-100 backdrop-blur-md">
-        <select value={lottiePreset} onChange={e => setLottiePreset(e.target.value as StickerLottiePreset)} className="bg-transparent py-2 pr-1 text-[8px] uppercase outline-none" aria-label="Lottie animation preset">
-          {LOTTIE_PRESETS.map(preset => <option key={preset} value={preset} className="bg-black">{preset}</option>)}
-        </select>
-        <button type="button" disabled={!selected || busy} onClick={() => void forgeLottie()} className="flex items-center gap-1 border-l border-violet-300/15 px-2.5 py-2 disabled:opacity-25" title="Convert the selected isolated sticker into a transparent-background Lottie"><WandSparkles size={11} /> Lottie</button>
-      </label>
+      <button type="button" disabled={(!selected && !forgeAvailable) || busy} onClick={() => void saveSelected()} className="flex items-center gap-1.5 rounded-full border border-cyan-300/20 bg-black/70 px-2.5 py-2 font-mono text-[8px] uppercase tracking-[0.12em] text-cyan-100 backdrop-blur-md transition hover:border-cyan-300/45 disabled:opacity-25" title={selected ? "Save the selected overlay as a reusable static sticker in the Vault" : forgeAvailable ? "Capture the current Forge render as a reusable static sticker in the Vault" : "Select an overlay or switch to Forge first"}><WandSparkles size={11} /> {busy ? "Saving…" : "Make Sticker"}</button>
       <button type="button" onClick={() => setOpen(value => !value)} className={`flex items-center gap-1.5 rounded-full border bg-black/70 px-3 py-2 font-mono text-[9px] uppercase tracking-[0.16em] backdrop-blur-md transition ${open ? "border-cyan-300/40 text-cyan-200" : "border-white/15 text-white/70 hover:border-white/30 hover:text-white"}`} title="Sticker Vault"><Library size={12} /> Vault</button>
     </div>
 
@@ -157,7 +110,7 @@ export function OverlayVault() {
         <button type="button" onClick={() => setFavoritesOnly(v => !v)} className={`flex items-center gap-1 rounded-full border px-2 py-1.5 font-mono text-[8px] uppercase ${favoritesOnly ? "border-amber-300/40 text-amber-200" : "border-white/10 text-white/45"}`}><Star size={9} fill={favoritesOnly ? "currentColor" : "none"} /> Favorites</button>
       </div>
 
-      {records.length === 0 ? <div className="rounded-xl border border-dashed border-white/10 px-4 py-8 text-center font-mono text-[8px] uppercase tracking-[0.15em] text-white/30">Capture, select an overlay, or use Forge, then Make Sticker or Lottie.</div> : visibleRecords.length === 0 ? <div className="rounded-xl border border-dashed border-white/10 px-4 py-7 text-center font-mono text-[8px] uppercase text-white/30">No Vault items match that filter.</div> :
+      {records.length === 0 ? <div className="rounded-xl border border-dashed border-white/10 px-4 py-8 text-center font-mono text-[8px] uppercase tracking-[0.15em] text-white/30">Make Sticker saves a static reusable cutout. Forge Lottie creates an animated version.</div> : visibleRecords.length === 0 ? <div className="rounded-xl border border-dashed border-white/10 px-4 py-7 text-center font-mono text-[8px] uppercase text-white/30">No Vault items match that filter.</div> :
       <div className="grid max-h-[22rem] grid-cols-2 gap-2 overflow-y-auto sm:grid-cols-3">
         {visibleRecords.map(record => {
           const lottie = record.kind === "lottie-json" || record.kind === "dotlottie";
