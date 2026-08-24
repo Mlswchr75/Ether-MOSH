@@ -6,6 +6,7 @@ const TOUCH_MODEL  = "https://storage.googleapis.com/mediapipe-models/interactiv
 
 export type MaskResult     = { data: Float32Array; width: number; height: number };
 export type SaliencyPoint  = { x: number; y: number; score: number };
+export type SegmentableSource = HTMLVideoElement | HTMLCanvasElement;
 
 class SegmentationEngine {
   private autoSeg: ImageSegmenter | null = null;
@@ -62,8 +63,8 @@ class SegmentationEngine {
     return s / mask.length;
   }
 
-  /** Analyze a video frame for visually interesting regions via color-variance + center-bias saliency */
-  analyzeSaliency(video: HTMLVideoElement, maxPoints = 3): SaliencyPoint[] {
+  /** Analyze a rendered frame for visually interesting regions via color-variance + center-bias saliency. */
+  analyzeSaliency(source: SegmentableSource, maxPoints = 3): SaliencyPoint[] {
     const S = 32;
     if (!this._salCanvas) {
       this._salCanvas = document.createElement('canvas');
@@ -73,7 +74,7 @@ class SegmentationEngine {
     const sc = this._salCanvas;
     const tc = sc.getContext('2d', { willReadFrequently: true });
     if (!tc) return [{ x: 0.5, y: 0.5, score: 1 }];
-    tc.drawImage(video, 0, 0, S, S);
+    tc.drawImage(source, 0, 0, S, S);
     const px = tc.getImageData(0, 0, S, S).data;
 
     const cells = 8, cs = S / cells;
@@ -109,7 +110,7 @@ class SegmentationEngine {
     return kept.length ? kept : [{ x: 0.5, y: 0.5, score: 1 }];
   }
 
-  async segmentMultiPoint(src: HTMLVideoElement, points: SaliencyPoint[]): Promise<MaskResult[]> {
+  async segmentMultiPoint(src: SegmentableSource, points: SaliencyPoint[]): Promise<MaskResult[]> {
     if (!this.tapSeg || !this.tapReady) return [];
     const out: MaskResult[] = [];
     for (const pt of points) {
@@ -120,7 +121,7 @@ class SegmentationEngine {
   }
 
   async segmentFromPoint(
-    src: HTMLVideoElement,
+    src: SegmentableSource,
     normX: number,
     normY: number,
   ): Promise<MaskResult | null> {
