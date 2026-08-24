@@ -22,19 +22,19 @@
 # connect-src: Supabase (data + edge functions, http and ws), Stripe's
 # API, and the same MediaPipe hosts above (model/wasm fetch, not just
 # script load).
-# frame-src: Stripe's embedded checkout iframe.
+# frame-src: Stripe embedded checkout, Stripe.js, 3-D Secure, and Link payment frames.
 [[headers]]
   for = "/*"
   [headers.values]
     Content-Security-Policy = '''
       default-src 'self';
-      script-src 'self' https://js.stripe.com https://cdn.jsdelivr.net 'wasm-unsafe-eval';
+      script-src 'self' https://js.stripe.com https://*.js.stripe.com https://checkout.stripe.com https://cdn.jsdelivr.net 'wasm-unsafe-eval';
       style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
       font-src 'self' https://fonts.gstatic.com;
-      img-src 'self' data: blob: https://cdn.shopify.com;
+      img-src 'self' data: blob: https://cdn.shopify.com https://*.stripe.com https://*.link.com;
       media-src 'self' blob:;
-      connect-src 'self' https://udtrjwredttzvdixtwla.supabase.co wss://udtrjwredttzvdixtwla.supabase.co https://api.stripe.com https://cdn.jsdelivr.net https://storage.googleapis.com https://cdn.shopify.com;
-      frame-src https://js.stripe.com;
+      connect-src 'self' https://udtrjwredttzvdixtwla.supabase.co wss://udtrjwredttzvdixtwla.supabase.co https://api.stripe.com https://checkout.stripe.com https://link.com https://*.link.com https://cdn.jsdelivr.net https://storage.googleapis.com https://cdn.shopify.com;
+      frame-src https://js.stripe.com https://*.js.stripe.com https://checkout.stripe.com https://hooks.stripe.com https://link.com https://*.link.com;
       worker-src 'self' blob:;
       object-src 'none';
       base-uri 'self';
