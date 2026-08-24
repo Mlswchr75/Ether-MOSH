@@ -63,6 +63,38 @@ export async function exportCanvas(
   });
 }
 
+/**
+ * Save a PNG while the original tap/key event is still active.
+ *
+ * `canvas.toBlob()` is asynchronous. If a capture spends time scanning frames
+ * first, many mobile browsers no longer consider its later anchor click a
+ * user-initiated download and silently discard it. This deliberately uses the
+ * synchronous data-URL path for the camera/screenshot trigger only, so the
+ * device receives the save request inside the actual gesture.
+ */
+export function downloadCanvasPngNow(canvas: HTMLCanvasElement, filename: string, scale = 1): void {
+  const targetScale = Math.max(0.1, Math.min(1, scale));
+  const w = Math.max(1, Math.round(canvas.width * targetScale));
+  const h = Math.max(1, Math.round(canvas.height * targetScale));
+  const composed = document.createElement("canvas");
+  composed.width = w;
+  composed.height = h;
+  const ctx = composed.getContext("2d");
+  if (!ctx) throw new Error("Screenshot canvas unavailable");
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(canvas, 0, 0, w, h);
+  drawOverlayStageInto(ctx, w, h);
+
+  const a = document.createElement("a");
+  a.href = composed.toDataURL("image/png");
+  a.download = filename;
+  a.style.display = "none";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
 export async function remasterCanvas(canvas: HTMLCanvasElement, scale = 2): Promise<HTMLCanvasElement> {
   const maxLongEdge = 4096;
   const requestedScale = Math.max(1, Math.min(4, scale));

@@ -12,7 +12,7 @@ import { FxPicker } from "@/components/editor/FxPicker";
 import { ShufflePanel } from "@/components/editor/ShufflePanel";
 import { ParamDock } from "@/components/editor/ParamDock";
 import { BeatPanel } from "@/components/editor/BeatPanel";
-import { exportCanvas, downloadBlob, remasterCanvas } from "@/engine/export";
+import { downloadCanvasPngNow, exportCanvas, downloadBlob, remasterCanvas } from "@/engine/export";
 import { captureBestFrame } from "@/engine/bestFrame";
 import { captureLoopingGif } from "@/engine/gifCapture";
 import { CanvasRecorder } from "@/engine/recorder";
@@ -201,10 +201,9 @@ export default function Editor() {
   const [gifBusy, setGifBusy] = useState(false);
   const [gifProgress, setGifProgress] = useState(0);
   const [actionConfirm, setActionConfirm] = useState<{
-    type: "screenshot" | "gif" | "record";
+    type: "gif" | "record";
     onConfirm: () => void;
   } | null>(null);
-  const [screenshotScanning, setScreenshotScanning] = useState(false);
   const shellRef = useRef<HTMLElement>(null);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const [showFirstTip, setShowFirstTip] = useState(false);
@@ -937,57 +936,29 @@ export default function Editor() {
     });
   }, []);
 
-  const takeScreenshot = async () => {
+  const takeScreenshot = () => {
     if (isForge && !paywall.isSupporter) {
       paywall.require("Forge screenshot export");
       return;
     }
     const c = getCanvas();
     if (!c) return;
-
-    setActionConfirm({
-      type: "screenshot",
-      onConfirm: async () => {
-        setActionConfirm(null);
-        setScreenshotScanning(true);
-        toast.loading("Analyzing frames for best quality…", { duration: 1500 });
-
-        try {
-          // Scan the next ~0.9s for the best frame -- seam-aware when tile
-          // mode is on (captureBestFrame's preferSeamless scores edge
-          // continuity too, same mechanism exportBestStill already uses for
-          // seamless remasters), plain sharpness/colorfulness otherwise.
-          const bestCanvas = await captureBestFrame(c, {
-            durationMs: 900,
-            intervalMs: 80,
-            sampleSize: 128,
-            preferSeamless: tileMode !== "none",
-          });
-
-          // Free tier caps export at 720px on the long edge. Supporters get full res.
-          const longEdge = Math.max(bestCanvas.width, bestCanvas.height);
-          const scale = paywall.isSupporter ? 1 : Math.min(1, 720 / longEdge);
-          const blob = await exportCanvas(bestCanvas, { format: "png", scale, aspect: null });
-          const filename = `mosh-${Date.now()}.png`;
-          // A capture should always export. Sharing first opened a native
-          // sheet on some devices and left users with no saved image at all.
-          // Sharing remains available from the dedicated Share trigger.
-          downloadBlob(blob, filename);
-          toast.success(paywall.isSupporter ? "Screenshot exported" : "Screenshot exported (720p · unlock for full res)", {
-            description: "Saved to downloads · C or three-finger tap to capture",
-            duration: 3200,
-          });
-        } catch (e) {
-          toast.error("Screenshot failed");
-        } finally {
-          setScreenshotScanning(false);
-          // shareOrDownload already marks activity on its own exit paths —
-          // this covers the case where capture/export itself throws before
-          // ever reaching share, so the chrome can't be left hidden either way.
-          markUiActive();
-        }
-      },
-    });
+    try {
+      // This must remain synchronous with the camera-button/key/touch event:
+      // phones regularly block a download that starts after a best-frame scan.
+      // The dedicated Still export retains that slower scan/remaster workflow.
+      const longEdge = Math.max(c.width, c.height);
+      const scale = paywall.isSupporter ? 1 : Math.min(1, 720 / longEdge);
+      downloadCanvasPngNow(c, `mosh-${Date.now()}.png`, scale);
+      toast.success(paywall.isSupporter ? "Screenshot saving" : "Screenshot saving (720p · unlock for full res)", {
+        description: "Saved to this device's downloads/photos flow · C or three-finger tap to capture",
+        duration: 3200,
+      });
+    } catch {
+      toast.error("Screenshot failed");
+    } finally {
+      markUiActive();
+    }
   };
 
   const shareCurrent = useCallback(async () => {
@@ -2286,24 +2257,16 @@ export default function Editor() {
       {actionConfirm && (
         <ActionConfirmation
           title={
-            actionConfirm.type === "screenshot"
-              ? screenshotScanning
-                ? "Scanning frames…"
-                : "Capture screenshot?"
-              : actionConfirm.type === "gif"
+            actionConfirm.type === "gif"
               ? "Capture 7s GIF?"
               : "Start recording?"
           }
           subtitle={
-            actionConfirm.type === "screenshot"
-              ? screenshotScanning
-                ? "Finding the crispest frame…"
-                : "Will analyze next 0.75s for best quality"
-              : actionConfirm.type === "gif"
+            actionConfirm.type === "gif"
               ? "7 seconds · creates seamless loop"
               : undefined
           }
-          autoConfirmMs={actionConfirm.type === "screenshot" && screenshotScanning ? null : 0}
+          autoConfirmMs={0}
           onConfirm={actionConfirm.onConfirm}
           onCancel={() => setActionConfirm(null)}
         />
