@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from "react";
-import { Download, RotateCw, Upload } from "lucide-react";
+import { Download, Grid2X2, RotateCw, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { useStore } from "@/store/useStore";
 import { MoshRenderer, type RenderLayer } from "@/engine/Renderer";
@@ -30,6 +30,8 @@ export function ForgePanel() {
   const setForgeIntensity = useStore(s => s.setForgeIntensity);
   const setForgeSeamless = useStore(s => s.setForgeSeamless);
   const setForgeBaseImage = useStore(s => s.setForgeBaseImage);
+  const setForgeMosaic = useStore(s => s.setForgeMosaic);
+  const setForgeMosaicDensity = useStore(s => s.setForgeMosaicDensity);
   const setForgeOverlay = useStore(s => s.setForgeOverlay);
   const reseedForge = useStore(s => s.reseedForge);
 
@@ -43,7 +45,7 @@ export function ForgePanel() {
     img.onload = () => {
       setForgeBaseImage(img, file.name);
       setSeam(null);
-      toast.success("Base image loaded", { description: "Pattern now builds on top of it" });
+      toast.success("Photo loaded", { description: "Turn on photo mosaic to multiply it into a live field" });
     };
     img.onerror = () => { URL.revokeObjectURL(url); toast.error("Couldn't read that image"); };
     img.src = url;
@@ -224,6 +226,28 @@ export function ForgePanel() {
             >
               remove
             </button>
+            <button
+              type="button"
+              onClick={() => setForgeMosaic(!forge.mosaicEnabled)}
+              className={`mt-2 flex w-full items-center justify-between font-mono text-[9px] uppercase tracking-[0.15em] transition ${
+                forge.mosaicEnabled ? "text-accent" : "text-foreground/50 hover:text-foreground/80"
+              }`}
+            >
+              <span className="flex items-center gap-1"><Grid2X2 className="h-3 w-3" /> photo mosaic</span>
+              <span>{forge.mosaicEnabled ? "on" : "off"}</span>
+            </button>
+            {forge.mosaicEnabled && (
+              <>
+                <p className="mt-2 font-mono text-[8px] uppercase tracking-[0.15em] text-foreground/40">repeat density</p>
+                <input
+                  type="range" min={0} max={1} step={0.05}
+                  value={forge.mosaicDensity}
+                  onChange={(e) => setForgeMosaicDensity(parseFloat(e.target.value))}
+                  className="mt-1 w-full accent-[hsl(var(--accent))]"
+                  aria-label="Photo mosaic repeat density"
+                />
+              </>
+            )}
             <input
               type="range" min={0} max={1} step={0.05}
               value={forge.overlay}

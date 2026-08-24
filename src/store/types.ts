@@ -95,6 +95,10 @@ export type ForgeState = {
   /** Optional photo the generated pattern composites over. */
   baseImage: HTMLImageElement | null;
   baseName: string | null;
+  /** Repeat the uploaded base photo into a crop-varied field before MOSH. */
+  mosaicEnabled: boolean;
+  /** 0..1: cells on the short edge, from a loose 3-up field to 18-up. */
+  mosaicDensity: number;
   /** How much of the generated field sits over `baseImage`, 0..1. */
   overlay: number;
   /** Id of the generator currently producing Forge's source imagery. */

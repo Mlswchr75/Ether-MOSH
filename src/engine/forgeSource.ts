@@ -6,6 +6,7 @@ import { applyKaleidoscope } from "./forgeKaleidoscope";
 import { applyFinishingGlow } from "./forgeFinishing";
 import type { VolumetricBloomRenderer } from "./volumetricBloom";
 import { hexToRgb } from "./seamlessSource";
+import { drawPhotoMosaic } from "./photoMosaic";
 
 /**
  * Lazy-loaded: volumetricBloom.ts pulls in all of Three.js for its own
@@ -221,11 +222,15 @@ export function paintForgeSource(
     const img = forge.baseImage;
     const iw = img.naturalWidth || img.width;
     const ih = img.naturalHeight || img.height;
-    const scale = Math.max(w / iw, h / ih);
-    const dw = iw * scale;
-    const dh = ih * scale;
     ctx.clearRect(0, 0, w, h);
-    ctx.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
+    if (forge.mosaicEnabled) {
+      drawPhotoMosaic(ctx, img, iw, ih, w, h, forge.mosaicDensity, forge.seed);
+    } else {
+      const scale = Math.max(w / iw, h / ih);
+      const dw = iw * scale;
+      const dh = ih * scale;
+      ctx.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
+    }
     if (forge.overlay > 0.01) {
       renderGeneratorInto(runtime.scratchACtx, w, h, t, seed, palette, forge.intensity, audio, forge.activeGeneratorId, runtime);
       ctx.save();
