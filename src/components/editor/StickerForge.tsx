@@ -48,7 +48,8 @@ export function StickerForge() {
         if (!traced.ok || traced.shapes.length === 0) { toast.info("Vector trace exceeded quality limits — using Universal Lottie."); chosen = "universal"; }
         else {
           const sx = width / imageData.width, sy = height / imageData.height;
-          const shapes = traced.shapes.map(shape => ({ ...shape, points: shape.points.map(([x,y]) => [x*sx,y*sy] as [number,number]) }));
+          const scaleLoop = (loop: [number,number][]) => loop.map(([x,y]) => [x*sx,y*sy] as [number,number]);
+          const shapes = traced.shapes.map(shape => ({ ...shape, points: scaleLoop(shape.points), holes: shape.holes?.map(scaleLoop) }));
           json = buildVectorStickerLottie({ name:`${nameBase} · vector ${preset}`, width, height, shapes, preset });
         }
       }
