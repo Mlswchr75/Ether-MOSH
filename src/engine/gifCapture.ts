@@ -6,6 +6,7 @@
 
 import { GIFEncoder, quantize, applyPalette } from "gifenc";
 import { drawOverlayStageInto } from "./overlayCapture";
+import { currentGifCaptureDevice, resolveGifCaptureBudget } from "./gifCaptureBudget";
 
 export type GifCaptureOptions = {
   durationMs?: number;      // total capture window (default 7000)
@@ -30,8 +31,11 @@ export async function captureLoopingGif(
   }
 
   const durationMs = Math.max(250, Number.isFinite(opts.durationMs) ? opts.durationMs! : 7000);
-  const fps = Math.max(1, Math.min(30, Number.isFinite(opts.fps) ? opts.fps! : 12));
-  const maxWidth = Math.max(64, Number.isFinite(opts.maxWidth) ? opts.maxWidth! : 480);
+  const requestedFps = Math.max(1, Math.min(30, Number.isFinite(opts.fps) ? opts.fps! : 12));
+  const requestedMaxWidth = Math.max(64, Number.isFinite(opts.maxWidth) ? opts.maxWidth! : 480);
+  const budget = resolveGifCaptureBudget(currentGifCaptureDevice(), requestedFps, requestedMaxWidth);
+  const fps = budget.fps;
+  const maxWidth = budget.maxWidth;
   const frameInterval = 1000 / fps;
   const targetFrames = Math.max(2, Math.floor(durationMs / frameInterval));
 
