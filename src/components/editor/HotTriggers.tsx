@@ -1,10 +1,12 @@
-import { Mic, MicOff, Circle, Square, Sparkles, Scissors, Snowflake, Camera, Shuffle, Star, Play, Pencil, Trash2, X, Film, Lock, Share2, Compass, Maximize2, Minimize2, Gem, Home, SwitchCamera, Crosshair, Eraser, Link2, Upload, Music, Music2, Shuffle as ShuffleIcon, Undo2, Redo2, Gauge, ChevronDown, MonitorSpeaker, Heart, GripVertical, RotateCcw, EyeOff, HelpCircle, SkipBack, SkipForward } from "lucide-react";
+import { Mic, MicOff, Circle, Square, Sparkles, Scissors, Snowflake, Camera, Shuffle, Star, Play, Pencil, Trash2, X, Film, Lock, Share2, Compass, Maximize2, Minimize2, Gem, Home, SwitchCamera, Crosshair, Eraser, Link2, Upload, Music, Music2, Shuffle as ShuffleIcon, Undo2, Redo2, Gauge, ChevronDown, MonitorSpeaker, Heart, GripVertical, RotateCcw, EyeOff, HelpCircle, SkipBack, SkipForward, Palette } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { useStore } from "@/store/useStore";
 import { trackPlayer, DEFAULT_TRACK_TITLE, SHOWCASE_TRACKS } from "@/engine/trackPlayer";
 import { runTrackAction } from "@/engine/trackActions";
 import { requestCameraStream, type CameraFacing } from "@/hooks/useCamera";
 import { IsolationPanel } from "./IsolationPanel";
+import { ForgePanel } from "./ForgePanel";
 import { MoshStickerTrigger } from "./MoshStickerTrigger";
 import { shareUrl } from "@/lib/share";
 import { toggleSystemAudio } from "@/engine/systemAudio";
@@ -82,7 +84,7 @@ const DEFAULT_ORDER = [
   "audio", "sensitivity",
   "freeze", "capture", "gif", "share",
   "mosh-sticker", "sticker-mode", "sticker-capture", "isolation", "theme-track",
-  "favorites", "fullscreen", "pro-mode", "switch-camera", "support",
+  "forge-palette", "favorites", "fullscreen", "pro-mode", "switch-camera", "support",
 ] as const;
 
 const TRIGGER_LABELS: Record<string, string> = {
@@ -94,6 +96,7 @@ const TRIGGER_LABELS: Record<string, string> = {
   "mosh-sticker": "Mosh sticker", "sticker-mode": "Sticker capture", isolation: "AI isolation",
   "sticker-capture": "Capture sticker",
   "theme-track": "Theme track", favorites: "Favorites", fullscreen: "Fullscreen",
+  "forge-palette": "Forge palette and settings",
   "switch-camera": "Switch camera", support: "Support MOSH",
 };
 
@@ -771,6 +774,7 @@ export function HotTriggers({
   const canRedo = useStore(s => s.future.length > 0);
   const shuffleSec = useStore(s => s.shuffleSec);
   const setShuffleSec = useStore(s => s.setShuffleSec);
+  const sourceMode = useStore(s => s.sourceMode);
 
   const [pickerOpen, setPickerOpen] = useState(false);
   const [favOpen, setFavOpen] = useState(false);
@@ -856,6 +860,7 @@ export function HotTriggers({
   const helpModeEnabled = useStore(s => s.helpModeEnabled);
   const setHelpModeEnabled = useStore(s => s.setHelpModeEnabled);
   const [isoOpen, setIsoOpen] = useState(false);
+  const [forgePanelOpen, setForgePanelOpen] = useState(false);
 
   useEffect(() => {
     if (!isoOpen) return;
@@ -866,6 +871,16 @@ export function HotTriggers({
     window.addEventListener("pointerdown", onDown, true);
     return () => window.removeEventListener("pointerdown", onDown, true);
   }, [isoOpen]);
+
+  useEffect(() => {
+    if (!forgePanelOpen) return;
+    const onDown = (e: PointerEvent) => {
+      if ((e.target as HTMLElement | null)?.closest("[data-forge-panel]")) return;
+      setForgePanelOpen(false);
+    };
+    window.addEventListener("pointerdown", onDown, true);
+    return () => window.removeEventListener("pointerdown", onDown, true);
+  }, [forgePanelOpen]);
 
 
   const flipCamera = async () => {
@@ -1249,6 +1264,25 @@ export function HotTriggers({
     // second, oversized button over export feedback near the bottom-right).
     "sticker-capture": stickerMode && <div key="sticker-capture" id="mosh-sticker-capture-slot" />,
     "theme-track": <TrackTrigger key="theme-track" delay={0} showNudge={showTrackNudge} onNudgeDismiss={onTrackNudgeDismiss} />,
+    "forge-palette": sourceMode === "forge" && (
+      <div key="forge-palette" className="relative" data-forge-panel>
+        <HotBtn
+          delay={0}
+          label={forgePanelOpen ? "Close Forge palette and settings" : "Open Forge palette and settings"}
+          active={forgePanelOpen}
+          onClick={() => setForgePanelOpen(open => !open)}
+          tint="318 82% 68%"
+        >
+          <Palette className="h-4 w-4" strokeWidth={1.5} />
+        </HotBtn>
+        {forgePanelOpen && createPortal(
+          <div className="fixed left-3 top-14 z-50 safe-top safe-left" data-forge-panel>
+            <ForgePanel embedded />
+          </div>,
+          document.body,
+        )}
+      </div>
+    ),
     favorites: (
       <div key="favorites" className="relative" data-fav-panel>
         <button
@@ -1424,13 +1458,48 @@ export function HotTriggers({
     ),
   };
 
-  const present = useMemo(() => new Set(order.filter(id => !!registry[id])), [order, registry]);
-  // No wrapper element around each node — the rail's CSS grid targets its
-  // direct children, so every trigger renders exactly as it always did,
-  // just in `order` instead of source order. Reordering does mean the
-  // hand-tuned entrance-delay cascade no longer lines up with position;
-  // every trigger above sets delay={0} for that reason (was ={0..440}).
-  const orderedNodes = order.map(id => registry[id]).filter(Boolean);
+  const availableIds = order.filter(id => !!registry[id]);
+  const present = new Set(availableIds);
+  const [scrollStart, setScrollStart] = useState(0);
+  const wheelCarryRef = useRef(0);
+  const dragIdRef = useRef<string | null>(null);
+  const visibleCount = Math.min(12, availableIds.length);
+  const normalizedStart = availableIds.length ? ((scrollStart % availableIds.length) + availableIds.length) % availableIds.length : 0;
+  const visibleIds = Array.from({ length: visibleCount }, (_, index) => availableIds[(normalizedStart + index) % availableIds.length]);
+
+  useEffect(() => {
+    if (scrollStart < availableIds.length) return;
+    setScrollStart(0);
+  }, [availableIds.length, scrollStart]);
+
+  const reorder = (draggedId: string, targetId: string) => {
+    if (draggedId === targetId) return;
+    setOrder(prev => {
+      const from = prev.indexOf(draggedId);
+      const to = prev.indexOf(targetId);
+      if (from < 0 || to < 0) return prev;
+      const next = [...prev];
+      next.splice(from, 1);
+      next.splice(to, 0, draggedId);
+      saveOrder(next);
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    const rail = railRef.current;
+    if (!rail) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      wheelCarryRef.current += Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
+      if (Math.abs(wheelCarryRef.current) < 24) return;
+      const direction = wheelCarryRef.current > 0 ? 1 : -1;
+      wheelCarryRef.current = 0;
+      setScrollStart(start => start + direction);
+    };
+    rail.addEventListener("wheel", onWheel, { passive: false });
+    return () => rail.removeEventListener("wheel", onWheel);
+  }, []);
 
   return (
     /* top-14 keeps the rail clear of the account chip pinned at top-3/right-3
@@ -1438,11 +1507,58 @@ export function HotTriggers({
     <div
       className="ui-chrome hot-triggers pointer-events-none absolute right-3 top-14 z-30 flex flex-col items-end gap-1 safe-top safe-right"
     >
-      {/* Auto-wrapping rail: fills a column, then starts a second one inward.
-          No overflow clipping, so left-opening panels stay visible. */}
-      <div ref={railRef} className="hot-trigger-rail pointer-events-auto" onClick={onRailClick}>
-        {orderedNodes}
-        <CustomizeTrigger delay={0} order={order} onMove={moveOrder} onReset={resetOrder} present={present} />
+      <div
+        ref={railRef}
+        className="hot-trigger-rail pointer-events-auto"
+        onClick={onRailClick}
+        aria-label="Hot triggers. Scroll to cycle; drag handles to reorder."
+      >
+        {visibleIds.map(id => (
+          <div
+            key={id}
+            className="hot-trigger-slot"
+            data-trigger-id={id}
+            onDragOver={(e) => {
+              e.preventDefault();
+              if (dragIdRef.current) reorder(dragIdRef.current, id);
+            }}
+          >
+            <button
+              type="button"
+              draggable
+              className="hot-trigger-drag"
+              aria-label={`Reorder ${TRIGGER_LABELS[id] ?? id}`}
+              title="Drag to reorder"
+              onDragStart={(e) => {
+                dragIdRef.current = id;
+                e.dataTransfer.effectAllowed = "move";
+                e.dataTransfer.setData("text/plain", id);
+              }}
+              onDragEnd={() => { dragIdRef.current = null; }}
+              onPointerDown={(e) => {
+                dragIdRef.current = id;
+                e.currentTarget.setPointerCapture(e.pointerId);
+              }}
+              onPointerMove={(e) => {
+                if (!dragIdRef.current || !e.currentTarget.hasPointerCapture(e.pointerId)) return;
+                const target = document.elementFromPoint(e.clientX, e.clientY)?.closest<HTMLElement>("[data-trigger-id]");
+                const targetId = target?.dataset.triggerId;
+                if (targetId) reorder(dragIdRef.current, targetId);
+              }}
+              onPointerUp={(e) => {
+                if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+                dragIdRef.current = null;
+              }}
+              onPointerCancel={() => { dragIdRef.current = null; }}
+            >
+              <GripVertical aria-hidden />
+            </button>
+            {registry[id]}
+          </div>
+        ))}
+        <div className="hot-trigger-slot hot-trigger-slot--customize">
+          <CustomizeTrigger delay={0} order={order} onMove={moveOrder} onReset={resetOrder} present={present} />
+        </div>
       </div>
 
       {isRecording && (

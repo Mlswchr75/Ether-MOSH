@@ -51,7 +51,6 @@ import { CameraMenu } from "@/components/editor/CameraMenu";
 
 import { StartCameraOverlay } from "@/components/editor/StartCameraOverlay";
 import { ForgeTapHint } from "@/components/editor/ForgeTapHint";
-import { ForgePanel } from "@/components/editor/ForgePanel";
 import { SourceModeToggle } from "@/components/editor/SourceModeToggle";
 import { HotTriggers } from "@/components/editor/HotTriggers";
 import { ActionConfirmation } from "@/components/editor/ActionConfirmation";
@@ -1835,7 +1834,6 @@ export default function Editor() {
         {/* Forge has no photo to assign roles on — GlCanvas binds a plain
             click-to-shuffle directly to its own canvas instead. */}
         {isForge && !isOverlay && <ForgeTapHint />}
-        {isForge && !isPerformanceMode && !isOverlay && <ForgePanel />}
         {/* Always visible, never idle-faded — unlike HotTriggers' effect
             triggers, this is how you get OUT of whichever mode you're in,
             and idle-fade would have hidden it by the exact moment you

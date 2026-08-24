@@ -332,7 +332,7 @@
        actually go looking for a control. */
     color: hsl(var(--text-secondary) / 0.7);
     background: hsl(var(--bg-base) / 0.22);
-    border: 1px solid hsl(var(--border-subtle));
+    border: 1px solid hsl(0 0% 0% / 0.9);
     border-radius: 2px;
     backdrop-filter: blur(6px) saturate(115%);
     -webkit-backdrop-filter: blur(6px) saturate(115%);
@@ -391,28 +391,45 @@
     transform: translate(1px, -1px);
   }
 
-  /* The rail itself. `auto-fill` over a bounded height lets the browser work
-     out how many triggers fit the current viewport; `grid-auto-flow: column`
-     spills the rest into a second (then third) rail instead of clipping them.
-     No breakpoint guesswork — it adapts to any screen, including landscape
-     phones and split-screen windows. */
+  /* One translucent, bounded strip. Only about twelve controls are mounted at
+     once; wheel/trackpad input rotates the circular window through the rest. */
   .hot-trigger-rail {
-    display: grid;
-    grid-auto-flow: column;
-    grid-template-rows: repeat(auto-fill, var(--ht-row, 40px));
-    max-block-size: var(--ht-rail-h);
+    display: flex;
+    flex-direction: column;
     gap: 6px;
-    justify-items: center;
-    align-content: start;
-    /* Column 1 hugs the screen edge; overflow rails grow inward (leftward). */
-    direction: rtl;
+    max-block-size: calc(100dvh - 6rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    overflow: visible;
+    padding: 5px;
+    border: 1px solid hsl(0 0% 0% / 0.75);
+    border-radius: 5px;
+    background: hsl(var(--bg-base) / 0.34);
+    box-shadow: 0 8px 28px hsl(0 0% 0% / 0.24);
+    backdrop-filter: blur(10px) saturate(120%);
+    -webkit-backdrop-filter: blur(10px) saturate(120%);
+    overscroll-behavior: contain;
   }
-  .hot-trigger-rail > * { direction: ltr; }
-  .hot-trigger-rail {
-    /* Mirrors .hot-trigger's own sizing so the row track matches the button. */
-    --ht-row: clamp(30px, 7.2vmin, 40px);
-    /* Space left for the top offset, safe-area inset and the REC badge. */
-    --ht-rail-h: calc(100dvh - 6rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  .hot-trigger-slot {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+  .hot-trigger-drag {
+    inline-size: 9px;
+    block-size: var(--ht-size, 40px);
+    display: grid;
+    place-items: center;
+    color: hsl(var(--text-secondary) / 0.35);
+    cursor: grab;
+    touch-action: none;
+  }
+  .hot-trigger-drag:active { cursor: grabbing; color: hsl(var(--accent)); }
+  .hot-trigger-drag svg { inline-size: 9px; block-size: 14px; }
+  .hot-trigger-slot--customize .hot-trigger-drag { display: none; }
+  @media (max-height: 700px) {
+    .hot-trigger-slot:nth-child(n + 10) { display: none; }
+  }
+  @media (max-height: 500px) {
+    .hot-trigger-slot:nth-child(n + 7) { display: none; }
   }
 
   .section-header {
@@ -500,7 +517,7 @@
     height: 34px;
     border-radius: 3px;
     background: rgba(0, 0, 0, 0.62);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(0, 0, 0, 0.9);
     color: rgba(255, 255, 255, 0.58);
     cursor: pointer;
     transition: color 120ms ease-out, background 120ms ease-out, border-color 120ms ease-out;

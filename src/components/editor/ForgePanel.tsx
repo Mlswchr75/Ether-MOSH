@@ -23,7 +23,7 @@ const EXPORT_SIZES = [1024, 2048, 4096] as const;
  * only the handful of settings unique to generating the pattern in the first
  * place.
  */
-export function ForgePanel() {
+export function ForgePanel({ embedded = false }: { embedded?: boolean }) {
   const paywall = usePaywall();
   const forge = useStore(s => s.forge);
   const setForgePaletteIdx = useStore(s => s.setForgePaletteIdx);
@@ -181,7 +181,7 @@ export function ForgePanel() {
   }, [exporting, paywall]);
 
   return (
-    <div className="ui-chrome pointer-events-auto absolute left-3 top-14 z-20 flex max-h-[calc(100dvh-6rem)] w-44 flex-col gap-4 overflow-y-auto rounded-sm border border-[hsl(var(--border-default))] bg-black/70 p-3 backdrop-blur-md safe-top safe-left safe-bottom">
+    <div className={`${embedded ? "relative" : "ui-chrome absolute left-3 top-14 z-20 safe-top safe-left safe-bottom"} pointer-events-auto flex max-h-[calc(100dvh-6rem)] w-44 flex-col gap-4 overflow-y-auto rounded-sm border border-[hsl(var(--border-default))] bg-black/70 p-3 backdrop-blur-md`}>
       {/* Palette */}
       <div>
         <p className="mb-2 font-mono text-[8px] uppercase tracking-[0.35em] text-foreground/40">palette</p>
