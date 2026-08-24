@@ -302,23 +302,13 @@
   }
 
   /* ---------------- Unified section header ---------------- */
-  /* ---------------- Hot triggers (canvas overlay rail) ----------------
-     The rail sits over the visualizer and must fit EVERY trigger on every
-     device without scrolling or clipping. Two things make that work:
-
-       1. Size is driven by --ht-size, a viewport-relative clamp, so the
-          buttons and their icons shrink on small screens instead of
-          overflowing. Icon SVGs inherit --ht-ico, which overrides the
-          Tailwind h-4/w-4 on each <svg> (`.hot-trigger svg` is the more
-          specific selector).
-       2. The rail is a grid that flows into extra COLUMNS once the row
-          count is capped (see .hot-triggers), so a stack too tall for the
-          viewport becomes a second rail rather than running off-screen.
-     -------------------------------------------------------------------- */
+  /* ---------------- Hot triggers (responsive dock) ----------------
+     Twelve rotating actions plus Customize fill roughly 82% of the viewport.
+     The current action stays enlarged; hover/focus grows the pointed action
+     and rolls a softer magnification through its immediate neighbors. */
   .hot-trigger {
-    /* Sized from the shorter viewport axis so landscape phones shrink too. */
-    --ht-size: clamp(30px, 7.2vmin, 40px);
-    --ht-ico: clamp(15px, 3.6vmin, 19px);
+    --ht-size: clamp(28px, calc((82dvh - 5rem) / 13), 58px);
+    --ht-ico: clamp(16px, calc(var(--ht-size) * 0.48), 28px);
 
     position: relative;
     display: grid;
@@ -340,9 +330,11 @@
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
     touch-action: manipulation;
+    transform: scale(var(--ht-scale, 1));
+    transform-origin: right center;
     transition: color 120ms ease-out, border-color 120ms ease-out,
-                background-color 120ms ease-out, transform 120ms ease-out;
-    animation: ui-rise 220ms ease-out both;
+                background-color 120ms ease-out, transform 180ms cubic-bezier(.2,.8,.2,1),
+                box-shadow 180ms ease-out;
   }
   .hot-trigger svg {
     /* Beats the utility h-4/w-4 so icons scale with the rail. */
@@ -356,7 +348,7 @@
     backdrop-filter: blur(12px) saturate(140%);
     -webkit-backdrop-filter: blur(12px) saturate(140%);
   }
-  .hot-trigger:active { transform: scale(0.92); }
+  .hot-trigger:active { transform: scale(calc(var(--ht-scale, 1) * 0.94)); }
   .hot-trigger:focus-visible {
     outline: 1px solid hsl(var(--mag));
     outline-offset: 1px;
@@ -394,10 +386,15 @@
   /* One translucent, bounded strip. Only about twelve controls are mounted at
      once; wheel/trackpad input rotates the circular window through the rest. */
   .hot-trigger-rail {
+    --dock-selected: 1.42;
+    --dock-near: 1.22;
+    --dock-far: 1.09;
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    max-block-size: calc(100dvh - 6rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    justify-content: space-between;
+    gap: clamp(2px, 0.55dvh, 6px);
+    block-size: min(84dvh, calc(100dvh - 2rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)));
+    max-block-size: none;
     overflow: visible;
     padding: 5px;
     border: 1px solid hsl(0 0% 0% / 0.75);
@@ -411,7 +408,40 @@
   .hot-trigger-slot {
     display: flex;
     align-items: center;
+    justify-content: flex-end;
     gap: 2px;
+    min-block-size: var(--ht-size, 40px);
+    transform-origin: right center;
+    transition: min-block-size 180ms cubic-bezier(.2,.8,.2,1);
+    animation: hot-trigger-in 350ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .hot-trigger-slot[data-selected] .hot-trigger {
+    --ht-scale: var(--dock-selected);
+    z-index: 4;
+    box-shadow: 0 0 0 1px hsl(var(--accent) / 0.34), 0 8px 24px hsl(0 0% 0% / 0.38);
+  }
+
+  /* Mac Dock-style rolling magnification. The hovered/focused control wins,
+     its nearest neighbors rise behind it, and the second neighbors receive a
+     small lift so the scale wave feels continuous instead of binary. */
+  .hot-trigger-slot:hover .hot-trigger,
+  .hot-trigger-slot:focus-within .hot-trigger {
+    --ht-scale: 1.62;
+    z-index: 7;
+  }
+  .hot-trigger-slot:has(+ .hot-trigger-slot:hover) .hot-trigger,
+  .hot-trigger-slot:has(+ .hot-trigger-slot:focus-within) .hot-trigger,
+  .hot-trigger-slot:hover + .hot-trigger-slot .hot-trigger,
+  .hot-trigger-slot:focus-within + .hot-trigger-slot .hot-trigger {
+    --ht-scale: var(--dock-near);
+    z-index: 5;
+  }
+  .hot-trigger-slot:has(+ .hot-trigger-slot + .hot-trigger-slot:hover) .hot-trigger,
+  .hot-trigger-slot:has(+ .hot-trigger-slot + .hot-trigger-slot:focus-within) .hot-trigger,
+  .hot-trigger-slot:hover + .hot-trigger-slot + .hot-trigger-slot .hot-trigger,
+  .hot-trigger-slot:focus-within + .hot-trigger-slot + .hot-trigger-slot .hot-trigger {
+    --ht-scale: var(--dock-far);
+    z-index: 3;
   }
   .hot-trigger-drag {
     inline-size: 9px;
@@ -425,11 +455,12 @@
   .hot-trigger-drag:active { cursor: grabbing; color: hsl(var(--accent)); }
   .hot-trigger-drag svg { inline-size: 9px; block-size: 14px; }
   .hot-trigger-slot--customize .hot-trigger-drag { display: none; }
-  @media (max-height: 700px) {
-    .hot-trigger-slot:nth-child(n + 10) { display: none; }
-  }
-  @media (max-height: 500px) {
-    .hot-trigger-slot:nth-child(n + 7) { display: none; }
+  @media (pointer: coarse) {
+    .hot-trigger-rail {
+      --dock-selected: 1.28;
+      inline-size: max-content;
+      block-size: min(88dvh, calc(100dvh - 1rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)));
+    }
   }
 
   .section-header {
@@ -513,17 +544,19 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 34px;
-    height: 34px;
+    width: var(--ht-size);
+    height: var(--ht-size);
     border-radius: 3px;
     background: rgba(0, 0, 0, 0.62);
     border: 1px solid rgba(0, 0, 0, 0.9);
     color: rgba(255, 255, 255, 0.58);
     cursor: pointer;
-    transition: color 120ms ease-out, background 120ms ease-out, border-color 120ms ease-out;
+    transition: color 120ms ease-out, background 120ms ease-out,
+                border-color 120ms ease-out,
+                transform 180ms cubic-bezier(.2,.8,.2,1),
+                box-shadow 180ms ease-out;
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
-    animation: hot-trigger-in 350ms cubic-bezier(0.22, 1, 0.36, 1) both;
     flex-shrink: 0;
   }
   .hot-trigger:hover {
@@ -540,6 +573,8 @@
     opacity: 0.45;
     cursor: not-allowed;
   }
+  /* Animate the row rather than the button so its entrance never overrides
+     the button's persistent Dock magnification transform. */
   @keyframes hot-trigger-in {
     from { opacity: 0; transform: translateX(10px); }
     to   { opacity: 1; transform: translateX(0); }
@@ -582,13 +617,13 @@
     animation: hot-glitch-burst 750ms steps(1) both;
   }
   @keyframes hot-glitch-shake {
-    0%, 100% { transform: translate(0, 0); }
-    10%  { transform: translate(-1px, 1px); }
-    24%  { transform: translate(1px, -1px); }
-    46%  { transform: translate(0, 0); }
-    60%  { transform: translate(1px, 1px); }
-    74%  { transform: translate(-1px, 0); }
-    88%  { transform: translate(0, 0); }
+    0%, 100% { transform: translate(0, 0) scale(var(--ht-scale, 1)); }
+    10%  { transform: translate(-1px, 1px) scale(var(--ht-scale, 1)); }
+    24%  { transform: translate(1px, -1px) scale(var(--ht-scale, 1)); }
+    46%  { transform: translate(0, 0) scale(var(--ht-scale, 1)); }
+    60%  { transform: translate(1px, 1px) scale(var(--ht-scale, 1)); }
+    74%  { transform: translate(-1px, 0) scale(var(--ht-scale, 1)); }
+    88%  { transform: translate(0, 0) scale(var(--ht-scale, 1)); }
   }
   @keyframes hot-glitch-burst {
     0%   { opacity: 0; }
@@ -974,11 +1009,10 @@
      the resting camouflage, the hover reveal and the two idle stages can never
      fight each other — the last matching rule simply wins.
 
-     Resting state is deliberately semi-transparent: legible against the
-     artwork, but clearly behind it. Pointing at any control brings that
-     cluster back to full strength immediately. */
+     Active controls remain fully legible until the inactivity timer expires;
+     then the entire chrome layer disappears together. */
   .ui-chrome {
-    opacity: var(--chrome-op, 0.42);
+    opacity: var(--chrome-op, 1);
     transition: opacity 500ms ease;
   }
   .ui-chrome:hover,

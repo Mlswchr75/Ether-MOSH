@@ -797,6 +797,10 @@ export function HotTriggers({
   const favHoldTimerRef = useRef<number | null>(null);
 
   const [order, setOrder] = useState<string[]>(() => loadOrder());
+  // A dock needs a stable "current" item even after the pointer leaves. The
+  // last trigger used remains emphasized until another trigger is chosen;
+  // hover/focus temporarily rolls the magnification toward its neighbors.
+  const [selectedTriggerId, setSelectedTriggerId] = useState<string>("mosh");
   const moveOrder = (id: string, dir: -1 | 1) => {
     setOrder(prev => {
       const idx = prev.indexOf(id);
@@ -819,7 +823,10 @@ export function HotTriggers({
     window.setTimeout(() => el.removeAttribute("data-glitch"), 750);
   };
   const onRailClick = (e: React.MouseEvent) => {
-    fireGlitch((e.target as HTMLElement).closest(".hot-trigger"));
+    const trigger = (e.target as HTMLElement).closest<HTMLElement>(".hot-trigger");
+    fireGlitch(trigger);
+    const id = trigger?.closest<HTMLElement>("[data-trigger-id]")?.dataset.triggerId;
+    if (id) setSelectedTriggerId(id);
   };
   // Ambient glitch: a random idle trigger, ≥3×/min (12–18s spacing averages
   // ~4/min), completely independent of anything the user does.
@@ -1502,10 +1509,10 @@ export function HotTriggers({
   }, []);
 
   return (
-    /* top-14 keeps the rail clear of the account chip pinned at top-3/right-3
-       (z-40), which would otherwise sit on top of the first trigger. */
+    /* Vertically centered so the dock occupies the right edge evenly across
+       desktop, tablet and phone aspect ratios. */
     <div
-      className="ui-chrome hot-triggers pointer-events-none absolute right-3 top-14 z-30 flex flex-col items-end gap-1 safe-top safe-right"
+      className="ui-chrome hot-triggers pointer-events-none absolute right-3 top-1/2 z-30 flex -translate-y-1/2 flex-col items-end gap-1 safe-right"
     >
       <div
         ref={railRef}
@@ -1518,6 +1525,7 @@ export function HotTriggers({
             key={id}
             className="hot-trigger-slot"
             data-trigger-id={id}
+            data-selected={selectedTriggerId === id || undefined}
             onDragOver={(e) => {
               e.preventDefault();
               if (dragIdRef.current) reorder(dragIdRef.current, id);
