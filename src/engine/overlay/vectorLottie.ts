@@ -1,0 +1,41 @@
+import type { StickerLottiePreset } from "./stickerLottie";
+import type { TracedStickerShape } from "./vectorTrace";
+
+function motion(preset: StickerLottiePreset, w: number, h: number, frames: number) {
+  const cx = w / 2, cy = h / 2, half = Math.max(1, Math.round(frames / 2));
+  const p: any = { a: 0, k: [cx, cy, 0] };
+  const s: any = { a: 0, k: [100, 100, 100] };
+  const r: any = { a: 0, k: 0 };
+  const o: any = { a: 0, k: 100 };
+  if (preset === "float") p.a = 1, p.k = [{ t: 0, s: [cx, cy + h * .035, 0], e: [cx, cy - h * .035, 0] }, { t: half, s: [cx, cy - h * .035, 0], e: [cx, cy + h * .035, 0] }, { t: frames, s: [cx, cy + h * .035, 0] }];
+  if (preset === "pulse") s.a = 1, s.k = [{ t: 0, s: [94,94,100], e: [106,106,100] }, { t: half, s: [106,106,100], e: [94,94,100] }, { t: frames, s: [94,94,100] }];
+  if (preset === "wobble") r.a = 1, r.k = [{ t: 0, s: [-4], e: [4] }, { t: half, s: [4], e: [-4] }, { t: frames, s: [-4] }];
+  if (preset === "spin") r.a = 1, r.k = [{ t: 0, s: [0], e: [360] }, { t: frames, s: [360] }];
+  if (preset === "bounce") p.a = 1, p.k = [{ t: 0, s: [cx, cy, 0], e: [cx, cy - h * .09, 0] }, { t: half, s: [cx, cy - h * .09, 0], e: [cx, cy, 0] }, { t: frames, s: [cx, cy, 0] }];
+  if (preset === "flicker") o.a = 1, o.k = [{ t: 0, s: [100], e: [48] }, { t: Math.max(1, Math.round(frames * .12)), s: [48], e: [100] }, { t: Math.max(2, Math.round(frames * .2)), s: [100], e: [70] }, { t: Math.max(3, Math.round(frames * .28)), s: [70], e: [100] }, { t: frames, s: [100] }];
+  return { o, r, p, a: { a: 0, k: [cx, cy, 0] }, s };
+}
+
+function shapePath(points: [number, number][]) {
+  return { a: 0, k: { c: true, v: points, i: points.map(() => [0,0]), o: points.map(() => [0,0]) } };
+}
+
+export function buildVectorStickerLottie(input: { name: string; width: number; height: number; shapes: TracedStickerShape[]; preset: StickerLottiePreset; durationSeconds?: number; fps?: number }) {
+  const width = Math.max(1, Math.round(input.width));
+  const height = Math.max(1, Math.round(input.height));
+  const fr = Math.max(1, Math.min(60, Math.round(input.fps ?? 30)));
+  const op = Math.max(1, Math.round(fr * Math.max(.25, Math.min(12, input.durationSeconds ?? 2))));
+  const ks = motion(input.preset, width, height, op);
+  const layers = input.shapes.map((shape, index) => ({
+    ddd: 0, ind: index + 1, ty: 4, nm: `${input.name} ${index + 1}`, sr: 1,
+    ks,
+    ao: 0,
+    shapes: [
+      { ty: "sh", ks: shapePath(shape.points), nm: "Path" },
+      { ty: "fl", c: { a: 0, k: [shape.color[0] / 255, shape.color[1] / 255, shape.color[2] / 255, 1] }, o: { a: 0, k: Math.round(shape.color[3] / 255 * 100) }, r: 1, nm: "Fill" },
+      { ty: "tr", p: { a: 0, k: [0,0] }, a: { a: 0, k: [0,0] }, s: { a: 0, k: [100,100] }, r: { a: 0, k: 0 }, o: { a: 0, k: 100 }, sk: { a: 0, k: 0 }, sa: { a: 0, k: 0 }, nm: "Transform" },
+    ],
+    ip: 0, op, st: 0, bm: 0,
+  }));
+  return { v: "5.12.2", fr, ip: 0, op, w: width, h: height, nm: input.name, ddd: 0, assets: [], layers, markers: [] };
+}
