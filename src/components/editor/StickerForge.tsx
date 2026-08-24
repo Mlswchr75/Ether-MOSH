@@ -7,23 +7,25 @@ import { blobToPngDataUrl, buildStickerLottie, lottieJsonBlob, type StickerLotti
 import { scoreVectorSuitability } from "@/engine/overlay/vectorSuitability";
 import { traceStickerShapes } from "@/engine/overlay/vectorTrace";
 import { buildVectorStickerLottie } from "@/engine/overlay/vectorLottie";
+import { currentOverlayPerformanceBudget } from "@/engine/overlay/performanceBudget";
 
 type Mode = "auto" | "universal" | "vector";
-const PRESETS: StickerLottiePreset[] = ["float", "pulse", "wobble", "spin", "bounce", "flicker"];
+const PRESETS: StickerLottiePreset[] = ["float", "pulse", "wobble", "spin", "bounce", "flicker", "breathe", "orbit", "jitter", "glitch"];
 
-async function blobToImageData(blob: Blob, maxDimension = 256): Promise<ImageData> {
+async function blobToImageData(blob: Blob, maxDimension: number): Promise<ImageData> {
   const bitmap = await createImageBitmap(blob);
-  const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height));
-  const width = Math.max(1, Math.round(bitmap.width * scale));
-  const height = Math.max(1, Math.round(bitmap.height * scale));
-  const canvas = document.createElement("canvas");
-  canvas.width = width; canvas.height = height;
-  const ctx = canvas.getContext("2d", { willReadFrequently: true });
-  if (!ctx) throw new Error("Canvas unavailable");
-  ctx.clearRect(0, 0, width, height);
-  ctx.drawImage(bitmap, 0, 0, width, height);
-  bitmap.close();
-  return ctx.getImageData(0, 0, width, height);
+  try {
+    const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height));
+    const width = Math.max(1, Math.round(bitmap.width * scale));
+    const height = Math.max(1, Math.round(bitmap.height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = width; canvas.height = height;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (!ctx) throw new Error("Canvas unavailable");
+    ctx.clearRect(0, 0, width, height);
+    ctx.drawImage(bitmap, 0, 0, width, height);
+    return ctx.getImageData(0, 0, width, height);
+  } finally { bitmap.close(); }
 }
 
 export function StickerForge() {
@@ -36,7 +38,6 @@ export function StickerForge() {
   const [busy, setBusy] = useState(false);
   const [score, setScore] = useState<number | null>(null);
   const [recommended, setRecommended] = useState<"vector" | "universal" | null>(null);
-
   const disabled = !selected || busy || selected.asset.kind === "lottie-json" || selected.asset.kind === "dotlottie";
   const recommendationText = useMemo(() => recommended ? `Recommended: ${recommended === "vector" ? "Vector" : "Universal"}${score == null ? "" : ` · ${Math.round(score * 100)}%`}` : "Auto analyzes the selected sticker", [recommended, score]);
 
@@ -45,10 +46,10 @@ export function StickerForge() {
     setBusy(true);
     try {
       const sourceBlob = await fetch(selected.asset.url).then(r => { if (!r.ok) throw new Error(`Source unavailable (${r.status})`); return r.blob(); });
-      const imageData = await blobToImageData(sourceBlob);
+      const budget = currentOverlayPerformanceBudget();
+      const imageData = await blobToImageData(sourceBlob, budget.forgeAnalysisDimension);
       const suitability = scoreVectorSuitability(imageData);
-      setScore(suitability.score);
-      setRecommended(suitability.recommendation);
+      setScore(suitability.score); setRecommended(suitability.recommendation);
       let chosen: "vector" | "universal" = mode === "auto" ? suitability.recommendation : mode;
       const width = selected.asset.width ?? imageData.width;
       const height = selected.asset.height ?? imageData.height;
@@ -58,37 +59,21 @@ export function StickerForge() {
       if (chosen === "vector") {
         const traced = traceStickerShapes(imageData);
         if (!traced.ok || traced.shapes.length === 0) {
-          if (mode === "vector") toast.info("Vector trace exceeded quality limits — using Universal Lottie instead.");
+          toast.info("Vector trace exceeded quality limits — using Universal Lottie.");
           chosen = "universal";
-        } else {
-          json = buildVectorStickerLottie({ name: `${nameBase} · vector ${preset}`, width, height, shapes: traced.shapes, preset });
-        }
+        } else json = buildVectorStickerLottie({ name: `${nameBase} · vector ${preset}`, width, height, shapes: traced.shapes, preset });
       }
-
       if (chosen === "universal") {
         const imageDataUrl = await blobToPngDataUrl(sourceBlob);
         json = buildStickerLottie({ name: `${nameBase} · universal ${preset}`, width, height, imageDataUrl, preset });
       }
 
       const blob = lottieJsonBlob(json);
-      const asset = {
-        id: crypto.randomUUID(),
-        name: `${nameBase} · ${chosen} ${preset}`,
-        kind: "lottie-json" as const,
-        url: URL.createObjectURL(blob),
-        mimeType: "application/json",
-        width,
-        height,
-        animated: true,
-        createdAt: Date.now(),
-        objectUrl: true,
-      };
-      addAsset(asset);
-      await saveOverlayAsset(asset);
+      const asset = { id: crypto.randomUUID(), name: `${nameBase} · ${chosen} ${preset}`, kind: "lottie-json" as const, url: URL.createObjectURL(blob), mimeType: "application/json", width, height, animated: true, createdAt: Date.now(), objectUrl: true };
+      addAsset(asset); await saveOverlayAsset(asset);
       toast.success(`${chosen === "vector" ? "Vector" : "Universal"} Lottie forged`);
     } catch (error) {
-      console.error("[sticker-forge] failed", error);
-      toast.error("Sticker Forge couldn't complete that subject.");
+      console.error("[sticker-forge] failed", error); toast.error("Sticker Forge couldn't complete that subject.");
     } finally { setBusy(false); }
   };
 
