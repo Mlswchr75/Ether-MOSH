@@ -30,7 +30,7 @@ export function OverlayVault() {
   const addAsset = useOverlayStore(s => s.addAsset);
   const sourceMode = useStore(s => s.sourceMode);
   const glCanvas = useStore(s => s.glCanvas);
-  const source = resolveStickerSource({ selectedOverlay: selected, sourceMode, forgeCanvas: glCanvas });
+  const forgeAvailable = sourceMode === "forge";
 
   const refresh = useCallback(async () => {
     try { setRecords(await listOverlayVault()); }
@@ -47,20 +47,22 @@ export function OverlayVault() {
   useEffect(() => () => { for (const url of previews.values()) URL.revokeObjectURL(url); }, [previews]);
 
   const saveSelected = async () => {
-    if (!source || busy) return;
+    if ((!selected && !forgeAvailable) || busy) return;
     setBusy(true);
     try {
-      let resolved = source;
-      if (source.kind === "forge-render") {
+      const liveCanvas = glCanvas ?? document.querySelector<HTMLCanvasElement>("canvas[data-mosh-canvas]");
+      let resolved = resolveStickerSource({ selectedOverlay: selected, sourceMode, forgeCanvas: liveCanvas });
+      if (!resolved) throw new Error("The Forge render is not ready yet.");
+      if (resolved.kind === "forge-render") {
         await segmentationEngine.loadTap();
         if (segmentationEngine.isTapReady()) {
-          const points = segmentationEngine.analyzeSaliency(source.canvas, 3);
-          const subjects = await segmentationEngine.segmentMultiPoint(source.canvas, points);
-          resolved = resolveStickerSource({ selectedOverlay: null, sourceMode, forgeCanvas: source.canvas, isolatedSubjects: subjects }) ?? source;
+          const points = segmentationEngine.analyzeSaliency(resolved.canvas, 3);
+          const subjects = await segmentationEngine.segmentMultiPoint(resolved.canvas, points);
+          resolved = resolveStickerSource({ selectedOverlay: null, sourceMode, forgeCanvas: resolved.canvas, isolatedSubjects: subjects }) ?? resolved;
         }
       }
       const prepared = await assetFromStickerSource(resolved);
-      try { await saveOverlayAsset(prepared.asset); }
+      try { await saveOverlayAsset(prepared.asset, prepared.blob); }
       finally { prepared.revoke(); }
       toast.success("Sticker forged into the Vault");
       await refresh();
@@ -134,7 +136,7 @@ export function OverlayVault() {
 
   return <>
     <div className="pointer-events-auto flex flex-wrap items-center gap-1">
-      <button type="button" disabled={!source || busy} onClick={() => void saveSelected()} className="flex items-center gap-1.5 rounded-full border border-cyan-300/20 bg-black/70 px-2.5 py-2 font-mono text-[8px] uppercase tracking-[0.12em] text-cyan-100 backdrop-blur-md transition hover:border-cyan-300/45 disabled:opacity-25" title={selected ? "Save selected overlay as a reusable sticker" : sourceMode === "forge" && glCanvas ? "Forge the current render as a reusable sticker" : "Choose a visual source first"}><WandSparkles size={11} /> Make Sticker</button>
+      <button type="button" disabled={(!selected && !forgeAvailable) || busy} onClick={() => void saveSelected()} className="flex items-center gap-1.5 rounded-full border border-cyan-300/20 bg-black/70 px-2.5 py-2 font-mono text-[8px] uppercase tracking-[0.12em] text-cyan-100 backdrop-blur-md transition hover:border-cyan-300/45 disabled:opacity-25" title={selected ? "Save selected overlay as a reusable sticker" : forgeAvailable ? "Forge the current render as a reusable sticker" : "Choose a visual source first"}><WandSparkles size={11} /> Make Sticker</button>
       <label className="flex items-center rounded-full border border-violet-300/20 bg-black/70 pl-2 font-mono text-[8px] uppercase text-violet-100 backdrop-blur-md">
         <select value={lottiePreset} onChange={e => setLottiePreset(e.target.value as StickerLottiePreset)} className="bg-transparent py-2 pr-1 text-[8px] uppercase outline-none" aria-label="Lottie animation preset">
           {LOTTIE_PRESETS.map(preset => <option key={preset} value={preset} className="bg-black">{preset}</option>)}

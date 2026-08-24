@@ -45,7 +45,7 @@ async function blobForAsset(asset: OverlayAsset): Promise<Blob> {
   return response.blob();
 }
 
-export async function saveOverlayAsset(asset: OverlayAsset): Promise<OverlayVaultRecord> {
+export async function saveOverlayAsset(asset: OverlayAsset, sourceBlob?: Blob): Promise<OverlayVaultRecord> {
   const existing = await getOverlayVaultRecord(asset.id).catch(() => null);
   const record: OverlayVaultRecord = {
     id: asset.id,
@@ -57,7 +57,7 @@ export async function saveOverlayAsset(asset: OverlayAsset): Promise<OverlayVaul
     animated: asset.animated,
     createdAt: asset.createdAt,
     savedAt: Date.now(),
-    blob: await blobForAsset(asset),
+    blob: sourceBlob ?? await blobForAsset(asset),
     favorite: existing?.favorite ?? false,
     tags: existing?.tags ?? [],
   };

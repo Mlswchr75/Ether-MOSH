@@ -32,4 +32,12 @@ describe("resolveStickerSource", () => {
     expect(resolveStickerSource({ selectedOverlay: null, sourceMode: "upload", forgeCanvas: canvas })).toBeNull();
     expect(resolveStickerSource({ selectedOverlay: null, sourceMode: "forge", forgeCanvas: null })).toBeNull();
   });
+
+  it("does not require the stored canvas reference once a visible Forge canvas is available", () => {
+    expect(resolveStickerSource({
+      selectedOverlay: null,
+      sourceMode: "forge",
+      forgeCanvas: canvas,
+    })?.kind).toBe("forge-render");
+  });
 });

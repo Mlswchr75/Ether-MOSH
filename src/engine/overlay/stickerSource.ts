@@ -57,7 +57,7 @@ async function blobFromCanvas(canvas: HTMLCanvasElement): Promise<Blob> {
   ));
 }
 
-export async function assetFromStickerSource(source: Exclude<StickerSource, null>): Promise<{ asset: OverlayAsset; revoke: () => void }> {
+export async function assetFromStickerSource(source: Exclude<StickerSource, null>): Promise<{ asset: OverlayAsset; blob?: Blob; revoke: () => void }> {
   if (source.kind === "overlay") return { asset: source.asset, revoke: () => undefined };
 
   let blob: Blob;
@@ -82,6 +82,7 @@ export async function assetFromStickerSource(source: Exclude<StickerSource, null
   const url = URL.createObjectURL(blob);
   const id = crypto.randomUUID();
   return {
+    blob,
     asset: {
       id: `forge-sticker-${id}`,
       name: source.kind === "forge-subject" ? "Forge Subject" : "Forge Composition",
