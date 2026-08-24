@@ -1,12 +1,27 @@
+import { drawOverlayStageInto } from "./overlayCapture";
+
 /** Export the current canvas as PNG/JPG/WEBP. Caller calls renderer.render() right before. */
 export async function exportCanvas(
   canvas: HTMLCanvasElement,
   opts: { format: "png" | "jpg" | "webp"; scale?: number; quality?: number; aspect?: number | null; transparent?: boolean },
 ): Promise<Blob> {
   const scale = opts.scale ?? 1;
-  const w = canvas.width * scale;
-  const h = canvas.height * scale;
+  const w = Math.max(1, Math.round(canvas.width * scale));
+  const h = Math.max(1, Math.round(canvas.height * scale));
   const transparent = !!opts.transparent && opts.format === "png";
+
+  // Build the exact visible performance frame first. OverlayStage entities are
+  // DOM media layered above WebGL, so exporting the renderer canvas alone would
+  // silently drop Lotties, swarms and AFTER/OWN-FX stickers.
+  const composed = document.createElement("canvas");
+  composed.width = w;
+  composed.height = h;
+  const composedCtx = composed.getContext("2d");
+  if (!composedCtx) throw new Error("Export canvas unavailable");
+  composedCtx.imageSmoothingEnabled = true;
+  composedCtx.imageSmoothingQuality = "high";
+  composedCtx.drawImage(canvas, 0, 0, w, h);
+  drawOverlayStageInto(composedCtx, w, h);
 
   const out = document.createElement("canvas");
   if (opts.aspect != null) {
@@ -14,9 +29,10 @@ export async function exportCanvas(
     const targetW = Math.round(targetH * opts.aspect);
     out.width = targetW;
     out.height = targetH;
-    const ctx = out.getContext("2d")!;
+    const ctx = out.getContext("2d");
+    if (!ctx) throw new Error("Export canvas unavailable");
     if (!transparent) {
-      ctx.fillStyle = opts.format === "jpg" ? "#08080B" : "#08080B";
+      ctx.fillStyle = "#08080B";
       ctx.fillRect(0, 0, targetW, targetH);
     }
     const srcAspect = w / h;
@@ -24,13 +40,14 @@ export async function exportCanvas(
     if (dh > targetH) { dh = targetH; dw = targetH * srcAspect; }
     const dx = (targetW - dw) / 2, dy = (targetH - dh) / 2;
     ctx.imageSmoothingQuality = "high";
-    ctx.drawImage(canvas, dx, dy, dw, dh);
+    ctx.drawImage(composed, dx, dy, dw, dh);
   } else {
     out.width = w; out.height = h;
-    const ctx = out.getContext("2d")!;
+    const ctx = out.getContext("2d");
+    if (!ctx) throw new Error("Export canvas unavailable");
     if (!transparent && opts.format !== "png") { ctx.fillStyle = "#08080B"; ctx.fillRect(0, 0, w, h); }
     ctx.imageSmoothingQuality = "high";
-    ctx.drawImage(canvas, 0, 0, w, h);
+    ctx.drawImage(composed, 0, 0, w, h);
   }
 
   const mime =
