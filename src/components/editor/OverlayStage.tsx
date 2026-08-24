@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { OverlayEntityView } from "./OverlayEntityView";
 import { OverlayImporter } from "./OverlayImporter";
 import { OverlayVault } from "./OverlayVault";
+import { StickerForge } from "./StickerForge";
 import { OverlayTrackingSampler } from "./OverlayTrackingSampler";
 import { OverlayInspector } from "./OverlayInspector";
 import { useOverlayStore } from "@/store/useOverlayStore";
@@ -53,8 +54,9 @@ export function OverlayStage() {
       {entities.map((entity, index) => (
         <OverlayEntityView key={entity.id} entity={entity} selected={selectedId === entity.id} index={index} count={entities.length} />
       ))}
-      <div className="absolute bottom-28 left-1/2 z-[80] flex -translate-x-1/2 items-center gap-2">
+      <div className="absolute bottom-28 left-1/2 z-[80] flex -translate-x-1/2 flex-wrap items-center justify-center gap-2">
         <OverlayImporter />
+        <StickerForge />
         <OverlayVault />
       </div>
     </div>
