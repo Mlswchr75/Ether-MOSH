@@ -5,7 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
 import { ArrowLeft, Download, Layers, Sparkles, Sliders, Music, Eye, Undo2, Redo2, Maximize2, Minimize2, Circle, Mic, MicOff, MonitorSpeaker, Snowflake, Rewind, Repeat, Keyboard, X, ChevronDown, ChevronUp } from "lucide-react";
 import { useStore } from "@/store/useStore";
-import { crossfadeLayers, cancelLayerCrossfade, MOSH_FADE_MS, DIRECTED_FADE_MS } from "@/engine/layerCrossfade";
+import { crossfadeLayers, cancelLayerCrossfade, MOSH_FADE_MS, DIRECTED_FADE_MS, JOURNEY_DISRUPT_FADE_MS } from "@/engine/layerCrossfade";
 
 import { LayerStack } from "@/components/editor/LayerStack";
 import { FxPicker } from "@/components/editor/FxPicker";
@@ -855,6 +855,9 @@ export default function Editor() {
     if (journeyPrevShuffleRef.current != null) useStore.getState().setShuffleSec(null);
 
     const director = new JourneyDirector({
+      // Forge is meant to be an ambient wall. Everywhere else Journey is the
+      // Art Director's live performance mode: more volatile, less settled.
+      pace: isForge ? "ambient" : "performance",
       getVideo: () => useStore.getState().videoElement,
       getMic: () => {
         // Published by GlCanvas, which owns the analyser and drives it from the
@@ -873,7 +876,10 @@ export default function Editor() {
            change, not *what*. Picking here keeps the two concerns apart. */
         if (d.kind === "swap") {
           const pick = PUBLIC_EFFECTS[Math.floor(Math.random() * PUBLIC_EFFECTS.length)];
-          useStore.getState().disrupt({ kind: "swap", violence: d.violence, effectId: pick?.id });
+          crossfadeLayers(
+            () => useStore.getState().disrupt({ kind: "swap", violence: d.violence, effectId: pick?.id }),
+            JOURNEY_DISRUPT_FADE_MS,
+          );
           return;
         }
         if (d.kind === "surge") return; // the burst arrives as churn ticks
@@ -897,7 +903,7 @@ export default function Editor() {
       }
       journeyPrevShuffleRef.current = null;
     };
-  }, [journeyOn, crossfadeToComposition]);
+  }, [journeyOn, isForge, crossfadeToComposition]);
 
   // If the user manually re-enables auto-shuffle, gracefully step out.
   useEffect(() => {

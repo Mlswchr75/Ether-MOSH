@@ -1,5 +1,5 @@
 import { useStore, makeLayer } from "@/store/useStore";
-import { PUBLIC_EFFECTS, type EffectCategory } from "./effects";
+import { EFFECTS_BY_ID, PUBLIC_EFFECTS, type EffectCategory } from "./effects";
 import { type LayerRegion, type BlendMode } from "./blend";
 import type { Layer } from "@/store/types";
 
@@ -9,9 +9,12 @@ import type { Layer } from "@/store/types";
  *  enough that it's a soft cut instead of a hard one. Journey's own
  *  autonomous compositions use a fuller, more deliberate fade (see
  *  journeyDirector.ts's own pacing) — DIRECTED_FADE_MS below. */
-export const MOSH_FADE_MS = 200;
+export const MOSH_FADE_MS = 320;
 /** Journey composition changes — its own dedicated, slower pacing. */
-export const DIRECTED_FADE_MS = 550;
+export const DIRECTED_FADE_MS = 760;
+/** Single Journey swaps are shorter than a new composition, but still meld
+ * through the frame instead of popping a replacement layer in all at once. */
+export const JOURNEY_DISRUPT_FADE_MS = 420;
 
 /**
  * How the outgoing/incoming layer stacks bleed into one another. Two modes
@@ -35,23 +38,83 @@ export const DIRECTED_FADE_MS = 550;
  */
 type RevealRecipe =
   | { mode: "shards"; density: number; phase: number; feather: number }
-  | { mode: "radial"; feather: number };
+  | { mode: "radial"; feather: number }
+  /** Uses Renderer’s live foreground/background proxy, so a subject and the
+   * room around it trade places at different moments. */
+  | { mode: "depth"; feather: number };
 
-function rollRecipe(): RevealRecipe {
-  if (Math.random() < 0.7) {
+type StackProfile = {
+  ids: Set<string>;
+  categories: Partial<Record<EffectCategory, number>>;
+  complexity: number;
+  spatialWeight: number;
+};
+
+function profileStack(layers: Layer[]): StackProfile {
+  const categories: StackProfile["categories"] = {};
+  let spatialWeight = 0;
+  for (const layer of layers) {
+    const category = EFFECTS_BY_ID[layer.effectId]?.category;
+    if (!category) continue;
+    categories[category] = (categories[category] ?? 0) + 1;
+    // Dimension effects literally use the depth/time structure; geometry
+    // changes the composition’s silhouette more than a color correction does.
+    spatialWeight += category === "dimension" ? 1 : category === "geometry" ? 0.55 : 0.16;
+  }
+  return {
+    ids: new Set(layers.map(layer => layer.effectId)),
+    categories,
+    complexity: layers.length + Object.keys(categories).length * 0.45,
+    spatialWeight,
+  };
+}
+
+function stackDifference(before: StackProfile, after: StackProfile) {
+  const shared = [...before.ids].filter(id => after.ids.has(id)).length;
+  const union = new Set([...before.ids, ...after.ids]).size || 1;
+  return 1 - shared / union;
+}
+
+/** Pick the reveal according to both stack structures. This is deliberately
+ * performed for every pending Mosh: the same source can receive a shattered
+ * exchange for a corruption-heavy handoff, then a subject-aware handoff for a
+ * dimensional/geometry-heavy next stack. */
+function rollRecipe(beforeLayers: Layer[], afterLayers: Layer[]): RevealRecipe {
+  const before = profileStack(beforeLayers);
+  const after = profileStack(afterLayers);
+  const change = stackDifference(before, after);
+  const spatial = before.spatialWeight + after.spatialWeight;
+  const complexity = before.complexity + after.complexity;
+  const depthChance = Math.min(0.62, 0.08 + spatial * 0.16 + change * 0.16);
+  const roll = Math.random();
+
+  if (roll < depthChance) {
+    return { mode: "depth", feather: 0.055 + Math.min(0.16, complexity * 0.012) };
+  }
+  if (roll < 0.86) {
     return {
       mode: "shards",
-      density: 6 + Math.random() * 16,
+      density: 5 + Math.min(20, complexity * 1.45 + change * 8) + Math.random() * 6,
       phase: Math.random() * 1000,
-      feather: 0.08 + Math.random() * 0.14,
+      feather: 0.07 + Math.random() * 0.12,
     };
   }
   return { mode: "radial", feather: 0.1 + Math.random() * 0.12 };
 }
 
+function stagger(t: number, index: number, side: "out" | "in") {
+  // Deterministic per-layer stagger: every old/new effect has its own moment
+  // to arrive, but both endpoints remain mathematically complete at 0 and 1.
+  const seed = Math.sin((index + 1) * 71.173 + (side === "in" ? 13.7 : 0)) * 43758.5453;
+  const offset = seed - Math.floor(seed);
+  const start = offset * 0.32;
+  return Math.max(0, Math.min(1, (t - start) / (1 - start)));
+}
+
 /** Region for one side of the reveal at progress `t` (0 = fully hidden, 1 =
  * fully shown), given the shared recipe for this transition. */
-function regionAt(recipe: RevealRecipe, t: number, showing: boolean): LayerRegion {
+function regionAt(recipe: RevealRecipe, t: number, showing: boolean, index = 0): LayerRegion {
+  const localT = stagger(t, index, showing ? "in" : "out");
   if (recipe.mode === "shards") {
     // Sweep gate across a range wide enough that the feathered threshold
     // fully clears both ends — otherwise a cell whose hash sits right at 0
@@ -60,14 +123,26 @@ function regionAt(recipe: RevealRecipe, t: number, showing: boolean): LayerRegio
     // "suppress everything, low-gate as "admit everything" — gate has to
     // fall as t rises for the *base* mask to grow from 0 to 1.
     const span = 1 + 2 * recipe.feather;
-    const gate = (1 - t) * span - recipe.feather;
+    const gate = (1 - localT) * span - recipe.feather;
     return {
       mode: "shards", scale: recipe.density, phase: recipe.phase,
       gate, feather: recipe.feather, invert: !showing,
     };
   }
+  if (recipe.mode === "depth") {
+    // The depth texture is 1 for subject and 0 for room. Sweeping the cutoff
+    // downward makes the incoming stack appear across real image structure;
+    // inverse outgoing masks leave the same areas piece-by-piece.
+    const span = 1 + 2 * recipe.feather;
+    return {
+      mode: "foreground",
+      gate: (1 - localT) * span - recipe.feather,
+      feather: recipe.feather,
+      invert: !showing,
+    };
+  }
   // Radial: no invert needed — the two sides just grow/shrink opposite radii.
-  const radius = (showing ? t : 1 - t) * 0.95;
+  const radius = (showing ? localT : 1 - localT) * 0.95;
   return { mode: "radial", scale: radius, feather: recipe.feather };
 }
 
@@ -96,6 +171,8 @@ function makeBoundaryLayer(recipe: RevealRecipe): Layer {
     opacity: 0, // set per-frame in the tick loop
     region: recipe.mode === "shards"
       ? { mode: "shards", scale: recipe.density, phase: recipe.phase, gate: 0, feather: recipe.feather * 2.2 }
+      : recipe.mode === "depth"
+        ? { mode: "foreground", gate: 0.5, feather: recipe.feather * 2.2 }
       : { mode: "radial", scale: 0, feather: recipe.feather * 2.2 },
   });
 }
@@ -135,19 +212,19 @@ export function crossfadeLayers(commit: () => void, durationMs: number) {
   const lockedAfter = after.filter(l => l.locked);
   const incoming = after.filter(l => !l.locked);
 
-  const recipe = rollRecipe();
+  const recipe = rollRecipe(before, incoming);
   const boundary = makeBoundaryLayer(recipe);
   // How loud the boundary effect gets at its peak — randomized per
   // transition so it isn't the same intensity every time.
-  const boundaryPeak = 0.45 + Math.random() * 0.4;
+  const boundaryPeak = 0.52 + Math.random() * 0.34;
 
   const start = performance.now();
   const tick = () => {
     const t = Math.min(1, (performance.now() - start) / durationMs);
     const eased = t * t * (3 - 2 * t); // smoothstep
 
-    const fadingOut = before.map(l => ({ ...l, region: regionAt(recipe, eased, false) }));
-    const fadingIn = incoming.map(l => ({ ...l, region: regionAt(recipe, eased, true) }));
+    const fadingOut = before.map((l, index) => ({ ...l, region: regionAt(recipe, eased, false, index) }));
+    const fadingIn = incoming.map((l, index) => ({ ...l, region: regionAt(recipe, eased, true, index) }));
     // Parabola peaking at the transition's midpoint, gone at both ends.
     const boundaryOpacity = 4 * eased * (1 - eased) * boundaryPeak;
     const boundaryNow: Layer = {
@@ -155,6 +232,8 @@ export function crossfadeLayers(commit: () => void, durationMs: number) {
       opacity: boundaryOpacity,
       region: recipe.mode === "shards"
         ? { ...boundary.region!, gate: (1 - eased) * (1 + 2 * recipe.feather * 2.2) - recipe.feather * 2.2 }
+        : recipe.mode === "depth"
+          ? { ...boundary.region!, gate: 0.9 - eased * 0.8 }
         : { ...boundary.region!, scale: eased * 0.95 },
     };
 

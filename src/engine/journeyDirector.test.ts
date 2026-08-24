@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   DISRUPT_CEILING_MS, DISRUPT_FLOOR_MS,
-  moodFrom, nextDisruptionMs, nextHoldMs, pickDisruption,
+  moodFrom, nextDisruptionMs, nextHoldMs, performanceInterval, pickDisruption,
   type DisruptionKind,
 } from "./journeyDirector";
 import { EMPTY_FRAME, SILENT_FEATURES, type AudioFeatures, type FrameStats, type Section } from "./journeyCore";
@@ -82,6 +82,17 @@ describe("the disruption guarantee", () => {
 });
 
 describe("composition pacing", () => {
+  it("turns ambient timing into an irregular, active performance pace", () => {
+    const rand = rng(16);
+    const holds = Array.from({ length: 300 }, () => performanceInterval(16_000, "compose", rand));
+    const disruptions = Array.from({ length: 300 }, () => performanceInterval(9_000, "disrupt", rand));
+    expect(Math.min(...holds)).toBeGreaterThanOrEqual(1_600);
+    expect(Math.max(...holds)).toBeLessThanOrEqual(10_000);
+    expect(Math.min(...disruptions)).toBeGreaterThanOrEqual(1_200);
+    expect(Math.max(...disruptions)).toBeLessThanOrEqual(6_500);
+    expect(new Set(holds).size).toBeGreaterThan(200);
+  });
+
   it("quantises to whole bars when there is a tempo to quantise to", () => {
     // 128 BPM → 1875ms per bar. Every hold must be a whole multiple of it, or
     // the change lands near the music rather than on it.
