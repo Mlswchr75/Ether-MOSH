@@ -276,6 +276,12 @@ function TrackTrigger({ delay, showNudge, onNudgeDismiss }: { delay: number; sho
     return () => window.removeEventListener("pointerdown", close);
   }, [open]);
 
+  useEffect(() => {
+    const browse = () => fileRef.current?.click();
+    window.addEventListener("mosh:browse-audio-track", browse);
+    return () => window.removeEventListener("mosh:browse-audio-track", browse);
+  }, []);
+
   return (
     <div ref={wrapRef} className="relative" data-shuffle-picker>
       <button
