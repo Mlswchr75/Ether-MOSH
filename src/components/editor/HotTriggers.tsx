@@ -1,5 +1,5 @@
-import { Mic, MicOff, Circle, Square, Sparkles, Scissors, Snowflake, Camera, Shuffle, Star, Play, Pencil, Trash2, X, Film, Lock, Share2, Compass, Maximize2, Minimize2, Gem, Home, SwitchCamera, Crosshair, Eraser, Link2, Upload, Music, Music2, Shuffle as ShuffleIcon, Undo2, Redo2, Gauge, ChevronDown, MonitorSpeaker, Heart, GripVertical, RotateCcw, EyeOff, HelpCircle, SkipBack, SkipForward, Palette } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Mic, MicOff, Circle, Square, Sparkles, Scissors, Snowflake, Camera, Shuffle, Star, Play, Pencil, Trash2, X, Film, Lock, Share2, Compass, Maximize2, Minimize2, Gem, Home, SwitchCamera, Crosshair, Eraser, Link2, Upload, Music, Music2, Shuffle as ShuffleIcon, Undo2, Redo2, Gauge, ChevronDown, MonitorSpeaker, Heart, GripVertical, RotateCcw, EyeOff, HelpCircle, SkipBack, SkipForward, Palette, Flame, UserCircle } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { useStore } from "@/store/useStore";
 import { trackPlayer, DEFAULT_TRACK_TITLE, SHOWCASE_TRACKS } from "@/engine/trackPlayer";
@@ -29,6 +29,8 @@ function clientToViewportUv(clientX: number, clientY: number) {
 
 
 type Props = {
+  visualizerRef?: RefObject<HTMLElement>;
+  hidden?: boolean;
   isRecording: boolean;
   onToggleRecord: () => void;
   onScreenshot: () => void;
@@ -36,6 +38,7 @@ type Props = {
   onGif: (seconds?: number) => void;
   onShare?: () => void;
   onSupport?: () => void;
+  onAccount?: () => void;
   gifBusy?: boolean;
   gifProgress?: number; // 0..1
   onMicFlash?: (on: boolean) => void;
@@ -64,6 +67,29 @@ type Props = {
   onTrackNudgeDismiss?: () => void;
 };
 
+const MOBILE_WHEEL_HOLD_MS = 500;
+const MOBILE_WHEEL_FLICK_PX = 54;
+const MOBILE_WHEEL_ROTATION_KEY = "cathedral_mobile_radial_rotation_v1";
+
+export function normalizeRadialDegrees(value: number) {
+  return ((value % 360) + 360) % 360;
+}
+
+export function radialIndexForAngle(angle: number, count: number, rotation = 0) {
+  if (count <= 0) return -1;
+  const step = 360 / count;
+  return Math.round(normalizeRadialDegrees(angle - rotation) / step) % count;
+}
+
+export function radialTriggerIndex(angle: number, distance: number, total: number, rotation = 0) {
+  if (total <= 0) return -1;
+  const outerCount = Math.min(14, total);
+  const innerCount = Math.max(0, total - outerCount);
+  const useInnerRing = innerCount > 0 && distance < 112;
+  const ringIndex = radialIndexForAngle(angle, useInnerRing ? innerCount : outerCount, rotation);
+  return useInnerRing ? outerCount + ringIndex : ringIndex;
+}
+
 /** Auto-Mosh / auto-shuffle interval options — the one list every surface
  *  that touches shuffleSec draws from (this rail, its keyboard cycle in
  *  Editor.tsx, and the bottom-panel ShufflePanel), so "5s here, 3s there"
@@ -79,7 +105,7 @@ const DEFAULT_AUTO_MOSH_SEC = 15;
  *  situational stuff last. Not load-bearing for anything but the *default*
  *  order — "customize layout" lets anyone override it per-browser. */
 const DEFAULT_ORDER = [
-  "home", "undo", "redo",
+  "home", "source-upload", "source-camera", "source-forge", "account", "undo", "redo",
   "mosh", "auto-mosh", "clear-fx", "journey",
   "audio", "sensitivity",
   "freeze", "capture", "gif", "share",
@@ -89,6 +115,7 @@ const DEFAULT_ORDER = [
 
 const TRIGGER_LABELS: Record<string, string> = {
   home: "Back to start", undo: "Undo", redo: "Redo",
+  "source-upload": "Upload source", "source-camera": "Live camera", "source-forge": "Forge source", account: "Account",
   mosh: "Mosh", "auto-mosh": "Auto-Mosh", "clear-fx": "Clear FX", journey: "Journey",
   audio: "Audio (mic / device / beat sync)", sensitivity: "Sensitivity",
   "pro-mode": "Pro Mode — hide all UI",
@@ -758,12 +785,169 @@ function CustomizeTrigger({
   );
 }
 
+function MobileRadialWheel({
+  ids, registry, visualizerRef, isRecording, onSelect,
+}: {
+  ids: string[];
+  registry: Record<string, ReactNode>;
+  visualizerRef?: RefObject<HTMLElement>;
+  isRecording: boolean;
+  onSelect: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [rotation, setRotation] = useState(() => {
+    try { return Number(localStorage.getItem(MOBILE_WHEEL_ROTATION_KEY)) || 0; } catch { return 0; }
+  });
+  const [highlighted, setHighlighted] = useState<string | null>(null);
+  const wheelRef = useRef<HTMLDivElement>(null);
+  const gestureRef = useRef({ pointerId: -1, x: 0, y: 0, fired: false });
+  const highlightRef = useRef<string | null>(null);
+  const rotationRef = useRef(rotation);
+  const idsRef = useRef(ids);
+  idsRef.current = ids;
+  rotationRef.current = rotation;
+  const outerCount = Math.min(14, ids.length);
+  const innerCount = Math.max(0, ids.length - outerCount);
+
+  const select = (id: string | null) => {
+    highlightRef.current = id;
+    setHighlighted(id);
+  };
+
+  const activate = (id: string) => {
+    onSelect(id);
+    const slot = wheelRef.current?.querySelector<HTMLElement>(`[data-radial-id="${CSS.escape(id)}"]`);
+    slot?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.click();
+  };
+
+  useEffect(() => {
+    const target = visualizerRef?.current;
+    if (!target) return;
+    let timer: number | null = null;
+    const cancelTimer = () => { if (timer != null) window.clearTimeout(timer); timer = null; };
+    const ignored = (eventTarget: EventTarget | null) =>
+      eventTarget instanceof HTMLElement && !!eventTarget.closest("button, a, input, textarea, select, [role='slider'], [data-no-longpress], .mobile-radial-wheel");
+    const onDown = (event: PointerEvent) => {
+      if (event.pointerType !== "touch" || ignored(event.target) || gestureRef.current.pointerId !== -1) return;
+      gestureRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, fired: false };
+      timer = window.setTimeout(() => {
+        gestureRef.current.fired = true;
+        setOpen(true);
+        try { navigator.vibrate?.(12); } catch {}
+      }, MOBILE_WHEEL_HOLD_MS);
+    };
+    const onMove = (event: PointerEvent) => {
+      const gesture = gestureRef.current;
+      if (event.pointerId !== gesture.pointerId) return;
+      const dx = event.clientX - gesture.x;
+      const dy = event.clientY - gesture.y;
+      const distance = Math.hypot(dx, dy);
+      if (!gesture.fired && distance > 18) { cancelTimer(); return; }
+      if (!gesture.fired || distance < MOBILE_WHEEL_FLICK_PX) { select(null); return; }
+      // Zero degrees is twelve o'clock, matching the wheel's visual layout.
+      const angle = normalizeRadialDegrees(Math.atan2(dy, dx) * 180 / Math.PI + 90);
+      const index = radialTriggerIndex(angle, distance, idsRef.current.length, rotationRef.current);
+      select(idsRef.current[index] ?? null);
+    };
+    const onEnd = (event: PointerEvent) => {
+      if (event.pointerId !== gestureRef.current.pointerId) return;
+      cancelTimer();
+      if (gestureRef.current.fired && highlightRef.current) activate(highlightRef.current);
+      gestureRef.current = { pointerId: -1, x: 0, y: 0, fired: false };
+      select(null);
+    };
+    target.addEventListener("pointerdown", onDown, { passive: true });
+    window.addEventListener("pointermove", onMove, { passive: true });
+    window.addEventListener("pointerup", onEnd, { passive: true });
+    window.addEventListener("pointercancel", onEnd, { passive: true });
+    return () => {
+      cancelTimer();
+      target.removeEventListener("pointerdown", onDown);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onEnd);
+      window.removeEventListener("pointercancel", onEnd);
+    };
+  }, [visualizerRef]);
+
+  const rotateRef = useRef<{ id: number; angle: number; rotation: number } | null>(null);
+  const pointerAngle = (x: number, y: number) => {
+    const rect = wheelRef.current?.getBoundingClientRect();
+    if (!rect) return 0;
+    return Math.atan2(y - (rect.top + rect.height / 2), x - (rect.left + rect.width / 2)) * 180 / Math.PI;
+  };
+  return (
+    <div className="mobile-radial-layer pointer-events-none absolute inset-0 z-[70]">
+      <button type="button" className="pointer-events-auto absolute left-1/2 top-1/2 h-px w-px opacity-0" onClick={() => setOpen(true)} aria-label="Open radial controls" />
+      {open && (
+        <>
+          <button className="pointer-events-auto absolute inset-0 bg-black/20 backdrop-blur-[1px]" aria-label="Close radial controls" onClick={() => setOpen(false)} />
+          <div
+            ref={wheelRef}
+            className="mobile-radial-wheel pointer-events-auto absolute left-1/2 top-1/2"
+            role="menu"
+            aria-label="Visualizer controls"
+            onPointerDown={(event) => {
+              if ((event.target as HTMLElement).closest("button")) return;
+              rotateRef.current = { id: event.pointerId, angle: pointerAngle(event.clientX, event.clientY), rotation };
+              event.currentTarget.setPointerCapture(event.pointerId);
+            }}
+            onPointerMove={(event) => {
+              const drag = rotateRef.current;
+              if (!drag || drag.id !== event.pointerId) return;
+              const next = drag.rotation + pointerAngle(event.clientX, event.clientY) - drag.angle;
+              rotationRef.current = next;
+              setRotation(next);
+            }}
+            onPointerUp={(event) => {
+              if (rotateRef.current?.id !== event.pointerId) return;
+              rotateRef.current = null;
+              try { localStorage.setItem(MOBILE_WHEEL_ROTATION_KEY, String(rotationRef.current)); } catch {}
+            }}
+          >
+            <div className="mobile-radial-wheel__rings" aria-hidden />
+            {ids.map((id, index) => {
+              const inner = index >= outerCount;
+              const ringIndex = inner ? index - outerCount : index;
+              const count = inner ? innerCount : outerCount;
+              const angle = (ringIndex * 360 / Math.max(1, count)) + rotation;
+              const radius = inner ? 29 : 43;
+              return (
+                <div
+                  key={id}
+                  role="menuitem"
+                  data-radial-id={id}
+                  data-highlighted={highlighted === id || undefined}
+                  className="mobile-radial-wheel__slot"
+                  style={{ transform: `translate(-50%, -50%) rotate(${angle}deg) translateY(calc(var(--radial-size) * -${radius / 100})) rotate(${-angle}deg)` }}
+                  onClick={() => onSelect(id)}
+                >
+                  {registry[id]}
+                </div>
+              );
+            })}
+            <button
+              type="button"
+              className="mobile-radial-wheel__hub"
+              onClick={() => setOpen(false)}
+              aria-label="Close radial controls"
+            >
+              <span>{highlighted ? (TRIGGER_LABELS[highlighted] ?? highlighted) : "MOSH"}</span>
+              <small>{isRecording ? "REC" : "steer · tap · flick"}</small>
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 /**
  * Floating cluster of "moshing" cute icons over the visualizer.
  * The DOM overlay is outside <canvas>, so canvas.captureStream() never records these.
  */
 export function HotTriggers({
-  isRecording, onToggleRecord, onScreenshot, onFreeze, onGif, onShare, onSupport, gifBusy, gifProgress,
+  visualizerRef, hidden = false,
+  isRecording, onToggleRecord, onScreenshot, onFreeze, onGif, onShare, onSupport, onAccount, gifBusy, gifProgress,
   onMicFlash, journeyOn, onToggleJourney, journeyLocked, journeyPreview, isFullscreen, onToggleFullscreen, onHome,
   onClearFx, hasFx, onSaveFavorite, showMicNudge, onMicNudgeYes, onMicNudgeNo, onMicNudgeExpire, showTrackNudge, onTrackNudgeDismiss,
 }: Props) {
@@ -846,7 +1030,7 @@ export function HotTriggers({
   // Switch-camera — only shown on touch devices when a live camera stream is active
   const [isTouchScreen, setIsTouchScreen] = useState(false);
   useEffect(() => {
-    const mql = window.matchMedia("(pointer: coarse)");
+    const mql = window.matchMedia("(pointer: coarse), (max-width: 900px)");
     const update = () => setIsTouchScreen(mql.matches);
     update();
     mql.addEventListener("change", update);
@@ -1025,6 +1209,26 @@ export function HotTriggers({
     home: onHome && (
       <HotBtn key="home" delay={0} label="Back to start" onClick={onHome} tint="220 12% 80%">
         <Home className="h-4 w-4" strokeWidth={1.5} />
+      </HotBtn>
+    ),
+    "source-upload": (
+      <HotBtn key="source-upload" delay={0} label="Upload source" active={sourceMode === "upload"} onClick={() => window.dispatchEvent(new CustomEvent("mosh:switch-mode", { detail: "upload" }))} tint="326 90% 65%">
+        <Upload className="h-4 w-4" strokeWidth={1.5} />
+      </HotBtn>
+    ),
+    "source-camera": (
+      <HotBtn key="source-camera" delay={0} label="Live camera" active={sourceMode === "camera"} onClick={() => window.dispatchEvent(new CustomEvent("mosh:switch-mode", { detail: "camera" }))} tint="190 90% 62%">
+        <Camera className="h-4 w-4" strokeWidth={1.5} />
+      </HotBtn>
+    ),
+    "source-forge": (
+      <HotBtn key="source-forge" delay={0} label="Forge source" active={sourceMode === "forge"} onClick={() => window.dispatchEvent(new CustomEvent("mosh:switch-mode", { detail: "forge" }))} tint="24 94% 62%">
+        <Flame className="h-4 w-4" strokeWidth={1.5} />
+      </HotBtn>
+    ),
+    account: onAccount && (
+      <HotBtn key="account" delay={0} label="Account" onClick={onAccount} tint="266 70% 75%">
+        <UserCircle className="h-4 w-4" strokeWidth={1.5} />
       </HotBtn>
     ),
     undo: (
@@ -1507,6 +1711,20 @@ export function HotTriggers({
     rail.addEventListener("wheel", onWheel, { passive: false });
     return () => rail.removeEventListener("wheel", onWheel);
   }, []);
+
+  if (isTouchScreen) {
+    return (
+      <MobileRadialWheel
+        ids={availableIds}
+        registry={registry}
+        visualizerRef={visualizerRef}
+        isRecording={isRecording}
+        onSelect={setSelectedTriggerId}
+      />
+    );
+  }
+
+  if (hidden) return null;
 
   return (
     /* Vertically centered so the dock occupies the right edge evenly across

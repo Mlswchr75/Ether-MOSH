@@ -455,12 +455,108 @@
   .hot-trigger-drag:active { cursor: grabbing; color: hsl(var(--accent)); }
   .hot-trigger-drag svg { inline-size: 9px; block-size: 14px; }
   .hot-trigger-slot--customize .hot-trigger-drag { display: none; }
-  @media (pointer: coarse) {
-    .hot-trigger-rail {
-      --dock-selected: 1.28;
-      inline-size: max-content;
-      block-size: min(88dvh, calc(100dvh - 1rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)));
+  @media (pointer: coarse), (max-width: 900px) {
+    .desktop-visualizer-chrome,
+    .hot-triggers { display: none !important; }
+
+    .mobile-radial-layer { display: block; }
+    .mobile-radial-wheel {
+      --radial-size: min(92vw, 74dvh, 430px);
+      inline-size: var(--radial-size);
+      block-size: var(--radial-size);
+      translate: -50% -50%;
+      border-radius: 999px;
+      touch-action: none;
+      animation: radial-wheel-in 220ms cubic-bezier(.2,.9,.2,1) both;
+      filter: drop-shadow(0 20px 40px hsl(0 0% 0% / .55));
     }
+    .mobile-radial-wheel__rings {
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      border: 1px solid hsl(var(--accent) / .52);
+      background:
+        radial-gradient(circle, transparent 0 17%, hsl(var(--bg-base) / .72) 17.5% 20%, transparent 20.5% 34%, hsl(var(--bg-base) / .64) 34.5% 48%, transparent 48.5%),
+        conic-gradient(from -4deg, hsl(var(--primary) / .08), hsl(var(--accent) / .18), hsl(var(--primary) / .06), hsl(var(--accent) / .16), hsl(var(--primary) / .08));
+      box-shadow: inset 0 0 0 1px hsl(0 0% 100% / .07), inset 0 0 44px hsl(var(--accent) / .12), 0 0 34px hsl(var(--primary) / .13);
+      backdrop-filter: blur(10px) saturate(135%);
+      -webkit-backdrop-filter: blur(10px) saturate(135%);
+    }
+    .mobile-radial-wheel__rings::before,
+    .mobile-radial-wheel__rings::after {
+      content: "";
+      position: absolute;
+      border-radius: inherit;
+      pointer-events: none;
+    }
+    .mobile-radial-wheel__rings::before { inset: 17%; border: 1px solid hsl(var(--primary) / .34); }
+    .mobile-radial-wheel__rings::after { inset: 34%; border: 1px solid hsl(var(--accent) / .4); }
+    .mobile-radial-wheel__slot {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      display: grid;
+      place-items: center;
+      transition: transform 90ms linear, filter 120ms ease;
+    }
+    .mobile-radial-wheel__slot .hot-trigger {
+      --ht-size: clamp(34px, calc(var(--radial-size) * .105), 47px);
+      --ht-ico: calc(var(--ht-size) * .47);
+      border-radius: 999px;
+      transform-origin: center;
+      background: hsl(var(--bg-base) / .58);
+      border-color: hsl(0 0% 0% / .92);
+      box-shadow: 0 0 0 1px hsl(0 0% 100% / .08), 0 5px 16px hsl(0 0% 0% / .35);
+    }
+    .mobile-radial-wheel__slot[data-highlighted] .hot-trigger {
+      scale: 1.28;
+      color: white;
+      border-color: hsl(var(--accent));
+      background: hsl(var(--accent) / .26);
+      box-shadow: 0 0 20px hsl(var(--accent) / .72);
+    }
+    .mobile-radial-wheel__slot > div > div[role="menu"],
+    .mobile-radial-wheel__slot > div > div[class*="right-full"] {
+      position: fixed;
+      left: 50%;
+      right: auto;
+      top: calc(50% + var(--radial-size) * .13);
+      transform: translateX(-50%);
+      margin: 0;
+      max-width: min(86vw, 360px);
+    }
+    .mobile-radial-wheel__hub {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      translate: -50% -50%;
+      inline-size: 24%;
+      aspect-ratio: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      border-radius: 999px;
+      border: 1px solid hsl(var(--primary) / .7);
+      color: hsl(var(--text-body));
+      background: radial-gradient(circle, hsl(var(--surface-2) / .94), hsl(var(--bg-base) / .86));
+      box-shadow: inset 0 0 24px hsl(var(--primary) / .15), 0 0 20px hsl(var(--primary) / .2);
+      font: 700 clamp(10px, 2.6vw, 13px)/1 ui-monospace, monospace;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      text-align: center;
+      padding: 8px;
+    }
+    .mobile-radial-wheel__hub small { color: hsl(var(--text-secondary)); font-size: 7px; letter-spacing: .08em; }
+    @keyframes radial-wheel-in {
+      from { opacity: 0; scale: .82; rotate: -7deg; }
+      to { opacity: 1; scale: 1; rotate: 0deg; }
+    }
+  }
+
+  @media (pointer: fine) and (min-width: 901px) {
+    .mobile-radial-layer { display: none !important; }
   }
 
   .section-header {

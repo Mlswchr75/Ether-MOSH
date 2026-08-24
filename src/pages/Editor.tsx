@@ -159,7 +159,6 @@ export default function Editor() {
   // immediately — a plain on/off, not just "stop protecting from the next
   // auto-hide."
   const [chromePinned, setChromePinned] = useState(false);
-  const [holdProgress, setHoldProgress] = useState(0);
   const [shortcutsHint, setShortcutsHint] = useState(false);
   const [slotShake, setSlotShake] = useState<number | null>(null);
   const isFullscreen = isPerformanceMode;
@@ -1554,81 +1553,6 @@ export default function Editor() {
     };
   }, [toggleSmartFreeze]);
 
-  // Touch-only long-press anywhere on the visualizer toggles the menu rack.
-  // Listens on window after pointerdown so iOS/Safari can't drop move/up events
-  // even when overlays (MobileGestures, Kaoss) capture the pointer.
-  useEffect(() => {
-    const el = canvasContainerRef.current;
-    if (!el) return;
-    let timer: number | null = null;
-    let raf = 0;
-    let startedAt = 0;
-    let startX = 0, startY = 0;
-    let activeId: number | null = null;
-    const HOLD_MS = 750;
-
-    const detachWindow = () => {
-      window.removeEventListener("pointermove", onMoveWin);
-      window.removeEventListener("pointerup", onEndWin);
-      window.removeEventListener("pointercancel", onEndWin);
-    };
-    const cancel = () => {
-      if (timer) { window.clearTimeout(timer); timer = null; }
-      if (raf) { cancelAnimationFrame(raf); raf = 0; }
-      activeId = null;
-      detachWindow();
-      setHoldProgress(0);
-    };
-    const tick = () => {
-      const p = Math.min(1, (performance.now() - startedAt) / HOLD_MS);
-      setHoldProgress(p);
-      if (p < 1) raf = requestAnimationFrame(tick);
-    };
-    const onMoveWin = (e: PointerEvent) => {
-      if (activeId !== null && e.pointerId !== activeId) return;
-      const dx = e.clientX - startX, dy = e.clientY - startY;
-      if (dx * dx + dy * dy > 18 * 18) cancel();
-    };
-    const onEndWin = (e: PointerEvent) => {
-      if (activeId !== null && e.pointerId !== activeId) return;
-      cancel();
-    };
-    const onDown = (e: PointerEvent) => {
-      // A second finger is reserved for mobile performance gestures, never a
-      // one-finger menu hold.
-      if (timer) {
-        if (e.pointerType === "touch" && e.pointerId !== activeId) cancel();
-        return;
-      }
-      if (e.pointerType !== "touch") return;
-      // Suspended in Pro Mode — the deliberate hold+second-tap gesture
-      // (see the dedicated Pro Mode effect below) is the only way in there,
-      // so a single-finger hold anywhere must stay fully inert.
-      if (useStore.getState().proModeEnabled) return;
-      if (e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return;
-      const t = e.target as HTMLElement | null;
-      if (t && t.closest("button, a, input, textarea, [role='slider'], [data-no-longpress]")) return;
-      activeId = e.pointerId;
-      startedAt = performance.now();
-      startX = e.clientX; startY = e.clientY;
-      setHoldProgress(0.001);
-      raf = requestAnimationFrame(tick);
-      timer = window.setTimeout(() => {
-        setHideUI(v => !v);
-        try { if ("vibrate" in navigator) (navigator as any).vibrate?.(12); } catch {}
-        cancel();
-      }, HOLD_MS);
-      window.addEventListener("pointermove", onMoveWin, { passive: true });
-      window.addEventListener("pointerup", onEndWin, { passive: true });
-      window.addEventListener("pointercancel", onEndWin, { passive: true });
-    };
-    el.addEventListener("pointerdown", onDown);
-    return () => {
-      cancel();
-      el.removeEventListener("pointerdown", onDown);
-    };
-  }, []);
-
   // Pro Mode, desktop: holding bare Shift (no other key, no modifiers)
   // shows the menu instantly; releasing it hides it instantly. A true hold,
   // not a toggle-with-timer, so it's as fast to flash and dismiss as
@@ -1838,7 +1762,7 @@ export default function Editor() {
             triggers, this is how you get OUT of whichever mode you're in,
             and idle-fade would have hidden it by the exact moment you
             reach for it. */}
-        {!isPerformanceMode && !isOverlay && <SourceModeToggle hidden={hideUI} />}
+        {!isPerformanceMode && !isOverlay && <div className="desktop-visualizer-chrome"><SourceModeToggle hidden={hideUI} /></div>}
         <TrackpadGestures
           targetRef={canvasContainerRef}
           onTogglePerf={togglePerf}
@@ -1850,8 +1774,10 @@ export default function Editor() {
         <SourceTransition trigger={transitionKey} />
         
         {/* TapToBegin removed — StartCameraOverlay is the live-first empty state and TapToBegin's centered button used to intercept clicks meant for "go live". */} 
-        {!isPerformanceMode && !isOverlay && !hideUI && (
+        {!isPerformanceMode && !isOverlay && (
           <HotTriggers
+            visualizerRef={canvasContainerRef}
+            hidden={hideUI}
             isRecording={isRecording}
             onToggleRecord={toggleRecord}
             onScreenshot={takeScreenshot}
@@ -1859,6 +1785,7 @@ export default function Editor() {
             onSaveFavorite={saveFavoriteNow}
             onShare={shareCurrent}
             onSupport={() => navigate("/pricing")}
+            onAccount={() => navigate("/account")}
             gifBusy={gifBusy}
             gifProgress={gifProgress}
             onFreeze={toggleSmartFreeze}
@@ -1923,7 +1850,7 @@ export default function Editor() {
           </div>
         )}
         {!isPerformanceMode && !hideUI && (
-          <div className="ui-chrome absolute top-3 right-3 z-40 pointer-events-auto">
+          <div className="ui-chrome desktop-visualizer-chrome absolute top-3 right-3 z-40 pointer-events-auto">
             <AccountChip />
           </div>
         )}
@@ -1944,7 +1871,7 @@ export default function Editor() {
             aria-label={chromePinned ? "Unpin controls (fold away)" : "Pin controls (keep on screen)"}
             aria-pressed={chromePinned}
             title={chromePinned ? "Controls pinned — click to fold away" : "Keep controls on screen"}
-            className={`absolute top-3 right-14 z-40 flex h-6 w-6 items-center justify-center rounded-full border transition pointer-events-auto ${
+            className={`desktop-visualizer-chrome absolute top-3 right-14 z-40 flex h-6 w-6 items-center justify-center rounded-full border transition pointer-events-auto ${
               chromePinned
                 ? "border-[hsl(var(--accent))]/60 bg-[hsl(var(--accent))]/15 text-[hsl(var(--accent))]"
                 : "border-white/15 text-white/35 hover:border-white/35 hover:text-white/70"
@@ -1969,77 +1896,6 @@ export default function Editor() {
         {showFirstTip && !isPerformanceMode && (
           <PerformanceTooltip onDismiss={() => { setShowFirstTip(false); markPerfModeSeen(); }} />
         )}
-
-        {/* Long-press affordance — appears while finger is held, fills as a ring */}
-        {holdProgress > 0 && !isPerformanceMode && (
-          <div
-            className="pointer-events-none absolute inset-x-0 bottom-8 z-30 flex flex-col items-center gap-2.5 motion-reduce:animate-none"
-            style={{
-              animation: "holdRingIn 180ms cubic-bezier(0.2, 0.8, 0.2, 1) both",
-              opacity: 0.4 + holdProgress * 0.6,
-            }}
-          >
-            <div
-              className="relative grid place-items-center rounded-full"
-              style={{
-                width: 56,
-                height: 56,
-                background: "radial-gradient(circle, hsl(var(--surface-1) / 0.85) 0%, hsl(var(--surface-1) / 0.55) 60%, transparent 100%)",
-                backdropFilter: "blur(8px)",
-                WebkitBackdropFilter: "blur(8px)",
-                boxShadow: holdProgress > 0.6
-                  ? `0 0 ${12 + holdProgress * 18}px hsl(var(--primary) / ${0.25 + holdProgress * 0.35})`
-                  : "none",
-                transform: `scale(${0.92 + holdProgress * 0.12})`,
-                transition: "box-shadow 80ms linear",
-              }}
-            >
-              <svg viewBox="0 0 36 36" className="absolute inset-0 h-full w-full -rotate-90">
-                <circle
-                  cx="18" cy="18" r="15.5"
-                  fill="none"
-                  stroke="hsl(var(--border-default))"
-                  strokeWidth="1.5"
-                  opacity="0.6"
-                />
-                <circle
-                  cx="18" cy="18" r="15.5"
-                  fill="none"
-                  stroke="hsl(var(--primary))"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeDasharray={2 * Math.PI * 15.5}
-                  strokeDashoffset={(1 - holdProgress) * 2 * Math.PI * 15.5}
-                  style={{ filter: "drop-shadow(0 0 4px hsl(var(--primary) / 0.7))" }}
-                />
-              </svg>
-              <div
-                className="h-1.5 w-1.5 rounded-full"
-                style={{
-                  background: "hsl(var(--primary))",
-                  opacity: 0.5 + holdProgress * 0.5,
-                  boxShadow: `0 0 ${4 + holdProgress * 8}px hsl(var(--primary))`,
-                }}
-              />
-            </div>
-            <div
-              className="font-mono text-[10px] uppercase tracking-[0.32em]"
-              style={{
-                color: "hsl(var(--text-secondary))",
-                textShadow: "0 1px 6px rgba(0,0,0,0.65)",
-              }}
-            >
-              {hideUI ? "hold to reveal controls" : "hold to hide controls"}
-            </div>
-            <style>{`
-              @keyframes holdRingIn {
-                from { opacity: 0; transform: translateY(6px); }
-                to   { opacity: 1; transform: translateY(0); }
-              }
-            `}</style>
-          </div>
-        )}
-        {/* (idle "hold for controls" hint removed per design — discovery is implicit) */}
 
       </div>
 
