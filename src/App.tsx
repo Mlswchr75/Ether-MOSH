@@ -11,6 +11,7 @@ const ForgeRedirect = lazy(() => import("./pages/ForgeRedirect.tsx"));
 const Install = lazy(() => import("./pages/Install.tsx"));
 const Terms = lazy(() => import("./pages/Terms.tsx"));
 const Privacy = lazy(() => import("./pages/Privacy.tsx"));
+const DeleteAccount = lazy(() => import("./pages/DeleteAccount.tsx"));
 const Pricing = lazy(() => import("./pages/Pricing.tsx"));
 const Refund = lazy(() => import("./pages/Refund.tsx"));
 const Auth = lazy(() => import("./pages/Auth.tsx"));
@@ -47,6 +48,7 @@ const App = () => (
             <Route path="/install" element={<Install />} />
             <Route path="/terms" element={<Terms />} />
             <Route path="/privacy" element={<Privacy />} />
+            <Route path="/delete-account" element={<DeleteAccount />} />
             <Route path="/pricing" element={<Pricing />} />
             <Route path="/refund" element={<Refund />} />
             <Route path="/refunds" element={<Refund />} />
@@ -66,7 +68,6 @@ const App = () => (
             <Route path="/guides/how-to-datamosh-a-video" element={<GuideDatamoshVideo />} />
             <Route path="/guides/free-vj-software-browser" element={<GuideFreeVJSoftware />} />
             <Route path="/guides/glitch-effect-video-tiktok" element={<GuideGlitchTikTok />} />
-            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>

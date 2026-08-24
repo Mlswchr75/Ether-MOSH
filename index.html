@@ -6,55 +6,50 @@
     <meta name="theme-color" content="#0a080e" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="MOSH" />
+    <meta name="apple-mobile-web-app-title" content="Ether-MOSH" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="apple-touch-icon" href="/icons/icon-192.png" />
 
-    <title>MOSH — Audio-Reactive Visual Instrument</title>
-    <meta name="description" content="MOSH is an audio-reactive visual instrument for live performance and projection. 107 GPU effects, beat-synced chaos, in your browser." />
+    <title>Ether-MOSH — Audio-Reactive Visual Instrument</title>
+    <meta name="description" content="Ether-MOSH is an audio-reactive visual instrument for live performance, image manipulation, projection, and animated overlays." />
     <meta name="author" content="Aesthetic Rebellion" />
     <meta name="google-site-verification" content="VM7SriaXHGRdvNcKpMHxejHFTZBG4rGQkhkzcdhOkAY" />
 
     <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="MOSH" />
-    <meta property="og:title" content="MOSH — Audio-Reactive Visual Instrument" />
-    <meta property="og:description" content="107 GPU effects. Beat-synced chaos. Built in the browser for artists who treat destruction as design." />
+    <meta property="og:site_name" content="Ether-MOSH" />
+    <meta property="og:title" content="Ether-MOSH — Audio-Reactive Visual Instrument" />
+    <meta property="og:description" content="GPU effects, beat-synced chaos, animated overlays, camera and image moshing in your browser." />
     <meta property="og:url" content="https://ether-mosh.online/" />
     <meta property="og:image" content="https://ether-mosh.online/og-image.png" />
 
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="MOSH — Audio-Reactive Visual Instrument" />
-    <meta name="twitter:description" content="107 GPU effects. Beat-synced chaos. Built in the browser for artists who treat destruction as design." />
+    <meta name="twitter:title" content="Ether-MOSH — Audio-Reactive Visual Instrument" />
+    <meta name="twitter:description" content="GPU effects, beat-synced chaos, animated overlays, camera and image moshing in your browser." />
     <meta name="twitter:image" content="https://ether-mosh.online/og-image.png" />
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet" />
-
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
 
     <script type="application/ld+json">
-      {
-        "@context": "https://schema.org",
-        "@type": "Organization",
-        "name": "Aesthetic Rebellion",
-        "url": "https://ether-mosh.online/",
-        "logo": "https://ether-mosh.online/icons/icon-512.png"
-      }
+      {"@context":"https://schema.org","@type":"Organization","name":"Aesthetic Rebellion","url":"https://ether-mosh.online/","logo":"https://ether-mosh.online/icons/icon-512.png"}
     </script>
     <script type="application/ld+json">
-      {
-        "@context": "https://schema.org",
-        "@type": "WebSite",
-        "name": "MOSH",
-        "url": "https://ether-mosh.online/",
-        "description": "Audio-reactive visual instrument for live performance, projection, and immersive spaces.",
-        "publisher": { "@type": "Organization", "name": "Aesthetic Rebellion" }
-      }
+      {"@context":"https://schema.org","@type":"WebSite","name":"Ether-MOSH","url":"https://ether-mosh.online/","description":"Audio-reactive visual instrument for live performance, projection, and immersive spaces.","publisher":{"@type":"Organization","name":"Aesthetic Rebellion"}}
     </script>
   </head>
 
   <body>
+    <!-- Netlify parses static HTML at build time to register SPA-submitted forms. -->
+    <form name="account-deletion" data-netlify="true" netlify-honeypot="bot-field" hidden>
+      <input type="hidden" name="form-name" value="account-deletion" />
+      <input name="bot-field" />
+      <input type="email" name="email" />
+      <input name="user_id" />
+      <input name="requested_at" />
+      <textarea name="reason"></textarea>
+    </form>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
