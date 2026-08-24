@@ -42,6 +42,7 @@ export function OverlayStage() {
 
   return (
     <div
+      data-overlay-capture-stage
       className="pointer-events-auto absolute inset-0 z-30 overflow-hidden"
       onPointerDown={event => {
         if (event.target === event.currentTarget) selectEntity(null);
