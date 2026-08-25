@@ -192,7 +192,10 @@ function HotBtn({
     <button
       type="button"
       onClick={onClick}
-      onPointerDown={onPointerDown}
+      onPointerDown={(event) => {
+        event.stopPropagation();
+        onPointerDown?.(event);
+      }}
       onPointerUp={onPointerUp}
       onPointerLeave={onPointerCancel}
       onPointerCancel={onPointerCancel}
@@ -204,6 +207,7 @@ function HotBtn({
       data-active={active || undefined}
       data-tint={tint ? "" : undefined}
       data-no-longpress
+      data-hot-trigger-hold={onPointerDown ? "true" : undefined}
       className="hot-trigger"
       style={{ animationDelay: `${delay}ms`, ...(tint ? { ["--ht-tint" as string]: tint } : {}) }}
     >
@@ -1067,7 +1071,7 @@ function MobileRadialWheel({
               ["--radial-counter-rotation" as string]: `${-rotationRef.current}deg`,
             }}
             onPointerDown={(event) => {
-              if ((event.target as HTMLElement).closest("button")) return;
+              if (event.target instanceof Element && event.target.closest("[data-radial-action]")) return;
               cacheWheelRect();
               rotateRef.current = { id: event.pointerId, angle: pointerAngle(event.clientX, event.clientY), rotation: rotationRef.current };
               event.currentTarget.setPointerCapture(event.pointerId);
@@ -1102,6 +1106,7 @@ function MobileRadialWheel({
                   ref={(node) => { if (node) slotRefs.current.set(id, node); else slotRefs.current.delete(id); }}
                   role="menuitem"
                   data-radial-id={id}
+                  data-radial-action
                   className="mobile-radial-wheel__slot"
                   style={{
                     ["--slot-angle" as string]: `${angle}deg`,
@@ -1109,6 +1114,7 @@ function MobileRadialWheel({
                     ["--slot-radius" as string]: `${radius / 100}`,
                   }}
                   onClick={() => onSelect(id)}
+                  onPointerDown={(event) => event.stopPropagation()}
                   onPointerEnter={() => select(id)}
                   onFocus={() => select(id)}
                 >
@@ -1307,33 +1313,46 @@ function DesktopRadialWheel({
                 key={id}
                 role="menuitem"
                 data-radial-id={id}
+                data-radial-action
                 data-highlighted={highlighted === id || undefined}
                 data-editing={editing || undefined}
                 className="mobile-radial-wheel__slot"
                 style={{ transform: `translate(-50%, -50%) translate(calc(var(--radial-size) * ${point.x}), calc(var(--radial-size) * ${point.y}))` }}
                 onClickCapture={(event) => { if (editing) { event.preventDefault(); event.stopPropagation(); } }}
                 onClick={() => onSelect(id)}
+                onPointerDown={(event) => event.stopPropagation()}
                 onPointerEnter={() => select(id)}
                 onFocus={() => select(id)}
-                onPointerDownCapture={(event) => {
-                  if (!editing) return;
-                  event.preventDefault();
-                  event.stopPropagation();
-                  editDragRef.current = { pointerId: event.pointerId, id };
-                  event.currentTarget.setPointerCapture(event.pointerId);
-                }}
-                onPointerMove={(event) => {
-                  const drag = editDragRef.current;
-                  if (!editing || drag?.pointerId !== event.pointerId || drag.id !== id) return;
-                  saveLayout({ ...layoutRef.current, [id]: clampRadialPoint(pointFromPointer(event.clientX, event.clientY)) });
-                }}
-                onPointerUp={(event) => {
-                  if (!editDragRef.current || editDragRef.current.pointerId !== event.pointerId) return;
-                  editDragRef.current = null;
-                  if (event.currentTarget.hasPointerCapture?.(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
-                }}
               >
                 {registry[id]}
+                {editing && (
+                  <button
+                    type="button"
+                    className="radial-slot-grip"
+                    aria-label={`Move ${TRIGGER_LABELS[id] ?? id}`}
+                    title={`Drag to move ${TRIGGER_LABELS[id] ?? id}`}
+                    onClick={(event) => { event.preventDefault(); event.stopPropagation(); }}
+                    onPointerDown={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      editDragRef.current = { pointerId: event.pointerId, id };
+                      event.currentTarget.setPointerCapture(event.pointerId);
+                    }}
+                    onPointerMove={(event) => {
+                      const drag = editDragRef.current;
+                      if (drag?.pointerId !== event.pointerId || drag.id !== id) return;
+                      saveLayout({ ...layoutRef.current, [id]: clampRadialPoint(pointFromPointer(event.clientX, event.clientY)) });
+                    }}
+                    onPointerUp={(event) => {
+                      if (!editDragRef.current || editDragRef.current.pointerId !== event.pointerId) return;
+                      editDragRef.current = null;
+                      if (event.currentTarget.hasPointerCapture?.(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+                    }}
+                    onPointerCancel={() => { editDragRef.current = null; }}
+                  >
+                    <GripVertical aria-hidden />
+                  </button>
+                )}
               </div>
             );
           })}

@@ -616,12 +616,30 @@
       color: hsl(var(--accent));
       letter-spacing: .08em;
     }
-    .mobile-radial-wheel__slot[data-editing] { cursor: move; z-index: 5; }
+    .mobile-radial-wheel__slot[data-editing] { z-index: 5; }
     .mobile-radial-wheel__slot[data-editing] .hot-trigger {
       border-style: dashed;
       border-color: hsl(var(--accent) / .8);
-      cursor: move;
     }
+    .radial-slot-grip {
+      position: absolute;
+      right: -10px;
+      top: -10px;
+      z-index: 8;
+      display: grid;
+      width: 20px;
+      height: 20px;
+      place-items: center;
+      border: 1px solid hsl(var(--accent) / .88);
+      border-radius: 999px;
+      color: hsl(var(--text-body));
+      background: hsl(var(--bg-base) / .96);
+      box-shadow: 0 0 9px hsl(var(--accent) / .5);
+      cursor: grab;
+      touch-action: none;
+    }
+    .radial-slot-grip:active { cursor: grabbing; scale: 1.12; }
+    .radial-slot-grip svg { width: 11px; height: 11px; }
     .mobile-radial-wheel__label {
       max-width: 100%;
       text-wrap: balance;
