@@ -67,7 +67,7 @@ type Props = {
   onTrackNudgeDismiss?: () => void;
 };
 
-const MOBILE_WHEEL_HOLD_MS = 500;
+const MOBILE_WHEEL_HOLD_MS = 400;
 const MOBILE_WHEEL_FLICK_PX = 54;
 const MOBILE_WHEEL_ROTATION_KEY = "cathedral_mobile_radial_rotation_v1";
 

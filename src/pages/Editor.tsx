@@ -26,6 +26,7 @@ import { OnboardingPrompts, shouldShowOnboarding, markOnboardingSeen } from "@/c
 import { HintPulse, isHintDismissed, dismissHint } from "@/components/editor/HintPulse";
 import { SourceTransition } from "@/components/editor/SourceTransition";
 import { RippleLayer } from "@/components/editor/Ripple";
+import { InteractionFeedback } from "@/components/editor/InteractionFeedback";
 import { enterFullscreen, exitFullscreen, hasSeenPerfMode, markPerfModeSeen, useFullscreenSync } from "@/hooks/usePerformanceMode";
 import { toast } from "sonner";
 import { shareApp, shareBlob, shareOrDownload, shareUrl, canNativeShare } from "@/lib/share";
@@ -132,7 +133,6 @@ export default function Editor() {
   const [helpCaption, setHelpCaption] = useState<{ text: string; x: number; y: number } | null>(null);
   const saveSlot = useStore(s => s.saveSlot);
   const loadSlot = useStore(s => s.loadSlot);
-  const rerollSeed = useStore(s => s.rerollSeed);
   const layers = useStore(s => s.layers);
   const sourceName = useStore(s => s.sourceName);
   const flashSlot = useStore(s => s.flashSlot);
@@ -1204,10 +1204,13 @@ export default function Editor() {
         return;
       }
 
-      // Single-key Space => reroll seed
-      if (e.code === "Space" && !e.shiftKey) {
+      // Space is the keyboard equivalent of the MOSH button. Shift+Space
+      // walks one step back through the same visual history.
+      if (e.code === "Space") {
         e.preventDefault();
-        rerollSeed();
+        if (e.repeat) return;
+        if (e.shiftKey) undo();
+        else crossfadeLayers(mosh, MOSH_FADE_MS);
         return;
       }
 
@@ -1382,7 +1385,7 @@ export default function Editor() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [mosh, undo, redo, setMicEnabled, paletteOpen, shortcutsOpen, saveSlot, loadSlot, rerollSeed, flashSlot, exportBestStill, captureGif, saveFavoriteNow, toggleFullscreen, shareCurrent, clearAllFx, toggleJourney, sourceMode, toggleSmartFreeze]);
+  }, [mosh, undo, redo, setMicEnabled, paletteOpen, shortcutsOpen, saveSlot, loadSlot, flashSlot, exportBestStill, captureGif, saveFavoriteNow, toggleFullscreen, shareCurrent, clearAllFx, toggleJourney, sourceMode, toggleSmartFreeze]);
 
   // First-load shortcuts hint (3s)
   useEffect(() => {
@@ -1466,9 +1469,9 @@ export default function Editor() {
     };
   }, [takeScreenshot]);
 
-  // Touch-only performance navigation. A two-finger tap toggles Smart Freeze;
-  // a deliberate horizontal swipe walks the undo/redo timeline. At the newest
-  // point, swiping forward creates a fresh Mosh instead of becoming a dead end.
+  // Touch-first performance navigation. One-finger horizontal swipes walk the
+  // undo/redo timeline; two-finger tap still toggles Smart Freeze. At the
+  // newest point, swiping forward creates a fresh Mosh instead of going dead.
   useEffect(() => {
     const el = canvasContainerRef.current;
     if (!el) return;
@@ -1485,7 +1488,7 @@ export default function Editor() {
     const onDown = (e: PointerEvent) => {
       if (e.pointerType !== "touch" || !isCanvasTouch(e.target)) return;
       points.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      if (points.size === 2) {
+      if (points.size === 1 || points.size === 2) {
         start = [...points.values()].map(p => ({ ...p }));
         startedAt = performance.now();
         maxTravel = 0;
@@ -1501,10 +1504,9 @@ export default function Editor() {
       if (!p) return;
       p.x = e.clientX;
       p.y = e.clientY;
-      if (start.length !== 2) return;
+      if (!start.length || start.length !== points.size) return;
       const now = [...points.values()];
-      if (now.length !== 2) return;
-      for (let i = 0; i < 2; i++) {
+      for (let i = 0; i < now.length; i++) {
         maxTravel = Math.max(maxTravel, Math.hypot(now[i].x - start[i].x, now[i].y - start[i].y));
       }
     };
@@ -1513,12 +1515,13 @@ export default function Editor() {
       if (!point) return;
       point.x = e.clientX;
       point.y = e.clientY;
-      if (!handled && !invalid && points.size === 2 && start.length === 2) {
+      if (!handled && !invalid && (points.size === 1 || points.size === 2) && start.length === points.size) {
         handled = true;
         const from = average(start);
         const to = average([...points.values()]);
-        const dx = to.x / 2 - from.x / 2;
-        const dy = to.y / 2 - from.y / 2;
+        const count = points.size;
+        const dx = to.x / count - from.x / count;
+        const dy = to.y / count - from.y / count;
         const elapsed = performance.now() - startedAt;
         if (Math.abs(dx) >= 72 && Math.abs(dx) > Math.abs(dy) * 1.35) {
           try { (navigator as any).vibrate?.(10); } catch {}
@@ -1529,7 +1532,7 @@ export default function Editor() {
           } else if (state.past.length) {
             state.undo();
           }
-        } else if (elapsed <= 420 && maxTravel <= 20) {
+        } else if (count === 2 && elapsed <= 420 && maxTravel <= 20) {
           try { (navigator as any).vibrate?.(10); } catch {}
           toggleSmartFreeze();
         }
@@ -1667,7 +1670,7 @@ export default function Editor() {
       ref={shellRef}
       // Drives the two-stage fade of everything carrying `.ui-chrome`.
       data-idle={effectiveIdleStage}
-      className={`editor-shell bg-background text-foreground ${
+      className={`editor-shell ${!isOverlay ? "tactile-cursor" : ""} bg-background text-foreground ${
         isPerformanceMode
           ? "fixed inset-0 z-[9999] flex flex-col overflow-hidden"
           : "min-h-screen flex flex-col"
@@ -1771,6 +1774,7 @@ export default function Editor() {
         <KaossSurface />
         <MoshStickerLayer />
         <RippleLayer />
+        {!isOverlay && <InteractionFeedback />}
         <SourceTransition trigger={transitionKey} />
         
         {/* TapToBegin removed — StartCameraOverlay is the live-first empty state and TapToBegin's centered button used to intercept clicks meant for "go live". */} 

@@ -791,6 +791,96 @@
 
   /* ---------------- Misc ---------------- */
   .editor-shell { contain: layout paint; }
+  @media (hover: hover) and (pointer: fine) {
+    .editor-shell.tactile-cursor,
+    .editor-shell.tactile-cursor * { cursor: none !important; }
+  }
+
+  /* Pointer/stylus presence is rendered as a translucent field, not a solid
+     replacement arrow. Touch has no hover phase, so this stays absent there. */
+  .mosh-hover-cursor {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 7px;
+    height: 7px;
+    margin: -3.5px 0 0 -3.5px;
+    border-radius: 999px;
+    border: 1px solid hsl(var(--accent) / .28);
+    background: hsl(var(--accent) / .07);
+    box-shadow: 0 0 9px hsl(var(--accent) / .12);
+    opacity: 0;
+    transition: opacity 110ms ease-out;
+    will-change: transform;
+  }
+  .mosh-hover-cursor[data-visible="true"] { opacity: .62; }
+  .mosh-hover-cursor[data-pen="true"] { opacity: .78; }
+  .mosh-hover-cursor i {
+    position: absolute;
+    inset: 50%;
+    width: 20px;
+    height: 20px;
+    margin: -10px;
+    border: 1px solid hsl(var(--accent) / .12);
+    border-radius: 42% 58% 63% 37% / 54% 45% 55% 46%;
+    animation: moshCursorWave 1.8s ease-in-out infinite;
+  }
+  .mosh-hover-cursor i:nth-child(2) { animation-delay: -600ms; transform: scale(.68) rotate(80deg); }
+  .mosh-hover-cursor i:nth-child(3) { animation-delay: -1.2s; transform: scale(1.3) rotate(160deg); }
+
+  .mosh-input-burst {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    margin: -6px;
+    border: 1px solid hsl(var(--accent) / .58);
+    border-radius: 50%;
+    box-shadow: 0 0 18px hsl(var(--accent) / .24), inset 0 0 8px hsl(var(--primary) / .18);
+    animation: inputBurst .4s cubic-bezier(.16,.84,.28,1) forwards;
+  }
+  .mosh-input-burst::before,
+  .mosh-input-burst::after {
+    content: "";
+    position: absolute;
+    inset: -4px;
+    border: 1px solid hsl(var(--primary) / .24);
+    border-radius: inherit;
+  }
+  .mosh-input-burst::after { border-color: hsl(var(--accent) / .2); transform: rotate(45deg); }
+
+  [data-input-fx] { animation-duration: var(--input-fx-ms, 400ms) !important; animation-timing-function: ease-out !important; }
+  [data-input-fx="melt"] { animation-name: inputMelt !important; }
+  [data-input-fx="vanish"] { animation-name: inputVanish !important; }
+  [data-input-fx="drift"] { animation-name: inputDrift !important; }
+  [data-input-fx="teleport"] { animation-name: inputTeleport !important; }
+  [data-input-fx="twist"] { animation-name: inputTwist !important; }
+  [data-input-fx="meld"] { animation-name: inputMeld !important; }
+  [data-input-fx="mesh"] { animation-name: inputMesh !important; }
+  [data-input-fx="collide"] { animation-name: inputCollide !important; }
+  [data-input-fx="contort"] { animation-name: inputContort !important; }
+  [data-input-fx="whip"] { animation-name: inputWhip !important; }
+  [data-input-fx="shred"] { animation-name: inputShred !important; }
+  [data-input-fx="chromatic"] { animation-name: inputChromatic !important; }
+
+  @keyframes moshCursorWave { 0%,100% { scale: .78; rotate: 0deg; opacity: .18; } 50% { scale: 1.18; rotate: 20deg; opacity: .55; } }
+  @keyframes inputBurst { 0% { opacity: .8; scale: .35; rotate: 0deg; } 58% { opacity: .44; scale: 2.2; rotate: 22deg; border-radius: 28% 72% 46% 54%; } 100% { opacity: 0; scale: 4.8; rotate: 55deg; } }
+  @keyframes inputMelt { 45% { transform: translateY(4px) scaleX(1.08) scaleY(.72); filter: blur(1px); opacity: .62; } }
+  @keyframes inputVanish { 42% { transform: scale(.82); filter: blur(3px); opacity: .08; } }
+  @keyframes inputDrift { 45% { transform: translate3d(8px,-5px,0) rotate(2deg); opacity: .55; } }
+  @keyframes inputTeleport { 35% { transform: translateX(-7px) scaleX(.6); opacity: .12; } 55% { transform: translateX(6px) scaleX(1.12); opacity: .75; } }
+  @keyframes inputTwist { 48% { transform: rotate(-7deg) skewX(9deg) scale(.92); } }
+  @keyframes inputMeld { 48% { transform: scaleX(1.18) scaleY(.78); filter: contrast(1.8) blur(.5px); } }
+  @keyframes inputMesh { 40% { transform: skew(-7deg,3deg); filter: brightness(1.7) contrast(1.5); } 62% { transform: skew(4deg,-2deg); } }
+  @keyframes inputCollide { 35% { transform: translateX(-5px) scaleX(1.08); } 55% { transform: translateX(4px) scaleX(.92); } }
+  @keyframes inputContort { 45% { transform: perspective(90px) rotateY(14deg) rotateZ(-3deg) scaleY(.82); } }
+  @keyframes inputWhip { 35% { transform: translateX(10px) skewX(-16deg); } 58% { transform: translateX(-3px) skewX(5deg); } }
+  @keyframes inputShred { 42% { transform: skewY(7deg) scaleX(1.05); filter: contrast(2) saturate(1.7); clip-path: polygon(0 0,100% 0,92% 30%,100% 48%,88% 70%,100% 100%,0 100%,8% 68%,0 46%,11% 25%); } }
+  @keyframes inputChromatic { 44% { transform: translateX(2px); filter: drop-shadow(-3px 0 hsl(var(--primary)/.65)) drop-shadow(3px 0 hsl(var(--accent)/.6)); } }
+
+  @media (prefers-reduced-motion: reduce) {
+    .mosh-hover-cursor i { animation: none; }
+    .mosh-input-burst, [data-input-fx] { animation-duration: 1ms !important; }
+  }
 
   .text-acid {
     color: hsl(var(--mag));
