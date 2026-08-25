@@ -36,7 +36,7 @@ const JourneyPortals = () => (
         <JourneyPortal shape="breach" label className="jp-hero__portal" crop={.15} />
       </section>
       <section className="jp-demo">
-        <div><div className="jp-kicker">Made to escape the frame</div><h2>Six wounds.<br/>Infinite worlds.</h2><p>Use a built-in tear or supply your own CSS polygon. Each portal runs the real Journey renderer, crossfades through Forge generators, pauses offscreen, and adapts its frame rate to the device.</p></div>
+        <div><div className="jp-kicker">Made to escape the frame</div><h2>Zero input.<br/>Endless possibilities.</h2><p>Use a built-in tear or supply your own CSS polygon. Each portal runs the real Journey renderer, crossfades through Forge generators, pauses offscreen, and adapts its frame rate to the device.</p></div>
         <div className="jp-specimens">
           <JourneyPortal shape="rift" className="jp-specimen jp-specimen--rift" crop={.78}/>
           <JourneyPortal shape="crater" className="jp-specimen jp-specimen--crater" crop={.38}/>
