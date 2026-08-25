@@ -1,7 +1,9 @@
-import { createContext, useContext, useEffect, useMemo, useRef, type CSSProperties, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createForgeRuntime, paintForgeSource } from "@/engine/forgeSource";
 import { GENERATORS } from "@/engine/forgeGeneratorRegistry";
 import type { ForgeState } from "@/store/types";
+import { createOrganicClipPaths } from "./organicClip";
+import { JOURNEY_PORTAL_CLIPS } from "./portalShapes";
 import "./journey-portal.css";
 
 export const JOURNEY_PORTAL_SHAPES = ["breach", "rift", "crater", "slash", "fissure", "edge"] as const;
@@ -14,7 +16,8 @@ export type JourneyPortalConfig = {
   cadenceMs?: number;
 };
 
-type PortalSurface = { canvas: HTMLCanvasElement; crop: number; visible: boolean };
+export type JourneyPortalFxDepth = 0 | 1 | 2;
+type PortalSurface = { canvas: HTMLCanvasElement; crop: number; visible: boolean; fxDepth: JourneyPortalFxDepth; phase: number };
 type JourneyPortalBus = { attach: (surface: PortalSurface) => () => void };
 
 const PortalContext = createContext<JourneyPortalBus | null>(null);
@@ -86,7 +89,7 @@ export function JourneyPortalProvider({ children, config }: { children: ReactNod
     let raf = 0;
     let running = true;
 
-    const drawSurface = (surface: PortalSurface) => {
+    const drawSurface = (surface: PortalSurface, now: number) => {
       if (!surface.visible) return;
       const rect = surface.canvas.getBoundingClientRect();
       if (rect.width < 2 || rect.height < 2) return;
@@ -105,6 +108,49 @@ export function JourneyPortalProvider({ children, config }: { children: ReactNod
       const sy = range * (.72 - surface.crop * .54);
       target.clearRect(0, 0, width, height);
       target.drawImage(source, sx, sy, cropSize, cropSize, 0, 0, width, height);
+
+      if (surface.fxDepth > 0 && !reducedMotion) {
+        const phase = now / 1000 + surface.phase;
+        const driftX = Math.sin(phase * 1.37) * width * .012;
+        const driftY = Math.cos(phase * .91) * height * .008;
+        target.save();
+        target.globalCompositeOperation = "screen";
+        target.globalAlpha = .1 + (.5 + .5 * Math.sin(phase * 2.1)) * .08;
+        target.filter = `hue-rotate(${Math.round(105 + Math.sin(phase) * 35)}deg) saturate(2.1) contrast(1.15)`;
+        target.drawImage(source, sx, sy, cropSize, cropSize, driftX, -driftY, width, height);
+        target.globalAlpha = .08;
+        target.filter = "hue-rotate(245deg) saturate(2.4)";
+        target.drawImage(source, sx, sy, cropSize, cropSize, -driftX, driftY, width, height);
+        target.restore();
+
+        target.save();
+        for (let slice = 0; slice < 4; slice += 1) {
+          const stripY = ((slice * .247 + phase * .033) % 1) * height;
+          const stripHeight = Math.max(2, height * (.018 + (slice % 2) * .012));
+          target.beginPath();
+          target.rect(0, stripY, width, stripHeight);
+          target.clip();
+          const shift = Math.sin(phase * 2.7 + slice * 1.9) * width * .055;
+          target.globalAlpha = .78;
+          target.drawImage(source, sx, sy, cropSize, cropSize, shift, 0, width, height);
+          target.restore();
+          target.save();
+        }
+        target.restore();
+      }
+
+      if (surface.fxDepth > 1 && !reducedMotion) {
+        const phase = now / 1000 + surface.phase;
+        target.save();
+        target.translate(width / 2, height / 2);
+        target.rotate(Math.sin(phase * .43) * .018);
+        target.scale(1.045 + Math.sin(phase * .7) * .018, 1.045 + Math.cos(phase * .61) * .018);
+        target.globalCompositeOperation = "screen";
+        target.globalAlpha = .16;
+        target.filter = `blur(${Math.max(1, width * .006)}px) saturate(1.8)`;
+        target.drawImage(source, sx, sy, cropSize, cropSize, -width / 2, -height / 2, width, height);
+        target.restore();
+      }
     };
 
     const tick = (now: number) => {
@@ -138,7 +184,7 @@ export function JourneyPortalProvider({ children, config }: { children: ReactNod
           density: .62,
           bpm: 112,
         }, runtime);
-        surfacesRef.current.forEach(drawSurface);
+        surfacesRef.current.forEach(surface => drawSurface(surface, now));
       } catch {
         // A decorative portal should never take its host page down. Forge's
         // renderer already falls back generator-by-generator; this is the
@@ -163,33 +209,60 @@ export function JourneyPortal({
   crop = .5,
   label = false,
   clipPath,
+  fxDepth = 0,
 }: {
   shape?: JourneyPortalShape;
   className?: string;
   crop?: number;
   label?: boolean;
   clipPath?: string;
+  fxDepth?: JourneyPortalFxDepth;
 }) {
   const bus = useContext(PortalContext);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const clipId = `journey-organic-${useId().replace(/:/g, "")}`;
+  const baseClip = clipPath ?? JOURNEY_PORTAL_CLIPS[shape];
+  const organicSeed = useMemo(() => [...baseClip].reduce((seed, char) => (seed * 33 + char.charCodeAt(0)) >>> 0, 5381), [baseClip]);
+  const organicPaths = useMemo(() => createOrganicClipPaths(baseClip, organicSeed), [baseClip, organicSeed]);
+  const [reducedMotion, setReducedMotion] = useState(false);
+
+  useEffect(() => {
+    const query = matchMedia("(prefers-reduced-motion: reduce)");
+    const sync = () => setReducedMotion(query.matches);
+    sync();
+    query.addEventListener?.("change", sync);
+    return () => query.removeEventListener?.("change", sync);
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !bus) return;
-    const surface: PortalSurface = { canvas, crop: clamp(crop, 0, 1), visible: true };
+    const surface: PortalSurface = { canvas, crop: clamp(crop, 0, 1), visible: true, fxDepth, phase: (organicSeed % 97) / 13 };
     const detach = bus.attach(surface);
     const observer = new IntersectionObserver(([entry]) => { surface.visible = entry.isIntersecting; }, { rootMargin: "180px" });
     observer.observe(canvas);
     return () => { observer.disconnect(); detach(); };
-  }, [bus, crop]);
+  }, [bus, crop, fxDepth, organicSeed]);
+
+  const duration = 11 + organicSeed % 8;
+  const style = {
+    ["--journey-portal-clip" as string]: baseClip,
+    ["--journey-portal-svg-clip" as string]: `url(#${clipId})`,
+    ["--journey-portal-drift" as string]: `${duration * .72}s`,
+  } as CSSProperties;
 
   return (
     <div
-      className={`journey-portal journey-portal--${shape} ${className}`}
-      style={clipPath ? { ["--journey-portal-clip" as string]: clipPath } as CSSProperties : undefined}
+      className={`journey-portal journey-portal--${shape} journey-portal--fx-${fxDepth} ${className}`}
+      style={style}
       data-journey-portal
       aria-hidden="true"
     >
+      {organicPaths.length > 0 && <svg className="journey-portal__clip-defs" width="0" height="0" aria-hidden="true">
+        <defs><clipPath id={clipId} clipPathUnits="objectBoundingBox"><path d={organicPaths[0]}>
+          {!reducedMotion && <animate attributeName="d" values={organicPaths.join(";")} dur={`${duration}s`} repeatCount="indefinite" calcMode="spline" keyTimes="0;0.34;0.68;1" keySplines=".42 0 .58 1;.42 0 .58 1;.42 0 .58 1" />}
+        </path></clipPath></defs>
+      </svg>}
       <canvas ref={canvasRef} />
       <span className="journey-portal__noise" />
       {label && <span className="journey-portal__label"><i /> Forge Journey / live</span>}

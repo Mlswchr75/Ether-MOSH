@@ -12,6 +12,7 @@ export function PortalShapeGallery({ className = "", limit = 12 }: { className?:
           <JourneyPortal
             clipPath={CUSTOM_PORTAL_SHAPES[name]}
             crop={(index * .173) % 1}
+            fxDepth={index % 5 === 2 ? 2 : index % 3 === 1 ? 1 : 0}
             className="portal-specimen__visual"
           />
           <figcaption><span>{String(index + 1).padStart(2, "0")}</span>{name}</figcaption>
