@@ -15,7 +15,10 @@ import { PNG } from "pngjs";
 const require = createRequire(import.meta.url);
 const WIDTH = 256;
 const HEIGHT = 144;
-const REPORT_DATE = "2026-08-14";
+function todayReportDate(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+const REPORT_DATE = todayReportDate();
 const SAMPLE_TIMES = [0, 0.7, 1.4] as const;
 const SAMPLE_PULSES = [0, 0.65, 1] as const;
 export const AUDIT_SAMPLER_NAMES = EFFECT_SAMPLER_NAMES;

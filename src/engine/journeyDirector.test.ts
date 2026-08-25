@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  DISRUPT_CEILING_MS, DISRUPT_FLOOR_MS,
+  DISRUPT_CEILING_MS, DISRUPT_FLOOR_MS, JourneyDirector,
   forgeInterval, moodFrom, nextDisruptionMs, nextHoldMs, performanceInterval, pickDisruption,
   type DisruptionKind,
 } from "./journeyDirector";
@@ -262,5 +262,51 @@ describe("mood translation", () => {
     const bright = moodFrom(features({ weight: 0.2, brightness: 0.8, energy: 0.7 }), frame(), 0.3, 0.3);
     expect(heavy.bass).toBeGreaterThan(bright.bass);
     expect(bright.treble).toBeGreaterThan(heavy.treble);
+  });
+});
+
+describe("JourneyDirector.stop()", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it("resets state instead of leaving a stop→start cycle surfacing stale readout", () => {
+    const director = new JourneyDirector({
+      getVideo: () => null,
+      getMic: () => null,
+      onCompose: () => {},
+      onDisrupt: () => {},
+    });
+
+    director.start();
+    // Simulate having drifted well away from a fresh start during the run —
+    // a later section and a real disruption on record.
+    (director as unknown as { state: unknown }).state = {
+      ...director.getState(),
+      section: "peak",
+      lastDisruption: { kind: "surge", violence: 1, burstMs: 900, reason: "test" },
+    };
+    (director as unknown as { section: string }).section = "peak";
+
+    director.stop();
+
+    const state = director.getState();
+    expect(state.section).toBe("intro");
+    expect(state.lastDisruption).toBeNull();
+  });
+
+  it("does not leave a pending tick running after stop()", () => {
+    const onCompose = vi.fn();
+    const director = new JourneyDirector({
+      getVideo: () => null,
+      getMic: () => null,
+      onCompose,
+      onDisrupt: () => {},
+      sampleMs: 50,
+    });
+    director.start();
+    director.stop();
+    onCompose.mockClear();
+    vi.advanceTimersByTime(5_000);
+    expect(onCompose).not.toHaveBeenCalled();
   });
 });

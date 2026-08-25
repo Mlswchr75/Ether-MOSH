@@ -3,7 +3,7 @@ import { Download, Grid2X2, RotateCw, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { useStore } from "@/store/useStore";
 import { MoshRenderer, type RenderLayer } from "@/engine/Renderer";
-import { paintForgeSource, createForgeRuntime } from "@/engine/forgeSource";
+import { paintForgeSource, createForgeRuntime, disposeForgeRuntime } from "@/engine/forgeSource";
 import { FORGE_PALETTES } from "@/engine/forgePalettes";
 import { seamScore } from "@/engine/tileSafety";
 import { healToSeamless, renderSizeFor, DEFAULT_HEAL_BAND } from "@/engine/seamlessHeal";
@@ -175,7 +175,7 @@ export function ForgePanel({ embedded = false }: { embedded?: boolean }) {
     } finally {
       r?.dispose();
       off?.remove();
-      runtime.volumetric?.dispose();
+      disposeForgeRuntime(runtime);
       setExporting(false);
     }
   }, [exporting, paywall]);

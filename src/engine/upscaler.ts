@@ -36,9 +36,13 @@ export async function upscaleImage(image: HTMLImageElement): Promise<HTMLImageEl
       hi.onerror = () => reject(new Error("upscale decode failed"));
       hi.src = url;
     });
+    // Once decoded, the Image holds its own bitmap — the object URL can be
+    // revoked immediately. Previously this only happened on the error path,
+    // leaking one blob URL for the tab's lifetime per upscaled image.
     return hi;
   } catch {
-    URL.revokeObjectURL(url);
     return null;
+  } finally {
+    URL.revokeObjectURL(url);
   }
 }

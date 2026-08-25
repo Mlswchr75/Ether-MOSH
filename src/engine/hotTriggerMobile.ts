@@ -91,6 +91,28 @@ function scan() {
   document.querySelectorAll<HTMLElement>(".hot-trigger-rail").forEach(enhanceRail);
 }
 
+function subtreeHasRail(node: Node): boolean {
+  if (!(node instanceof Element)) return false;
+  return node.matches(".hot-trigger-rail") || !!node.querySelector(".hot-trigger-rail");
+}
+
+// Loaded via a page-level <script> tag (index.html), not a React import, so
+// there's no component lifecycle to disconnect this on — it's meant to stay
+// active for as long as the page lives. What matters is keeping its
+// per-mutation cost near zero everywhere else: `.hot-trigger-rail` only
+// exists inside the editor, but this observer watches the whole document, so
+// re-running a full querySelectorAll on every childList mutation across the
+// entire SPA (list re-renders, route transitions, canvas-driven DOM churn)
+// added up to real, unbounded cost. Only pay for the full scan when a
+// mutation's added nodes could plausibly contain the rail.
+function onMutations(mutations: MutationRecord[]) {
+  for (const mutation of mutations) {
+    for (const node of mutation.addedNodes) {
+      if (subtreeHasRail(node)) { scan(); return; }
+    }
+  }
+}
+
 if (typeof window !== "undefined") {
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", scan, { once: true });
@@ -98,6 +120,6 @@ if (typeof window !== "undefined") {
     scan();
   }
 
-  const observer = new MutationObserver(scan);
+  const observer = new MutationObserver(onMutations);
   observer.observe(document.documentElement, { childList: true, subtree: true });
 }

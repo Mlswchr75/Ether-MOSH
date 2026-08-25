@@ -16,6 +16,16 @@
  */
 import { EFFECTS, type EffectDef } from "./effects";
 
+/**
+ * Renderer.ts widens every effect's "amount" param past its declared max
+ * before it reaches the shader (most shader bodies were tuned against a
+ * muted top end). This is the same multiplier Renderer.ts applies — kept
+ * here, in the file that calls itself "the single source of truth for what
+ * every effect *is*", so `renderedMax` below can't drift out of sync with
+ * what actually gets rendered.
+ */
+export const AMOUNT_RENDER_BOOST = 2.0;
+
 export type EffectRegistryEntry = {
   id: string;
   name: string;
@@ -29,6 +39,14 @@ export type EffectRegistryEntry = {
     max: number;
     default: number;
     step?: number;
+    /**
+     * The actual upper bound reaching the shader, if it differs from `max`.
+     * Only set for "amount", which Renderer.ts rescales by
+     * AMOUNT_RENDER_BOOST past its declared range — a preset validator or
+     * external tool reading `max` alone would otherwise describe a
+     * different range than what's actually rendered.
+     */
+    renderedMax?: number;
   }[];
   /** Machine-language recreation: the GLSL fragment shader body. */
   glsl: string;
@@ -47,6 +65,7 @@ export function buildEffectRegistry(): EffectRegistryEntry[] {
       max: p.max,
       default: p.default,
       step: p.step,
+      ...(p.key === "amount" ? { renderedMax: p.min + (p.max - p.min || 1) * AMOUNT_RENDER_BOOST } : {}),
     })),
     glsl: e.frag.trim(),
   }));

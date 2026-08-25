@@ -347,7 +347,11 @@ export class JourneyDirector {
     this.probe.height = 96;
     this.pctx = this.probe.getContext("2d", { willReadFrequently: true });
 
-    this.state = {
+    this.state = this.initialState();
+  }
+
+  private initialState(): JourneyDirectorState {
+    return {
       features: SILENT_FEATURES,
       reading: classifyStyle(SILENT_FEATURES),
       frame: EMPTY_FRAME,
@@ -382,6 +386,11 @@ export class JourneyDirector {
     this.prevPixels = null;
     this.recentStructural = [];
     this.recentAccent = [];
+    // Without this, a stop→start cycle could briefly surface stale state
+    // (e.g. the last disruption reason) via getState()/onState() before the
+    // next tick overwrites it.
+    this.section = "intro";
+    this.state = this.initialState();
   }
 
   /** Id → score multiplier (0..1) fed to composeFromMood so a recently-used

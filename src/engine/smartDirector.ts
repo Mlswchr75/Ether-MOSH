@@ -7,6 +7,12 @@
 //
 // All heuristics, no LLM, no network. Designed to be cheap: ~10Hz sampler on
 // a 64×36 offscreen canvas.
+//
+// Superseded: the live app no longer instantiates SmartDirector directly —
+// JourneyDirector (journeyDirector.ts) now runs this judgement on its own
+// slow clock combined with Storm's interference on a fast one (see the
+// comment above Editor.tsx's Journey director section). Nothing imports this
+// file today.
 
 import { EFFECTS } from "./effects";
 import { composeStack, type DirectedLayer } from "./compose";
@@ -147,6 +153,7 @@ export class SmartDirector {
   private beatCount = 0;
   private beatListener: (() => void) | null = null;
   private running = false;
+  private startTimeout: number | null = null;
 
   constructor(opts: DirectorOpts) {
     this.opts = {
@@ -168,7 +175,10 @@ export class SmartDirector {
     this.beatListener = () => { this.beatCount += 1; };
     window.addEventListener("aegis:beat", this.beatListener);
     // Kick off an immediate first pick so users see it engage instantly.
-    window.setTimeout(() => this.pickAndSwitch(1), 120);
+    this.startTimeout = window.setTimeout(() => {
+      this.startTimeout = null;
+      this.pickAndSwitch(1);
+    }, 120);
     const loop = () => {
       if (!this.running) return;
       this.tick();
@@ -179,6 +189,8 @@ export class SmartDirector {
 
   stop() {
     this.running = false;
+    if (this.startTimeout !== null) clearTimeout(this.startTimeout);
+    this.startTimeout = null;
     if (this.raf) cancelAnimationFrame(this.raf);
     this.raf = null;
     if (this.beatListener) window.removeEventListener("aegis:beat", this.beatListener);

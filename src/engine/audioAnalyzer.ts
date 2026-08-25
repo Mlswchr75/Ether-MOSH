@@ -62,14 +62,22 @@ export function stopAnalyzer(): void {
   _bass = _mid = _high = _energy = _beat = _rollingEnergy = 0;
 }
 
+// Indexed loops instead of Array.from(dataArray.slice(...)) — the slice+
+// Array.from pair allocated three fresh arrays every animation frame for the
+// life of the session, pure GC pressure for no benefit over summing in place.
+function bandAverage(data: Uint8Array, from: number, to: number): number {
+  let sum = 0;
+  for (let i = from; i < to; i++) sum += data[i];
+  return sum / (to - from) / 255;
+}
+
 function tick(): void {
   if (!analyser || !dataArray) return;
   rafId = requestAnimationFrame(tick);
   analyser.getByteFrequencyData(dataArray as any);
-  const avg = (arr: number[]) => arr.reduce((a, b) => a + b, 0) / arr.length / 255;
-  _bass = avg(Array.from(dataArray.slice(0, 5)));
-  _mid  = avg(Array.from(dataArray.slice(5, 21)));
-  _high = avg(Array.from(dataArray.slice(21, 64)));
+  _bass = bandAverage(dataArray, 0, 5);
+  _mid  = bandAverage(dataArray, 5, 21);
+  _high = bandAverage(dataArray, 21, 64);
   _energy = _bass * 0.5 + _mid * 0.3 + _high * 0.2;
   _rollingEnergy = _rollingEnergy * 0.95 + _energy * 0.05;
   const now = performance.now();

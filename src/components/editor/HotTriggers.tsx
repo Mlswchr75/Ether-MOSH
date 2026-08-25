@@ -965,9 +965,14 @@ function MobileRadialWheel({
       clearTimers();
       if (gestureRef.current.fired) {
         selectFromFlick(event.clientX - gestureRef.current.x, event.clientY - gestureRef.current.y, gestureRef.current.pointerType);
+        if (highlightRef.current) activateRef.current(highlightRef.current);
       }
-      if (gestureRef.current.fired && highlightRef.current) activateRef.current(highlightRef.current);
-      if (!gestureRef.current.fired) setPhase("idle");
+      // Always return to idle here — previously this only happened when the
+      // gesture never fired, so a successful hold-flick-release (or a hold
+      // that opened the wheel without landing on a segment) left the wheel
+      // open with its full-screen backdrop still absorbing pointer events.
+      setPhase("idle");
+      select(null);
       gestureRef.current.pointerId = -1;
     };
     const onCancel = (event: PointerEvent) => {
@@ -1253,12 +1258,14 @@ function DesktopRadialWheel({
     const onEnd = (event: PointerEvent) => {
       if (event.pointerId !== gestureRef.current.pointerId) return;
       cancelTimers();
-      if (gestureRef.current.fired) selectFromPointer(event.clientX, event.clientY, gestureRef.current.pointerType);
-      if (gestureRef.current.fired && highlightedRef.current) {
-        activate(highlightedRef.current);
-        setPhase("idle");
+      if (gestureRef.current.fired) {
+        selectFromPointer(event.clientX, event.clientY, gestureRef.current.pointerType);
+        if (highlightedRef.current) activate(highlightedRef.current);
       }
-      if (!gestureRef.current.fired) setPhase("idle");
+      // Always return to idle — previously a hold that opened the wheel but
+      // never landed on a segment (fired with no highlight) hit neither
+      // branch below and left the wheel stuck open.
+      setPhase("idle");
       gestureRef.current.pointerId = -1;
       select(null);
     };

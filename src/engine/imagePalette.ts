@@ -80,7 +80,12 @@ function getWorker(): Worker | null {
       if (cb) { pending.delete(id); cb(profile); }
     });
     workerInstance.addEventListener("error", () => {
-      // worker dead — clear pending so callers fall back next time
+      // Worker dead. Resolve every in-flight request with the fallback
+      // profile — without this, any extractPalette() call already awaiting
+      // this worker would hang forever, since nothing else ever settles
+      // its promise.
+      for (const cb of pending.values()) cb(fallbackProfile());
+      pending.clear();
       workerInstance?.terminate();
       workerInstance = null;
     });
