@@ -84,6 +84,8 @@ const GlCanvas = lazy(async () => {
 });
 import { CastStageButton } from "@/components/editor/CastStageButton";
 
+const LEGACY_HOT_TRIGGERS_KEY = "cathedral_legacy_hot_triggers_launchpad_v1";
+
 /** Paints the high-resolution frame selected by Smart Freeze above the live
  * renderer, without changing its source or interrupting camera playback. */
 function FrozenFrame({ frame }: { frame: HTMLCanvasElement }) {
@@ -152,6 +154,10 @@ export default function Editor() {
   // makes the chrome disappear after 1.7s of inactivity — this flag is only
   // the manual full-hide, so it should start open.
   const [hideUI, setHideUI] = useState(false);
+  const [legacyHotTriggers, setLegacyHotTriggers] = useState(() => {
+    if (typeof window === "undefined") return false;
+    try { return window.localStorage.getItem(LEGACY_HOT_TRIGGERS_KEY) === "1"; } catch { return false; }
+  });
   // Persistent reveal pin — the always-visible top-right toggle that keeps
   // the hot-trigger rail and menu rack on screen regardless of idle-fade or
   // Pro Mode's hold-Shift gesture, for anyone who wouldn't otherwise
@@ -1783,6 +1789,7 @@ export default function Editor() {
           <HotTriggers
             visualizerRef={canvasContainerRef}
             hidden={hideUI}
+            showLegacyLaunchpad={legacyHotTriggers}
             isRecording={isRecording}
             onToggleRecord={toggleRecord}
             onScreenshot={takeScreenshot}
@@ -2062,6 +2069,38 @@ export default function Editor() {
                 <span className="badge">listen</span>
               </div>
               <BeatPanel />
+            </section>
+            <section>
+              <div className="section-header">
+                <h2>MOSH &amp; Older Settings</h2><div className="rule" />
+                <span className="badge">legacy</span>
+              </div>
+              <div className="flex items-center justify-between gap-4 px-3 py-4">
+                <div>
+                  <div className="font-mono text-[11px] uppercase tracking-[0.1em] text-[hsl(var(--text-primary))]">
+                    Legacy hot triggers launchpad
+                  </div>
+                  <p className="mt-1 max-w-[34rem] font-mono text-[9px] leading-relaxed text-[hsl(var(--text-secondary))]">
+                    Restores the older right-side trigger strip. The radial wheel stays active.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={legacyHotTriggers}
+                  aria-label="Legacy hot triggers launchpad"
+                  onClick={() => {
+                    setLegacyHotTriggers(current => {
+                      const next = !current;
+                      try { window.localStorage.setItem(LEGACY_HOT_TRIGGERS_KEY, next ? "1" : "0"); } catch {}
+                      return next;
+                    });
+                  }}
+                  className={`relative h-6 w-11 shrink-0 rounded-full border transition-colors ${legacyHotTriggers ? "border-[hsl(var(--accent))] bg-[hsl(var(--accent)/0.28)]" : "border-[hsl(var(--border-default))] bg-black/30"}`}
+                >
+                  <span className={`absolute top-1/2 h-4 w-4 -translate-y-1/2 rounded-full transition-all ${legacyHotTriggers ? "left-[23px] bg-[hsl(var(--accent))] shadow-[0_0_10px_hsl(var(--accent)/0.7)]" : "left-[3px] bg-[hsl(var(--text-tertiary))]"}`} />
+                </button>
+              </div>
             </section>
           </div>
         </div>

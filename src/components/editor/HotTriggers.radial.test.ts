@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { normalizeRadialDegrees, radialIndexForAngle, radialTriggerIndex } from "./HotTriggers";
+import {
+  normalizeRadialDegrees,
+  radialFlickThreshold,
+  radialHoldJitterTolerance,
+  radialIndexForAngle,
+  radialTriggerIndex,
+  RADIAL_WHEEL_ARM_MS,
+  RADIAL_WHEEL_HOLD_MS,
+} from "./HotTriggers";
 
 describe("mobile radial trigger selection", () => {
   it("normalizes angles in either direction", () => {
@@ -26,5 +34,18 @@ describe("mobile radial trigger selection", () => {
     expect(radialTriggerIndex(0, 160, 25)).toBe(0);
     expect(radialTriggerIndex(0, 80, 25)).toBe(14);
     expect(radialTriggerIndex(90, 80, 25)).toBe(17);
+  });
+
+  it("pre-arms early but keeps the hard summon at four tenths", () => {
+    expect(RADIAL_WHEEL_ARM_MS).toBeGreaterThanOrEqual(200);
+    expect(RADIAL_WHEEL_ARM_MS).toBeLessThanOrEqual(300);
+    expect(RADIAL_WHEEL_HOLD_MS).toBe(400);
+  });
+
+  it("uses pointer-specific flick and jitter thresholds", () => {
+    expect(radialFlickThreshold("mouse")).toBeLessThan(radialFlickThreshold("pen"));
+    expect(radialFlickThreshold("pen")).toBeLessThan(radialFlickThreshold("touch"));
+    expect(radialHoldJitterTolerance("mouse")).toBeLessThan(radialHoldJitterTolerance("pen"));
+    expect(radialHoldJitterTolerance("pen")).toBeLessThan(radialHoldJitterTolerance("touch"));
   });
 });

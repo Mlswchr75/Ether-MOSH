@@ -32,6 +32,8 @@ function clientToViewportUv(clientX: number, clientY: number) {
 type Props = {
   visualizerRef?: RefObject<HTMLElement>;
   hidden?: boolean;
+  /** Re-enables the retired right-edge strip without disabling the radial wheel. */
+  showLegacyLaunchpad?: boolean;
   isRecording: boolean;
   onToggleRecord: () => void;
   onScreenshot: () => void;
@@ -68,11 +70,19 @@ type Props = {
   onTrackNudgeDismiss?: () => void;
 };
 
-const MOBILE_WHEEL_HOLD_MS = 500;
+export const RADIAL_WHEEL_ARM_MS = 220;
+export const RADIAL_WHEEL_HOLD_MS = 400;
 const MOBILE_WHEEL_FLICK_PX = 54;
 const MOBILE_WHEEL_ROTATION_KEY = "cathedral_mobile_radial_rotation_v1";
-const DESKTOP_WHEEL_HOLD_MS = 400;
 const DESKTOP_WHEEL_LAYOUT_KEY = "cathedral_desktop_radial_layout_v1";
+
+export function radialFlickThreshold(pointerType: string) {
+  return pointerType === "mouse" ? 34 : pointerType === "pen" ? 38 : MOBILE_WHEEL_FLICK_PX;
+}
+
+export function radialHoldJitterTolerance(pointerType: string) {
+  return pointerType === "touch" ? 20 : pointerType === "pen" ? 12 : 8;
+}
 
 export function normalizeRadialDegrees(value: number) {
   return ((value % 360) + 360) % 360;
@@ -803,132 +813,304 @@ function MobileRadialWheel({
   isRecording: boolean;
   onSelect: (id: string) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const [rotation, setRotation] = useState(() => {
-    try { return Number(localStorage.getItem(MOBILE_WHEEL_ROTATION_KEY)) || 0; } catch { return 0; }
-  });
-  const [highlighted, setHighlighted] = useState<string | null>(null);
+  const layerRef = useRef<HTMLDivElement>(null);
   const wheelRef = useRef<HTMLDivElement>(null);
-  const gestureRef = useRef({ pointerId: -1, x: 0, y: 0, fired: false });
+  const labelRef = useRef<HTMLSpanElement>(null);
+  const slotRefs = useRef(new Map<string, HTMLDivElement>());
+  const wheelRectRef = useRef<DOMRect | null>(null);
+  const openRef = useRef(false);
+  const gestureRef = useRef({
+    pointerId: -1, x: 0, y: 0, lastX: 0, lastY: 0,
+    startedAt: 0, armed: false, fired: false, cancelled: false, pointerType: "mouse",
+  });
+  const armTimerRef = useRef<number | null>(null);
+  const openTimerRef = useRef<number | null>(null);
+  const persistTimerRef = useRef<number | null>(null);
+  const suppressClickRef = useRef(false);
   const highlightRef = useRef<string | null>(null);
-  const rotationRef = useRef(rotation);
+  const labelSwapRef = useRef(false);
+  const rotationRef = useRef<number>(Number.NaN);
+  if (Number.isNaN(rotationRef.current)) {
+    try { rotationRef.current = Number(localStorage.getItem(MOBILE_WHEEL_ROTATION_KEY)) || 0; } catch { rotationRef.current = 0; }
+  }
   const idsRef = useRef(ids);
+  const activateRef = useRef<(id: string) => void>(() => {});
   idsRef.current = ids;
-  rotationRef.current = rotation;
   const outerCount = Math.min(14, ids.length);
   const innerCount = Math.max(0, ids.length - outerCount);
 
-  const select = (id: string | null) => {
-    highlightRef.current = id;
-    setHighlighted(id);
+  const clearTimers = () => {
+    if (armTimerRef.current != null) window.clearTimeout(armTimerRef.current);
+    if (openTimerRef.current != null) window.clearTimeout(openTimerRef.current);
+    armTimerRef.current = null;
+    openTimerRef.current = null;
   };
 
-  const activate = useCallback((id: string) => {
+  const setPhase = (phase: "idle" | "armed" | "open") => {
+    const layer = layerRef.current;
+    if (!layer) return;
+    layer.dataset.phase = phase;
+    openRef.current = phase === "open";
+    wheelRef.current?.setAttribute("aria-hidden", phase === "open" ? "false" : "true");
+  };
+
+  const select = (id: string | null) => {
+    if (highlightRef.current === id) return;
+    if (highlightRef.current) slotRefs.current.get(highlightRef.current)?.removeAttribute("data-highlighted");
+    highlightRef.current = id;
+    if (id) slotRefs.current.get(id)?.setAttribute("data-highlighted", "true");
+    const label = labelRef.current;
+    if (label) {
+      label.textContent = id ? (TRIGGER_LABELS[id] ?? id) : "MOSH";
+      labelSwapRef.current = !labelSwapRef.current;
+      label.dataset.swap = labelSwapRef.current ? "a" : "b";
+    }
+  };
+
+  const activate = (id: string) => {
     onSelect(id);
-    const slot = wheelRef.current?.querySelector<HTMLElement>(`[data-radial-id="${CSS.escape(id)}"]`);
+    const slot = slotRefs.current.get(id);
     slot?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.click();
-  }, [onSelect]);
+  };
+  activateRef.current = activate;
+
+  const cacheWheelRect = () => { wheelRectRef.current = wheelRef.current?.getBoundingClientRect() ?? null; };
+
+  const paintRotation = (next: number) => {
+    rotationRef.current = next;
+    const wheel = wheelRef.current;
+    if (!wheel) return;
+    wheel.style.setProperty("--radial-rotation", `${next}deg`);
+    wheel.style.setProperty("--radial-counter-rotation", `${-next}deg`);
+  };
+
+  const persistRotationSoon = () => {
+    if (persistTimerRef.current != null) window.clearTimeout(persistTimerRef.current);
+    persistTimerRef.current = window.setTimeout(() => {
+      try { localStorage.setItem(MOBILE_WHEEL_ROTATION_KEY, String(rotationRef.current)); } catch {}
+    }, 120);
+  };
+
+  const dismiss = () => {
+    clearTimers();
+    setPhase("idle");
+    select(null);
+  };
+
+  const selectFromFlick = (dx: number, dy: number, pointerType: string) => {
+    const distance = Math.hypot(dx, dy);
+    const threshold = radialFlickThreshold(pointerType);
+    if (distance < threshold) { select(null); return; }
+    const angle = normalizeRadialDegrees(Math.atan2(dy, dx) * 180 / Math.PI + 90);
+    const index = radialTriggerIndex(angle, distance, idsRef.current.length, rotationRef.current);
+    select(idsRef.current[index] ?? null);
+  };
 
   useEffect(() => {
     const target = visualizerRef?.current;
     if (!target) return;
-    let timer: number | null = null;
-    const cancelTimer = () => { if (timer != null) window.clearTimeout(timer); timer = null; };
     const ignored = (eventTarget: EventTarget | null) =>
       eventTarget instanceof HTMLElement && !!eventTarget.closest("button, a, input, textarea, select, [role='slider'], [data-no-longpress], .mobile-radial-wheel");
     const onDown = (event: PointerEvent) => {
-      if (event.pointerType !== "touch" || ignored(event.target) || gestureRef.current.pointerId !== -1) return;
-      gestureRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, fired: false };
-      timer = window.setTimeout(() => {
-        gestureRef.current.fired = true;
-        setOpen(true);
+      if ((event.pointerType === "mouse" && event.button !== 0) || ignored(event.target) || gestureRef.current.pointerId !== -1) return;
+      clearTimers();
+      gestureRef.current = {
+        pointerId: event.pointerId, x: event.clientX, y: event.clientY,
+        lastX: event.clientX, lastY: event.clientY, startedAt: performance.now(),
+        armed: false, fired: false, cancelled: false, pointerType: event.pointerType || "mouse",
+      };
+      armTimerRef.current = window.setTimeout(() => {
+        if (gestureRef.current.pointerId !== event.pointerId || gestureRef.current.cancelled) return;
+        gestureRef.current.armed = true;
+        setPhase("armed");
+      }, RADIAL_WHEEL_ARM_MS);
+      openTimerRef.current = window.setTimeout(() => {
+        const gesture = gestureRef.current;
+        if (gesture.pointerId !== event.pointerId || gesture.cancelled) return;
+        gesture.fired = true;
+        suppressClickRef.current = true;
+        setPhase("open");
+        cacheWheelRect();
+        selectFromFlick(gesture.lastX - gesture.x, gesture.lastY - gesture.y, gesture.pointerType);
         try { navigator.vibrate?.(12); } catch {}
-      }, MOBILE_WHEEL_HOLD_MS);
+      }, RADIAL_WHEEL_HOLD_MS);
     };
     const onMove = (event: PointerEvent) => {
       const gesture = gestureRef.current;
       if (event.pointerId !== gesture.pointerId) return;
-      const dx = event.clientX - gesture.x;
-      const dy = event.clientY - gesture.y;
+      const samples = event.getCoalescedEvents?.() ?? [];
+      const sample = samples[samples.length - 1] ?? event;
+      gesture.lastX = sample.clientX;
+      gesture.lastY = sample.clientY;
+      const dx = sample.clientX - gesture.x;
+      const dy = sample.clientY - gesture.y;
       const distance = Math.hypot(dx, dy);
-      if (!gesture.fired && distance > 18) { cancelTimer(); return; }
-      if (!gesture.fired || distance < MOBILE_WHEEL_FLICK_PX) { select(null); return; }
-      // Zero degrees is twelve o'clock, matching the wheel's visual layout.
-      const angle = normalizeRadialDegrees(Math.atan2(dy, dx) * 180 / Math.PI + 90);
-      const index = radialTriggerIndex(angle, distance, idsRef.current.length, rotationRef.current);
-      select(idsRef.current[index] ?? null);
+      if (!gesture.fired) {
+        const tolerance = radialHoldJitterTolerance(gesture.pointerType);
+        if (!gesture.armed && performance.now() - gesture.startedAt < RADIAL_WHEEL_ARM_MS && distance > tolerance) {
+          gesture.cancelled = true;
+          clearTimers();
+          setPhase("idle");
+        }
+        return;
+      }
+      selectFromFlick(dx, dy, gesture.pointerType);
     };
     const onEnd = (event: PointerEvent) => {
       if (event.pointerId !== gestureRef.current.pointerId) return;
-      cancelTimer();
-      if (gestureRef.current.fired && highlightRef.current) activate(highlightRef.current);
-      gestureRef.current = { pointerId: -1, x: 0, y: 0, fired: false };
+      clearTimers();
+      if (gestureRef.current.fired) {
+        selectFromFlick(event.clientX - gestureRef.current.x, event.clientY - gestureRef.current.y, gestureRef.current.pointerType);
+      }
+      if (gestureRef.current.fired && highlightRef.current) activateRef.current(highlightRef.current);
+      if (!gestureRef.current.fired) setPhase("idle");
+      gestureRef.current.pointerId = -1;
+    };
+    const onCancel = (event: PointerEvent) => {
+      if (event.pointerId !== gestureRef.current.pointerId) return;
+      clearTimers();
+      if (!gestureRef.current.fired) setPhase("idle");
+      gestureRef.current.pointerId = -1;
       select(null);
     };
-    target.addEventListener("pointerdown", onDown, { passive: true });
-    window.addEventListener("pointermove", onMove, { passive: true });
-    window.addEventListener("pointerup", onEnd, { passive: true });
-    window.addEventListener("pointercancel", onEnd, { passive: true });
-    return () => {
-      cancelTimer();
-      target.removeEventListener("pointerdown", onDown);
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onEnd);
-      window.removeEventListener("pointercancel", onEnd);
+    const onClick = (event: MouseEvent) => {
+      if (!suppressClickRef.current) return;
+      suppressClickRef.current = false;
+      event.preventDefault();
+      event.stopImmediatePropagation();
     };
-  }, [visualizerRef, activate]);
+    target.addEventListener("pointerdown", onDown, { passive: true });
+    target.addEventListener("click", onClick, true);
+    window.addEventListener("pointermove", onMove, { passive: true });
+    window.addEventListener("pointerrawupdate", onMove as EventListener, { passive: true });
+    window.addEventListener("pointerup", onEnd, { passive: true });
+    window.addEventListener("pointercancel", onCancel, { passive: true });
+    return () => {
+      clearTimers();
+      target.removeEventListener("pointerdown", onDown);
+      target.removeEventListener("click", onClick, true);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerrawupdate", onMove as EventListener);
+      window.removeEventListener("pointerup", onEnd);
+      window.removeEventListener("pointercancel", onCancel);
+    };
+  }, [visualizerRef]);
 
   const rotateRef = useRef<{ id: number; angle: number; rotation: number } | null>(null);
   const pointerAngle = (x: number, y: number) => {
-    const rect = wheelRef.current?.getBoundingClientRect();
+    const rect = wheelRectRef.current ?? wheelRef.current?.getBoundingClientRect();
     if (!rect) return 0;
     return Math.atan2(y - (rect.top + rect.height / 2), x - (rect.left + rect.width / 2)) * 180 / Math.PI;
   };
+  const selectNearest = (x: number, y: number, currentRotation = rotationRef.current) => {
+    const rect = wheelRectRef.current ?? wheelRef.current?.getBoundingClientRect();
+    if (!rect || ids.length === 0) { select(null); return; }
+    const dx = x - (rect.left + rect.width / 2);
+    const dy = y - (rect.top + rect.height / 2);
+    const distance = Math.hypot(dx, dy);
+    if (distance < rect.width * .19 || distance > rect.width * .54) { select(null); return; }
+    const inner = innerCount > 0 && distance < rect.width * .36;
+    const count = inner ? innerCount : outerCount;
+    const offset = inner ? outerCount : 0;
+    const angle = normalizeRadialDegrees(Math.atan2(dy, dx) * 180 / Math.PI + 90);
+    const index = radialIndexForAngle(angle, count, currentRotation);
+    select(ids[offset + index] ?? null);
+  };
+  useEffect(() => {
+    const wheel = wheelRef.current;
+    if (!wheel) return;
+    const onWheel = (event: WheelEvent) => {
+      if (!openRef.current) return;
+      event.preventDefault();
+      const delta = Math.abs(event.deltaY) >= Math.abs(event.deltaX) ? event.deltaY : event.deltaX;
+      const next = rotationRef.current + Math.max(-24, Math.min(24, delta * .18));
+      paintRotation(next);
+      selectNearest(event.clientX, event.clientY, next);
+      persistRotationSoon();
+    };
+    wheel.addEventListener("wheel", onWheel, { passive: false });
+    return () => wheel.removeEventListener("wheel", onWheel);
+  }, [ids.length]);
+
+  useEffect(() => {
+    const onResize = () => { wheelRectRef.current = null; };
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape" && openRef.current) dismiss(); };
+    const onExternalOpen = () => { setPhase("open"); cacheWheelRect(); };
+    const onExternalClose = () => dismiss();
+    window.addEventListener("resize", onResize, { passive: true });
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("mosh:open-hot-triggers", onExternalOpen);
+    window.addEventListener("mosh:close-hot-triggers", onExternalClose);
+    const frame = requestAnimationFrame(() => layerRef.current?.setAttribute("data-prepared", "true"));
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("mosh:open-hot-triggers", onExternalOpen);
+      window.removeEventListener("mosh:close-hot-triggers", onExternalClose);
+      if (persistTimerRef.current != null) window.clearTimeout(persistTimerRef.current);
+    };
+  }, []);
+
   return (
-    <div className="mobile-radial-layer pointer-events-none absolute inset-0 z-[70]">
-      <button type="button" className="pointer-events-auto absolute left-1/2 top-1/2 h-px w-px opacity-0" onClick={() => setOpen(true)} aria-label="Open radial controls" />
-      {open && (
-        <>
-          <button className="pointer-events-auto absolute inset-0 bg-black/20 backdrop-blur-[1px]" aria-label="Close radial controls" onClick={() => setOpen(false)} />
+    <div ref={layerRef} data-phase="idle" className="mobile-radial-layer pointer-events-none absolute inset-0 z-[70]">
+      <button type="button" className="pointer-events-auto absolute left-1/2 top-1/2 h-px w-px opacity-0" onClick={() => { setPhase("open"); cacheWheelRect(); }} aria-label="Open radial controls" />
+          <button type="button" className="mobile-radial-wheel__backdrop absolute inset-0" aria-label="Close radial controls" onClick={dismiss} />
           <div
             ref={wheelRef}
-            className="mobile-radial-wheel pointer-events-auto absolute left-1/2 top-1/2"
+            className="mobile-radial-wheel absolute left-1/2 top-1/2"
             role="menu"
             aria-label="Visualizer controls"
+            aria-hidden="true"
+            style={{
+              ["--radial-rotation" as string]: `${rotationRef.current}deg`,
+              ["--radial-counter-rotation" as string]: `${-rotationRef.current}deg`,
+            }}
             onPointerDown={(event) => {
               if ((event.target as HTMLElement).closest("button")) return;
-              rotateRef.current = { id: event.pointerId, angle: pointerAngle(event.clientX, event.clientY), rotation };
+              cacheWheelRect();
+              rotateRef.current = { id: event.pointerId, angle: pointerAngle(event.clientX, event.clientY), rotation: rotationRef.current };
               event.currentTarget.setPointerCapture(event.pointerId);
             }}
             onPointerMove={(event) => {
               const drag = rotateRef.current;
-              if (!drag || drag.id !== event.pointerId) return;
-              const next = drag.rotation + pointerAngle(event.clientX, event.clientY) - drag.angle;
-              rotationRef.current = next;
-              setRotation(next);
+              if (drag && drag.id === event.pointerId) {
+                const next = drag.rotation + pointerAngle(event.clientX, event.clientY) - drag.angle;
+                paintRotation(next);
+                selectNearest(event.clientX, event.clientY, next);
+                return;
+              }
+              selectNearest(event.clientX, event.clientY);
             }}
+            onPointerLeave={() => { if (!rotateRef.current) select(null); }}
             onPointerUp={(event) => {
               if (rotateRef.current?.id !== event.pointerId) return;
               rotateRef.current = null;
-              try { localStorage.setItem(MOBILE_WHEEL_ROTATION_KEY, String(rotationRef.current)); } catch {}
+              persistRotationSoon();
             }}
           >
-            <div className="mobile-radial-wheel__rings" aria-hidden />
+            <div className="mobile-radial-wheel__rings" aria-hidden><i/><b/><em/></div>
             {ids.map((id, index) => {
               const inner = index >= outerCount;
               const ringIndex = inner ? index - outerCount : index;
               const count = inner ? innerCount : outerCount;
-              const angle = (ringIndex * 360 / Math.max(1, count)) + rotation;
+              const angle = ringIndex * 360 / Math.max(1, count);
               const radius = inner ? 29 : 43;
               return (
                 <div
                   key={id}
+                  ref={(node) => { if (node) slotRefs.current.set(id, node); else slotRefs.current.delete(id); }}
                   role="menuitem"
                   data-radial-id={id}
-                  data-highlighted={highlighted === id || undefined}
                   className="mobile-radial-wheel__slot"
-                  style={{ transform: `translate(-50%, -50%) rotate(${angle}deg) translateY(calc(var(--radial-size) * -${radius / 100})) rotate(${-angle}deg)` }}
+                  style={{
+                    ["--slot-angle" as string]: `${angle}deg`,
+                    ["--slot-counter-angle" as string]: `${-angle}deg`,
+                    ["--slot-radius" as string]: `${radius / 100}`,
+                  }}
                   onClick={() => onSelect(id)}
+                  onPointerEnter={() => select(id)}
+                  onFocus={() => select(id)}
                 >
                   {registry[id]}
                 </div>
@@ -937,15 +1119,13 @@ function MobileRadialWheel({
             <button
               type="button"
               className="mobile-radial-wheel__hub"
-              onClick={() => setOpen(false)}
+              onClick={dismiss}
               aria-label="Close radial controls"
             >
-              <span>{highlighted ? (TRIGGER_LABELS[highlighted] ?? highlighted) : "MOSH"}</span>
+              <span ref={labelRef} className="mobile-radial-wheel__label">MOSH</span>
               <small>{isRecording ? "REC" : "steer · tap · flick"}</small>
             </button>
           </div>
-        </>
-      )}
     </div>
   );
 }
@@ -959,7 +1139,7 @@ function DesktopRadialWheel({
   isRecording: boolean;
   onSelect: (id: string) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [phase, setPhase] = useState<"idle" | "armed" | "open">("idle");
   const [editing, setEditing] = useState(false);
   const [highlighted, setHighlighted] = useState<string | null>(null);
   const [center, setCenter] = useState({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
@@ -967,10 +1147,11 @@ function DesktopRadialWheel({
     try { return JSON.parse(localStorage.getItem(DESKTOP_WHEEL_LAYOUT_KEY) || "{}"); } catch { return {}; }
   });
   const wheelRef = useRef<HTMLDivElement>(null);
+  const layerRef = useRef<HTMLDivElement>(null);
   const idsRef = useRef(ids);
   const layoutRef = useRef(layout);
   const highlightedRef = useRef<string | null>(null);
-  const gestureRef = useRef({ pointerId: -1, x: 0, y: 0, fired: false });
+  const gestureRef = useRef({ pointerId: -1, x: 0, y: 0, lastX: 0, lastY: 0, startedAt: 0, fired: false, armed: false, cancelled: false, pointerType: "mouse" });
   const editDragRef = useRef<{ pointerId: number; id: string } | null>(null);
   idsRef.current = ids;
   layoutRef.current = layout;
@@ -998,17 +1179,40 @@ function DesktopRadialWheel({
     };
   };
 
+  const selectFromPointer = (clientX: number, clientY: number, pointerType: string) => {
+    const gesture = gestureRef.current;
+    const size = Math.min(window.innerWidth * 0.78, window.innerHeight * 0.78, 560);
+    const dx = clientX - gesture.x;
+    const dy = clientY - gesture.y;
+    const distance = Math.hypot(dx, dy);
+    if (distance < radialFlickThreshold(pointerType)) { select(null); return; }
+    select(nearestRadialId({ x: dx / size, y: dy / size }, idsRef.current, layoutRef.current, 0.2));
+  };
+
   useEffect(() => {
     const target = visualizerRef?.current;
     if (!target) return;
-    let timer: number | null = null;
-    const cancelTimer = () => { if (timer != null) window.clearTimeout(timer); timer = null; };
+    let armTimer: number | null = null;
+    let openTimer: number | null = null;
+    const cancelTimers = () => {
+      if (armTimer != null) window.clearTimeout(armTimer);
+      if (openTimer != null) window.clearTimeout(openTimer);
+      armTimer = null;
+      openTimer = null;
+    };
     const ignored = (eventTarget: EventTarget | null) =>
       eventTarget instanceof HTMLElement && !!eventTarget.closest("button, a, input, textarea, select, [role='slider'], [data-no-longpress], .desktop-radial-wheel");
     const onDown = (event: PointerEvent) => {
       if (event.pointerType === "touch" || event.button !== 0 || ignored(event.target) || gestureRef.current.pointerId !== -1) return;
-      gestureRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, fired: false };
-      timer = window.setTimeout(() => {
+      cancelTimers();
+      gestureRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, lastX: event.clientX, lastY: event.clientY, startedAt: performance.now(), fired: false, armed: false, cancelled: false, pointerType: event.pointerType || "mouse" };
+      armTimer = window.setTimeout(() => {
+        if (gestureRef.current.pointerId !== event.pointerId || gestureRef.current.cancelled) return;
+        gestureRef.current.armed = true;
+        setPhase("armed");
+      }, RADIAL_WHEEL_ARM_MS);
+      openTimer = window.setTimeout(() => {
+        if (gestureRef.current.pointerId !== event.pointerId || gestureRef.current.cancelled) return;
         const size = Math.min(window.innerWidth * 0.78, window.innerHeight * 0.78, 560);
         const radius = size / 2 + 12;
         const nextCenter = {
@@ -1018,54 +1222,84 @@ function DesktopRadialWheel({
         gestureRef.current = { ...gestureRef.current, x: nextCenter.x, y: nextCenter.y, fired: true };
         setCenter(nextCenter);
         setEditing(false);
-        setOpen(true);
-      }, DESKTOP_WHEEL_HOLD_MS);
+        setPhase("open");
+        selectFromPointer(gestureRef.current.lastX, gestureRef.current.lastY, gestureRef.current.pointerType);
+      }, RADIAL_WHEEL_HOLD_MS);
     };
     const onMove = (event: PointerEvent) => {
       const gesture = gestureRef.current;
       if (event.pointerId !== gesture.pointerId) return;
-      const distance = Math.hypot(event.clientX - gesture.x, event.clientY - gesture.y);
-      if (!gesture.fired && distance > 12) { cancelTimer(); return; }
-      if (!gesture.fired) return;
-      const size = Math.min(window.innerWidth * 0.78, window.innerHeight * 0.78, 560);
-      const point = { x: (event.clientX - gesture.x) / size, y: (event.clientY - gesture.y) / size };
-      select(distance < 38 ? null : nearestRadialId(point, idsRef.current, layoutRef.current, 0.2));
+      const samples = event.getCoalescedEvents?.() ?? [];
+      const sample = samples[samples.length - 1] ?? event;
+      gesture.lastX = sample.clientX;
+      gesture.lastY = sample.clientY;
+      const distance = Math.hypot(sample.clientX - gesture.x, sample.clientY - gesture.y);
+      if (!gesture.fired) {
+        if (!gesture.armed && performance.now() - gesture.startedAt < RADIAL_WHEEL_ARM_MS && distance > radialHoldJitterTolerance(gesture.pointerType)) {
+          gesture.cancelled = true;
+          cancelTimers();
+          setPhase("idle");
+        }
+        return;
+      }
+      selectFromPointer(sample.clientX, sample.clientY, gesture.pointerType);
     };
     const onEnd = (event: PointerEvent) => {
       if (event.pointerId !== gestureRef.current.pointerId) return;
-      cancelTimer();
+      cancelTimers();
+      if (gestureRef.current.fired) selectFromPointer(event.clientX, event.clientY, gestureRef.current.pointerType);
       if (gestureRef.current.fired && highlightedRef.current) {
         activate(highlightedRef.current);
-        setOpen(false);
+        setPhase("idle");
       }
-      gestureRef.current = { pointerId: -1, x: 0, y: 0, fired: false };
+      if (!gestureRef.current.fired) setPhase("idle");
+      gestureRef.current.pointerId = -1;
       select(null);
     };
     target.addEventListener("pointerdown", onDown, { passive: true });
     window.addEventListener("pointermove", onMove, { passive: true });
+    window.addEventListener("pointerrawupdate", onMove as EventListener, { passive: true });
     window.addEventListener("pointerup", onEnd, { passive: true });
     window.addEventListener("pointercancel", onEnd, { passive: true });
     return () => {
-      cancelTimer();
+      cancelTimers();
       target.removeEventListener("pointerdown", onDown);
       window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerrawupdate", onMove as EventListener);
       window.removeEventListener("pointerup", onEnd);
       window.removeEventListener("pointercancel", onEnd);
     };
   }, [visualizerRef, activate]);
 
+  useEffect(() => {
+    const open = () => setPhase("open");
+    const close = () => { setPhase("idle"); setEditing(false); select(null); };
+    const key = (event: KeyboardEvent) => { if (event.key === "Escape") close(); };
+    window.addEventListener("mosh:open-hot-triggers", open);
+    window.addEventListener("mosh:close-hot-triggers", close);
+    window.addEventListener("keydown", key);
+    const frame = requestAnimationFrame(() => layerRef.current?.setAttribute("data-prepared", "true"));
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("mosh:open-hot-triggers", open);
+      window.removeEventListener("mosh:close-hot-triggers", close);
+      window.removeEventListener("keydown", key);
+    };
+  }, []);
+
   return (
-    <div className="desktop-radial-layer pointer-events-none fixed inset-0 z-[70]">
-      {open && <>
-        <button type="button" className="pointer-events-auto absolute inset-0 bg-black/20 backdrop-blur-[1px]" aria-label="Close radial controls" onClick={() => { setOpen(false); setEditing(false); }} />
+    <div ref={layerRef} data-phase={phase} className="desktop-radial-layer pointer-events-none fixed inset-0 z-[70]">
+        <button type="button" className="pointer-events-auto absolute left-1/2 top-1/2 h-px w-px opacity-0" onClick={() => setPhase("open")} aria-label="Open radial controls" />
+        <button type="button" className="mobile-radial-wheel__backdrop absolute inset-0" aria-label="Close radial controls" onClick={() => { setPhase("idle"); setEditing(false); }} />
         <div
           ref={wheelRef}
-          className="desktop-radial-wheel mobile-radial-wheel pointer-events-auto absolute"
+          className="desktop-radial-wheel mobile-radial-wheel absolute"
           style={{ left: center.x, top: center.y }}
           role="menu"
           aria-label="Desktop visualizer controls"
+          aria-hidden={phase === "open" ? "false" : "true"}
         >
-          <div className="mobile-radial-wheel__rings" aria-hidden />
+          <div className="mobile-radial-wheel__rings" aria-hidden><i/><b/><em/></div>
           {ids.map((id, index) => {
             const point = layout[id] ?? defaultRadialPoint(index, ids.length);
             return (
@@ -1079,6 +1313,8 @@ function DesktopRadialWheel({
                 style={{ transform: `translate(-50%, -50%) translate(calc(var(--radial-size) * ${point.x}), calc(var(--radial-size) * ${point.y}))` }}
                 onClickCapture={(event) => { if (editing) { event.preventDefault(); event.stopPropagation(); } }}
                 onClick={() => onSelect(id)}
+                onPointerEnter={() => select(id)}
+                onFocus={() => select(id)}
                 onPointerDownCapture={(event) => {
                   if (!editing) return;
                   event.preventDefault();
@@ -1092,9 +1328,9 @@ function DesktopRadialWheel({
                   saveLayout({ ...layoutRef.current, [id]: clampRadialPoint(pointFromPointer(event.clientX, event.clientY)) });
                 }}
                 onPointerUp={(event) => {
-                  if (editDragRef.current?.pointerId !== event.pointerId) return;
+                  if (!editDragRef.current || editDragRef.current.pointerId !== event.pointerId) return;
                   editDragRef.current = null;
-                  if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+                  if (event.currentTarget.hasPointerCapture?.(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
                 }}
               >
                 {registry[id]}
@@ -1103,13 +1339,12 @@ function DesktopRadialWheel({
           })}
           <div className="mobile-radial-wheel__hub">
             <button type="button" onClick={() => setEditing(value => !value)} aria-pressed={editing}>
-              <span>{editing ? "DONE" : (highlighted ? (TRIGGER_LABELS[highlighted] ?? highlighted) : "MOSH")}</span>
+              <span className="mobile-radial-wheel__label">{editing ? "DONE" : (highlighted ? (TRIGGER_LABELS[highlighted] ?? highlighted) : "MOSH")}</span>
               <small>{editing ? "drag every icon" : (isRecording ? "REC" : "hold · steer · release")}</small>
             </button>
             {editing && <button type="button" className="radial-layout-reset" onClick={() => saveLayout({})}>reset</button>}
           </div>
         </div>
-      </>}
     </div>
   );
 }
@@ -1119,7 +1354,7 @@ function DesktopRadialWheel({
  * The DOM overlay is outside <canvas>, so canvas.captureStream() never records these.
  */
 export function HotTriggers({
-  visualizerRef, hidden = false,
+  visualizerRef, hidden = false, showLegacyLaunchpad = false,
   isRecording, onToggleRecord, onScreenshot, onFreeze, onGif, onShare, onSupport, onAccount, gifBusy, gifProgress,
   onMicFlash, journeyOn, onToggleJourney, journeyLocked, journeyPreview, isFullscreen, onToggleFullscreen, onHome,
   onClearFx, hasFx, onSaveFavorite, showMicNudge, onMicNudgeYes, onMicNudgeNo, onMicNudgeExpire, showTrackNudge, onTrackNudgeDismiss,
@@ -1910,10 +2145,13 @@ export function HotTriggers({
     };
     rail.addEventListener("wheel", onWheel, { passive: false });
     return () => rail.removeEventListener("wheel", onWheel);
-  }, []);
+  }, [showLegacyLaunchpad]);
 
-  if (isTouchScreen) {
-    return (
+  if (hidden) return null;
+
+  return (
+    <>
+    {isTouchScreen ? (
       <MobileRadialWheel
         ids={availableIds}
         registry={registry}
@@ -1921,19 +2159,16 @@ export function HotTriggers({
         isRecording={isRecording}
         onSelect={setSelectedTriggerId}
       />
-    );
-  }
-
-  return (
-    <>
-    <DesktopRadialWheel
-      ids={availableIds}
-      registry={registry}
-      visualizerRef={visualizerRef}
-      isRecording={isRecording}
-      onSelect={setSelectedTriggerId}
-    />
-    {!hidden && (
+    ) : (
+      <DesktopRadialWheel
+        ids={availableIds}
+        registry={registry}
+        visualizerRef={visualizerRef}
+        isRecording={isRecording}
+        onSelect={setSelectedTriggerId}
+      />
+    )}
+    {showLegacyLaunchpad && (
     /* Vertically centered so the dock occupies the right edge evenly across
        desktop, tablet and phone aspect ratios. */
     <div

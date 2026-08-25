@@ -43,6 +43,7 @@ function renderEditorTriggers(onGif: (seconds?: number) => void) {
       onGif={onGif}
     />,
   );
+  fireEvent.click(screen.getByRole("button", { name: "Open radial controls" }));
 }
 
 describe("editor GIF timing menu (live camera and uploaded images)", () => {
