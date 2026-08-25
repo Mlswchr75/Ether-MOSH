@@ -7,6 +7,16 @@ const TOUCH_MODEL  = "https://storage.googleapis.com/mediapipe-models/interactiv
 export type MaskResult     = { data: Float32Array; width: number; height: number };
 export type SaliencyPoint  = { x: number; y: number; score: number };
 
+/**
+ * Anything the sticker/isolation pipeline can pull a frame from — a live
+ * camera feed, an uploaded still, or a rendered canvas (e.g. the forge
+ * output, which has no separate "clean" element to segment from). All three
+ * are valid `TexImageSource`s for MediaPipe's segmenters and valid
+ * `CanvasImageSource`s for `drawImage`, so nothing downstream needs to know
+ * which one it got.
+ */
+export type SegSource = HTMLVideoElement | HTMLImageElement | HTMLCanvasElement;
+
 class SegmentationEngine {
   private autoSeg: ImageSegmenter | null = null;
   private tapSeg: InteractiveSegmenter | null = null;
@@ -62,8 +72,8 @@ class SegmentationEngine {
     return s / mask.length;
   }
 
-  /** Analyze a video frame for visually interesting regions via color-variance + center-bias saliency */
-  analyzeSaliency(video: HTMLVideoElement, maxPoints = 3): SaliencyPoint[] {
+  /** Analyze a frame for visually interesting regions via color-variance + center-bias saliency */
+  analyzeSaliency(source: SegSource, maxPoints = 3): SaliencyPoint[] {
     const S = 32;
     if (!this._salCanvas) {
       this._salCanvas = document.createElement('canvas');
@@ -73,7 +83,7 @@ class SegmentationEngine {
     const sc = this._salCanvas;
     const tc = sc.getContext('2d', { willReadFrequently: true });
     if (!tc) return [{ x: 0.5, y: 0.5, score: 1 }];
-    tc.drawImage(video, 0, 0, S, S);
+    tc.drawImage(source, 0, 0, S, S);
     const px = tc.getImageData(0, 0, S, S).data;
 
     const cells = 8, cs = S / cells;
@@ -109,7 +119,7 @@ class SegmentationEngine {
     return kept.length ? kept : [{ x: 0.5, y: 0.5, score: 1 }];
   }
 
-  async segmentMultiPoint(src: HTMLVideoElement, points: SaliencyPoint[]): Promise<MaskResult[]> {
+  async segmentMultiPoint(src: SegSource, points: SaliencyPoint[]): Promise<MaskResult[]> {
     if (!this.tapSeg || !this.tapReady) return [];
     const out: MaskResult[] = [];
     for (const pt of points) {
@@ -120,7 +130,7 @@ class SegmentationEngine {
   }
 
   async segmentFromPoint(
-    src: HTMLVideoElement,
+    src: SegSource,
     normX: number,
     normY: number,
   ): Promise<MaskResult | null> {

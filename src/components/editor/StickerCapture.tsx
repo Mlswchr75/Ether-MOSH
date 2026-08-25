@@ -3,7 +3,7 @@ import { Sparkles, Download, X, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useStore } from '@/store/useStore';
 import { stickerEngine, type StickerScore } from '@/engine/StickerEngine';
-import { segmentationEngine } from '@/engine/SegmentationEngine';
+import { segmentationEngine, type SegSource } from '@/engine/SegmentationEngine';
 
 type Phase = 'idle' | 'capturing' | 'recording' | 'encoding';
 
@@ -11,6 +11,7 @@ export function StickerCapture() {
   const stickerMode          = useStore(s => s.stickerMode);
   const glCanvas             = useStore(s => s.glCanvas);
   const video                = useStore(s => s.videoElement);
+  const image                = useStore(s => s.imageElement);
   const gallery              = useStore(s => s.stickerGallery);
   const addSticker           = useStore(s => s.addStickerToGallery);
   const removeSticker        = useStore(s => s.removeStickerFromGallery);
@@ -28,12 +29,24 @@ export function StickerCapture() {
   const isPointerDown= useRef(false);
   const glRef        = useRef<HTMLCanvasElement | null>(null);
   const vidRef       = useRef<HTMLVideoElement | null>(null);
+  const imgRef       = useRef<HTMLImageElement | null>(null);
   const [phase, _setPhase] = useState<Phase>('idle');
 
   useEffect(() => { glRef.current = glCanvas; }, [glCanvas]);
   useEffect(() => { vidRef.current = video; }, [video]);
+  useEffect(() => { imgRef.current = image; }, [image]);
 
   const setPhase = (p: Phase) => { phaseRef.current = p; _setPhase(p); };
+
+  /**
+   * Whatever the current source mode actually has: the live camera feed
+   * where there is one, the uploaded still where there isn't, and — in forge
+   * mode, which has neither — the rendered canvas itself, since the forge
+   * output *is* the picture there rather than a distinct clean layer under
+   * an FX stack. Keeps sticker capture working identically across every
+   * source mode instead of only camera.
+   */
+  const captureSource = (): SegSource | null => vidRef.current ?? imgRef.current ?? glRef.current;
 
   const doFlash = () => { setFlash(true); setTimeout(() => setFlash(false), 150); };
 
@@ -71,14 +84,14 @@ export function StickerCapture() {
     const tick = () => {
       rafRef.current = requestAnimationFrame(tick);
       frameRef.current++;
-      const gl = glRef.current, vid = vidRef.current;
-      if (!gl || !vid) return;
+      const gl = glRef.current, src = captureSource();
+      if (!gl || !src) return;
 
       if (frameRef.current % 6 === 0) {
         setScore(stickerEngine.scoreFrame(gl));
       }
       if (frameRef.current % 90 === 0) {
-        stickerEngine.refreshBestMask(vid);
+        stickerEngine.refreshBestMask(src);
       }
       if (phaseRef.current === 'recording') {
         const mask = stickerEngine.getBestMask();
@@ -95,11 +108,11 @@ export function StickerCapture() {
   }, [stickerMode, finishRecording]);
 
   const captureStatic = useCallback(async () => {
-    const gl = glRef.current, vid = vidRef.current;
-    if (!gl || !vid || phaseRef.current !== 'idle') return;
+    const gl = glRef.current, src = captureSource();
+    if (!gl || !src || phaseRef.current !== 'idle') return;
     setPhase('capturing');
     try {
-      await stickerEngine.refreshBestMask(vid);
+      await stickerEngine.refreshBestMask(src);
       const mask = stickerEngine.getBestMask();
       if (!mask) return;
       const raw = stickerEngine.compositeFrame(gl, mask.data, mask.width, mask.height);
