@@ -12,6 +12,7 @@ class MoshJourneyPortal extends HTMLElement {
   constructor(){
     super();
     this.attachShadow({mode:"open"});
+    this._frame = null;
   }
   connectedCallback(){ this.render(); }
   attributeChangedCallback(){ if(this.isConnected) this.render(); }
@@ -25,15 +26,30 @@ class MoshJourneyPortal extends HTMLElement {
     });
     url.searchParams.set("shape",shape);
     const clip = this.getAttribute("clip") || SHAPES[shape];
+    // Clip-path is host-only CSS — applying it never needs the iframe
+    // touched at all, so it's always cheap regardless of what else changed.
     this.style.clipPath = CSS.supports("clip-path",clip) ? clip : SHAPES.breach;
+
+    const nextSrc = url.toString();
+    if(this._frame && this._frame.isConnected){
+      // Only reload the iframe (and only then) when an attribute that
+      // actually changes what it renders changed — previously any observed
+      // attribute mutation, including a purely cosmetic one like `label`
+      // with an unchanged value or `clip`, rebuilt the whole shadow DOM and
+      // forced a full reload of the portal simulation.
+      if(this._frame.src !== nextSrc) this._frame.src = nextSrc;
+      return;
+    }
+
     this.shadowRoot.innerHTML = `<style>:host{display:block;position:relative;min-width:120px;min-height:120px;overflow:hidden;filter:drop-shadow(0 0 1px rgba(255,255,255,.9)) drop-shadow(0 0 16px rgba(255,45,146,.3));contain:layout paint}iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:transparent}</style>`;
     const frame = document.createElement("iframe");
     frame.title = "MOSH Forge Journey live visual";
     frame.loading = "lazy";
     frame.allow = "autoplay";
-    frame.src = url.toString();
+    frame.src = nextSrc;
     frame.addEventListener("load",()=>this.setAttribute("data-ready",""),{once:true});
     this.shadowRoot.append(frame);
+    this._frame = frame;
   }
 }
 

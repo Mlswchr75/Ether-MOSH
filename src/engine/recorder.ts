@@ -10,6 +10,7 @@ export class CanvasRecorder {
   private mimeType = "";
   private compositeRaf: number | null = null;
   private compositeCanvas: HTMLCanvasElement | null = null;
+  private captureStream: MediaStream | null = null;
   state: RecorderState = "idle";
 
   static isSupported(): boolean {
@@ -70,6 +71,14 @@ export class CanvasRecorder {
 
     const paint = () => {
       if (!this.compositeCanvas) return;
+      if (source.width <= 0 || source.height <= 0) {
+        // Source was torn down mid-recording (context loss / effect switch).
+        // Keep polling rather than drawing a stale/invalid frame — drawImage
+        // on a zero-size source would otherwise fail silently in the catch
+        // below and produce a black recording.
+        this.compositeRaf = requestAnimationFrame(paint);
+        return;
+      }
       if (composed.width !== source.width || composed.height !== source.height) {
         composed.width = Math.max(1, source.width);
         composed.height = Math.max(1, source.height);
@@ -106,6 +115,7 @@ export class CanvasRecorder {
     this.stopCompositeLoop();
     const captureCanvas = this.captureCanvasFor(canvas);
     const videoStream = captureCanvas.captureStream(Math.max(1, Math.min(60, fps)));
+    this.captureStream = videoStream;
     const audioTracks = opts.audioStream?.getAudioTracks() ?? [];
     const stream = audioTracks.length > 0
       ? new MediaStream([...videoStream.getVideoTracks(), ...audioTracks])
@@ -134,6 +144,11 @@ export class CanvasRecorder {
       mr.stop();
     });
     this.stopCompositeLoop();
+    // canvas.captureStream() keeps its video track live until explicitly
+    // stopped — without this, every recorded clip leaves a live capture
+    // track running for the rest of the session.
+    this.captureStream?.getTracks().forEach((t) => t.stop());
+    this.captureStream = null;
     this.state = "idle";
     this.mediaRecorder = null;
     if (blob.size <= 0) throw new Error("Recording produced an empty file");

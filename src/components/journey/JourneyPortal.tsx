@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { createForgeRuntime, paintForgeSource } from "@/engine/forgeSource";
+import { createForgeRuntime, disposeForgeRuntime, paintForgeSource } from "@/engine/forgeSource";
 import { GENERATORS } from "@/engine/forgeGeneratorRegistry";
 import type { ForgeState } from "@/store/types";
 import { createOrganicClipPaths } from "./organicClip";
@@ -82,9 +82,19 @@ export function JourneyPortalProvider({ children, config }: { children: ReactNod
       transitionStartedAt: null,
     };
 
-    const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const targetFps = reducedMotion ? 1 : cpuCount <= 4 ? 15 : 24;
-    const frameMs = 1000 / targetFps;
+    // Long-lived embeds (stream overlays, gallery installations) can outlast
+    // the OS-level reduced-motion setting a user had when the page loaded —
+    // read it live via a change listener rather than freezing it at mount.
+    const motionQuery = matchMedia("(prefers-reduced-motion: reduce)");
+    let reducedMotion = motionQuery.matches;
+    let targetFps = reducedMotion ? 1 : cpuCount <= 4 ? 15 : 24;
+    let frameMs = 1000 / targetFps;
+    const applyMotionPreference = () => {
+      reducedMotion = motionQuery.matches;
+      targetFps = reducedMotion ? 1 : cpuCount <= 4 ? 15 : 24;
+      frameMs = 1000 / targetFps;
+    };
+    motionQuery.addEventListener("change", applyMotionPreference);
     let lastFrame = -Infinity;
     let raf = 0;
     let running = true;
@@ -196,7 +206,8 @@ export function JourneyPortalProvider({ children, config }: { children: ReactNod
     return () => {
       running = false;
       cancelAnimationFrame(raf);
-      runtime.volumetric?.dispose();
+      motionQuery.removeEventListener("change", applyMotionPreference);
+      disposeForgeRuntime(runtime);
     };
   }, [normalized]);
 
@@ -239,7 +250,7 @@ export function JourneyPortal({
     if (!canvas || !bus) return;
     const surface: PortalSurface = { canvas, crop: clamp(crop, 0, 1), visible: true, fxDepth, phase: (organicSeed % 97) / 13 };
     const detach = bus.attach(surface);
-    const observer = new IntersectionObserver(([entry]) => { surface.visible = entry.isIntersecting; }, { rootMargin: "180px" });
+    const observer = new IntersectionObserver(([entry]) => { if (entry) surface.visible = entry.isIntersecting; }, { rootMargin: "180px" });
     observer.observe(canvas);
     return () => { observer.disconnect(); detach(); };
   }, [bus, crop, fxDepth, organicSeed]);

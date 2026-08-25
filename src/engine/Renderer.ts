@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { EFFECTS_BY_ID } from "./effects";
+import { AMOUNT_RENDER_BOOST } from "./effectRegistry";
 import {
   BLEND_INDEX,
   COMPOSITOR_FRAG,
@@ -1021,9 +1022,11 @@ export class MoshRenderer {
           // this is the single choke point every effect's amount flows
           // through, so boosting it here raises the ceiling everywhere at
           // once instead of hand-tuning ~90 shader bodies individually.
+          // AMOUNT_RENDER_BOOST is shared with effectRegistry.ts's
+          // `renderedMax` so the declared range and the real one can't drift.
           const span = p.max - p.min || 1;
           const t = Math.max(0, (v - p.min) / span);
-          v = p.min + Math.min(1, t) * span * 2.0;
+          v = p.min + Math.min(1, t) * span * AMOUNT_RENDER_BOOST;
         }
         uni[k].value = v;
       }

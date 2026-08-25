@@ -13,6 +13,7 @@ export default defineConfig({
   },
   test: {
     environment: "jsdom",
+    setupFiles: ["./src/testSetup.ts"],
     include: ["src/**/*.test.{ts,tsx}"],
     // The visual engine uses dynamic Three/WebGL imports. Running every jsdom
     // file at once lets one environment tear down while another is still
