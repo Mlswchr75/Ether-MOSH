@@ -985,6 +985,8 @@ export function HotTriggers({
   const captureHoldTimerRef = useRef<number | null>(null);
   const favHeldRef = useRef(false);
   const favHoldTimerRef = useRef<number | null>(null);
+  const uploadHeldRef = useRef(false);
+  const uploadHoldTimerRef = useRef<number | null>(null);
 
   const [order, setOrder] = useState<string[]>(() => loadOrder());
   // A dock needs a stable "current" item even after the pointer leaves. The
@@ -1210,6 +1212,29 @@ export function HotTriggers({
     setFavOpen(v => !v);
   };
 
+  const startUploadHold = (e: React.PointerEvent<HTMLButtonElement>) => {
+    uploadHeldRef.current = false;
+    if (uploadHoldTimerRef.current) window.clearTimeout(uploadHoldTimerRef.current);
+    const { clientX, clientY } = e;
+    uploadHoldTimerRef.current = window.setTimeout(() => {
+      uploadHeldRef.current = true;
+      window.dispatchEvent(new Event("mosh:open-upload-settings"));
+      const uv = clientToViewportUv(clientX, clientY);
+      cursorFx.chaos(uv.x, uv.y);
+      try { (navigator as any).vibrate?.(15); } catch {}
+    }, 450);
+  };
+  const endUploadHold = () => {
+    if (uploadHoldTimerRef.current) {
+      window.clearTimeout(uploadHoldTimerRef.current);
+      uploadHoldTimerRef.current = null;
+    }
+  };
+  const onUploadTap = () => {
+    if (uploadHeldRef.current) return;
+    window.dispatchEvent(new CustomEvent("mosh:switch-mode", { detail: "upload" }));
+  };
+
   // ---- Build every trigger once, keyed by id, then render in `order`. ----
   const registry: Record<string, ReactNode> = {
     home: onHome && (
@@ -1218,7 +1243,7 @@ export function HotTriggers({
       </HotBtn>
     ),
     "source-upload": (
-      <HotBtn key="source-upload" delay={0} label="Upload source" active={sourceMode === "upload"} onClick={() => window.dispatchEvent(new CustomEvent("mosh:switch-mode", { detail: "upload" }))} tint="326 90% 65%">
+      <HotBtn key="source-upload" delay={0} label="Upload source — hold for photo deck" active={sourceMode === "upload"} onClick={onUploadTap} onPointerDown={startUploadHold} onPointerUp={endUploadHold} onPointerCancel={endUploadHold} tint="326 90% 65%">
         <Upload className="h-4 w-4" strokeWidth={1.5} />
       </HotBtn>
     ),
