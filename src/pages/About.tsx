@@ -1,14 +1,18 @@
 import LegalLayout, { LegalH2 } from "@/components/LegalLayout";
 import { Github, Linkedin, Twitter, Instagram, Music } from "lucide-react";
+import { JourneyPortal, JourneyPortalProvider } from "@/components/journey/JourneyPortal";
+import "./about.css";
 
 const About = () => (
+  <JourneyPortalProvider config={{ seed: 0xD71E5, palette: 3, intensity: .86, cadenceMs: 7_600 }}>
   <LegalLayout
     title="About Aesthetic Rebellion"
     description="The artistic journey, influences, and endeavors of Myles Whitcher and the Aesthetic Rebellion collective."
     canonical="https://ether-mosh.online/about"
     eyebrow="about"
   >
-    <section>
+    <section className="about-portal-section about-portal-section--intro">
+      <JourneyPortal shape="edge" className="about-portal about-portal--intro" crop={.18} />
       <p>
         <strong>Aesthetic Rebellion</strong> is the creative practice of Myles Whitcher — a digital artist,
         filmmaker, and instrument designer obsessed with glitch aesthetics, real-time synthesis, and the
@@ -21,7 +25,8 @@ const About = () => (
       </p>
     </section>
 
-    <section>
+    <section className="about-portal-section about-portal-section--journey">
+      <JourneyPortal shape="fissure" className="about-portal about-portal--journey" crop={.62} />
       <LegalH2>Artistic journey</LegalH2>
       <p className="mt-2">
         What began as an obsession with datamoshing — the deliberate corruption of video files to create
@@ -36,7 +41,8 @@ const About = () => (
       </p>
     </section>
 
-    <section>
+    <section className="about-portal-section about-portal-section--influences">
+      <JourneyPortal shape="crater" className="about-portal about-portal--influences" crop={.83} />
       <LegalH2>Influences & inspirations</LegalH2>
       <p className="mt-2">
         The work draws from:
@@ -51,7 +57,8 @@ const About = () => (
       </ul>
     </section>
 
-    <section>
+    <section className="about-portal-section about-portal-section--endeavors">
+      <JourneyPortal shape="slash" className="about-portal about-portal--endeavors" crop={.4} />
       <LegalH2>Endeavors</LegalH2>
       <p className="mt-2">
         <strong>MOSH (Audio-Reactive Visual Instrument)</strong><br />
@@ -137,6 +144,7 @@ const About = () => (
       </p>
     </section>
   </LegalLayout>
+  </JourneyPortalProvider>
 );
 
 export default About;

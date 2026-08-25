@@ -1,0 +1,25 @@
+.journey-portal {
+  --journey-portal-clip: polygon(2% 28%,8% 20%,17% 22%,23% 9%,34% 14%,42% 3%,53% 11%,65% 5%,73% 17%,86% 12%,98% 25%,94% 39%,100% 52%,92% 61%,96% 76%,82% 72%,75% 91%,62% 84%,54% 98%,43% 88%,32% 95%,25% 80%,10% 84%,13% 66%,1% 59%,7% 44%);
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  clip-path: var(--journey-portal-clip);
+  background: #ff2d92;
+  filter: drop-shadow(0 0 1px rgb(255 255 255 / .9)) drop-shadow(0 0 16px rgb(255 45 146 / .3));
+  contain: layout paint size;
+}
+.journey-portal canvas { width:100%;height:100%;display:block;filter:saturate(1.28) contrast(1.18);transform:scale(1.035) }
+.journey-portal::before,.journey-portal::after,.journey-portal__noise{content:"";position:absolute;inset:0;pointer-events:none}
+.journey-portal::before{z-index:2;box-shadow:inset 0 0 0 2px rgb(255 255 255 / .34),inset 0 0 18px rgb(17 217 237 / .28);mix-blend-mode:screen}
+.journey-portal::after{z-index:3;background:repeating-linear-gradient(0deg,transparent 0 8px,rgb(255 255 255 / .07) 9px,transparent 10px);mix-blend-mode:overlay;animation:journey-portal-scan 3.4s steps(3,end) infinite}
+.journey-portal__noise{z-index:4;background:linear-gradient(96deg,transparent 0 46%,rgb(255 45 146 / .42) 46.4% 47%,transparent 47.4% 72%,rgb(17 217 237 / .34) 72.2% 72.8%,transparent 73%);mix-blend-mode:screen;animation:journey-portal-break 2.8s steps(1,end) infinite}
+.journey-portal__label{position:absolute;right:9%;bottom:10%;z-index:6;color:#fff;font:700 clamp(6px,.58vw,9px)/1.2 'JetBrains Mono',monospace;letter-spacing:.16em;text-transform:uppercase;text-shadow:2px 0 #ff2d92,-2px 0 #11d9ed}
+.journey-portal__label i{display:inline-block;width:5px;height:5px;margin-right:6px;border-radius:50%;background:#11d9ed;box-shadow:0 0 9px #11d9ed}
+.journey-portal--rift{--journey-portal-clip:polygon(42% 0,56% 5%,62% 14%,55% 25%,68% 34%,57% 45%,64% 58%,52% 67%,58% 79%,46% 100%,35% 91%,40% 76%,28% 65%,38% 52%,30% 41%,42% 29%,35% 16%)}
+.journey-portal--crater{--journey-portal-clip:polygon(19% 8%,37% 3%,53% 10%,68% 5%,82% 19%,95% 35%,91% 53%,98% 68%,82% 85%,65% 92%,49% 100%,32% 92%,17% 96%,8% 78%,1% 61%,8% 44%,3% 27%)}
+.journey-portal--slash{--journey-portal-clip:polygon(1% 62%,9% 50%,20% 47%,29% 35%,42% 39%,51% 25%,64% 31%,76% 18%,86% 22%,100% 8%,94% 34%,83% 40%,76% 53%,62% 51%,54% 66%,42% 62%,31% 78%,18% 72%,8% 91%)}
+.journey-portal--fissure{--journey-portal-clip:polygon(0 42%,8% 33%,16% 39%,25% 25%,34% 34%,43% 20%,53% 35%,61% 27%,70% 39%,80% 26%,90% 35%,100% 29%,96% 58%,86% 65%,77% 58%,66% 72%,57% 59%,47% 75%,38% 61%,28% 70%,18% 58%,8% 67%,2% 57%)}
+.journey-portal--edge{--journey-portal-clip:polygon(36% 0,100% 0,100% 100%,19% 100%,26% 89%,13% 79%,28% 67%,20% 54%,32% 43%,22% 31%,38% 18%)}
+@keyframes journey-portal-scan{0%,88%,100%{translate:0 0;opacity:.55}90%{translate:0 4px;opacity:.15}94%{translate:0 -3px;opacity:.9}}
+@keyframes journey-portal-break{0%,78%,100%{transform:translateX(-18%);opacity:.25}80%{transform:translateX(8%);opacity:.8}83%{transform:translateX(-4%);opacity:.1}}
+@media(prefers-reduced-motion:reduce){.journey-portal::after,.journey-portal__noise{animation:none}}
