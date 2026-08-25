@@ -75,7 +75,7 @@ class CursorFxManager {
       x, y, targetX: x, targetY: y,
       bornAt: performance.now(),
       releasedAt: null,
-      peakAmount: 0.12,
+      peakAmount: 0.15,
       radius: 0.075,
     });
   }
