@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { normalizeJourneyPortalConfig, normalizeJourneyPortalShape } from "./JourneyPortal";
+import { CUSTOM_PORTAL_SHAPES } from "./portalShapes";
 
 describe("Journey Portal normalization", () => {
   it("accepts known organic shapes and rejects unknown ones", () => {
@@ -18,5 +19,12 @@ describe("Journey Portal normalization", () => {
       intensity: 0,
       cadenceMs: 9_500,
     });
+  });
+
+  it("ships a varied twelve-shape custom portal atlas", () => {
+    const clips = Object.values(CUSTOM_PORTAL_SHAPES);
+    expect(clips).toHaveLength(12);
+    expect(new Set(clips).size).toBe(12);
+    clips.forEach(clip => expect(clip).toMatch(/^polygon\(/));
   });
 });

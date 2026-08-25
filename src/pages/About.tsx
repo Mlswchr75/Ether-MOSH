@@ -1,6 +1,7 @@
 import LegalLayout, { LegalH2 } from "@/components/LegalLayout";
 import { Github, Linkedin, Twitter, Instagram, Music } from "lucide-react";
 import { JourneyPortal, JourneyPortalProvider } from "@/components/journey/JourneyPortal";
+import { PortalShapeGallery } from "@/components/journey/PortalShapeGallery";
 import "./about.css";
 
 const About = () => (
@@ -75,6 +76,10 @@ const About = () => (
         Educational content, tutorials, and freely shared tools for artists interested in glitch aesthetics,
         datamoshing, audio-reactive visuals, and real-time performance.
       </p>
+    </section>
+
+    <section className="about-shape-atlas" aria-label="Custom live Journey portal shapes">
+      <PortalShapeGallery limit={5} />
     </section>
 
     <section>

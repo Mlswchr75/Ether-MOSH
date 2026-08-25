@@ -2,6 +2,7 @@ import { Helmet } from "react-helmet-async";
 import { ArrowLeft, ArrowUpRight } from "lucide-react";
 import { Link } from "react-router-dom";
 import { JourneyPortal, JourneyPortalProvider } from "@/components/journey/JourneyPortal";
+import { PortalShapeGallery } from "@/components/journey/PortalShapeGallery";
 import "./journey-portals.css";
 
 const installCode = `<script type="module" src="https://ether-mosh.online/journey-portal.js"></script>
@@ -42,6 +43,10 @@ const JourneyPortals = () => (
           <JourneyPortal shape="fissure" className="jp-specimen jp-specimen--fissure" crop={.58}/>
           <JourneyPortal shape="slash" className="jp-specimen jp-specimen--slash" crop={.92}/>
         </div>
+      </section>
+      <section className="jp-atlas">
+        <div className="jp-atlas__head"><div className="jp-kicker">Custom shape atlas / twelve live cuts</div><h2>No two<br/>wounds alike.</h2><p>Every opening below is a separate, responsive CSS polygon with its own crop of the same living Journey signal. Each occupies a protected layout cell: no collisions, no clipped edges, no rectangular fallback.</p></div>
+        <PortalShapeGallery />
       </section>
       <section className="jp-install">
         <div><div className="jp-kicker">Drop-in web component</div><h2>Open<br/>the portal.</h2><p>Paste the script once, then place <code>&lt;mosh-journey-portal&gt;</code> anywhere HTML works: portfolios, blogs, stream overlays, release pages, installations, and visualizers.</p></div>

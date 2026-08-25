@@ -1,6 +1,7 @@
 import { Helmet } from "react-helmet-async";
 import { Link } from "react-router-dom";
 import LegalLayout from "@/components/LegalLayout";
+import { JourneyPortalInterlude } from "@/components/journey/PortalShapeGallery";
 
 const canonical = "https://ether-mosh.online/guides";
 const title = "Guides";
@@ -74,6 +75,7 @@ const GuidesIndex = () => (
           </li>
         ))}
       </ul>
+      <JourneyPortalInterlude variant="compact" />
     </LegalLayout>
   </>
 );

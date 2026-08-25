@@ -6,6 +6,7 @@ import { Check } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 import { useEntitlements } from "@/hooks/useEntitlements";
+import { JourneyPortalInterlude } from "@/components/journey/PortalShapeGallery";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
 
@@ -172,6 +173,8 @@ export default function Pricing() {
             )}
           </motion.div>
         </div>
+
+        <JourneyPortalInterlude variant="compact" className="mt-16 border-y border-border/30" />
 
         <motion.div
           initial={{ opacity: 0, y: 12 }}

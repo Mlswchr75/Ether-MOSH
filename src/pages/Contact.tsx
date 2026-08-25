@@ -1,6 +1,7 @@
 import LegalLayout, { LegalH2 } from "@/components/LegalLayout";
 import { Link } from "react-router-dom";
 import { Mail } from "lucide-react";
+import { JourneyPortalInterlude } from "@/components/journey/PortalShapeGallery";
 
 const Contact = () => (
   <LegalLayout
@@ -48,6 +49,7 @@ const Contact = () => (
         your patience.
       </p>
     </section>
+    <JourneyPortalInterlude variant="compact" />
   </LegalLayout>
 );
 
