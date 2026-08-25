@@ -22,10 +22,10 @@ const LegalLayout = ({
 }: LegalLayoutProps) => (
   <main className="relative min-h-screen overflow-hidden bg-background text-foreground">
     <Helmet>
-      <title>{title} — MOSH</title>
+      <title>{title} — Ether-MOSH</title>
       <meta name="description" content={description} />
       <link rel="canonical" href={canonical} />
-      <meta property="og:title" content={`${title} — MOSH`} />
+      <meta property="og:title" content={`${title} — Ether-MOSH`} />
       <meta property="og:description" content={description} />
       <meta property="og:url" content={canonical} />
     </Helmet>

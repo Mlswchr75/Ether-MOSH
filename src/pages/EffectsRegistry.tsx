@@ -52,8 +52,8 @@ export default function EffectsRegistry() {
   return (
     <>
       <Helmet>
-        <title>Effect Registry · MOSH</title>
-        <meta name="description" content="Every MOSH effect — human description, parameters, and GLSL source — exportable as a spreadsheet or JSON." />
+        <title>Effect Registry · Ether-MOSH</title>
+        <meta name="description" content="Every Ether-MOSH effect — human description, parameters, and GLSL source — exportable as a spreadsheet or JSON." />
         <link rel="canonical" href="https://ether-mosh.online/effects" />
         <meta name="robots" content="noindex" />
       </Helmet>
@@ -105,7 +105,7 @@ export default function EffectsRegistry() {
 
         <section className="mx-auto max-w-4xl px-4 py-6 safe-bottom">
           <p className="mb-6 max-w-2xl font-mono text-[10px] leading-relaxed text-white/40">
-            Every effect MOSH can render, in two languages at once: a human blurb + parameter ranges,
+            Every effect Ether-MOSH can render, in two languages at once: a human blurb + parameter ranges,
             and the GLSL fragment shader that actually produces it — the same code the GPU runs, so it
             doubles as the exact recipe for recreating the effect later. Export the whole registry as a
             spreadsheet or JSON below.

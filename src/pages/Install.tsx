@@ -5,28 +5,28 @@ import { Helmet } from "react-helmet-async";
 const EASE = [0.22, 1, 0.36, 1] as const;
 
 const canonical = "https://ether-mosh.online/install";
-const title = "Install — MOSH";
-const description = "Install MOSH as a native-feeling app on iOS, Android, or desktop. No app store required.";
+const title = "Install — Ether-MOSH";
+const description = "Install Ether-MOSH as a native-feeling app on iOS, Android, or desktop. No app store required.";
 const ogImage = "https://ether-mosh.online/og-image.png";
 
 const steps = {
   ios: [
-    { n: "01", text: "Open MOSH in Safari on your iPhone or iPad." },
+    { n: "01", text: "Open Ether-MOSH in Safari on your iPhone or iPad." },
     { n: "02", text: 'Tap the Share button (square with arrow) at the bottom of the screen.' },
     { n: "03", text: 'Scroll down and tap "Add to Home Screen".' },
-    { n: "04", text: 'Tap "Add" in the top-right corner. MOSH is now on your home screen.' },
+    { n: "04", text: 'Tap "Add" in the top-right corner. Ether-MOSH is now on your home screen.' },
   ],
   android: [
-    { n: "01", text: "Open MOSH in Chrome on your Android device." },
+    { n: "01", text: "Open Ether-MOSH in Chrome on your Android device." },
     { n: "02", text: "Tap the three-dot menu in the top-right corner." },
     { n: "03", text: 'Tap "Add to Home screen" or "Install app".' },
-    { n: "04", text: 'Tap "Add". MOSH launches instantly — no app store needed.' },
+    { n: "04", text: 'Tap "Add". Ether-MOSH launches instantly — no app store needed.' },
   ],
   desktop: [
-    { n: "01", text: "Open MOSH in Chrome, Edge, or Brave on your computer." },
+    { n: "01", text: "Open Ether-MOSH in Chrome, Edge, or Brave on your computer." },
     { n: "02", text: "Look for the install icon (⊕) in the address bar, or open the browser menu." },
-    { n: "03", text: 'Click "Install MOSH" or "Add to Desktop".' },
-    { n: "04", text: "MOSH opens in its own window — no browser chrome, full canvas." },
+    { n: "03", text: 'Click "Install Ether-MOSH" or "Add to Desktop".' },
+    { n: "04", text: "Ether-MOSH opens in its own window — no browser chrome, full canvas." },
   ],
 };
 
@@ -40,7 +40,7 @@ export default function Install() {
         <meta name="description" content={description} />
         <link rel="canonical" href={canonical} />
         <meta property="og:type" content="website" />
-        <meta property="og:site_name" content="MOSH" />
+        <meta property="og:site_name" content="Ether-MOSH" />
         <meta property="og:title" content={title} />
         <meta property="og:description" content={description} />
         <meta property="og:url" content={canonical} />
@@ -78,7 +78,7 @@ export default function Install() {
             One tap. No app store.
           </p>
           <p className="mt-4 font-mono text-xs leading-relaxed text-foreground/60">
-            MOSH is a Progressive Web App (PWA). Install it on any device for a fullscreen,
+            Ether-MOSH is a Progressive Web App (PWA). Install it on any device for a fullscreen,
             native-feeling experience — faster launches, offline access, and no browser bar
             eating into your canvas.
           </p>
@@ -116,7 +116,7 @@ export default function Install() {
             note
           </p>
           <p className="mt-2 font-mono text-xs leading-relaxed text-foreground/60">
-            MOSH runs entirely in your browser. Nothing is uploaded to any server — your
+            Ether-MOSH runs entirely in your browser. Nothing is uploaded to any server — your
             images stay on your device. The app works offline once installed; only payment
             verification and demo images require a network connection.
           </p>

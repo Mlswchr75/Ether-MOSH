@@ -6,7 +6,7 @@ import { JourneyPortalInterlude } from "@/components/journey/PortalShapeGallery"
 const Contact = () => (
   <LegalLayout
     title="Contact"
-    description="Get in touch with the MOSH team for support, billing questions, or partnership inquiries."
+    description="Get in touch with the Ether-MOSH team for support, billing questions, or partnership inquiries."
     canonical="https://ether-mosh.online/contact"
     eyebrow="support"
   >

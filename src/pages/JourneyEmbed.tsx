@@ -28,7 +28,7 @@ const JourneyEmbed = () => {
   return (
     <main className="journey-embed-page">
       <Helmet>
-        <title>Forge Journey Portal — MOSH</title>
+        <title>Forge Journey Portal — Ether-MOSH</title>
         <meta name="robots" content="noindex" />
       </Helmet>
       <JourneyPortalProvider config={portal.config}>

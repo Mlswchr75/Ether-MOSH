@@ -72,8 +72,8 @@ export default function Pricing() {
   return (
     <main className="min-h-screen bg-background text-foreground">
       <Helmet>
-        <title>Pricing — MOSH</title>
-        <meta name="description" content="Explore MOSH free. Support Forge Journey, uninterrupted ambient walls, and clean Forge output for a one-time $4.99 payment." />
+        <title>Pricing — Ether-MOSH</title>
+        <meta name="description" content="Explore Ether-MOSH free. Support Forge Journey, uninterrupted ambient walls, and clean Forge output for a one-time $4.99 payment." />
         <link rel="canonical" href="https://ether-mosh.online/pricing" />
       </Helmet>
 
@@ -102,7 +102,7 @@ export default function Pricing() {
             Pay once. Own it forever.
           </p>
           <p className="mx-auto mt-4 max-w-md font-mono text-xs leading-relaxed text-foreground/55">
-            MOSH is free to use. One small payment unlocks video export and the full
+            Ether-MOSH is free to use. One small payment unlocks video export and the full
             feature set — no subscription. Sign-in required so your unlock follows you
             to any device or browser using the same account.
           </p>
@@ -147,7 +147,7 @@ export default function Pricing() {
                 recommended
               </span>
             </div>
-            <p className="font-mono text-[10px] uppercase tracking-[0.4em] text-foreground/40">MOSH Unlock</p>
+            <p className="font-mono text-[10px] uppercase tracking-[0.4em] text-foreground/40">Ether-MOSH Unlock</p>
             <p className="mt-2 font-sans text-3xl font-bold tracking-tight">$4.99</p>
             <p className="mt-1 font-mono text-[10px] text-foreground/40">one-time · no subscription</p>
             <ul className="mt-6 space-y-3">
@@ -186,7 +186,7 @@ export default function Pricing() {
             tip jar — optional
           </h2>
           <p className="mt-2 font-mono text-xs leading-relaxed text-foreground/55">
-            MOSH is built and maintained by one person. If you're getting value from it,
+            Ether-MOSH is built and maintained by one person. If you're getting value from it,
             a tip keeps the shaders alive.
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
@@ -217,7 +217,7 @@ export default function Pricing() {
           {[
             { q: "Do I need an account?", a: "Yes — a quick free account keeps your unlock synced across devices and both Ether-MOSH deployments during the transition." },
             { q: "What browsers are supported?", a: "Chrome, Firefox, Edge, and Safari on desktop. Chrome and Safari on mobile. WebGL is required; the App will tell you if your browser isn't supported." },
-            { q: "Will I get future updates?", a: "Yes. The one-time payment includes all future updates to MOSH — new effects, features, and improvements." },
+            { q: "Will I get future updates?", a: "Yes. The one-time payment includes all future updates to Ether-MOSH — new effects, features, and improvements." },
             { q: "Is there a refund policy?", a: "Yes. 14-day no-questions-asked refund. See our refund policy for details." },
           ].map(({ q, a }) => (
             <div key={q}>

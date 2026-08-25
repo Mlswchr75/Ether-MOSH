@@ -36,7 +36,7 @@ const About = () => (
         audio-reactive instruments, and a curated collection of products that celebrate maximalist design.
       </p>
       <p className="mt-4">
-        MOSH, the audio-reactive visual instrument at the heart of Aesthetic Rebellion, represents the
+        Ether-MOSH, the audio-reactive visual instrument at the heart of Aesthetic Rebellion, represents the
         culmination of years spent wrestling with WebGL, shader design, and the question: <em>what does
         it mean to perform with an instrument that thrives on controlled chaos?</em>
       </p>
@@ -62,7 +62,7 @@ const About = () => (
       <JourneyPortal shape="slash" className="about-portal about-portal--endeavors" crop={.4} />
       <LegalH2>Endeavors</LegalH2>
       <p className="mt-2">
-        <strong>MOSH (Audio-Reactive Visual Instrument)</strong><br />
+        <strong>Ether-MOSH (Audio-Reactive Visual Instrument)</strong><br />
         A real-time, GPU-accelerated instrument for live performance and creative exploration. 107 effects.
         Beat-synced chaos. Built in the browser. Free to use.
       </p>
@@ -139,7 +139,7 @@ const About = () => (
     <section>
       <LegalH2>Credits & thanks</LegalH2>
       <p className="mt-2">
-        MOSH was built with <strong>React</strong>, <strong>Three.js</strong>, and <strong>WebGL</strong>.
+        Ether-MOSH was built with <strong>React</strong>, <strong>Three.js</strong>, and <strong>WebGL</strong>.
         Special thanks to the open-source community, to the artists who've shared their craft openly,
         and to everyone who's pushed the boundaries of what's possible in the browser.
       </p>

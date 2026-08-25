@@ -5,7 +5,7 @@ const SiteFooter = () => (
     <div className="mx-auto flex max-w-5xl flex-col items-center justify-between gap-4 sm:flex-row">
       <div className="flex items-center gap-2">
         <span className="inline-block h-1.5 w-1.5 rounded-full bg-accent" />
-        <span>© 2026 Aesthetic Rebellion · MOSH</span>
+        <span>© 2026 Aesthetic Rebellion · Ether-MOSH</span>
       </div>
       <nav className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
         <Link to="/live-visuals" className="hover:text-accent transition">visual services</Link>

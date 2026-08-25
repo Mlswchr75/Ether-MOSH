@@ -5,7 +5,7 @@ import LegalLayout, { LegalH2 } from "@/components/LegalLayout";
 const canonical = "https://ether-mosh.online/guides/glitch-effect-video-tiktok";
 const title = "How to Make Glitch Effect Videos for TikTok (Free)";
 const description =
-  "Make viral glitch effect videos for TikTok & Reels free — no app to download. Add RGB glitch, datamosh, and distortion to your clips with MOSH in your browser.";
+  "Make viral glitch effect videos for TikTok & Reels free — no app to download. Add RGB glitch, datamosh, and distortion to your clips with Ether-MOSH in your browser.";
 const ogImage = "https://ether-mosh.online/og-image.png";
 
 const articleJsonLd = {
@@ -27,15 +27,15 @@ const articleJsonLd = {
 const faqs: { q: string; a: string }[] = [
   {
     q: "How do I add a glitch effect to a video?",
-    a: "Open MOSH in your browser, drop in your clip (or go live with your camera), pick a glitch effect like RGB shift or datamosh, and record the result.",
+    a: "Open Ether-MOSH in your browser, drop in your clip (or go live with your camera), pick a glitch effect like RGB shift or datamosh, and record the result.",
   },
   {
     q: "Is there a free glitch video editor?",
-    a: "Yes — MOSH is a free glitch video editor that runs in your browser. No download, no watermark, no time limit on free effects.",
+    a: "Yes — Ether-MOSH is a free glitch video editor that runs in your browser. No download, no watermark, no time limit on free effects.",
   },
   {
     q: "Do I need an app to make glitch TikToks?",
-    a: "No. MOSH works on iOS and Android through the browser, so you can film, glitch, and export a TikTok without installing anything.",
+    a: "No. Ether-MOSH works on iOS and Android through the browser, so you can film, glitch, and export a TikTok without installing anything.",
   },
   {
     q: "What's the best glitch effect for TikTok?",
@@ -60,12 +60,12 @@ const H3 = ({ children }: { children: React.ReactNode }) => (
 const GuideGlitchTikTok = () => (
   <>
     <Helmet>
-      <title>{title} | MOSH</title>
+      <title>{title} | Ether-MOSH</title>
       <meta name="description" content={description} />
       <meta name="keywords" content="glitch effect video, TikTok glitch effect, glitch video editor" />
       <link rel="canonical" href={canonical} />
       <meta property="og:type" content="article" />
-      <meta property="og:site_name" content="MOSH" />
+      <meta property="og:site_name" content="Ether-MOSH" />
       <meta property="og:title" content={title} />
       <meta property="og:description" content={description} />
       <meta property="og:url" content={canonical} />
@@ -90,7 +90,7 @@ const GuideGlitchTikTok = () => (
           Glitch effect videos are one of the most-watched aesthetics on TikTok and Reels — a
           split-second of RGB shatter or a datamosh smear on a beat drop is enough to stop the
           scroll. This guide shows how to make glitch videos for TikTok for free, right in your
-          browser, using <Link to="/" className="text-accent hover:underline">MOSH</Link>.
+          browser, using <Link to="/" className="text-accent hover:underline">Ether-MOSH</Link>.
         </p>
       </section>
 
@@ -115,10 +115,10 @@ const GuideGlitchTikTok = () => (
       </section>
 
       <section>
-        <LegalH2>Make a glitch TikTok in MOSH — step by step</LegalH2>
+        <LegalH2>Make a glitch TikTok in Ether-MOSH — step by step</LegalH2>
         <ol className="mt-3 list-decimal space-y-3 pl-5">
           <li>
-            <strong>Open MOSH</strong> at{" "}
+            <strong>Open Ether-MOSH</strong> at{" "}
             <Link to="/edit" className="text-accent hover:underline">the editor</Link> on your
             phone or laptop.
           </li>
@@ -151,15 +151,15 @@ const GuideGlitchTikTok = () => (
           <li>Put the biggest glitch in the first second — that's your hook.</li>
           <li>Sync the glitch to the beat, not the vocals.</li>
           <li>Keep clips under 15 seconds; loop-friendly cuts get replayed.</li>
-          <li>Use trending sounds — MOSH reacts to whatever's playing.</li>
+          <li>Use trending sounds — Ether-MOSH reacts to whatever's playing.</li>
           <li>Contrast helps: bright faces or neon colors read best through heavy glitch.</li>
         </ul>
       </section>
 
       <section>
-        <LegalH2>Why MOSH beats a glitch filter app</LegalH2>
+        <LegalH2>Why Ether-MOSH beats a glitch filter app</LegalH2>
         <p className="mt-3">
-          Filter apps give you one canned look. MOSH gives you 105 stackable GPU effects, live
+          Filter apps give you one canned look. Ether-MOSH gives you 105 stackable GPU effects, live
           audio reactivity, and no watermark — all{" "}
           <Link to="/" className="text-accent hover:underline">free in your browser</Link>. The
           optional <Link to="/pricing" className="text-accent hover:underline">Supporter upgrade</Link>{" "}

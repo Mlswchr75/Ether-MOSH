@@ -24,15 +24,15 @@ const JourneyPortals = () => (
   <JourneyPortalProvider config={{ seed: 1987, palette: 2, intensity: .9, cadenceMs: 6_800 }}>
     <main className="jp-page">
       <Helmet>
-        <title>Forge Journey Portals — MOSH</title>
-        <meta name="description" content="Put the full MOSH Forge Journey engine inside any organic shape on any website." />
+        <title>Forge Journey Portals — Ether-MOSH</title>
+        <meta name="description" content="Put the full Ether-MOSH Forge Journey engine inside any organic shape on any website." />
         <link rel="canonical" href="https://ether-mosh.online/journey-portals" />
       </Helmet>
-      <header className="jp-nav"><Link to="/live-visuals"><ArrowLeft /> Back to the signal</Link><Link to="/edit">Open MOSH <ArrowUpRight /></Link></header>
+      <header className="jp-nav"><Link to="/live-visuals"><ArrowLeft /> Back to the signal</Link><Link to="/edit">Open Ether-MOSH <ArrowUpRight /></Link></header>
       <section className="jp-hero">
         <div className="jp-kicker">Forge Journey / portable signal architecture</div>
         <h1>Your vision.<br/>Our <em>engine.</em></h1>
-        <p>The living Forge Journey engine, rendered inside any shape you can draw. No rectangular player. No canned loop. One line of code opens a window into MOSH.</p>
+        <p>The living Forge Journey engine, rendered inside any shape you can draw. No rectangular player. No canned loop. One line of code opens a window into Ether-MOSH.</p>
         <JourneyPortal shape="breach" label className="jp-hero__portal" crop={.15} />
       </section>
       <section className="jp-demo">
@@ -53,7 +53,7 @@ const JourneyPortals = () => (
       <section className="jp-install">
         <div><div className="jp-kicker">Drop-in web component</div><h2>No gates,<br/>just portals.</h2><p>Paste the script once, then place <code>&lt;mosh-journey-portal&gt;</code> anywhere HTML works: portfolios, blogs, stream overlays, release pages, installations, and visualizers.</p></div>
         <div className="jp-code-stack"><pre><code>{installCode}</code></pre><p>Add a custom <code>clip</code> polygon to make the portal fit a logo, layout, scar, edge, or impossible window of your own design.</p><pre><code>{customCode}</code></pre></div>
-        <div className="jp-custom"><div><h3>Pixel-perfect.</h3></div><div className="jp-custom__copy"><p>Custom portal geometry gives you exact control over where the live signal begins and ends. Seamless and Mirror tiling work as a post-process across MOSH—so the image, camera, Forge source, or effect stack already on screen can become a continuously repeating surface with adjustable scale, rotation, phase, blend zone, and preview.</p><p>Built for graphic designers developing repeat systems, print-on-demand owners preparing all-over artwork, textile and surface-pattern enthusiasts testing fabric-scale rhythm, and anyone turning a moving visual into production-ready pattern. Find the cleanest frame, export the tile, and repeat it without the hard edge.</p></div></div>
+        <div className="jp-custom"><div><h3>Pixel-perfect.</h3></div><div className="jp-custom__copy"><p>Custom portal geometry gives you exact control over where the live signal begins and ends. Seamless and Mirror tiling work as a post-process across Ether-MOSH—so the image, camera, Forge source, or effect stack already on screen can become a continuously repeating surface with adjustable scale, rotation, phase, blend zone, and preview.</p><p>Built for graphic designers developing repeat systems, print-on-demand owners preparing all-over artwork, textile and surface-pattern enthusiasts testing fabric-scale rhythm, and anyone turning a moving visual into production-ready pattern. Find the cleanest frame, export the tile, and repeat it without the hard edge.</p></div></div>
         <div className="jp-options"><span><b>shape</b> breach · rift · crater · slash · fissure · edge</span><span><b>palette</b> 0–5</span><span><b>intensity</b> 0–1</span><span><b>cadence</b> 4800–9500ms</span><span><b>seed</b> any number</span><span><b>label</b> true · false</span></div>
       </section>
       <footer className="jp-footer"><span>Forge Journey Portals / Ether-MOSH</span><Link to="/edit">Make something unstable <ArrowUpRight /></Link></footer>

@@ -5,7 +5,7 @@ import LegalLayout, { LegalH2 } from "@/components/LegalLayout";
 const canonical = "https://ether-mosh.online/guides/audio-reactive-music-videos";
 const title = "How to Make an Audio-Reactive Music Visualizer Video (Free)";
 const description =
-  "Learn how to create audio-reactive music videos for TikTok, Reels & YouTube — no software. Turn any song into a live glitch visualizer with MOSH, free in your browser.";
+  "Learn how to create audio-reactive music videos for TikTok, Reels & YouTube — no software. Turn any song into a live glitch visualizer with Ether-MOSH, free in your browser.";
 const ogImage = "https://ether-mosh.online/og-image.png";
 
 const articleJsonLd = {
@@ -26,22 +26,22 @@ const articleJsonLd = {
 const faqs: { q: string; a: string }[] = [
   {
     q: "What is the best free music visualizer?",
-    a: "MOSH is a free, browser-based music visualizer that reacts to audio in real time — no download or account required.",
+    a: "Ether-MOSH is a free, browser-based music visualizer that reacts to audio in real time — no download or account required.",
   },
   {
     q: "How do I make a music visualizer for TikTok or Reels?",
-    a: "Open MOSH, enable your mic or system audio, pick your effects, play your song, and record a vertical clip to share.",
+    a: "Open Ether-MOSH, enable your mic or system audio, pick your effects, play your song, and record a vertical clip to share.",
   },
   {
     q: "Do I need any software or plugins?",
-    a: "No. MOSH runs entirely in your browser on desktop or mobile — nothing to install.",
+    a: "No. Ether-MOSH runs entirely in your browser on desktop or mobile — nothing to install.",
   },
   {
     q: "Can I use my own music?",
-    a: "Yes. Play your track out loud (or through system audio) and MOSH's audio-reactive engine syncs the visuals to it. Make sure you have the rights to any music you publish.",
+    a: "Yes. Play your track out loud (or through system audio) and Ether-MOSH's audio-reactive engine syncs the visuals to it. Make sure you have the rights to any music you publish.",
   },
   {
-    q: "Is MOSH really free?",
+    q: "Is Ether-MOSH really free?",
     a: "Yes — the full visual instrument is free. An optional one-time Supporter upgrade adds Journey mode and cloud-saved presets.",
   },
 ];
@@ -63,11 +63,11 @@ const H3 = ({ children }: { children: React.ReactNode }) => (
 const GuideAudioReactive = () => (
   <>
     <Helmet>
-      <title>{title} | MOSH</title>
+      <title>{title} | Ether-MOSH</title>
       <meta name="description" content={description} />
       <link rel="canonical" href={canonical} />
       <meta property="og:type" content="article" />
-      <meta property="og:site_name" content="MOSH" />
+      <meta property="og:site_name" content="Ether-MOSH" />
       <meta property="og:title" content={title} />
       <meta property="og:description" content={description} />
       <meta property="og:url" content={canonical} />
@@ -93,7 +93,7 @@ const GuideAudioReactive = () => (
           hypnotic visuals that pulse, glitch, and warp in time with the beat. The good news: you
           don't need After Effects, a plugin, or any download to make one. This guide shows you how
           to create a music visualizer video for free, right in your browser, using{" "}
-          <Link to="/" className="text-accent hover:underline">MOSH</Link> — a live glitch-art
+          <Link to="/" className="text-accent hover:underline">Ether-MOSH</Link> — a live glitch-art
           visual instrument that reacts to sound in real time.
         </p>
       </section>
@@ -114,7 +114,7 @@ const GuideAudioReactive = () => (
         <ul className="mt-3 list-disc space-y-2 pl-5">
           <li>A device with a browser (desktop or mobile)</li>
           <li>A song or audio playing (from your phone, a speaker, or the same device)</li>
-          <li>MOSH (free — no account, no install)</li>
+          <li>Ether-MOSH (free — no account, no install)</li>
         </ul>
       </section>
 
@@ -122,11 +122,11 @@ const GuideAudioReactive = () => (
         <LegalH2>Step-by-step: make your first audio-reactive video</LegalH2>
         <ol className="mt-3 list-decimal space-y-3 pl-5">
           <li>
-            <strong>Open MOSH</strong> and go live with your camera, or drop in an image/video as
+            <strong>Open Ether-MOSH</strong> and go live with your camera, or drop in an image/video as
             your source.
           </li>
           <li>
-            <strong>Turn on the mic</strong> (or enable system audio) so MOSH can hear your track.
+            <strong>Turn on the mic</strong> (or enable system audio) so Ether-MOSH can hear your track.
             This is what makes the visuals react to sound.
           </li>
           <li>
@@ -176,9 +176,9 @@ const GuideAudioReactive = () => (
       </section>
 
       <section>
-        <LegalH2>Why use MOSH for music visualizers</LegalH2>
+        <LegalH2>Why use Ether-MOSH for music visualizers</LegalH2>
         <p className="mt-3">
-          MOSH is built for exactly this — real-time, audio-reactive, GPU-powered visuals that run
+          Ether-MOSH is built for exactly this — real-time, audio-reactive, GPU-powered visuals that run
           in any browser with no downloads. It's free to{" "}
           <Link to="/" className="text-accent hover:underline">start creating</Link>, works on
           mobile, and lets you record and share in a couple taps. The optional{" "}
