@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { cursorFx } from "@/engine/cursorFx";
 
 const FX = [
@@ -40,6 +41,9 @@ export function InteractionFeedback() {
         cursor.style.transform = `translate3d(${event.clientX}px, ${event.clientY}px, 0)`;
         cursor.dataset.visible = "true";
         cursor.dataset.pen = String(event.pointerType === "pen");
+        cursor.dataset.zone = event.target instanceof Element && event.target.closest("[data-cursor-zone='controls']")
+          ? "controls"
+          : "visualizer";
       }
       const x = event.clientX / Math.max(1, window.innerWidth);
       const y = 1 - event.clientY / Math.max(1, window.innerHeight);
@@ -85,7 +89,9 @@ export function InteractionFeedback() {
     };
   }, []);
 
-  return (
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
     <div className="interaction-feedback pointer-events-none fixed inset-0 z-[120] overflow-hidden" aria-hidden>
       <div ref={cursorRef} className="mosh-hover-cursor" data-visible="false"><i /><i /><i /></div>
       {bursts.map(burst => (
@@ -96,6 +102,7 @@ export function InteractionFeedback() {
           style={{ left: burst.x, top: burst.y, animationDuration: `${burst.duration}ms` }}
         />
       ))}
-    </div>
+    </div>,
+    document.body,
   );
 }

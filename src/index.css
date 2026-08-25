@@ -937,6 +937,40 @@
   .mosh-hover-cursor i:nth-child(2) { animation-delay: -600ms; transform: scale(.68) rotate(80deg); }
   .mosh-hover-cursor i:nth-child(3) { animation-delay: -1.2s; transform: scale(1.3) rotate(160deg); }
 
+  /* Below the visualizer the live-pixel inversion has almost nothing to
+     sample—the control rack is intentionally near-black. Keep the same
+     breathing/ripple silhouette, but bias it decisively toward white so the
+     exact pointer position stays legible over sliders, labels and buttons. */
+  .mosh-hover-cursor[data-zone="controls"] {
+    width: 10px;
+    height: 10px;
+    margin: -5px 0 0 -5px;
+    border-color: rgb(255 255 255 / .94);
+    background: rgb(255 255 255 / .14);
+    box-shadow: 0 0 0 1px rgb(0 0 0 / .42), 0 0 9px rgb(255 255 255 / .62);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  .mosh-hover-cursor[data-zone="controls"]::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 3px;
+    height: 3px;
+    translate: -50% -50%;
+    border-radius: 50%;
+    background: rgb(255 255 255 / .96);
+    box-shadow: 0 0 4px rgb(255 255 255 / .8);
+  }
+  .mosh-hover-cursor[data-zone="controls"] i {
+    border-color: rgb(255 255 255 / .76);
+    background: rgb(255 255 255 / .025);
+    box-shadow: 0 0 6px rgb(255 255 255 / .42), inset 0 0 4px rgb(255 255 255 / .16);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
   .mosh-input-burst {
     position: absolute;
     width: 12px;

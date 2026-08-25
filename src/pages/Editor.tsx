@@ -1915,7 +1915,7 @@ export default function Editor() {
           ui-chrome idle-fades it on inactivity, same as everything else;
           hideUI (H key / long-press) is the separate manual full-hide. */}
       {!isFullscreen && !hideUI && (
-        <div className="ui-chrome relative z-10 flex flex-col border-t border-[hsl(var(--border-default))] bg-[hsl(var(--surface-1)/0.92)] backdrop-blur-md animate-in slide-in-from-bottom-4 duration-200">
+        <div data-cursor-zone="controls" className="ui-chrome relative z-10 flex flex-col border-t border-[hsl(var(--border-default))] bg-[hsl(var(--surface-1)/0.92)] backdrop-blur-md animate-in slide-in-from-bottom-4 duration-200">
           {/* Thin utility bar */}
           <div className="flex h-10 items-center justify-between gap-2 border-b border-[hsl(var(--border-default))] px-2">
             <div className="flex items-center gap-1">
