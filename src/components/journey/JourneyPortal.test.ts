@@ -25,6 +25,9 @@ describe("Journey Portal normalization", () => {
     const clips = Object.values(CUSTOM_PORTAL_SHAPES);
     expect(clips).toHaveLength(12);
     expect(new Set(clips).size).toBe(12);
-    clips.forEach(clip => expect(clip).toMatch(/^polygon\(/));
+    clips.forEach(clip => {
+      expect(clip).toMatch(/^polygon\(/);
+      expect(clip.split(",").length).toBeGreaterThanOrEqual(20);
+    });
   });
 });

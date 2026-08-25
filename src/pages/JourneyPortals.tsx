@@ -42,6 +42,8 @@ const JourneyPortals = () => (
           <JourneyPortal shape="crater" className="jp-specimen jp-specimen--crater" crop={.38}/>
           <JourneyPortal shape="fissure" className="jp-specimen jp-specimen--fissure" crop={.58}/>
           <JourneyPortal shape="slash" className="jp-specimen jp-specimen--slash" crop={.92}/>
+          <JourneyPortal shape="breach" className="jp-specimen jp-specimen--breach" crop={.18}/>
+          <JourneyPortal shape="edge" className="jp-specimen jp-specimen--edge" crop={.68}/>
         </div>
       </section>
       <section className="jp-atlas">
