@@ -2309,6 +2309,139 @@ export const EFFECTS: EffectDef[] = [
       `),
     internal: true,
   },
+
+  // ── DESTRUCTION INDEX EXPANSION ────────────────────────────────────
+  // Ten additions picked from a gap analysis against a wider reference
+  // catalog of digital-destruction techniques, chosen for what the library
+  // was actually missing rather than for coverage's own sake: a plain
+  // negative and a hard threshold (both absent despite being VJ staples), a
+  // self-blend composite (a whole glitch family the library didn't have at
+  // all), three signal/tape failures distinct from the existing VHS/scanline
+  // set, a depth-aware bad-key glow that rides the same uDepthTex every
+  // dimensional effect already reads, two motion primitives that lean on
+  // uPulse/noise rather than duplicating zoomBlur or jitter, and a second
+  // grain stock next to filmGrain's halation-heavy one.
+  fx("invert", "Invert", "color", "Full tonal negative, with an audio-driven punch.",
+    [{ key: "amount", label: "Amount", min: 0, max: 1, default: 1.0 },
+     { key: "punch", label: "Pulse Punch", min: 0, max: 1, default: 0.35 }],
+    `
+    vec4 c = texture2D(uTex, vUv);
+    vec3 inverted = 1.0 - c.rgb;
+    float m = clamp(uAmount + uPulse * uPulse * uPunch, 0.0, 1.0);
+    gl_FragColor = vec4(mix(c.rgb, inverted, m), c.a);
+    `),
+
+  fx("threshold", "Threshold", "color", "Every pixel forced to pure black or white at one cutoff.",
+    [{ key: "cut", label: "Cutoff", min: 0, max: 1, default: 0.5 },
+     { key: "soft", label: "Edge Softness", min: 0, max: 0.4, default: 0.06 }],
+    `
+    vec4 c = texture2D(uTex, vUv);
+    float lum = dot(c.rgb, vec3(0.299, 0.587, 0.114));
+    float v = smoothstep(uCut - uSoft - 0.001, uCut + uSoft + 0.001, lum);
+    gl_FragColor = vec4(vec3(v), c.a);
+    `),
+
+  fx("selfBlend", "Self Blend", "color", "The frame differenced against its own offset copy — edges only.",
+    [{ key: "amount", label: "Amount", min: 0, max: 1, default: 0.6 },
+     { key: "spread", label: "Spread", min: 0, max: 0.06, default: 0.015 }],
+    `
+    vec4 base = texture2D(uTex, vUv);
+    vec2 off = vec2(uSpread, -uSpread * 0.6);
+    vec3 shifted = texture2D(uTex, fract(vUv + off)).rgb;
+    vec3 diff = abs(base.rgb - shifted);
+    gl_FragColor = vec4(mix(base.rgb, diff, uAmount), base.a);
+    `),
+
+  fx("syncRoll", "Sync Roll", "corruption", "Vertical sync lost — the frame rolls continuously off the top.",
+    [{ key: "speed", label: "Roll Speed", min: 0, max: 1, default: 0.4 },
+     { key: "amount", label: "Tear Amount", min: 0, max: 1, default: 0.5 }],
+    `
+    vec2 uv = vUv;
+    float roll = fract(uTime * uSpeed * 0.5);
+    uv.y = fract(uv.y + roll);
+    float bandDist = min(uv.y, 1.0 - uv.y);
+    float band = smoothstep(0.08, 0.0, bandDist);
+    float j = (noise(vec2(uv.y * 40.0, uTime * 6.0)) - 0.5) * uAmount * 0.15 * band;
+    uv.x = fract(uv.x + j);
+    gl_FragColor = texture2D(uTex, uv);
+    `),
+
+  fx("interlaceComb", "Interlace Comb", "corruption", "Two fields from different moments woven into one frame.",
+    [{ key: "amount", label: "Amount", min: 0, max: 1, default: 0.6 },
+     { key: "age", label: "Field Age", min: 0, max: 1, default: 0.35 }],
+    `
+    vec4 cur = texture2D(uTex, vUv);
+    vec3 past = timeAt(vUv, uAge);
+    float row = floor(vUv.y * uResolution.y);
+    float oddRow = mod(row, 2.0);
+    float mixAmt = uAmount * oddRow;
+    gl_FragColor = vec4(mix(cur.rgb, past, mixAmt), cur.a);
+    `),
+
+  fx("signalDropout", "Signal Dropout", "corruption", "Bands of missing data replaced with flat noise.",
+    [{ key: "amount", label: "Amount", min: 0, max: 1, default: 0.4 },
+     { key: "scale", label: "Band Size", min: 0.01, max: 0.2, default: 0.05 }],
+    `
+    vec4 c = texture2D(uTex, vUv);
+    float band = floor(vUv.y / max(0.005, uScale));
+    float bandSeed = rand(vec2(band, floor(uTime * 3.0)));
+    float dead = step(1.0 - uAmount * 0.6, bandSeed);
+    float n = rand(vUv * vec2(400.0, 900.0) + uTime);
+    vec3 noiseCol = vec3(n * 0.15 + 0.02);
+    gl_FragColor = vec4(mix(c.rgb, noiseCol, dead), c.a);
+    `),
+
+  fx("keyingHalo", "Keying Halo", "atmosphere", "A bad chroma-key edge — glow bleeding backward from where the matte gave up.",
+    [{ key: "width", label: "Halo Width", min: 0, max: 1, default: 0.4 },
+     { key: "glow", label: "Glow", min: 0, max: 1, default: 0.6 }],
+    `
+    // The depth proxy is soft and blobby by construction (see the header
+    // comment on uDepthTex), never a hard cutout, so a gradient-based edge
+    // detector starves against it. A band around the subject/background
+    // midpoint finds the same "matte gave up here" zone without depending on
+    // how steep the transition happens to be.
+    vec4 c = texture2D(uTex, vUv);
+    float d = depthAt(vUv);
+    float band = clamp(1.0 - abs(d - 0.5) * 2.0, 0.0, 1.0);
+    float edge = pow(band, mix(5.0, 0.6, uWidth));
+    vec3 haloColor = vec3(0.1, 1.0, 0.5);
+    vec3 result = mix(c.rgb, haloColor, edge * uGlow);
+    result = mix(result, 1.0 - c.rgb, d * edge * 0.35 * uGlow);
+    gl_FragColor = vec4(result, c.a);
+    `),
+
+  fx("cameraShake", "Camera Shake", "geometry", "Procedural handheld jitter — the whole frame shudders like a dropped tripod.",
+    [{ key: "amount", label: "Amount", min: 0, max: 1, default: 0.4 },
+     { key: "speed", label: "Speed", min: 0.1, max: 3, default: 1.2 }],
+    `
+    float t = uTime * uSpeed;
+    vec2 shake = vec2(noise(vec2(t, 11.0)) - 0.5, noise(vec2(t, 47.0)) - 0.5) * uAmount * 0.06;
+    vec2 uv = fract(vUv + shake);
+    gl_FragColor = texture2D(uTex, uv);
+    `),
+
+  fx("zoomPunch", "Zoom Punch", "geometry", "A hard scale-in that snaps back on every beat.",
+    [{ key: "amount", label: "Amount", min: 0, max: 1, default: 0.5 },
+     { key: "sharpness", label: "Sharpness", min: 0.3, max: 3, default: 1.2 }],
+    `
+    vec2 uv = vUv - 0.5;
+    float punch = pow(clamp(uPulse, 0.0, 1.0), uSharpness) * uAmount;
+    uv *= 1.0 - punch * 0.4;
+    uv += 0.5;
+    gl_FragColor = texture2D(uTex, clamp(uv, 0.0, 1.0));
+    `),
+
+  fx("paperGrain", "Paper Grain", "atmosphere", "Fibrous substrate multiplied over the image — distinct from Film Grain's halation.",
+    [{ key: "amount", label: "Amount", min: 0, max: 1, default: 0.4 },
+     { key: "scale", label: "Fiber Scale", min: 20, max: 200, default: 80 }],
+    `
+    vec4 c = texture2D(uTex, vUv);
+    vec2 p = vUv * uScale;
+    float fiber = noise(p) * 0.5 + noise(p * 2.3 + 7.0) * 0.3 + noise(p * 5.1 - 3.0) * 0.2;
+    fiber = fiber * 0.5 + 0.5;
+    vec3 toned = c.rgb * mix(1.0, fiber, uAmount);
+    gl_FragColor = vec4(toned, c.a);
+    `),
 ];
 
 /** Every effect except the internal, manager-driven ones — what any
