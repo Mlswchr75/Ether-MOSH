@@ -14,7 +14,8 @@ const offerings = [
 const socials = [
   ["Instagram","https://instagram.com/aestheticrebellion"], ["X / Twitter","https://twitter.com/aestheticrebel"],
   ["SoundCloud","https://soundcloud.com/aestheticrebel"], ["GitHub","https://github.com/Mlswchr75"],
-  ["LinkedIn","https://linkedin.com/in/myleswhitcher"],
+  ["LinkedIn","https://linkedin.com/in/myleswhitcher"], ["Reddit","https://www.reddit.com/user/Emotional-Goat1086/"],
+  ["Pinterest","https://www.pinterest.com/aestheticrebellion/"], ["Telegram","https://t.me/dylesmavis"],
 ];
 const keywordCloud = ["audio-reactive visuals","concert visuals","tour visuals","live VJ","generative art","projection mapping","music visualizer","LED wall content","glitch art","datamosh video","livestream visuals","YouTube visualizer","Twitch visuals","immersive installation","real-time graphics","Spotify Canvas","festival visuals","visual identity","experimental film","creative coding","WebGL","shader art","motion design","OBS visuals"];
 
