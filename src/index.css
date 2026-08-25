@@ -802,26 +802,34 @@
     position: absolute;
     left: 0;
     top: 0;
-    width: 8px;
-    height: 8px;
-    margin: -4px 0 0 -4px;
+    width: 9px;
+    height: 9px;
+    margin: -4.5px 0 0 -4.5px;
     border-radius: 999px;
-    border: 1px solid hsl(var(--accent) / .36);
-    background: hsl(var(--accent) / .1);
-    box-shadow: 0 0 11px hsl(var(--accent) / .18);
+    border: 1px solid rgb(255 255 255 / .5);
+    background: rgb(255 255 255 / .001);
+    box-shadow: 0 0 7px rgb(255 255 255 / .26);
+    /* Backdrop inversion samples the actual rendered pixel beneath the lens;
+       unlike a tinted overlay this carries live canvas color and texture. */
+    -webkit-backdrop-filter: invert(1) contrast(1.08);
+    backdrop-filter: invert(1) contrast(1.08);
     opacity: 0;
     transition: opacity 110ms ease-out;
     will-change: transform;
   }
-  .mosh-hover-cursor[data-visible="true"] { opacity: .72; }
-  .mosh-hover-cursor[data-pen="true"] { opacity: .82; }
+  .mosh-hover-cursor[data-visible="true"],
+  .mosh-hover-cursor[data-pen="true"] { opacity: 1; }
   .mosh-hover-cursor i {
     position: absolute;
     inset: 50%;
     width: 20px;
     height: 20px;
     margin: -10px;
-    border: 1px solid hsl(var(--accent) / .16);
+    border: 1px solid rgb(255 255 255 / .5);
+    box-shadow: 0 0 4px rgb(255 255 255 / .18);
+    background: rgb(255 255 255 / .001);
+    -webkit-backdrop-filter: invert(1) contrast(1.04);
+    backdrop-filter: invert(1) contrast(1.04);
     border-radius: 42% 58% 63% 37% / 54% 45% 55% 46%;
     animation: moshCursorWave 1.8s ease-in-out infinite;
   }
