@@ -852,9 +852,9 @@ export default function Editor() {
     if (journeyPrevShuffleRef.current != null) useStore.getState().setShuffleSec(null);
 
     const director = new JourneyDirector({
-      // Forge is meant to be an ambient wall. Everywhere else Journey is the
-      // Art Director's live performance mode: more volatile, less settled.
-      pace: isForge ? "ambient" : "performance",
+      // Forge keeps its ambient-wall character while beginning every full
+      // composition handoff by 8.5s. Everywhere else stays more volatile.
+      pace: isForge ? "forge" : "performance",
       getVideo: () => useStore.getState().videoElement,
       getMic: () => {
         // Published by GlCanvas, which owns the analyser and drives it from the

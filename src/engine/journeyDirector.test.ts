@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   DISRUPT_CEILING_MS, DISRUPT_FLOOR_MS,
-  moodFrom, nextDisruptionMs, nextHoldMs, performanceInterval, pickDisruption,
+  forgeInterval, moodFrom, nextDisruptionMs, nextHoldMs, performanceInterval, pickDisruption,
   type DisruptionKind,
 } from "./journeyDirector";
 import { EMPTY_FRAME, SILENT_FEATURES, type AudioFeatures, type FrameStats, type Section } from "./journeyCore";
@@ -82,6 +82,16 @@ describe("the disruption guarantee", () => {
 });
 
 describe("composition pacing", () => {
+  it("starts every Forge composition crossfade before ten seconds", () => {
+    const rand = rng(15);
+    const holds = Array.from({ length: 300 }, () => forgeInterval(60_000, "compose", rand));
+    const disruptions = Array.from({ length: 300 }, () => forgeInterval(30_000, "disrupt", rand));
+    expect(Math.min(...holds)).toBeGreaterThanOrEqual(3_800);
+    expect(Math.max(...holds)).toBeLessThanOrEqual(8_500);
+    expect(Math.min(...disruptions)).toBeGreaterThanOrEqual(1_800);
+    expect(Math.max(...disruptions)).toBeLessThanOrEqual(5_500);
+  });
+
   it("turns ambient timing into an irregular, active performance pace", () => {
     const rand = rng(16);
     const holds = Array.from({ length: 300 }, () => performanceInterval(16_000, "compose", rand));
