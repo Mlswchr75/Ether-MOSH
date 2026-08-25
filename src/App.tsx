@@ -23,6 +23,7 @@ const Favorites = lazy(() => import("./pages/Favorites.tsx"));
 const EffectsRegistry = lazy(() => import("./pages/EffectsRegistry.tsx"));
 const Contact = lazy(() => import("./pages/Contact.tsx"));
 const About = lazy(() => import("./pages/About.tsx"));
+const LiveVisuals = lazy(() => import("./pages/LiveVisuals.tsx"));
 const OAuthConsent = lazy(() => import("./pages/OAuthConsent.tsx"));
 const GuidesIndex = lazy(() => import("./pages/GuidesIndex.tsx"));
 const GuideAudioReactive = lazy(() => import("./pages/GuideAudioReactive.tsx"));
@@ -61,6 +62,7 @@ const App = () => (
             <Route path="/effects" element={<EffectsRegistry />} />
             <Route path="/contact" element={<Contact />} />
             <Route path="/about" element={<About />} />
+            <Route path="/live-visuals" element={<LiveVisuals />} />
             <Route path="/oauth/consent" element={<OAuthConsent />} />
             <Route path="/guides" element={<GuidesIndex />} />
             <Route path="/guides/audio-reactive-music-videos" element={<GuideAudioReactive />} />

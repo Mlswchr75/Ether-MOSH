@@ -8,6 +8,7 @@ const SiteFooter = () => (
         <span>© 2026 Aesthetic Rebellion · MOSH</span>
       </div>
       <nav className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
+        <Link to="/live-visuals" className="hover:text-accent transition">visual services</Link>
         <Link to="/pricing" className="hover:text-accent transition">pricing</Link>
         <Link to="/guides" className="hover:text-accent transition">guides</Link>
         <Link to="/terms" className="hover:text-accent transition">terms</Link>
