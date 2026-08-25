@@ -17,11 +17,19 @@ class SegmentationEngine {
   private autoReady = false;
   private tapReady  = false;
   private _salCanvas?: HTMLCanvasElement;
+  private visionFiles?: Promise<Awaited<ReturnType<typeof FilesetResolver.forVisionTasks>>>;
+  private autoLoad?: Promise<void>;
+  private tapLoad?: Promise<void>;
+
+  private files() {
+    return this.visionFiles ??= FilesetResolver.forVisionTasks(WASM);
+  }
 
   async loadAuto(): Promise<void> {
     if (this.autoReady) return;
-    try {
-      const v = await FilesetResolver.forVisionTasks(WASM);
+    if (this.autoLoad) return this.autoLoad;
+    this.autoLoad = (async () => { try {
+      const v = await this.files();
       this.autoSeg = await ImageSegmenter.createFromOptions(v, {
         baseOptions: { modelAssetPath: SELFIE_MODEL, delegate: "GPU" },
         runningMode: "VIDEO",
@@ -30,19 +38,26 @@ class SegmentationEngine {
       });
       this.autoReady = true;
     } catch (e) { console.warn("[seg] auto load failed", e); }
+    finally { this.autoLoad = undefined; } })();
+    return this.autoLoad;
   }
 
   async loadTap(): Promise<void> {
     if (this.tapReady) return;
-    try {
-      const v = await FilesetResolver.forVisionTasks(WASM);
-      this.tapSeg = await InteractiveSegmenter.createFromOptions(v, {
-        baseOptions: { modelAssetPath: TOUCH_MODEL, delegate: "GPU" },
+    if (this.tapLoad) return this.tapLoad;
+    this.tapLoad = (async () => { try {
+      const v = await this.files();
+      const options = (delegate: "GPU" | "CPU") => ({
+        baseOptions: { modelAssetPath: TOUCH_MODEL, delegate },
         outputCategoryMask: false,
         outputConfidenceMasks: true,
-      });
+      } as const);
+      try { this.tapSeg = await InteractiveSegmenter.createFromOptions(v, options("GPU")); }
+      catch { this.tapSeg = await InteractiveSegmenter.createFromOptions(v, options("CPU")); }
       this.tapReady = true;
     } catch (e) { console.warn("[seg] tap load failed", e); }
+    finally { this.tapLoad = undefined; } })();
+    return this.tapLoad;
   }
 
   segmentAuto(video: HTMLVideoElement, ts: number): MaskResult | null {

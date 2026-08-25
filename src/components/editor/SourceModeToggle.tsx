@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type InputHTMLAttributes } from "react";
-import { Upload, Video, Flame, FolderOpen, ChevronUp, ChevronDown, Play, Pause, Shuffle, X } from "lucide-react";
+import { Upload, Video, Flame, Sparkles, FolderOpen, ChevronUp, ChevronDown, Play, Pause, Shuffle, X } from "lucide-react";
 import { toast } from "sonner";
 import { useStore } from "@/store/useStore";
 import type { SourceMode } from "@/store/types";
@@ -14,6 +14,7 @@ const MODE_META: Record<SourceMode, { label: string; icon: typeof Upload; tint: 
   upload: { label: "Upload", icon: Upload, tint: "primary" },
   camera: { label: "Camera", icon: Video, tint: "accent" },
   forge: { label: "Forge", icon: Flame, tint: "accent" },
+  motif: { label: "Motif", icon: Sparkles, tint: "accent" },
 };
 
 const CAMERA_ERR: Record<CameraError, string> = {
@@ -105,7 +106,25 @@ export function SourceModeToggle({ hidden = false }: Props) {
       }
       return;
     }
-    setSourceMode("forge");
+    if (mode === "motif") {
+      const state = useStore.getState();
+      if (state.imageElement) {
+        state.setForgeBaseImage(state.imageElement, state.sourceName ?? "uploaded motif source");
+        state.setForgeMosaic(true);
+      } else if (state.videoElement?.videoWidth && state.videoElement.videoHeight) {
+        // Freeze one local camera frame into Motif Maestro's still source.
+        // No frame leaves the browser, and the live stream is stopped by the
+        // normal generated-mode transition immediately afterwards.
+        const frame = document.createElement("canvas");
+        frame.width = state.videoElement.videoWidth; frame.height = state.videoElement.videoHeight;
+        frame.getContext("2d")?.drawImage(state.videoElement, 0, 0);
+        const image = new Image(); image.src = frame.toDataURL("image/png");
+        try { await image.decode(); } catch {}
+        state.setForgeBaseImage(image, "camera motif frame");
+        state.setForgeMosaic(true);
+      }
+    }
+    setSourceMode(mode);
     if (!useStore.getState().forge.stack.length) randomiseForge();
   };
 

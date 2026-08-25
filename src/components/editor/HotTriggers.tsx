@@ -118,7 +118,7 @@ const DEFAULT_AUTO_MOSH_SEC = 15;
  *  situational stuff last. Not load-bearing for anything but the *default*
  *  order — "customize layout" lets anyone override it per-browser. */
 const DEFAULT_ORDER = [
-  "home", "source-upload", "source-camera", "source-forge", "account", "undo", "redo",
+  "home", "source-upload", "source-camera", "source-forge", "source-motif", "account", "undo", "redo",
   "mosh", "auto-mosh", "clear-fx", "journey",
   "audio", "sensitivity",
   "freeze", "capture", "gif", "share",
@@ -128,7 +128,7 @@ const DEFAULT_ORDER = [
 
 const TRIGGER_LABELS: Record<string, string> = {
   home: "Back to start", undo: "Undo", redo: "Redo",
-  "source-upload": "Upload source", "source-camera": "Live camera", "source-forge": "Forge source", account: "Account",
+  "source-upload": "Upload source", "source-camera": "Live camera", "source-forge": "Forge source", "source-motif": "Motif Maestro", account: "Account",
   mosh: "Mosh", "auto-mosh": "Auto-Mosh", "clear-fx": "Clear FX", journey: "Journey",
   audio: "Audio (mic / device / beat sync)", sensitivity: "Sensitivity",
   "pro-mode": "Pro Mode — hide all UI",
@@ -1683,6 +1683,11 @@ export function HotTriggers({
     "source-forge": (
       <HotBtn key="source-forge" delay={0} label="Forge source" active={sourceMode === "forge"} onClick={() => window.dispatchEvent(new CustomEvent("mosh:switch-mode", { detail: "forge" }))} tint="24 94% 62%">
         <Flame className="h-4 w-4" strokeWidth={1.5} />
+      </HotBtn>
+    ),
+    "source-motif": (
+      <HotBtn key="source-motif" delay={0} label="Motif Maestro" active={sourceMode === "motif"} onClick={() => window.dispatchEvent(new CustomEvent("mosh:switch-mode", { detail: "motif" }))} tint="270 92% 72%">
+        <Sparkles className="h-4 w-4" strokeWidth={1.5} />
       </HotBtn>
     ),
     account: onAccount && (

@@ -141,6 +141,57 @@ class StickerEngine {
     return new ImageData(out, nw, nh);
   }
 
+  /** Cheap, deterministic fallback for frames where the on-device model finds
+   * no clean object. It searches a downsampled frame for the strongest mix of
+   * local contrast, colour and detail, then returns a comfortably padded crop.
+   * The small analysis grid keeps this fast on mobile and off the render loop. */
+  cropSalientRegion(canvas: HTMLCanvasElement): ImageData | null {
+    const pixels = this.readGLPixels(canvas);
+    if (!pixels || canvas.width < 2 || canvas.height < 2) return null;
+    const { width, height } = canvas;
+    const gridW = Math.min(64, width), gridH = Math.min(64, height);
+    const energy = new Float32Array(gridW * gridH);
+    const sample = (gx: number, gy: number) => {
+      const x = Math.min(width - 1, Math.floor((gx + 0.5) * width / gridW));
+      const y = Math.min(height - 1, Math.floor((gy + 0.5) * height / gridH));
+      const i = (y * width + x) * 4;
+      return [pixels[i], pixels[i + 1], pixels[i + 2]] as const;
+    };
+    for (let y = 0; y < gridH; y++) for (let x = 0; x < gridW; x++) {
+      const c = sample(x, y), rx = sample(Math.min(gridW - 1, x + 1), y), by = sample(x, Math.min(gridH - 1, y + 1));
+      const edge = (Math.abs(c[0]-rx[0]) + Math.abs(c[1]-rx[1]) + Math.abs(c[2]-rx[2]) + Math.abs(c[0]-by[0]) + Math.abs(c[1]-by[1]) + Math.abs(c[2]-by[2])) / 1530;
+      const max = Math.max(...c), min = Math.min(...c);
+      energy[y * gridW + x] = edge * 0.78 + ((max - min) / 255) * 0.22;
+    }
+    let best = { score: -1, x: 0, y: 0, w: gridW, h: gridH };
+    for (const scale of [0.34, 0.46, 0.6]) for (const aspect of [0.72, 1, 1.4]) {
+      const rw = Math.max(8, Math.min(gridW, Math.round(gridW * scale * Math.sqrt(aspect))));
+      const rh = Math.max(8, Math.min(gridH, Math.round(gridH * scale / Math.sqrt(aspect))));
+      const stepX = Math.max(1, Math.floor(rw / 4)), stepY = Math.max(1, Math.floor(rh / 4));
+      for (let y = 0; y <= gridH - rh; y += stepY) for (let x = 0; x <= gridW - rw; x += stepX) {
+        let sum = 0;
+        for (let yy = y; yy < y + rh; yy++) for (let xx = x; xx < x + rw; xx++) sum += energy[yy * gridW + xx];
+        const cx = (x + rw / 2) / gridW - 0.5, cy = (y + rh / 2) / gridH - 0.5;
+        const score = sum / (rw * rh) * (0.9 + 0.1 * Math.exp(-(cx*cx + cy*cy) / 0.28));
+        if (score > best.score) best = { score, x, y, w: rw, h: rh };
+      }
+    }
+    // Nearly flat frames have no meaningful salient region; preserve the full
+    // composition instead of manufacturing an arbitrary crop.
+    if (best.score < 0.012) return null;
+    const padX = Math.round(best.w * 0.1), padY = Math.round(best.h * 0.1);
+    const x0 = Math.max(0, Math.floor((best.x - padX) * width / gridW));
+    const y0 = Math.max(0, Math.floor((best.y - padY) * height / gridH));
+    const x1 = Math.min(width, Math.ceil((best.x + best.w + padX) * width / gridW));
+    const y1 = Math.min(height, Math.ceil((best.y + best.h + padY) * height / gridH));
+    const out = new Uint8ClampedArray((x1 - x0) * (y1 - y0) * 4);
+    for (let y = y0; y < y1; y++) {
+      const start = (y * width + x0) * 4;
+      out.set(pixels.subarray(start, start + (x1 - x0) * 4), (y - y0) * (x1 - x0) * 4);
+    }
+    return new ImageData(out, x1 - x0, y1 - y0);
+  }
+
   enhanceHDR(imageData: ImageData): ImageData {
     const { data, width, height } = imageData;
     const out = new Uint8ClampedArray(data.length);

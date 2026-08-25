@@ -53,6 +53,7 @@ import { CameraMenu } from "@/components/editor/CameraMenu";
 import { StartCameraOverlay } from "@/components/editor/StartCameraOverlay";
 import { ForgeTapHint } from "@/components/editor/ForgeTapHint";
 import { SourceModeToggle } from "@/components/editor/SourceModeToggle";
+import { MotifMaestroPanel } from "@/components/editor/MotifMaestroPanel";
 import { HotTriggers } from "@/components/editor/HotTriggers";
 import { ActionConfirmation } from "@/components/editor/ActionConfirmation";
 import { showExportSuccessToast } from "@/components/editor/ExportShareToast";
@@ -111,8 +112,9 @@ export default function Editor() {
   const sourceMode = useStore(s => s.sourceMode);
   // Forge generates its own source, so once it's picked there's always
   // something on screen — the empty-state "go live" hero has nothing to do.
-  const hasSource = imageElement || videoElement || sourceMode === "forge";
+  const hasSource = imageElement || videoElement || sourceMode === "forge" || sourceMode === "motif";
   const isForge = sourceMode === "forge";
+  const isMotif = sourceMode === "motif";
   const seed = useStore(s => s.seed);
   const showBeforeAfter = useStore(s => s.showBeforeAfter);
   const setBeforeAfter = useStore(s => s.setBeforeAfter);
@@ -1229,6 +1231,16 @@ export default function Editor() {
       //   U/L/Y = source mode (Upload/Live camera/forge — Y has no better letter free)
       //   V = share current frame · I = Journey · H = Hide UI
 
+      // K => Make Sticker from the selected overlay or current rendered mode.
+      // The listener lives in the always-mounted OverlayStage, so scissors
+      // mode does not need to be opened first.
+      if (!e.shiftKey && (e.key === "k" || e.key === "K")) {
+        e.preventDefault();
+        if (e.repeat) return;
+        window.dispatchEvent(new CustomEvent("mosh:make-sticker"));
+        return;
+      }
+
       // M => mic toggle
       if (!e.shiftKey && (e.key === "m" || e.key === "M")) {
         e.preventDefault();
@@ -1762,12 +1774,13 @@ export default function Editor() {
         {freezeFrame && <FrozenFrame frame={freezeFrame} />}
         {!hasSource && !isOverlay && <StartCameraOverlay />}
         <SystemAudioHud visible={systemAudioEnabled && !isOverlay} />
-        {hasSource && !isForge && !isOverlay && (
+        {hasSource && !isForge && !isMotif && !isOverlay && (
           <QuadrantSurface onTogglePerf={togglePerf} onTune={focusTune} />
         )}
         {/* Forge has no photo to assign roles on — GlCanvas binds a plain
             click-to-shuffle directly to its own canvas instead. */}
         {isForge && !isOverlay && <ForgeTapHint />}
+        {isMotif && !isOverlay && <MotifMaestroPanel />}
         {/* Always visible, never idle-faded — unlike HotTriggers' effect
             triggers, this is how you get OUT of whichever mode you're in,
             and idle-fade would have hidden it by the exact moment you

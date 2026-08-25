@@ -504,7 +504,7 @@ export const useStore = create<State & Actions>((set, get) => ({
     // Coming from forge mode — e.g. a drag-drop while forge was active —
     // restore the pre-forge layer stack rather than leaving forge's
     // generated-noise stack applied to the new photo.
-    const wasForge = useStore.getState().sourceMode === "forge";
+    const wasForge = ["forge", "motif"].includes(useStore.getState().sourceMode);
     const preForge = useStore.getState().preForgeLayers;
     set({
       imageUrl: url, imageElement: el,
@@ -567,7 +567,7 @@ export const useStore = create<State & Actions>((set, get) => ({
     const facing: CameraFacing | null =
       facingOfTrack(stream.getVideoTracks()[0])
       ?? (name === "front camera" ? "user" : name === "rear camera" ? "environment" : null);
-    const wasForge = useStore.getState().sourceMode === "forge";
+    const wasForge = ["forge", "motif"].includes(useStore.getState().sourceMode);
     const preForge = useStore.getState().preForgeLayers;
     set({
       imageUrl: null,
@@ -1255,14 +1255,14 @@ export const useStore = create<State & Actions>((set, get) => ({
 
     // Leaving forge — restore whatever was active before it rather than
     // leaving forge's generated-noise stack applied to a photo or camera feed.
-    if (s.sourceMode === "forge" && mode !== "forge") {
+    if ((s.sourceMode === "forge" || s.sourceMode === "motif") && mode !== "forge" && mode !== "motif") {
       set({ sourceMode: mode, layers: s.preForgeLayers ?? [], preForgeLayers: null });
       return;
     }
 
     // Entering forge — stop any camera, drop any image, and remember the
     // current stack so it comes back untouched on the way out.
-    if (mode === "forge") {
+    if (mode === "forge" || mode === "motif") {
       if (s.videoStream) { try { s.videoStream.getTracks().forEach(t => t.stop()); } catch {} }
       if (s.videoElement) {
         try { s.videoElement.srcObject = null; } catch {}
@@ -1270,7 +1270,7 @@ export const useStore = create<State & Actions>((set, get) => ({
       }
       const stack = s.forge.stack.length ? s.forge.stack : composeForgeLayers(s.forge);
       set({
-        sourceMode: "forge",
+        sourceMode: mode,
         imageUrl: null, imageElement: null, videoElement: null, videoStream: null, cameraFacing: null,
         preForgeLayers: s.layers,
         layers: stack,
@@ -1305,7 +1305,7 @@ export const useStore = create<State & Actions>((set, get) => ({
     };
     const stack = composeForgeLayers(nextForge);
     nextForge.stack = stack;
-    set({ forge: nextForge, ...(s.sourceMode === "forge" ? { layers: stack } : {}) });
+    set({ forge: nextForge, ...(["forge", "motif"].includes(s.sourceMode) ? { layers: stack } : {}) });
   },
   setForgePaletteIdx: (i) => set(s => ({ forge: { ...s.forge, paletteIdx: i } })),
   setForgeIntensity: (v) => set(s => ({ forge: { ...s.forge, intensity: v } })),
@@ -1316,7 +1316,7 @@ export const useStore = create<State & Actions>((set, get) => ({
     const nextForge: ForgeState = { ...s.forge, seamless: b };
     const stack = composeForgeLayers(nextForge);
     nextForge.stack = stack;
-    set({ forge: nextForge, ...(s.sourceMode === "forge" ? { layers: stack } : {}) });
+    set({ forge: nextForge, ...(["forge", "motif"].includes(s.sourceMode) ? { layers: stack } : {}) });
   },
   setForgeBaseImage: (img, name) => set(s => ({ forge: { ...s.forge, baseImage: img, baseName: name } })),
   setForgeMosaic: (enabled) => set(s => ({ forge: { ...s.forge, mosaicEnabled: enabled } })),

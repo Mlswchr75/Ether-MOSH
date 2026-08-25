@@ -217,7 +217,7 @@ export function GlCanvas() {
   // repeat sampling.
   useEffect(() => {
     if (!rendererRef.current) return;
-    rendererRef.current.setTileableSampling(sourceMode === "forge" ? forgeSeamless : false);
+    rendererRef.current.setTileableSampling(sourceMode === "forge" || sourceMode === "motif" ? forgeSeamless : false);
     if (videoElement) {
       proceduralRef.current?.stop();
       let cancelled = false;
@@ -253,7 +253,7 @@ export function GlCanvas() {
     if (imageElement) {
       proceduralRef.current?.stop();
       rendererRef.current.setSourceImage(imageElement);
-    } else if (sourceMode === "forge") {
+    } else if (sourceMode === "forge" || sourceMode === "motif") {
       proceduralRef.current?.stop();
       if (!forgeCanvasRef.current) {
         const c = document.createElement("canvas");
@@ -546,7 +546,7 @@ export function GlCanvas() {
 
       // Forge mode paints its own source every frame — nothing to read a
       // camera or image element for, the "photo" is generated on the spot.
-      if (sourceModeRef.current === "forge" && forgeCanvasRef.current && forgeCtxRef.current) {
+      if ((sourceModeRef.current === "forge" || sourceModeRef.current === "motif") && forgeCanvasRef.current && forgeCtxRef.current) {
         const fc = forgeCanvasRef.current;
         if (!forgeRuntimeRef.current) forgeRuntimeRef.current = createForgeRuntime();
         if (now - forgeAudioFeaturesAtRef.current >= FORGE_AUDIO_FEATURES_INTERVAL_MS) {
@@ -554,7 +554,8 @@ export function GlCanvas() {
           forgeAudioFeaturesAtRef.current = now;
         }
         const forgeAudioFeatures = forgeAudioFeaturesRef.current;
-        paintForgeSource(forgeCtxRef.current, fc.width, fc.height, t, forgeRef.current, {
+        const sourceTime = sourceModeRef.current === "motif" ? (forgeRef.current.seed % 100000) / 997 : t;
+        paintForgeSource(forgeCtxRef.current, fc.width, fc.height, sourceTime, forgeRef.current, {
           treble: sources.treble ?? 0,
           beat: sources.beat ?? 0,
           bpm: forgeAudioFeatures.bpm,
@@ -628,7 +629,7 @@ export function GlCanvas() {
       // ACES filmic tonemap + local-contrast lift the pipeline already
       // does for everything else. A floor here only changes tone-mapping
       // intensity, not what Forge draws.
-      if (sourceModeRef.current === "forge") moshScore = Math.max(moshScore, 0.55);
+      if (sourceModeRef.current === "forge" || sourceModeRef.current === "motif") moshScore = Math.max(moshScore, 0.55);
       rendererRef.current?.setHdrIntensity(moshScore);
       rendererRef.current?.setHdr(moshScore);
       // Re-applied per frame rather than once at setup: the renderer is

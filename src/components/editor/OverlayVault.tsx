@@ -27,7 +27,7 @@ export function OverlayVault() {
   const addAsset = useOverlayStore(s => s.addAsset);
   const sourceMode = useStore(s => s.sourceMode);
   const glCanvas = useStore(s => s.glCanvas);
-  const forgeAvailable = sourceMode === "forge";
+  const renderAvailable = !!glCanvas;
 
   const refresh = useCallback(async () => {
     try { setRecords(await listOverlayVault()); }
@@ -48,30 +48,36 @@ export function OverlayVault() {
   }, [records]);
   useEffect(() => () => { for (const url of previews.values()) URL.revokeObjectURL(url); }, [previews]);
 
-  const saveSelected = async () => {
-    if ((!selected && !forgeAvailable) || busy) return;
+  const saveSelected = useCallback(async () => {
+    if ((!selected && !renderAvailable) || busy) return;
     setBusy(true);
     try {
       const liveCanvas = glCanvas ?? document.querySelector<HTMLCanvasElement>("canvas[data-mosh-canvas]");
       let resolved = resolveStickerSource({ selectedOverlay: selected, sourceMode, forgeCanvas: liveCanvas });
-      if (!resolved) throw new Error("The Forge render is not ready yet.");
+      if (!resolved) throw new Error("The current visual is not ready yet.");
       resolved = await withOptionalForgeIsolation(resolved, async canvas => {
         await segmentationEngine.loadTap();
         if (!segmentationEngine.isTapReady()) return [];
         const points = segmentationEngine.analyzeSaliency(canvas, 3);
         return segmentationEngine.segmentMultiPoint(canvas, points);
-      }, error => console.warn("[overlay-vault] subject isolation unavailable; saving complete Forge render", error));
+      }, error => console.warn("[overlay-vault] subject isolation unavailable; using salient crop", error));
       const prepared = await assetFromStickerSource(resolved);
       try { await saveOverlayAsset(prepared.asset, prepared.blob); }
       finally { prepared.revoke(); }
-      toast.success("Sticker forged into the Vault");
+      toast.success("Sticker saved to the Vault");
       await refresh();
       setOpen(true);
     } catch (error) {
       console.error("[overlay-vault] save failed", error);
       toast.error(error instanceof Error ? `Couldn't save sticker: ${error.message}` : "Couldn't save that sticker to the Vault.");
     } finally { setBusy(false); }
-  };
+  }, [busy, glCanvas, refresh, renderAvailable, selected, sourceMode]);
+
+  useEffect(() => {
+    const makeSticker = () => { if (!busy) void saveSelected(); };
+    window.addEventListener("mosh:make-sticker", makeSticker);
+    return () => window.removeEventListener("mosh:make-sticker", makeSticker);
+  }, [busy, saveSelected]);
 
   const updateMeta = async (id: string, patch: { name?: string; favorite?: boolean; tags?: string[] }) => {
     try { await updateOverlayVaultMeta(id, patch); await refresh(); }
@@ -95,7 +101,7 @@ export function OverlayVault() {
 
   return <>
     <div className="pointer-events-auto flex flex-wrap items-center gap-1">
-      <button type="button" disabled={(!selected && !forgeAvailable) || busy} onClick={() => void saveSelected()} className="flex items-center gap-1.5 rounded-full border border-cyan-300/20 bg-black/70 px-2.5 py-2 font-mono text-[8px] uppercase tracking-[0.12em] text-cyan-100 backdrop-blur-md transition hover:border-cyan-300/45 disabled:opacity-25" title={selected ? "Save the selected overlay as a reusable static sticker in the Vault" : forgeAvailable ? "Capture the current Forge render as a reusable static sticker in the Vault" : "Select an overlay or switch to Forge first"}><WandSparkles size={11} /> {busy ? "Saving…" : "Make Sticker"}</button>
+      <button type="button" disabled={(!selected && !renderAvailable) || busy} onClick={() => void saveSelected()} className="flex items-center gap-1.5 rounded-full border border-cyan-300/20 bg-black/70 px-2.5 py-2 font-mono text-[8px] uppercase tracking-[0.12em] text-cyan-100 backdrop-blur-md transition hover:border-cyan-300/45 disabled:opacity-25" title={selected ? "Save the selected overlay as a reusable static sticker (K)" : renderAvailable ? "Detect a subject or salient crop in the current visual (K)" : "Wait for a visual source"}><WandSparkles size={11} /> {busy ? "Saving…" : "Make Sticker · K"}</button>
       <button type="button" onClick={() => setOpen(value => !value)} className={`flex items-center gap-1.5 rounded-full border bg-black/70 px-3 py-2 font-mono text-[9px] uppercase tracking-[0.16em] backdrop-blur-md transition ${open ? "border-cyan-300/40 text-cyan-200" : "border-white/15 text-white/70 hover:border-white/30 hover:text-white"}`} title="Sticker Vault"><Library size={12} /> Vault</button>
     </div>
 

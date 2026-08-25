@@ -87,10 +87,10 @@ export function StickerCapture() {
       rafRef.current = requestAnimationFrame(tick);
       frameRef.current++;
       const gl = glRef.current, vid = vidRef.current;
-      if (!gl || !vid) return;
+      if (!gl) return;
 
       if (frameRef.current % 6 === 0) setScore(stickerEngine.scoreFrame(gl));
-      if (frameRef.current % 90 === 0) stickerEngine.refreshBestMask(vid);
+      if (vid && frameRef.current % 90 === 0) stickerEngine.refreshBestMask(vid);
       if (phaseRef.current === 'recording') {
         const mask = stickerEngine.getBestMask();
         if (mask && recFrames.current.length < 30) {
@@ -106,30 +106,19 @@ export function StickerCapture() {
   }, [stickerMode, finishRecording]);
 
   const captureStatic = useCallback(async () => {
-    const gl = glRef.current, vid = vidRef.current;
-    if (!gl || !vid || phaseRef.current !== 'idle') return;
+    const gl = glRef.current;
+    if (!gl || phaseRef.current !== 'idle') return;
     setPhase('capturing');
     try {
-      await stickerEngine.refreshBestMask(vid);
-      const mask = stickerEngine.getBestMask();
-      if (!mask) return;
-      const raw = stickerEngine.compositeFrame(gl, mask.data, mask.width, mask.height);
-      if (!raw) return;
-      const cropped = stickerEngine.cropToBounds(raw);
-      if (!cropped) return;
-      const enhanced = stickerEngine.enhanceHDR(cropped);
-      setPhase('encoding');
-      const blob = await stickerEngine.exportWebP(enhanced, 2);
       doFlash();
-      const url = URL.createObjectURL(blob);
-      publishSticker({ id: crypto.randomUUID(), url, animated: false, w: enhanced.width * 2, h: enhanced.height * 2, ts: Date.now() });
+      window.dispatchEvent(new CustomEvent('mosh:make-sticker'));
     } catch (err) {
       console.error('[sticker] static capture failed:', err);
       toast.error("Couldn't save that capture — try again");
     } finally {
       setPhase('idle');
     }
-  }, [publishSticker]);
+  }, []);
 
   const startRecording = useCallback(() => {
     if (phaseRef.current !== 'idle') return;
@@ -141,6 +130,9 @@ export function StickerCapture() {
 
   const onPointerDown = () => {
     isPointerDown.current = true;
+    // Animated capture needs temporal video frames. Uploads and generated
+    // patterns still get the same reliable static Make Sticker action.
+    if (!vidRef.current) return;
     holdTimer.current = window.setTimeout(() => {
       if (isPointerDown.current) startRecording();
     }, 500);
@@ -173,7 +165,10 @@ export function StickerCapture() {
     });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!stickerMode) return null;
+  // Keep OverlayStage mounted in every source mode. This makes Vault, selected
+  // overlays and the global Make Sticker shortcut available before the user
+  // opens the scissors capture controls.
+  if (!stickerMode) return <OverlayStage />;
 
   const glow = score.value;
   const isRecording = phase === 'recording';
