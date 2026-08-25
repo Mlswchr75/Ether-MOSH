@@ -194,7 +194,7 @@ const Index = () => {
           <div className="max-w-[1200px]">
             <p className="mb-5 font-mono text-[9px] uppercase tracking-[0.3em] text-accent">Live performance · tour content · generative systems</p>
             <h2 className="max-w-[1100px] font-sans text-[clamp(48px,9vw,145px)] font-black uppercase leading-[0.8] tracking-[-0.075em]">
-              The screen<br/>should feel<br/><span className="text-primary">the music.</span>
+              Leave the frame.<br/><span className="text-primary">Enter the signal.</span>
             </h2>
           </div>
           <div className="flex flex-col gap-7 sm:flex-row sm:items-end sm:justify-between">
