@@ -1423,10 +1423,20 @@
     0%, 100% { transform: translate(0, 0); }
     50%      { transform: translate(3px, 3px); }
   }
+  .info-hint { animation: info-hint-pulse 4.6s ease-in-out infinite; }
+  .info-hint-arrow { animation: info-hint-arrow 2.3s ease-in-out infinite; }
+  @keyframes info-hint-pulse {
+    0%, 100% { opacity: .42; }
+    50% { opacity: .72; }
+  }
+  @keyframes info-hint-arrow {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-4px); }
+  }
 
   @media (prefers-reduced-motion: reduce) {
     .reel-gate, .reel-glitch-in, .reel-glitch-out,
-    .reel-hint, .reel-hint-arrow { animation: none !important; }
+    .reel-hint, .reel-hint-arrow, .info-hint, .info-hint-arrow { animation: none !important; }
   }
 
   /* Ambient background glitching behind the reel — ownerless flecks of

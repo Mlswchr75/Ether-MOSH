@@ -17,6 +17,7 @@ import { QuadrantDecor } from "@/components/home/QuadrantDecor";
 import { GlitchWordField, KEEP_OUT } from "@/components/home/GlitchWordField";
 import { HeroWord, HERO_ANCHOR } from "@/components/home/HeroWord";
 import { titleAmbience } from "@/engine/titleAmbience";
+import { INFO_WHEEL_THRESHOLD, isInfoRevealSwipe, isUpwardInfoWheel } from "@/lib/homeDirectionalNav";
 
 const DemoReelPanel = lazy(() =>
   import("@/components/home/DemoReelPanel").then(m => ({ default: m.DemoReelPanel })),
@@ -97,15 +98,22 @@ const Index = () => {
 
   /**
    * The panels stack vertically, so scrolling down reaches the reel for free.
-   * The hint also promises "scroll right", so horizontal wheel and swipe get
-   * mapped onto the same move — a trackpad flick sideways or a left swipe on
-   * a phone lands on the same panel a downward scroll would.
+   * Down/right reaches the reel. Up from the title reaches the public MOSH
+   * story and services page, giving the landing screen a real second axis.
    */
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
 
     let locked = false;
+    let infoIntent = 0;
+    let infoIntentTimer: number | null = null;
+    let leavingForInfo = false;
+    const goToInfo = () => {
+      if (leavingForInfo) return;
+      leavingForInfo = true;
+      navigate("/live-visuals");
+    };
     const goTo = (panel: number) => {
       if (locked) return;
       locked = true;
@@ -115,6 +123,14 @@ const Index = () => {
     const onFirstPanel = () => el.scrollTop < el.clientHeight / 2;
 
     const onWheel = (e: WheelEvent) => {
+      if (onFirstPanel() && isUpwardInfoWheel(e.deltaX, e.deltaY)) {
+        e.preventDefault();
+        infoIntent += Math.abs(e.deltaY);
+        if (infoIntentTimer != null) window.clearTimeout(infoIntentTimer);
+        infoIntentTimer = window.setTimeout(() => { infoIntent = 0; }, 240);
+        if (infoIntent >= INFO_WHEEL_THRESHOLD) goToInfo();
+        return;
+      }
       if (Math.abs(e.deltaX) <= Math.abs(e.deltaY) || Math.abs(e.deltaX) < 12) return;
       const forward = e.deltaX > 0;
       if (forward === onFirstPanel()) {
@@ -135,21 +151,33 @@ const Index = () => {
       if (!start || !t) return;
       const dx = t.clientX - start.x;
       const dy = t.clientY - start.y;
+      if (onFirstPanel() && isInfoRevealSwipe(dx, dy)) {
+        goToInfo();
+        return;
+      }
       if (Math.abs(dx) < 60 || Math.abs(dx) <= Math.abs(dy)) return;
       // Swiping left drags the page rightward, i.e. forward to the reel.
       const forward = dx < 0;
       if (forward === onFirstPanel()) goTo(forward ? 1 : 0);
     };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "ArrowUp" || !onFirstPanel()) return;
+      e.preventDefault();
+      goToInfo();
+    };
 
     el.addEventListener("wheel", onWheel, { passive: false });
     el.addEventListener("touchstart", onTouchStart, { passive: true });
     el.addEventListener("touchend", onTouchEnd, { passive: true });
+    window.addEventListener("keydown", onKeyDown);
     return () => {
+      if (infoIntentTimer != null) window.clearTimeout(infoIntentTimer);
       el.removeEventListener("wheel", onWheel);
       el.removeEventListener("touchstart", onTouchStart);
       el.removeEventListener("touchend", onTouchEnd);
+      window.removeEventListener("keydown", onKeyDown);
     };
-  }, []);
+  }, [navigate]);
 
   // Clipboard paste — paste an image anywhere on the home page to start moshing
   useEffect(() => {
@@ -331,6 +359,20 @@ const Index = () => {
             </button>
           </div>
         </motion.div>
+
+        {/* The title is the center of a two-direction entrance: demos below,
+            the public story / use cases / booking page above. */}
+        <motion.button
+          {...KEEP_OUT}
+          type="button"
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 1.35 }}
+          onClick={(e) => { e.stopPropagation(); navigate("/live-visuals"); }}
+          className="info-hint pointer-events-auto absolute left-1/2 top-[4.75rem] z-20 -translate-x-1/2 whitespace-nowrap font-mono text-[9px] uppercase tracking-[0.28em] text-foreground/45 transition-colors hover:text-accent"
+        >
+          <span className="info-hint-arrow inline-block">↑</span> about · uses · bookings
+        </motion.button>
 
         {/* Bottom credit */}
         <motion.div
