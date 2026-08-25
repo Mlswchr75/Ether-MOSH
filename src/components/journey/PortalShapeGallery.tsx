@@ -4,18 +4,18 @@ import "./portal-shape-gallery.css";
 
 const ALL_SHAPES = Object.keys(CUSTOM_PORTAL_SHAPES) as CustomPortalShape[];
 
-export function PortalShapeGallery({ className = "", limit = 12 }: { className?: string; limit?: number }) {
+export function PortalShapeGallery({ className = "", limit = 12, start = 0 }: { className?: string; limit?: number; start?: number }) {
   return (
     <div className={`portal-shape-gallery ${className}`}>
-      {ALL_SHAPES.slice(0, limit).map((name, index) => (
+      {ALL_SHAPES.slice(start, start + limit).map((name, index) => (
         <figure className={`portal-specimen portal-specimen--${name}`} key={name}>
           <JourneyPortal
             clipPath={CUSTOM_PORTAL_SHAPES[name]}
-            crop={(index * .173) % 1}
-            fxDepth={index % 5 === 2 ? 2 : index % 3 === 1 ? 1 : 0}
+            crop={((index + start) * .173) % 1}
+            fxDepth={(index + start) % 5 === 2 ? 2 : (index + start) % 3 === 1 ? 1 : 0}
             className="portal-specimen__visual"
           />
-          <figcaption><span>{String(index + 1).padStart(2, "0")}</span>{name}</figcaption>
+          <figcaption><span>{String(index + start + 1).padStart(2, "0")}</span>{name}</figcaption>
         </figure>
       ))}
     </div>
