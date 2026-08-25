@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { normalizeJourneyPortalConfig, normalizeJourneyPortalShape } from "./JourneyPortal";
-import { CUSTOM_PORTAL_SHAPES } from "./portalShapes";
+import { createOrganicClipPaths, parsePolygonClip } from "./organicClip";
+import { CUSTOM_PORTAL_SHAPES, JOURNEY_PORTAL_CLIPS } from "./portalShapes";
 
 describe("Journey Portal normalization", () => {
   it("accepts known organic shapes and rejects unknown ones", () => {
@@ -28,6 +29,18 @@ describe("Journey Portal normalization", () => {
     clips.forEach(clip => {
       expect(clip).toMatch(/^polygon\(/);
       expect(clip.split(",").length).toBeGreaterThanOrEqual(20);
+    });
+  });
+
+  it("turns every portal polygon into compatible animated organic paths", () => {
+    [...Object.values(CUSTOM_PORTAL_SHAPES), ...Object.values(JOURNEY_PORTAL_CLIPS)].forEach((clip, index) => {
+      const points = parsePolygonClip(clip);
+      const paths = createOrganicClipPaths(clip, 1987 + index);
+      expect(points.length).toBeGreaterThanOrEqual(15);
+      expect(paths).toHaveLength(4);
+      expect(new Set(paths).size).toBe(3);
+      const commandCounts = paths.map(path => (path.match(/ C/g) ?? []).length);
+      expect(new Set(commandCounts)).toEqual(new Set([points.length]));
     });
   });
 });
