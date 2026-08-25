@@ -1248,9 +1248,11 @@ export function HotTriggers({
       </HotBtn>
     ),
     mosh: (
-      <HotBtn key="mosh" delay={0} label="Mosh" onClick={() => crossfadeLayers(mosh, MOSH_FADE_MS)} tint="12 90% 58%">
-        <Sparkles className="h-4 w-4" strokeWidth={1.5} />
-      </HotBtn>
+      <span key="mosh" data-mosh-input className="contents">
+        <HotBtn delay={0} label="Mosh" onClick={() => crossfadeLayers(mosh, MOSH_FADE_MS)} tint="12 90% 58%">
+          <Sparkles className="h-4 w-4" strokeWidth={1.5} />
+        </HotBtn>
+      </span>
     ),
     "auto-mosh": (
       <div key="auto-mosh" className="relative" data-shuffle-picker>

@@ -62,7 +62,7 @@ import { useCloudFavorites } from "@/hooks/useCloudFavorites";
 import { JourneyDirector, type JourneyDirectorState } from "@/engine/journeyDirector";
 import type { JourneyMic } from "@/engine/journeyCore";
 import { PUBLIC_EFFECTS } from "@/engine/effects";
-import { useIdleFade, markUiActive } from "@/hooks/useIdleFade";
+import { useIdleFade, markUiActive, isMoshOnlyActivity } from "@/hooks/useIdleFade";
 import { captureQuickThumb } from "@/engine/quickThumb";
 import {
   FORGE_JOURNEY_STORAGE_KEY,
@@ -149,7 +149,7 @@ export default function Editor() {
   // and the bottom menu rack (all gated on `!hideUI`) never mount for
   // anyone who hasn't already discovered one of those gestures. Idle-fade
   // (`.ui-chrome` + `idleStage`, a separate mechanism) is what actually
-  // makes the chrome disappear after 2.5s of inactivity — this flag is only
+  // makes the chrome disappear after 1.7s of inactivity — this flag is only
   // the manual full-hide, so it should start open.
   const [hideUI, setHideUI] = useState(false);
   // Persistent reveal pin — the always-visible top-right toggle that keeps
@@ -222,8 +222,8 @@ export default function Editor() {
   useEffect(() => { trackPlayer.noteModeEntry(); }, []);
 
   // UI chrome (and the cursor, see index.css) fades to fully invisible
-  // after 2.5s of inactivity.
-  const idleStage = useIdleFade(2_500);
+  // after 1.7s of inactivity.
+  const idleStage = useIdleFade(1_700, isMoshOnlyActivity);
   // Pinning bypasses idle-fade entirely — real inactivity no longer fades
   // .ui-chrome while pinned, independent of hideUI (a separate mechanism;
   // see chromePinned's declaration for how the two combine).
@@ -235,7 +235,7 @@ export default function Editor() {
   // comes with it). Native `title`-attribute tooltips don't need separate
   // handling — the chrome they'd hover over already goes pointer-events:none
   // at the same idle mark (see .ui-chrome in index.css), so they can't be
-  // triggered at all once hidden. Same 2.5s mark as everything else fading,
+  // triggered at all once hidden. Same 1.7s mark as everything else fading,
   // deliberately — a second, slightly different timer here would just
   // desync from the fade and read as a bug.
   useEffect(() => {
@@ -1688,6 +1688,7 @@ export default function Editor() {
       {/* Canvas — fills the viewport by default. All menu UI lives below the fold. */}
       <div
         ref={canvasContainerRef}
+        data-mosh-surface
         onDragOver={(e) => {
           if (Array.from(e.dataTransfer.types).includes("Files")) e.preventDefault();
         }}
