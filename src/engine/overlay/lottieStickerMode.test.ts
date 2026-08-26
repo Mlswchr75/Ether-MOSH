@@ -15,6 +15,16 @@ describe("Lottie Sticker organic mask", () => {
     expect(organicMaskAlpha(.5, .5, focus, 1)).toBe(1);
   });
 
+  it("extends structural lanes and contracts quiet lanes without becoming a box", () => {
+    const contour = new Float32Array(96);
+    contour[0] = .22; // strong line continuing toward the right
+    contour[48] = -.08; // quiet region on the left
+    const analyzed = { ...focus, rx: .4, ry: .4, contour };
+    expect(organicMaskAlpha(.92, .5, analyzed, 0)).toBeGreaterThan(.5);
+    expect(organicMaskAlpha(.08, .5, analyzed, 0)).toBe(0);
+    expect(organicMaskAlpha(1, .5, analyzed, 0)).toBe(0);
+  });
+
   it("builds a transparent raster-sequence Lottie with one timed layer per frame", () => {
     const frames = [0, 1].map(index => ({ width: 4, height: 4, dataUrl: `data:image/png;base64,frame${index}` }));
     const json = buildEncodedFrameSequenceLottie("test", frames, 10);

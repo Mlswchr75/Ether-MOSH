@@ -1,13 +1,66 @@
 import { GIFEncoder, applyPalette, quantize } from "gifenc";
 
-export type OrganicFocus = { x: number; y: number; rx: number; ry: number; phase: number };
+export type OrganicFocus = {
+  x: number;
+  y: number;
+  rx: number;
+  ry: number;
+  phase: number;
+  /** Per-angle radius deltas derived from the current frame's structures. */
+  contour?: Float32Array;
+  /** Signed angular travel detected between consecutive analyzed frames. */
+  flow?: number;
+};
 export type LottieStickerBackground = "black" | "white";
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 
-/** Fast content-agnostic focal analysis. It combines edge energy, saturation,
- * luminance contrast and center bias on a tiny canvas, so upload/camera/Forge/
- * Motif all use the same path without adding work to the WebGL render loop. */
+const CONTOUR_BINS = 96;
+const TAU = Math.PI * 2;
+
+function contourAt(contour: Float32Array | undefined, angle: number) {
+  if (!contour?.length) return 0;
+  const position = ((angle / TAU) % 1 + 1) % 1 * contour.length;
+  const left = Math.floor(position) % contour.length;
+  const right = (left + 1) % contour.length;
+  const mix = position - Math.floor(position);
+  return contour[left] * (1 - mix) + contour[right] * mix;
+}
+
+function detectedAngularFlow(current: Float32Array, previous?: Float32Array) {
+  if (!previous || previous.length !== current.length) return 0;
+  let bestShift = 0, bestError = Infinity;
+  for (let shift = -6; shift <= 6; shift++) {
+    let error = 0;
+    for (let index = 0; index < current.length; index++) {
+      const prior = previous[(index - shift + current.length) % current.length];
+      const delta = current[index] - prior;
+      error += delta * delta;
+    }
+    if (error < bestError) { bestError = error; bestShift = shift; }
+  }
+  return bestShift * TAU / current.length;
+}
+
+function safeRadiusScale(focus: OrganicFocus, angle: number) {
+  const margin = .035;
+  const power = 2.25;
+  const norm = Math.pow(Math.abs(Math.cos(angle)) ** power + Math.abs(Math.sin(angle)) ** power, 1 / power);
+  const vx = Math.cos(angle) / norm * focus.rx;
+  const vy = Math.sin(angle) / norm * focus.ry;
+  let limit = 2;
+  if (vx > 0) limit = Math.min(limit, (1 - margin - focus.x) / vx);
+  else if (vx < 0) limit = Math.min(limit, (margin - focus.x) / vx);
+  if (vy > 0) limit = Math.min(limit, (1 - margin - focus.y) / vy);
+  else if (vy < 0) limit = Math.min(limit, (margin - focus.y) / vy);
+  return clamp(limit, .72, 1.28);
+}
+
+/** Fast content-aware focal and contour analysis. Besides choosing the visual
+ * center, it samples structural energy along radial lanes. Lines, folds and
+ * repeating bands that continue through the base silhouette pull narrow parts
+ * of the mask outward; quiet lanes contract. Frame-to-frame angular
+ * correlation supplies flow for spirals and rotating structures. */
 export function analyzeOrganicFocus(source: HTMLCanvasElement, previous?: OrganicFocus): OrganicFocus {
   const size = 72;
   const canvas = document.createElement("canvas"); canvas.width = size; canvas.height = size;
@@ -15,7 +68,8 @@ export function analyzeOrganicFocus(source: HTMLCanvasElement, previous?: Organi
   if (!ctx) return previous ?? { x: .5, y: .5, rx: .43, ry: .42, phase: 0 };
   ctx.drawImage(source, 0, 0, size, size);
   const data = ctx.getImageData(0, 0, size, size).data;
-  let total = 0, sx = 0, sy = 0, variance = 0;
+  let total = 0, sx = 0, sy = 0, variance = 0, totalEnergy = 0;
+  const energy = new Float32Array(size * size);
   const lum = (x: number, y: number) => {
     const i = (clamp(y, 0, size - 1) * size + clamp(x, 0, size - 1)) * 4;
     return data[i] * .2126 + data[i + 1] * .7152 + data[i + 2] * .0722;
@@ -28,22 +82,67 @@ export function analyzeOrganicFocus(source: HTMLCanvasElement, previous?: Organi
     const center = Math.exp(-(((x / size - .5) ** 2 + (y / size - .5) ** 2) / .24));
     const weight = .01 + edge / 255 * .58 + (max - min) / 255 * .25 + center * .16;
     total += weight; sx += x * weight; sy += y * weight; variance += edge;
+    const structure = clamp(edge / 255 * .72 + (max - min) / 255 * .28, 0, 1.5);
+    energy[y * size + x] = structure;
+    totalEnergy += structure;
   }
-  const targetX = clamp((sx / Math.max(total, .001)) / size, .44, .56);
-  const targetY = clamp((sy / Math.max(total, .001)) / size, .43, .57);
+  const targetX = clamp((sx / Math.max(total, .001)) / size, .41, .59);
+  const targetY = clamp((sy / Math.max(total, .001)) / size, .40, .60);
   const coherence = clamp(variance / (size * size * 85), 0, 1);
-  const next = { x: targetX, y: targetY, rx: .43 + coherence * .015, ry: .41 + (1 - coherence) * .02, phase: (previous?.phase ?? 0) + .37 };
-  if (!previous) return next;
-  return { ...next, x: previous.x * .72 + next.x * .28, y: previous.y * .72 + next.y * .28 };
+  const x = previous ? previous.x * .7 + targetX * .3 : targetX;
+  const y = previous ? previous.y * .7 + targetY * .3 : targetY;
+  const rx = .415 + coherence * .02, ry = .405 + (1 - coherence) * .02;
+  const meanEnergy = totalEnergy / ((size - 2) * (size - 2));
+  const raw = new Float32Array(CONTOUR_BINS);
+  for (let bin = 0; bin < CONTOUR_BINS; bin++) {
+    const angle = bin / CONTOUR_BINS * TAU;
+    let strongest = 0, strongestRadius = .78, outerRun = 0, bestRunRadius = .82;
+    for (let step = 0; step < 21; step++) {
+      const radius = .62 + step * .032;
+      const px = clamp(Math.round((x + Math.cos(angle) * rx * radius) * size), 1, size - 2);
+      const py = clamp(Math.round((y + Math.sin(angle) * ry * radius) * size), 1, size - 2);
+      const signal = energy[py * size + px];
+      if (signal > strongest) { strongest = signal; strongestRadius = radius; }
+      if (signal > meanEnergy * 1.12 + .025) {
+        outerRun++;
+        if (outerRun >= 2) bestRunRadius = radius;
+      } else outerRun = Math.max(0, outerRun - 1);
+    }
+    const reached = Math.max(strongestRadius, bestRunRadius);
+    const pull = (reached - .88) * .52 + (strongest - meanEnergy) * .13;
+    raw[bin] = clamp(pull, -.085, .235);
+  }
+  const contour = new Float32Array(CONTOUR_BINS);
+  for (let bin = 0; bin < CONTOUR_BINS; bin++) {
+    const angle = bin / CONTOUR_BINS * TAU;
+    const broad = (raw[(bin - 2 + CONTOUR_BINS) % CONTOUR_BINS] + raw[(bin - 1 + CONTOUR_BINS) % CONTOUR_BINS] * 2 + raw[bin] * 3 + raw[(bin + 1) % CONTOUR_BINS] * 2 + raw[(bin + 2) % CONTOUR_BINS]) / 9;
+    const structural = raw[bin] * .48 + broad * .52;
+    const temporal = previous?.contour?.length === CONTOUR_BINS ? previous.contour[bin] * .58 + structural * .42 : structural;
+    contour[bin] = clamp(temporal, -.08, safeRadiusScale({ x, y, rx, ry, phase: 0 }, angle) - 1);
+  }
+  const measuredFlow = detectedAngularFlow(contour, previous?.contour);
+  const flow = clamp((previous?.flow ?? 0) * .6 + measuredFlow * .4, -.22, .22);
+  return { x, y, rx, ry, phase: (previous?.phase ?? 0) + .31 + flow * 1.8, contour, flow };
 }
 
 export function organicMaskAlpha(nx: number, ny: number, focus: OrganicFocus, time: number) {
   const dx = nx - focus.x, dy = ny - focus.y;
   const angle = Math.atan2(dy / focus.ry, dx / focus.rx);
-  const living = 1 + Math.sin(angle * 3 + focus.phase + time * .7) * .055 + Math.sin(angle * 7 - time * .43) * .025;
-  const radius = Math.pow(Math.pow(Math.abs(dx) / (focus.rx * living), 2.25) + Math.pow(Math.abs(dy) / (focus.ry * living), 2.25), 1 / 2.25);
-  const t = clamp((1 - radius) / .13, 0, 1);
-  return t * t * (3 - 2 * t);
+  const baseRadius = Math.pow(Math.pow(Math.abs(dx) / focus.rx, 2.25) + Math.pow(Math.abs(dy) / focus.ry, 2.25), 1 / 2.25);
+  // Angular travel bends outer protrusions behind rotating content, creating a
+  // trailing spiral instead of rotating the entire sticker as one rigid blob.
+  const trailingAngle = angle - (focus.flow ?? 0) * clamp((baseRadius - .45) * 2.2, 0, 1);
+  const contentPull = contourAt(focus.contour, trailingAngle);
+  const living = Math.sin(angle * 3 + focus.phase + time * .52) * .032 + Math.sin(angle * 7 - time * .31) * .014;
+  const radiusScale = clamp(1 + contentPull + living, .78, 1.26);
+  const t = clamp((1 - baseRadius / radiusScale) / .115, 0, 1);
+  const organic = t * t * (3 - 2 * t);
+  // A hard transparent rim plus a short feather guarantees breathing room
+  // even while a fast-moving tendril briefly outruns the analyzed contour.
+  // Keeping this branch arithmetic-only matters because it runs per pixel.
+  const edgeDistance = Math.min(nx, 1 - nx, ny, 1 - ny);
+  const rim = clamp((edgeDistance - .03) / .025, 0, 1);
+  return organic * rim * rim * (3 - 2 * rim);
 }
 
 export function renderOrganicStickerFrame(source: HTMLCanvasElement, width: number, height: number, focus: OrganicFocus, time: number): ImageData {
