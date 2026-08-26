@@ -80,15 +80,26 @@ export function drawLottieStickerPreview(ctx: CanvasRenderingContext2D, source: 
   ctx.drawImage(work, 0, 0);
 }
 
-function frameDataUrl(frame: ImageData) {
-  const canvas = document.createElement("canvas"); canvas.width = frame.width; canvas.height = frame.height;
-  canvas.getContext("2d")?.putImageData(frame, 0, 0);
-  return canvas.toDataURL("image/png");
-}
-
-export function buildFrameSequenceLottie(name: string, frames: ImageData[], fps: number) {
-  if (!frames.length) throw new Error("No Lottie Sticker frames captured");
-  return buildEncodedFrameSequenceLottie(name, frames.map(frame => ({ width: frame.width, height: frame.height, dataUrl: frameDataUrl(frame) })), fps);
+export async function encodeStickerFramesForLottie(frames: ImageData[]) {
+  const encoded: Array<{ width: number; height: number; dataUrl: string }> = [];
+  for (let index = 0; index < frames.length; index++) {
+    const frame = frames[index];
+    const canvas = document.createElement("canvas"); canvas.width = frame.width; canvas.height = frame.height;
+    canvas.getContext("2d")?.putImageData(frame, 0, 0);
+    const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob(value => value ? resolve(value) : reject(new Error("Transparent frame encoding failed")), "image/webp", .86));
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(reader.error ?? new Error("Transparent frame read failed"));
+      reader.readAsDataURL(blob);
+    });
+    encoded.push({ width: frame.width, height: frame.height, dataUrl });
+    // Alpha WebP is dramatically lighter than PNG for noisy MOSH frames. Yield
+    // every frame so WebGL, input and the
+    // progress UI continue advancing on phones during export.
+    await new Promise(resolve => setTimeout(resolve, 0));
+  }
+  return encoded;
 }
 
 export function buildEncodedFrameSequenceLottie(name: string, frames: Array<{ width: number; height: number; dataUrl: string }>, fps: number) {

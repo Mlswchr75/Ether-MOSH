@@ -13,9 +13,10 @@ import { saveOverlayAsset } from '@/engine/overlay/vault';
 import { lottieJsonBlob } from '@/engine/overlay/stickerLottie';
 import {
   analyzeOrganicFocus,
-  buildFrameSequenceLottie,
+  buildEncodedFrameSequenceLottie,
   drawLottieStickerPreview,
   encodeTransparentStickerGif,
+  encodeStickerFramesForLottie,
   renderOrganicStickerFrame,
   type LottieStickerBackground,
   type OrganicFocus,
@@ -173,9 +174,9 @@ export function StickerCapture() {
     setPhase('encoding'); setLottieProgress(0);
     const toastId = toast.loading('Capturing transparent Lottie loop…', { duration: 30_000 });
     try {
-      const fps = 10;
-      const count = Math.max(10, Math.round(loopSeconds * fps));
-      const maxDimension = window.matchMedia('(max-width: 700px)').matches ? 320 : 420;
+      const fps = 8;
+      const count = Math.max(8, Math.round(loopSeconds * fps));
+      const maxDimension = window.matchMedia('(max-width: 700px)').matches ? 288 : 360;
       const scale = Math.min(1, maxDimension / Math.max(source.width, source.height));
       const width = Math.max(2, Math.round(source.width * scale));
       const height = Math.max(2, Math.round(source.height * scale));
@@ -189,11 +190,11 @@ export function StickerCapture() {
       }
       const id = crypto.randomUUID();
       const name = `Lottie Sticker ${id.slice(0, 8)}`;
-      const json = buildFrameSequenceLottie(name, frames, fps);
+      const encodedFrames = await encodeStickerFramesForLottie(frames);
+      const json = buildEncodedFrameSequenceLottie(name, encodedFrames, fps);
       const lottieBlob = lottieJsonBlob(json);
       const url = URL.createObjectURL(lottieBlob);
       const asset = { id: `lottie-sticker-${id}`, name, kind: 'lottie-json' as const, url, mimeType: 'application/json', width, height, animated: true, createdAt: Date.now(), objectUrl: true };
-      await saveOverlayAsset(asset, lottieBlob);
       setLottieProgress(.86);
       downloadBlob(lottieBlob, `lottie-sticker-${id.slice(0, 8)}.json`);
       if (includeGif) {
@@ -201,7 +202,13 @@ export function StickerCapture() {
         downloadBlob(gif, `lottie-sticker-${id.slice(0, 8)}.gif`);
       }
       setLottieProgress(1);
-      toast.success(`Transparent Lottie exported${includeGif ? ' with GIF' : ''} and saved to Vault`, { id: toastId });
+      toast.success(`Transparent Lottie exported${includeGif ? ' with GIF' : ''}`, { id: toastId });
+      void saveOverlayAsset(asset, lottieBlob).then(() => {
+        toast.success('Lottie saved to Sticker Vault');
+      }).catch(error => {
+        console.warn('[lottie-sticker] Vault save failed', error);
+        toast.error('Export finished, but Vault save failed');
+      });
       window.setTimeout(() => URL.revokeObjectURL(url), 5000);
     } catch (error) {
       console.error('[lottie-sticker] export failed', error);

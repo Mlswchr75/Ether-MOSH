@@ -43,7 +43,7 @@ export async function withOptionalForgeIsolation(
 ): Promise<Exclude<StickerSource, null>> {
   if (source.kind !== "render") return source;
   try {
-    const subjects = selectUsableStickerMasks(await isolate(source.canvas));
+    const subjects = selectUsableStickerMasks(await isolate(boundedStickerCanvas(source.canvas)));
     return resolveStickerSource({
       selectedOverlay: null,
       sourceMode: source.sourceMode,
@@ -120,18 +120,35 @@ function stickerExportScale(imageData: ImageData) {
   return Math.min(2, 1536 / Math.max(imageData.width, imageData.height));
 }
 
+function boundedStickerCanvas(source: HTMLCanvasElement) {
+  const mobile = typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(max-width: 700px), (pointer: coarse)").matches;
+  const maxDimension = mobile ? 768 : 1152;
+  const scale = Math.min(1, maxDimension / Math.max(source.width, source.height));
+  if (scale === 1) return source;
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(2, Math.round(source.width * scale));
+  canvas.height = Math.max(2, Math.round(source.height * scale));
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return source;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
+  return canvas;
+}
+
 export async function assetFromStickerSource(source: Exclude<StickerSource, null>): Promise<{ asset: OverlayAsset; blob?: Blob; revoke: () => void }> {
   if (source.kind === "overlay") return { asset: source.asset, revoke: () => undefined };
 
+  const workingCanvas = boundedStickerCanvas(source.canvas);
   let blob: Blob;
-  let width = Math.min(source.canvas.width, Math.round(source.canvas.width * Math.min(1, 1536 / Math.max(source.canvas.width, source.canvas.height))));
-  let height = Math.min(source.canvas.height, Math.round(source.canvas.height * Math.min(1, 1536 / Math.max(source.canvas.width, source.canvas.height))));
+  let width = workingCanvas.width;
+  let height = workingCanvas.height;
   if (source.kind === "render-subject") {
     const mask = mergeSubjects(source.subjects);
-    const composited = mask && stickerEngine.compositeFrame(source.canvas, mask.data, mask.width, mask.height);
+    const composited = mask && stickerEngine.compositeFrame(workingCanvas, mask.data, mask.width, mask.height);
     const cropped = composited && stickerEngine.cropToBounds(composited);
     if (!cropped) {
-      blob = await blobFromCanvas(source.canvas);
+      blob = await blobFromCanvas(workingCanvas);
     } else {
       const enhanced = stickerEngine.enhanceHDR(cropped);
       const scale = stickerExportScale(enhanced);
@@ -140,14 +157,14 @@ export async function assetFromStickerSource(source: Exclude<StickerSource, null
       height = Math.max(1, Math.round(enhanced.height * scale));
     }
   } else {
-    const salient = stickerEngine.cropSalientRegion(source.canvas);
+    const salient = stickerEngine.cropSalientRegion(workingCanvas);
     if (salient) {
       const enhanced = stickerEngine.enhanceHDR(salient);
       const scale = stickerExportScale(enhanced);
       blob = await stickerEngine.exportWebP(enhanced, scale);
       width = Math.max(1, Math.round(enhanced.width * scale));
       height = Math.max(1, Math.round(enhanced.height * scale));
-    } else blob = await blobFromCanvas(source.canvas);
+    } else blob = await blobFromCanvas(workingCanvas);
   }
 
   const url = URL.createObjectURL(blob);

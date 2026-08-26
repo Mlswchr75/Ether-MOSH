@@ -123,7 +123,7 @@ const DEFAULT_ORDER = [
   "mosh", "auto-mosh", "clear-fx", "journey",
   "audio", "sensitivity",
   "freeze", "capture", "gif", "share",
-  "mosh-sticker", "sticker-mode", "sticker-capture", "sticker-vault", "isolation", "theme-track",
+  "mosh-sticker", "sticker-mode", "sticker-capture", "sticker-tools", "sticker-vault", "isolation", "theme-track",
   "forge-palette", "motif-maestro", "favorites", "fullscreen", "pro-mode", "switch-camera", "support",
 ] as const;
 
@@ -136,6 +136,7 @@ const TRIGGER_LABELS: Record<string, string> = {
   freeze: "Freeze", capture: "Capture — tap for a still, hold to record", gif: "GIF loop", share: "Share",
   "mosh-sticker": "Mosh sticker", "sticker-mode": "Sticker capture", isolation: "AI isolation",
   "sticker-capture": "Capture sticker",
+  "sticker-tools": "Sticker tools",
   "sticker-vault": "Sticker Vault",
   "theme-track": "Theme track", favorites: "Favorites", fullscreen: "Fullscreen",
   "forge-palette": "Forge palette and settings",
@@ -1954,6 +1955,11 @@ export function HotTriggers({
     // control into this rail slot when the mode is on (rather than floating a
     // second, oversized button over export feedback near the bottom-right).
     "sticker-capture": stickerMode && <div key="sticker-capture" id="mosh-sticker-capture-slot" />,
+    "sticker-tools": (
+      <HotBtn key="sticker-tools" delay={0} label="Open sticker tools" onClick={() => window.dispatchEvent(new Event("mosh:toggle-sticker-tools"))} tint="286 78% 68%">
+        <Sparkles className="h-4 w-4" strokeWidth={1.5} />
+      </HotBtn>
+    ),
     "sticker-vault": (
       <div key="sticker-vault" data-sticker-vault-trigger>
         <HotBtn delay={0} label="Open Sticker Vault" onClick={() => window.dispatchEvent(new Event("mosh:toggle-sticker-vault"))} tint="186 82% 64%">

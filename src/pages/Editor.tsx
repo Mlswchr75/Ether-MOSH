@@ -1160,6 +1160,17 @@ export default function Editor() {
         return;
       }
 
+      // Sticker/Lottie controls contain checkboxes and selects. Space must
+      // remain the universal MOSH action even immediately after one of those
+      // controls was focused.
+      if (e.code === "Space" && useStore.getState().stickerMode) {
+        e.preventDefault();
+        if (e.repeat) return;
+        if (e.shiftKey) undo();
+        else crossfadeLayers(mosh, MOSH_FADE_MS);
+        return;
+      }
+
       // While in form fields, allow nothing else
       if (inField) return;
 

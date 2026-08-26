@@ -16,7 +16,7 @@ import { useStore } from "@/store/useStore";
 import { segmentationEngine } from "@/engine/SegmentationEngine";
 import { assetFromStickerSource, resolveStickerSource, withOptionalForgeIsolation } from "@/engine/overlay/stickerSource";
 
-export function OverlayVault() {
+export function OverlayVault({ showCaptureButton = true }: { showCaptureButton?: boolean }) {
   const [open, setOpen] = useState(false);
   const [records, setRecords] = useState<OverlayVaultRecord[]>([]);
   const [busy, setBusy] = useState(false);
@@ -80,7 +80,9 @@ export function OverlayVault() {
         const points = segmentationEngine.analyzeSaliency(canvas, 3);
         return segmentationEngine.segmentMultiPoint(canvas, points);
       }, error => console.warn("[overlay-vault] subject isolation unavailable; using salient crop", error));
+      await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
       const prepared = await assetFromStickerSource(resolved);
+      await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
       try { await saveOverlayAsset(prepared.asset, prepared.blob); }
       finally { prepared.revoke(); }
       toast.success("Sticker saved to the Vault");
@@ -119,7 +121,7 @@ export function OverlayVault() {
 
   return <>
     <div className="pointer-events-auto flex flex-wrap items-center gap-1">
-      <button type="button" disabled={(!selected && !renderAvailable) || busy} onClick={() => void saveSelected()} className="flex items-center gap-1.5 rounded-full border border-cyan-300/20 bg-black/70 px-2.5 py-2 font-mono text-[8px] uppercase tracking-[0.12em] text-cyan-100 backdrop-blur-md transition hover:border-cyan-300/45 disabled:opacity-25" title={selected ? "Save the selected overlay as a reusable static sticker (K)" : renderAvailable ? "Detect a subject or salient crop in the current visual (K)" : "Wait for a visual source"}><WandSparkles size={11} /> {busy ? "Saving…" : "Make Sticker · K"}</button>
+      {showCaptureButton && <button type="button" disabled={(!selected && !renderAvailable) || busy} onClick={() => void saveSelected()} className="flex items-center gap-1.5 rounded-full border border-cyan-300/20 bg-black/70 px-2.5 py-2 font-mono text-[8px] uppercase tracking-[0.12em] text-cyan-100 backdrop-blur-md transition hover:border-cyan-300/45 disabled:opacity-25" title={selected ? "Save the selected overlay as a reusable static sticker (K)" : renderAvailable ? "Detect a subject or salient crop in the current visual (K)" : "Wait for a visual source"}><WandSparkles size={11} /> {busy ? "Saving…" : "Make Sticker · K"}</button>}
     </div>
 
     {open && <div data-sticker-vault-panel className="pointer-events-auto absolute bottom-12 left-1/2 z-[100] w-[min(94vw,38rem)] -translate-x-1/2 rounded-2xl border border-white/15 bg-black/90 p-3 shadow-2xl backdrop-blur-xl">
