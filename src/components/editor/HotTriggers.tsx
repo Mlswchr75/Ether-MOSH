@@ -1,4 +1,4 @@
-import { Mic, MicOff, Circle, Square, Sparkles, Scissors, Snowflake, Camera, Shuffle, Star, Play, Pencil, Trash2, X, Film, Lock, Share2, Compass, Maximize2, Minimize2, Gem, Home, SwitchCamera, Crosshair, Eraser, Link2, Upload, Music, Music2, Shuffle as ShuffleIcon, Undo2, Redo2, Gauge, ChevronDown, MonitorSpeaker, Heart, GripVertical, RotateCcw, EyeOff, HelpCircle, SkipBack, SkipForward, Palette, Flame, UserCircle } from "lucide-react";
+import { Mic, MicOff, Circle, Square, Sparkles, Scissors, Snowflake, Camera, Shuffle, Star, Play, Pencil, Trash2, X, Film, Lock, Share2, Compass, Maximize2, Minimize2, Gem, Home, SwitchCamera, Crosshair, Eraser, Link2, Upload, Music, Music2, Shuffle as ShuffleIcon, Undo2, Redo2, Gauge, ChevronDown, MonitorSpeaker, Heart, GripVertical, RotateCcw, EyeOff, HelpCircle, SkipBack, SkipForward, Palette, Flame, UserCircle, Library } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { useStore } from "@/store/useStore";
@@ -123,7 +123,7 @@ const DEFAULT_ORDER = [
   "mosh", "auto-mosh", "clear-fx", "journey",
   "audio", "sensitivity",
   "freeze", "capture", "gif", "share",
-  "mosh-sticker", "sticker-mode", "sticker-capture", "isolation", "theme-track",
+  "mosh-sticker", "sticker-mode", "sticker-capture", "sticker-vault", "isolation", "theme-track",
   "forge-palette", "motif-maestro", "favorites", "fullscreen", "pro-mode", "switch-camera", "support",
 ] as const;
 
@@ -136,6 +136,7 @@ const TRIGGER_LABELS: Record<string, string> = {
   freeze: "Freeze", capture: "Capture — tap for a still, hold to record", gif: "GIF loop", share: "Share",
   "mosh-sticker": "Mosh sticker", "sticker-mode": "Sticker capture", isolation: "AI isolation",
   "sticker-capture": "Capture sticker",
+  "sticker-vault": "Sticker Vault",
   "theme-track": "Theme track", favorites: "Favorites", fullscreen: "Fullscreen",
   "forge-palette": "Forge palette and settings",
   "motif-maestro": "Motif Maestro controls",
@@ -1953,6 +1954,13 @@ export function HotTriggers({
     // control into this rail slot when the mode is on (rather than floating a
     // second, oversized button over export feedback near the bottom-right).
     "sticker-capture": stickerMode && <div key="sticker-capture" id="mosh-sticker-capture-slot" />,
+    "sticker-vault": (
+      <div key="sticker-vault" data-sticker-vault-trigger>
+        <HotBtn delay={0} label="Open Sticker Vault" onClick={() => window.dispatchEvent(new Event("mosh:toggle-sticker-vault"))} tint="186 82% 64%">
+          <Library className="h-4 w-4" strokeWidth={1.5} />
+        </HotBtn>
+      </div>
+    ),
     "theme-track": <TrackTrigger key="theme-track" delay={0} showNudge={showTrackNudge} onNudgeDismiss={onTrackNudgeDismiss} />,
     "forge-palette": sourceMode === "forge" && (
       <div key="forge-palette" className="relative" data-forge-panel>

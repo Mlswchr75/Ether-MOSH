@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Sparkles, Download, X, Trash2 } from 'lucide-react';
+import { Sparkles, Download, X, Trash2, Film, LoaderCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { useStore } from '@/store/useStore';
 import { useOverlayStore } from '@/store/useOverlayStore';
@@ -8,6 +8,18 @@ import { stickerEngine, type StickerScore } from '@/engine/StickerEngine';
 import { segmentationEngine } from '@/engine/SegmentationEngine';
 import { OverlayStage } from '@/components/editor/OverlayStage';
 import type { StickerEntry } from '@/store/types';
+import { downloadBlob } from '@/engine/export';
+import { saveOverlayAsset } from '@/engine/overlay/vault';
+import { lottieJsonBlob } from '@/engine/overlay/stickerLottie';
+import {
+  analyzeOrganicFocus,
+  buildFrameSequenceLottie,
+  drawLottieStickerPreview,
+  encodeTransparentStickerGif,
+  renderOrganicStickerFrame,
+  type LottieStickerBackground,
+  type OrganicFocus,
+} from '@/engine/overlay/lottieStickerMode';
 
 type Phase = 'idle' | 'capturing' | 'recording' | 'encoding';
 
@@ -27,6 +39,11 @@ export function StickerCapture() {
   const [flash, setFlash]       = useState(false);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [recProg, setRecProg]   = useState(0);
+  const [lottieMode, setLottieMode] = useState(false);
+  const [lottieBackground, setLottieBackground] = useState<LottieStickerBackground>('black');
+  const [includeGif, setIncludeGif] = useState(false);
+  const [loopSeconds, setLoopSeconds] = useState(2);
+  const [lottieProgress, setLottieProgress] = useState(0);
 
   const phaseRef     = useRef<Phase>('idle');
   const frameRef     = useRef(0);
@@ -36,10 +53,32 @@ export function StickerCapture() {
   const isPointerDown= useRef(false);
   const glRef        = useRef<HTMLCanvasElement | null>(null);
   const vidRef       = useRef<HTMLVideoElement | null>(null);
+  const previewRef   = useRef<HTMLCanvasElement | null>(null);
+  const focusRef     = useRef<OrganicFocus | undefined>(undefined);
   const [phase, _setPhase] = useState<Phase>('idle');
 
   useEffect(() => { glRef.current = glCanvas; }, [glCanvas]);
   useEffect(() => { vidRef.current = video; }, [video]);
+
+  useEffect(() => {
+    if (!stickerMode || !lottieMode) return;
+    let raf = 0, frame = 0;
+    const draw = (now: number) => {
+      raf = requestAnimationFrame(draw);
+      const source = glRef.current, preview = previewRef.current;
+      if (!source || !preview || source.width < 2 || source.height < 2) return;
+      const maxWidth = window.matchMedia('(max-width: 700px)').matches ? 480 : 720;
+      const scale = Math.min(1, maxWidth / source.width);
+      const width = Math.max(2, Math.round(source.width * scale));
+      const height = Math.max(2, Math.round(source.height * scale));
+      if (preview.width !== width || preview.height !== height) { preview.width = width; preview.height = height; }
+      if (!focusRef.current || frame++ % 8 === 0) focusRef.current = analyzeOrganicFocus(source, focusRef.current);
+      const ctx = preview.getContext('2d');
+      if (ctx && focusRef.current) drawLottieStickerPreview(ctx, source, focusRef.current, lottieBackground, now / 1000);
+    };
+    raf = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(raf);
+  }, [lottieBackground, lottieMode, stickerMode]);
 
   const setPhase = (p: Phase) => { phaseRef.current = p; _setPhase(p); };
   const doFlash = () => { setFlash(true); setTimeout(() => setFlash(false), 150); };
@@ -128,6 +167,51 @@ export function StickerCapture() {
     try { (navigator as any).vibrate?.(12); } catch {}
   }, []);
 
+  const exportLottieSticker = useCallback(async () => {
+    const source = glRef.current;
+    if (!source || phaseRef.current !== 'idle') return;
+    setPhase('encoding'); setLottieProgress(0);
+    const toastId = toast.loading('Capturing transparent Lottie loop…', { duration: 30_000 });
+    try {
+      const fps = 10;
+      const count = Math.max(10, Math.round(loopSeconds * fps));
+      const maxDimension = window.matchMedia('(max-width: 700px)').matches ? 320 : 420;
+      const scale = Math.min(1, maxDimension / Math.max(source.width, source.height));
+      const width = Math.max(2, Math.round(source.width * scale));
+      const height = Math.max(2, Math.round(source.height * scale));
+      const frames: ImageData[] = [];
+      let focus = analyzeOrganicFocus(source, focusRef.current);
+      for (let index = 0; index < count; index++) {
+        if (index % 3 === 0) focus = analyzeOrganicFocus(source, focus);
+        frames.push(renderOrganicStickerFrame(source, width, height, focus, index / fps));
+        setLottieProgress((index + 1) / count * .72);
+        if (index < count - 1) await new Promise(resolve => setTimeout(resolve, 1000 / fps));
+      }
+      const id = crypto.randomUUID();
+      const name = `Lottie Sticker ${id.slice(0, 8)}`;
+      const json = buildFrameSequenceLottie(name, frames, fps);
+      const lottieBlob = lottieJsonBlob(json);
+      const url = URL.createObjectURL(lottieBlob);
+      const asset = { id: `lottie-sticker-${id}`, name, kind: 'lottie-json' as const, url, mimeType: 'application/json', width, height, animated: true, createdAt: Date.now(), objectUrl: true };
+      await saveOverlayAsset(asset, lottieBlob);
+      setLottieProgress(.86);
+      downloadBlob(lottieBlob, `lottie-sticker-${id.slice(0, 8)}.json`);
+      if (includeGif) {
+        const gif = await encodeTransparentStickerGif(frames, fps);
+        downloadBlob(gif, `lottie-sticker-${id.slice(0, 8)}.gif`);
+      }
+      setLottieProgress(1);
+      toast.success(`Transparent Lottie exported${includeGif ? ' with GIF' : ''} and saved to Vault`, { id: toastId });
+      window.setTimeout(() => URL.revokeObjectURL(url), 5000);
+    } catch (error) {
+      console.error('[lottie-sticker] export failed', error);
+      toast.error(error instanceof Error ? `Lottie export failed: ${error.message}` : 'Lottie export failed', { id: toastId });
+    } finally {
+      setPhase('idle');
+      window.setTimeout(() => setLottieProgress(0), 800);
+    }
+  }, [includeGif, loopSeconds]);
+
   const onPointerDown = () => {
     isPointerDown.current = true;
     // Animated capture needs temporal video frames. Uploads and generated
@@ -210,6 +294,30 @@ export function StickerCapture() {
     <>
       {/* Universal overlay interaction surface: imports + placed entities. */}
       <OverlayStage />
+
+      {lottieMode && <canvas ref={previewRef} aria-label="Lottie Sticker live preview" className="pointer-events-none absolute inset-0 z-[24] h-full w-full" />}
+
+      <section className="pointer-events-auto absolute right-3 top-14 z-[55] w-[min(88vw,17rem)] rounded-xl border border-white/15 bg-black/88 p-2.5 shadow-2xl backdrop-blur-xl" aria-label="Sticker panel">
+        <div className="flex items-center justify-between gap-2">
+          <label className="flex items-center gap-2 font-mono text-[8px] uppercase tracking-[0.14em] text-white/75">
+            <input type="checkbox" checked={lottieMode} onChange={event => setLottieMode(event.target.checked)} className="accent-violet-400" />
+            Lottie Sticker Mode
+          </label>
+          <button type="button" onClick={() => useStore.getState().setStickerMode(false)} aria-label="Close Sticker panel" className="rounded-full p-1 text-white/40 hover:bg-white/10 hover:text-white"><X size={11} /></button>
+        </div>
+        {lottieMode && <div className="mt-2 space-y-2 border-t border-white/10 pt-2">
+          <div className="flex items-center justify-between gap-2 font-mono text-[7px] uppercase tracking-[0.1em] text-white/45">
+            <span>Living background</span>
+            <div className="flex overflow-hidden rounded-full border border-white/15">
+              {(['black', 'white'] as LottieStickerBackground[]).map(value => <button type="button" key={value} onClick={() => setLottieBackground(value)} data-active={lottieBackground === value || undefined} className={`px-2 py-1 ${lottieBackground === value ? 'bg-violet-400/20 text-violet-100' : 'text-white/40'}`}>{value}</button>)}
+            </div>
+          </div>
+          <label className="flex items-center justify-between font-mono text-[7px] uppercase tracking-[0.1em] text-white/45">Loop<select value={loopSeconds} onChange={event => setLoopSeconds(Number(event.target.value))} className="rounded border border-white/15 bg-black px-2 py-1 text-violet-100"><option value={1.5}>1.5 sec</option><option value={2}>2 sec</option><option value={3}>3 sec</option></select></label>
+          <label className="flex items-center justify-between font-mono text-[7px] uppercase tracking-[0.1em] text-white/45"><span>Also export transparent GIF</span><input type="checkbox" checked={includeGif} onChange={event => setIncludeGif(event.target.checked)} className="accent-violet-400" /></label>
+          <button type="button" disabled={phase === 'encoding'} onClick={() => void exportLottieSticker()} className="flex w-full items-center justify-center gap-1.5 rounded-full border border-violet-300/35 bg-violet-400/10 px-3 py-2 font-mono text-[8px] uppercase tracking-[0.14em] text-violet-100 disabled:opacity-40">{phase === 'encoding' ? <LoaderCircle size={11} className="animate-spin" /> : <Film size={11} />} {phase === 'encoding' ? `Capturing ${Math.round(lottieProgress * 100)}%` : 'Export Transparent Lottie'}</button>
+          <p className="font-mono text-[6px] uppercase leading-relaxed tracking-[0.08em] text-white/25">Preview fill is removed on export. JSON auto-saves to Sticker Vault.</p>
+        </div>}
+      </section>
 
       {flash && <div className="pointer-events-none fixed inset-0 z-[200] bg-white/15 animate-pulse" style={{ animationDuration: '0.1s' }} />}
 

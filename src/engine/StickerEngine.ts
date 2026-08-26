@@ -7,6 +7,31 @@ export interface StickerScore {
   complexity: number;  // 0–1 (mosh activity / edge density)
 }
 
+/** Give a rectangular saliency crop an enclosed, softly irregular silhouette.
+ * The transparent inset is intentional: fallback stickers must never inherit
+ * a flat side or corner from the source frame. */
+export function applyOrganicAlphaMask(imageData: ImageData): ImageData {
+  const { width, height, data } = imageData;
+  const out = new Uint8ClampedArray(data);
+  const featherStart = 0.82;
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+    const i = (y * width + x) * 4;
+    if (!out[i + 3]) continue;
+    const nx = ((x + 0.5) / width) * 2 - 1;
+    const ny = ((y + 0.5) / height) * 2 - 1;
+    const angle = Math.atan2(ny, nx);
+    const ripple = 1 + Math.sin(angle * 3 + 0.7) * 0.055 + Math.sin(angle * 5 - 0.35) * 0.035;
+    const rx = 0.84 * ripple;
+    const ry = 0.84 * (1 + Math.sin(angle * 4 + 1.2) * 0.045);
+    const power = 2.35;
+    const radius = Math.pow(Math.pow(Math.abs(nx) / rx, power) + Math.pow(Math.abs(ny) / ry, power), 1 / power);
+    const t = Math.max(0, Math.min(1, (1 - radius) / (1 - featherStart)));
+    const alpha = t * t * (3 - 2 * t);
+    out[i + 3] = Math.round(out[i + 3] * alpha);
+  }
+  return new ImageData(out, width, height);
+}
+
 function coverFitMaskAlpha(
   mask: Float32Array, maskW: number, maskH: number,
   canvasX: number, canvasY: number, canvasW: number, canvasH: number
@@ -189,7 +214,7 @@ class StickerEngine {
       const start = (y * width + x0) * 4;
       out.set(pixels.subarray(start, start + (x1 - x0) * 4), (y - y0) * (x1 - x0) * 4);
     }
-    return new ImageData(out, x1 - x0, y1 - y0);
+    return applyOrganicAlphaMask(new ImageData(out, x1 - x0, y1 - y0));
   }
 
   enhanceHDR(imageData: ImageData): ImageData {
