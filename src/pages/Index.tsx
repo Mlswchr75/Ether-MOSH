@@ -5,6 +5,7 @@ import { ArrowDown, ArrowUpRight, Flame, Upload, Video } from "lucide-react";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
 import { useStore } from "@/store/useStore";
+import { EFFECTS } from "@/engine/effects";
 import { loadImageFile, loadImageFromClipboard } from "@/lib/sourceLoader";
 import { haptic } from "@/hooks/useHaptics";
 import { defaultFacing, requestCameraStream } from "@/hooks/useCamera";
@@ -173,10 +174,10 @@ const Index = () => {
     >
       <Helmet>
         <title>MOSH — Audio-Reactive Visual Instrument</title>
-        <meta name="description" content="Drop an image and warp it in real time. MOSH is a browser-based audio-reactive visual instrument with 107 GPU effects." />
+        <meta name="description" content={`Drop an image and warp it in real time. MOSH is a browser-based audio-reactive visual instrument with ${EFFECTS.length} GPU effects.`} />
         <link rel="canonical" href="https://ether-mosh.online/" />
         <meta property="og:title" content="MOSH — Audio-Reactive Visual Instrument" />
-        <meta property="og:description" content="Drop an image and warp it in real time. 107 GPU effects, beat-synced chaos, in your browser." />
+        <meta property="og:description" content={`Drop an image and warp it in real time. ${EFFECTS.length} GPU effects, beat-synced chaos, in your browser.`} />
         <meta property="og:url" content="https://ether-mosh.online/" />
       </Helmet>
       <h1 className="sr-only">MOSH — Real-time audio-reactive image and video glitch instrument</h1>
@@ -318,7 +319,7 @@ const Index = () => {
                 transition={{ duration: 0.4, delay: 0, ease: EASE_SNAP }}
                 className="max-w-xl font-mono text-xs uppercase tracking-[0.25em] text-foreground/70"
               >
-                MOSH is a real-time, audio-reactive visual instrument. Load any image, stack 107 GPU effects, sync to your music, and export stills or video — all in your browser.
+                MOSH is a real-time, audio-reactive visual instrument. Load any image, stack {EFFECTS.length} GPU effects, sync to your music, and export stills or video — all in your browser.
               </motion.p>
 
               <motion.div

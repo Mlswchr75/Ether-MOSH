@@ -1,6 +1,7 @@
 import { Helmet } from "react-helmet-async";
 import { Link } from "react-router-dom";
 import LegalLayout, { LegalH2 } from "@/components/LegalLayout";
+import { EFFECTS } from "@/engine/effects";
 
 const canonical = "https://ether-mosh.online/guides/audio-reactive-music-videos";
 const title = "How to Make an Audio-Reactive Music Visualizer Video (Free)";
@@ -130,7 +131,7 @@ const GuideAudioReactive = () => (
             This is what makes the visuals react to sound.
           </li>
           <li>
-            <strong>Pick your effects</strong> — stack a few of the 107 GPU effects (try datamosh,
+            <strong>Pick your effects</strong> — stack a few of the {EFFECTS.length} GPU effects (try datamosh,
             RGB shift, liquid warp, and a color effect). Each layer reacts to the audio.
           </li>
           <li>
