@@ -7,6 +7,7 @@ import { runTrackAction } from "@/engine/trackActions";
 import { requestCameraStream, type CameraFacing } from "@/hooks/useCamera";
 import { IsolationPanel } from "./IsolationPanel";
 import { ForgePanel } from "./ForgePanel";
+import { MotifMaestroPanel } from "./MotifMaestroPanel";
 import { MoshStickerTrigger } from "./MoshStickerTrigger";
 import { shareUrl } from "@/lib/share";
 import { toggleSystemAudio } from "@/engine/systemAudio";
@@ -123,7 +124,7 @@ const DEFAULT_ORDER = [
   "audio", "sensitivity",
   "freeze", "capture", "gif", "share",
   "mosh-sticker", "sticker-mode", "sticker-capture", "isolation", "theme-track",
-  "forge-palette", "favorites", "fullscreen", "pro-mode", "switch-camera", "support",
+  "forge-palette", "motif-maestro", "favorites", "fullscreen", "pro-mode", "switch-camera", "support",
 ] as const;
 
 const TRIGGER_LABELS: Record<string, string> = {
@@ -137,6 +138,7 @@ const TRIGGER_LABELS: Record<string, string> = {
   "sticker-capture": "Capture sticker",
   "theme-track": "Theme track", favorites: "Favorites", fullscreen: "Fullscreen",
   "forge-palette": "Forge palette and settings",
+  "motif-maestro": "Motif Maestro controls",
   "switch-camera": "Switch camera", support: "Support MOSH",
 };
 
@@ -1488,6 +1490,7 @@ export function HotTriggers({
   const setHelpModeEnabled = useStore(s => s.setHelpModeEnabled);
   const [isoOpen, setIsoOpen] = useState(false);
   const [forgePanelOpen, setForgePanelOpen] = useState(false);
+  const [motifPanelOpen, setMotifPanelOpen] = useState(false);
 
   useEffect(() => {
     if (!isoOpen) return;
@@ -1508,6 +1511,16 @@ export function HotTriggers({
     window.addEventListener("pointerdown", onDown, true);
     return () => window.removeEventListener("pointerdown", onDown, true);
   }, [forgePanelOpen]);
+
+  useEffect(() => {
+    if (!motifPanelOpen) return;
+    const onDown = (e: PointerEvent) => {
+      if ((e.target as HTMLElement | null)?.closest("[data-motif-panel]")) return;
+      setMotifPanelOpen(false);
+    };
+    window.addEventListener("pointerdown", onDown, true);
+    return () => window.removeEventListener("pointerdown", onDown, true);
+  }, [motifPanelOpen]);
 
 
   const flipCamera = async () => {
@@ -1955,6 +1968,25 @@ export function HotTriggers({
         {forgePanelOpen && createPortal(
           <div className="fixed left-3 top-14 z-50 safe-top safe-left" data-forge-panel>
             <ForgePanel embedded />
+          </div>,
+          document.body,
+        )}
+      </div>
+    ),
+    "motif-maestro": sourceMode === "motif" && (
+      <div key="motif-maestro" className="relative" data-motif-panel>
+        <HotBtn
+          delay={0}
+          label={motifPanelOpen ? "Close Motif Maestro controls" : "Open Motif Maestro controls"}
+          active={motifPanelOpen}
+          onClick={() => setMotifPanelOpen(open => !open)}
+          tint="270 92% 72%"
+        >
+          <Sparkles className="h-4 w-4" strokeWidth={1.5} />
+        </HotBtn>
+        {motifPanelOpen && createPortal(
+          <div className="fixed left-3 top-14 z-[90] safe-top safe-left" data-motif-panel>
+            <MotifMaestroPanel embedded />
           </div>,
           document.body,
         )}

@@ -7,7 +7,7 @@ import { downloadBlob } from "@/engine/export";
 
 const INITIAL: MotifCritique = { seamless: 1, composition: .72, contrast: .68, motif: .76 };
 
-export function MotifMaestroPanel() {
+export function MotifMaestroPanel({ embedded = false }: { embedded?: boolean }) {
   const forge = useStore(s=>s.forge), randomise=useStore(s=>s.randomiseForge), reseed=useStore(s=>s.reseedForge);
   const setIntensity=useStore(s=>s.setForgeIntensity), setMosaic=useStore(s=>s.setForgeMosaic), setDensity=useStore(s=>s.setForgeMosaicDensity), setOverlay=useStore(s=>s.setForgeOverlay), setBase=useStore(s=>s.setForgeBaseImage), setSeamless=useStore(s=>s.setForgeSeamless), setTileMode=useStore(s=>s.setTileMode);
   const [direction,setDirection]=useState<MotifDirection>("all"), [symmetry,setSymmetry]=useState<MotifSymmetry>("mirror"), [variation,setVariation]=useState(.58), [auto,setAuto]=useState(false), [critique,setCritique]=useState(INITIAL), [busy,setBusy]=useState(false);
@@ -25,7 +25,7 @@ export function MotifMaestroPanel() {
   const loadBase=(file:File)=>{const url=URL.createObjectURL(file),img=new Image();img.onload=()=>{setBase(img,file.name);setMosaic(true);setOverlay(.62);URL.revokeObjectURL(url);generate();toast.success("Image dissected into Motif Maestro");};img.onerror=()=>toast.error("Couldn't read that image");img.src=url;};
   const exportMotif=async(repeat=false)=>{const src=useStore.getState().glCanvas;if(!src)return;setBusy(true);try{const tile=buildMotifTile(src,2048,direction,symmetry),out=repeat?buildRepeatProof(tile,3):tile;const blob=await new Promise<Blob>((res,rej)=>out.toBlob(b=>b?res(b):rej(new Error("encode")),"image/png"));downloadBlob(blob,`motif-maestro-${forge.seed.toString(16)}-${repeat?"repeat":"tile"}.png`);setCritique(critiqueMotif(tile));toast.success(repeat?"3×3 repeat proof saved":"Seamless motif tile saved");}catch{toast.error("Motif export failed");}finally{setBusy(false);}};
 
-  return <div className="motif-maestro" aria-label="Motif Maestro workspace">
+  return <div className={`motif-maestro ${embedded ? "motif-maestro--embedded" : ""}`} aria-label="Motif Maestro workspace">
     <aside className="motif-maestro__rail">
       <header><Sparkles/><div><strong>MOTIF MAESTRO</strong><span>still pattern intelligence</span></div></header>
       <div className="motif-maestro__actions"><button onClick={()=>generate(false)} disabled={busy}><Sparkles/> {busy?"COMPOSING…":"GENERATE"}</button><button onClick={()=>generate(true)} disabled={busy}><Shuffle/> EVOLVE</button></div>
