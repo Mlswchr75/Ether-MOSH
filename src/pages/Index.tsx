@@ -1,7 +1,7 @@
 import { Link, useNavigate } from "react-router-dom";
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Helmet } from "react-helmet-async";
-import { Flame, Upload, Video } from "lucide-react";
+import { ArrowDown, ArrowUpRight, Flame, Upload, Video } from "lucide-react";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
 import { useStore } from "@/store/useStore";
@@ -47,6 +47,14 @@ const Index = () => {
   useEffect(() => {
     titleAmbience.start();
     return () => titleAmbience.stop();
+  }, []);
+
+  // The title is the middle story: public work above, demo reel below. Set
+  // the initial position before paint so first-time visitors still land on
+  // the instrument without flashing the upper panel.
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.clientHeight;
   }, []);
 
   const loadFile = useCallback(async (file: File) => {
@@ -95,12 +103,9 @@ const Index = () => {
     }
   }, [loadFile]);
 
-  /**
-   * The panels stack vertically, so scrolling down reaches the reel for free.
-   * The hint also promises "scroll right", so horizontal wheel and swipe get
-   * mapped onto the same move — a trackpad flick sideways or a left swipe on
-   * a phone lands on the same panel a downward scroll would.
-   */
+  /** Vertical movement stays completely native so users can reveal any
+   * amount of either neighboring story. Horizontal wheel/swipe remains the
+   * convenience gesture, advancing one panel in either direction. */
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -109,18 +114,16 @@ const Index = () => {
     const goTo = (panel: number) => {
       if (locked) return;
       locked = true;
-      el.scrollTo({ top: panel * el.clientHeight, behavior: "smooth" });
+      const bounded = Math.max(0, Math.min(2, panel));
+      el.scrollTo({ top: bounded * el.clientHeight, behavior: "smooth" });
       window.setTimeout(() => { locked = false; }, 700);
     };
-    const onFirstPanel = () => el.scrollTop < el.clientHeight / 2;
+    const currentPanel = () => Math.max(0, Math.min(2, Math.round(el.scrollTop / Math.max(1, el.clientHeight))));
 
     const onWheel = (e: WheelEvent) => {
       if (Math.abs(e.deltaX) <= Math.abs(e.deltaY) || Math.abs(e.deltaX) < 12) return;
-      const forward = e.deltaX > 0;
-      if (forward === onFirstPanel()) {
-        e.preventDefault();
-        goTo(forward ? 1 : 0);
-      }
+      e.preventDefault();
+      goTo(currentPanel() + (e.deltaX > 0 ? 1 : -1));
     };
 
     let touch: { x: number; y: number } | null = null;
@@ -136,9 +139,7 @@ const Index = () => {
       const dx = t.clientX - start.x;
       const dy = t.clientY - start.y;
       if (Math.abs(dx) < 60 || Math.abs(dx) <= Math.abs(dy)) return;
-      // Swiping left drags the page rightward, i.e. forward to the reel.
-      const forward = dx < 0;
-      if (forward === onFirstPanel()) goTo(forward ? 1 : 0);
+      goTo(currentPanel() + (dx < 0 ? 1 : -1));
     };
 
     el.addEventListener("wheel", onWheel, { passive: false });
@@ -172,15 +173,47 @@ const Index = () => {
     >
       <Helmet>
         <title>MOSH — Audio-Reactive Visual Instrument</title>
-        <meta name="description" content="Drop an image and warp it in real time. MOSH is a browser-based audio-reactive visual instrument with 105 GPU effects." />
-        <link rel="canonical" href="https://ether-mosh.netlify.app/" />
+        <meta name="description" content="Drop an image and warp it in real time. MOSH is a browser-based audio-reactive visual instrument with 107 GPU effects." />
+        <link rel="canonical" href="https://ether-mosh.online/" />
         <meta property="og:title" content="MOSH — Audio-Reactive Visual Instrument" />
-        <meta property="og:description" content="Drop an image and warp it in real time. 105 GPU effects, beat-synced chaos, in your browser." />
-        <meta property="og:url" content="https://ether-mosh.netlify.app/" />
+        <meta property="og:description" content="Drop an image and warp it in real time. 107 GPU effects, beat-synced chaos, in your browser." />
+        <meta property="og:url" content="https://ether-mosh.online/" />
       </Helmet>
       <h1 className="sr-only">MOSH — Real-time audio-reactive image and video glitch instrument</h1>
 
-      {/* Panel one: the instrument itself. Panel two is the demo reel. */}
+      {/* Story above: native scrolling reveals this continuously, while the
+          full page remains one deliberate click away. */}
+      <section className="home-info-panel relative h-screen w-screen shrink-0 snap-start overflow-hidden border-b border-white/15">
+        <div className="home-info-grid" aria-hidden />
+        <div className="home-info-orbit" aria-hidden><i/><i/><i/></div>
+        <div className="relative z-10 flex h-full flex-col justify-between px-5 py-7 sm:px-[6vw] sm:py-[6vh]">
+          <div className="flex items-center justify-between font-mono text-[9px] uppercase tracking-[0.24em] text-foreground/50">
+            <span>MOSH / live visuals / Dyles Mavis</span>
+            <span>the story above the instrument</span>
+          </div>
+          <div className="max-w-[1200px]">
+            <p className="mb-5 font-mono text-[9px] uppercase tracking-[0.3em] text-accent">Live performance · tour content · generative systems</p>
+            <h2 className="max-w-[1100px] font-sans text-[clamp(48px,9vw,145px)] font-black uppercase leading-[0.8] tracking-[-0.075em]">
+              Leave the frame.<br/><span className="text-primary">Enter the signal.</span>
+            </h2>
+          </div>
+          <div className="flex flex-col gap-7 sm:flex-row sm:items-end sm:justify-between">
+            <p className="max-w-xl text-sm leading-relaxed text-foreground/65">
+              Meet the artist behind MOSH, explore live visual use cases, commissions, social channels, and the places where chaos becomes the medium.
+            </p>
+            <div className="flex items-center gap-6">
+              <Link to="/live-visuals" className="inline-flex items-center gap-2 border-b border-primary pb-2 font-mono text-[10px] uppercase tracking-[0.2em] text-primary transition hover:text-accent">
+                Enter live visuals <ArrowUpRight className="h-4 w-4"/>
+              </Link>
+              <button type="button" onClick={() => scrollRef.current?.scrollTo({ top: scrollRef.current.clientHeight, behavior: "smooth" })} className="inline-flex items-center gap-2 font-mono text-[9px] uppercase tracking-[0.2em] text-foreground/45 hover:text-foreground">
+                Instrument <ArrowDown className="h-4 w-4"/>
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Middle story: the instrument itself. Demo reel remains below. */}
       <section className="relative h-screen w-screen shrink-0 snap-start overflow-hidden">
       {/* Fullscreen moshing dropzone — using div so nested interactive elements are valid HTML */}
       <div
@@ -285,7 +318,7 @@ const Index = () => {
                 transition={{ duration: 0.4, delay: 0, ease: EASE_SNAP }}
                 className="max-w-xl font-mono text-xs uppercase tracking-[0.25em] text-foreground/70"
               >
-                MOSH is a real-time, audio-reactive visual instrument. Load any image, stack 105 GPU effects, sync to your music, and export stills or video — all in your browser.
+                MOSH is a real-time, audio-reactive visual instrument. Load any image, stack 107 GPU effects, sync to your music, and export stills or video — all in your browser.
               </motion.p>
 
               <motion.div
@@ -332,6 +365,20 @@ const Index = () => {
           </div>
         </motion.div>
 
+        {/* The title is the center of a two-direction entrance: demos below,
+            the public story / use cases / booking page above. */}
+        <motion.button
+          {...KEEP_OUT}
+          type="button"
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 1.35 }}
+          onClick={(e) => { e.stopPropagation(); scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" }); }}
+          className="info-hint pointer-events-auto absolute left-1/2 top-[4.75rem] z-20 -translate-x-1/2 whitespace-nowrap font-mono text-[9px] uppercase tracking-[0.28em] text-foreground/45 transition-colors hover:text-accent"
+        >
+          <span className="info-hint-arrow inline-block">↑</span> live visuals · about · bookings
+        </motion.button>
+
         {/* Bottom credit */}
         <motion.div
           {...KEEP_OUT}
@@ -360,7 +407,7 @@ const Index = () => {
           transition={{ duration: 0.6, delay: 1.6 }}
           onClick={(e) => {
             e.stopPropagation();
-            scrollRef.current?.scrollTo({ top: scrollRef.current.clientHeight, behavior: "smooth" });
+            scrollRef.current?.scrollTo({ top: scrollRef.current.clientHeight * 2, behavior: "smooth" });
           }}
           className="reel-hint pointer-events-auto absolute bottom-[4.5rem] left-1/2 z-20 -translate-x-1/2 whitespace-nowrap font-mono text-[11px] uppercase tracking-[0.3em] text-foreground/70 transition-colors hover:text-accent"
         >

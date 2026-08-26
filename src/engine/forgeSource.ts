@@ -6,6 +6,7 @@ import { applyKaleidoscope } from "./forgeKaleidoscope";
 import { applyFinishingGlow } from "./forgeFinishing";
 import type { VolumetricBloomRenderer } from "./volumetricBloom";
 import { hexToRgb } from "./seamlessSource";
+import { drawPhotoMosaic } from "./photoMosaic";
 
 /**
  * Lazy-loaded: volumetricBloom.ts pulls in all of Three.js for its own
@@ -23,6 +24,34 @@ function ensureVolumetricBloomLoaded() {
   void import("./volumetricBloom").then((mod) => {
     VolumetricBloomRendererCtor = mod.VolumetricBloomRenderer;
   });
+}
+
+/**
+ * Caps how many real WebGL contexts this generator opens at once in this JS
+ * realm. Each ForgeRuntime is independent (one per JourneyPortalProvider,
+ * ForgePanel, or GlCanvas instance), so a page embedding several Journey
+ * portals — each cycling generators on its own schedule — could otherwise
+ * all land on Volumetric Bloom together and open one Three.js WebGL context
+ * per portal. Runtimes over the cap fall back to Drift Field (not marked
+ * permanently failed) and keep retrying, picking the generator back up once
+ * another instance releases a slot.
+ *
+ * This only coordinates runtimes sharing one JS realm — it can't see across
+ * the separate iframes the public embed script (public/journey-portal.js)
+ * gives each `<mosh-journey-portal>`, since those are independent realms.
+ * Cross-iframe coordination would need a same-origin channel (e.g.
+ * BroadcastChannel) and isn't implemented here.
+ */
+const MAX_CONCURRENT_VOLUMETRIC_INSTANCES = 3;
+let activeVolumetricInstances = 0;
+
+/** Releases a runtime's Volumetric Bloom instance, if any, and its cap slot. */
+export function disposeForgeRuntime(runtime: ForgeRuntime) {
+  if (runtime.volumetric) {
+    runtime.volumetric.dispose();
+    runtime.volumetric = null;
+    activeVolumetricInstances = Math.max(0, activeVolumetricInstances - 1);
+  }
 }
 import type { ForgeState } from "@/store/types";
 
@@ -127,7 +156,7 @@ function renderGeneratorInto(
       ensureVolumetricBloomLoaded();
       // Not loaded yet — fall through to the driftField fallback below for
       // this frame; once the chunk resolves, subsequent frames pick it up.
-    } else if (!runtime.volumetricFailed) {
+    } else if (!runtime.volumetricFailed && (runtime.volumetric || activeVolumetricInstances < MAX_CONCURRENT_VOLUMETRIC_INSTANCES)) {
       try {
         if (!runtime.volumetricCanvas) {
           runtime.volumetricCanvas = document.createElement("canvas");
@@ -140,6 +169,7 @@ function renderGeneratorInto(
         if (!runtime.volumetric) {
           runtime.volumetric = new VolumetricBloomRendererCtor(runtime.volumetricCanvas);
           runtime.volumetric.resize(w, h);
+          activeVolumetricInstances++;
         }
         const colorA = hexToRgb(palette[0]).map(c => c / 255) as [number, number, number];
         const colorB = hexToRgb(palette[1]).map(c => c / 255) as [number, number, number];
@@ -168,6 +198,7 @@ function renderGeneratorInto(
           return;
         }
       } catch {
+        if (runtime.volumetric) activeVolumetricInstances = Math.max(0, activeVolumetricInstances - 1);
         runtime.volumetricFailed = true;
         runtime.volumetric = null;
       }
@@ -221,11 +252,15 @@ export function paintForgeSource(
     const img = forge.baseImage;
     const iw = img.naturalWidth || img.width;
     const ih = img.naturalHeight || img.height;
-    const scale = Math.max(w / iw, h / ih);
-    const dw = iw * scale;
-    const dh = ih * scale;
     ctx.clearRect(0, 0, w, h);
-    ctx.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
+    if (forge.mosaicEnabled) {
+      drawPhotoMosaic(ctx, img, iw, ih, w, h, forge.mosaicDensity, forge.seed);
+    } else {
+      const scale = Math.max(w / iw, h / ih);
+      const dw = iw * scale;
+      const dh = ih * scale;
+      ctx.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
+    }
     if (forge.overlay > 0.01) {
       renderGeneratorInto(runtime.scratchACtx, w, h, t, seed, palette, forge.intensity, audio, forge.activeGeneratorId, runtime);
       ctx.save();

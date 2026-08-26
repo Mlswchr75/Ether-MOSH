@@ -92,7 +92,7 @@ export function CommandPalette(props: Props) {
               <CmdItem onSelect={run(removeTopLayer)}>Remove top effect</CmdItem>
               <CmdItem onSelect={run(clearLayers)}>Clear effect stack</CmdItem>
               <CmdItem onSelect={run(() => crossfadeLayers(mosh, MOSH_FADE_MS))}>Randomize effect stack</CmdItem>
-              <CmdItem onSelect={run(rerollSeed)} shortcut="Space">Reroll seed</CmdItem>
+              <CmdItem onSelect={run(rerollSeed)}>Reroll seed</CmdItem>
             </CmdGroup>
 
             <CmdGroup heading="Audio">

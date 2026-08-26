@@ -1,11 +1,12 @@
 import { Helmet } from "react-helmet-async";
 import { Link } from "react-router-dom";
 import LegalLayout from "@/components/LegalLayout";
+import { JourneyPortalInterlude } from "@/components/journey/PortalShapeGallery";
 
-const canonical = "https://ether-mosh.netlify.app/guides";
+const canonical = "https://ether-mosh.online/guides";
 const title = "Guides";
 const description =
-  "Tutorials and guides for making audio-reactive music videos, datamosh clips, glitch TikToks and live VJ visuals with MOSH.";
+  "Tutorials and guides for making audio-reactive music videos, datamosh clips, glitch TikToks and live VJ visuals with Ether-MOSH.";
 
 const guides = [
   {
@@ -43,10 +44,10 @@ const guides = [
 const GuidesIndex = () => (
   <>
     <Helmet>
-      <title>{title} | MOSH</title>
+      <title>{title} | Ether-MOSH</title>
       <meta name="description" content={description} />
       <link rel="canonical" href={canonical} />
-      <meta property="og:title" content={`${title} | MOSH`} />
+      <meta property="og:title" content={`${title} | Ether-MOSH`} />
       <meta property="og:description" content={description} />
       <meta property="og:url" content={canonical} />
       <meta property="og:type" content="website" />
@@ -74,6 +75,7 @@ const GuidesIndex = () => (
           </li>
         ))}
       </ul>
+      <JourneyPortalInterlude variant="compact" />
     </LegalLayout>
   </>
 );

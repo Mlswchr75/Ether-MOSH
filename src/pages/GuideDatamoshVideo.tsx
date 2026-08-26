@@ -2,11 +2,11 @@ import { Helmet } from "react-helmet-async";
 import { Link } from "react-router-dom";
 import LegalLayout, { LegalH2 } from "@/components/LegalLayout";
 
-const canonical = "https://ether-mosh.netlify.app/guides/how-to-datamosh-a-video";
+const canonical = "https://ether-mosh.online/guides/how-to-datamosh-a-video";
 const title = "How to Datamosh a Video Online (Free, No Software)";
 const description =
-  "Learn how to datamosh a video for free in your browser — no plugins or After Effects. Create the classic datamosh glitch effect in seconds with MOSH.";
-const ogImage = "https://ether-mosh.netlify.app/og-image.png";
+  "Learn how to datamosh a video for free in your browser — no plugins or After Effects. Create the classic datamosh glitch effect in seconds with Ether-MOSH.";
+const ogImage = "https://ether-mosh.online/og-image.png";
 
 const articleJsonLd = {
   "@context": "https://schema.org",
@@ -31,15 +31,15 @@ const faqs: { q: string; a: string }[] = [
   },
   {
     q: "Can I datamosh a video online for free?",
-    a: "Yes. MOSH runs in your browser and includes a real-time datamosh effect — no upload, no download, no account required.",
+    a: "Yes. Ether-MOSH runs in your browser and includes a real-time datamosh effect — no upload, no download, no account required.",
   },
   {
     q: "Do I need After Effects or a plugin?",
-    a: "No. MOSH replicates the datamosh look with GPU shaders in the browser, so you don't need After Effects, Premiere, or any plugin.",
+    a: "No. Ether-MOSH replicates the datamosh look with GPU shaders in the browser, so you don't need After Effects, Premiere, or any plugin.",
   },
   {
     q: "Does it work on mobile?",
-    a: "Yes — MOSH works on modern iOS and Android browsers. You can datamosh a clip from your phone's camera and record the result directly.",
+    a: "Yes — Ether-MOSH works on modern iOS and Android browsers. You can datamosh a clip from your phone's camera and record the result directly.",
   },
 ];
 
@@ -60,12 +60,12 @@ const H3 = ({ children }: { children: React.ReactNode }) => (
 const GuideDatamoshVideo = () => (
   <>
     <Helmet>
-      <title>{title} | MOSH</title>
+      <title>{title} | Ether-MOSH</title>
       <meta name="description" content={description} />
       <meta name="keywords" content="how to datamosh, datamosh online, datamosh video free" />
       <link rel="canonical" href={canonical} />
       <meta property="og:type" content="article" />
-      <meta property="og:site_name" content="MOSH" />
+      <meta property="og:site_name" content="Ether-MOSH" />
       <meta property="og:title" content={title} />
       <meta property="og:description" content={description} />
       <meta property="og:url" content={canonical} />
@@ -91,7 +91,7 @@ const GuideDatamoshVideo = () => (
           melting frames you've seen in Kanye videos, indie music clips, and countless TikToks.
           The classic tutorial says you need After Effects and a hex editor. You don't. This guide
           shows you how to datamosh a video for free, right in your browser, using{" "}
-          <Link to="/" className="text-accent hover:underline">MOSH</Link>.
+          <Link to="/" className="text-accent hover:underline">Ether-MOSH</Link>.
         </p>
       </section>
 
@@ -116,10 +116,10 @@ const GuideDatamoshVideo = () => (
       </section>
 
       <section>
-        <LegalH2>Datamosh a video free in your browser with MOSH</LegalH2>
+        <LegalH2>Datamosh a video free in your browser with Ether-MOSH</LegalH2>
         <ol className="mt-3 list-decimal space-y-3 pl-5">
           <li>
-            <strong>Open MOSH</strong> at{" "}
+            <strong>Open Ether-MOSH</strong> at{" "}
             <Link to="/edit" className="text-accent hover:underline">the editor</Link>.
           </li>
           <li>
@@ -154,16 +154,16 @@ const GuideDatamoshVideo = () => (
       <section>
         <LegalH2>Works on mobile too</LegalH2>
         <p className="mt-3">
-          MOSH runs on modern iPhone and Android browsers. You can shoot vertically, apply the
+          Ether-MOSH runs on modern iPhone and Android browsers. You can shoot vertically, apply the
           datamosh effect live, and record the result without ever leaving your phone. No app to
           install, no upload, no watermark.
         </p>
       </section>
 
       <section>
-        <LegalH2>Why MOSH is the fastest way to datamosh</LegalH2>
+        <LegalH2>Why Ether-MOSH is the fastest way to datamosh</LegalH2>
         <p className="mt-3">
-          MOSH is free to <Link to="/" className="text-accent hover:underline">start using</Link>,
+          Ether-MOSH is free to <Link to="/" className="text-accent hover:underline">start using</Link>,
           runs in-browser on your GPU, and gives you real-time datamosh instead of a slow render.
           The optional{" "}
           <Link to="/pricing" className="text-accent hover:underline">Supporter upgrade</Link>{" "}

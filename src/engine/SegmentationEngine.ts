@@ -1,6 +1,9 @@
 import { FilesetResolver, ImageSegmenter, InteractiveSegmenter } from "@mediapipe/tasks-vision";
 
-const WASM = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.15/wasm";
+// Keep the WASM graph runtime aligned with the installed JS package. Mixing
+// 0.10.35 JS with the old 0.10.15 graph registry made InteractiveSegmenter
+// fail with "No registered object ... InteractiveSegmenterGraphV2".
+const WASM = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/wasm";
 const SELFIE_MODEL = "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite";
 const TOUCH_MODEL  = "https://storage.googleapis.com/mediapipe-models/interactive_segmenter/magic_touch/float32/1/magic_touch.tflite";
 
@@ -15,7 +18,7 @@ export type SaliencyPoint  = { x: number; y: number; score: number };
  * `CanvasImageSource`s for `drawImage`, so nothing downstream needs to know
  * which one it got.
  */
-export type SegSource = HTMLVideoElement | HTMLImageElement | HTMLCanvasElement;
+export type SegmentableSource = HTMLVideoElement | HTMLImageElement | HTMLCanvasElement;
 
 class SegmentationEngine {
   private autoSeg: ImageSegmenter | null = null;
@@ -72,8 +75,8 @@ class SegmentationEngine {
     return s / mask.length;
   }
 
-  /** Analyze a frame for visually interesting regions via color-variance + center-bias saliency */
-  analyzeSaliency(source: SegSource, maxPoints = 3): SaliencyPoint[] {
+  /** Analyze a frame for visually interesting regions via color-variance + center-bias saliency. */
+  analyzeSaliency(source: SegmentableSource, maxPoints = 3): SaliencyPoint[] {
     const S = 32;
     if (!this._salCanvas) {
       this._salCanvas = document.createElement('canvas');
@@ -119,7 +122,7 @@ class SegmentationEngine {
     return kept.length ? kept : [{ x: 0.5, y: 0.5, score: 1 }];
   }
 
-  async segmentMultiPoint(src: SegSource, points: SaliencyPoint[]): Promise<MaskResult[]> {
+  async segmentMultiPoint(src: SegmentableSource, points: SaliencyPoint[]): Promise<MaskResult[]> {
     if (!this.tapSeg || !this.tapReady) return [];
     const out: MaskResult[] = [];
     for (const pt of points) {
@@ -130,7 +133,7 @@ class SegmentationEngine {
   }
 
   async segmentFromPoint(
-    src: SegSource,
+    src: SegmentableSource,
     normX: number,
     normY: number,
   ): Promise<MaskResult | null> {

@@ -1,19 +1,18 @@
 import * as THREE from "three";
 (window as any).THREE = THREE;
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
-import { ArrowLeft, Download, Layers, Sparkles, Sliders, Music, Eye, Undo2, Redo2, Maximize2, Minimize2, Circle, Mic, MicOff, MonitorSpeaker, Snowflake, Rewind, Repeat, Keyboard, X } from "lucide-react";
+import { ArrowLeft, Download, Layers, Sparkles, Sliders, Music, Eye, Undo2, Redo2, Maximize2, Minimize2, Circle, Mic, MicOff, MonitorSpeaker, Snowflake, Rewind, Repeat, Keyboard, X, ChevronDown, ChevronUp } from "lucide-react";
 import { useStore } from "@/store/useStore";
-import { crossfadeLayers, cancelLayerCrossfade, MOSH_FADE_MS, DIRECTED_FADE_MS } from "@/engine/layerCrossfade";
-import { GlCanvas } from "@/components/editor/GlCanvas";
+import { crossfadeLayers, cancelLayerCrossfade, MOSH_FADE_MS, DIRECTED_FADE_MS, JOURNEY_DISRUPT_FADE_MS } from "@/engine/layerCrossfade";
 
 import { LayerStack } from "@/components/editor/LayerStack";
 import { FxPicker } from "@/components/editor/FxPicker";
 import { ShufflePanel } from "@/components/editor/ShufflePanel";
 import { ParamDock } from "@/components/editor/ParamDock";
 import { BeatPanel } from "@/components/editor/BeatPanel";
-import { exportCanvas, downloadBlob, remasterCanvas } from "@/engine/export";
+import { downloadCanvasPngNow, exportCanvas, downloadBlob, remasterCanvas } from "@/engine/export";
 import { captureBestFrame } from "@/engine/bestFrame";
 import { captureLoopingGif } from "@/engine/gifCapture";
 import { CanvasRecorder } from "@/engine/recorder";
@@ -27,6 +26,7 @@ import { OnboardingPrompts, shouldShowOnboarding, markOnboardingSeen } from "@/c
 import { HintPulse, isHintDismissed, dismissHint } from "@/components/editor/HintPulse";
 import { SourceTransition } from "@/components/editor/SourceTransition";
 import { RippleLayer } from "@/components/editor/Ripple";
+import { InteractionFeedback } from "@/components/editor/InteractionFeedback";
 import { enterFullscreen, exitFullscreen, hasSeenPerfMode, markPerfModeSeen, useFullscreenSync } from "@/hooks/usePerformanceMode";
 import { toast } from "sonner";
 import { shareApp, shareBlob, shareOrDownload, shareUrl, canNativeShare } from "@/lib/share";
@@ -42,6 +42,7 @@ import { QuadrantSurface } from "@/components/editor/QuadrantSurface";
 import { TrackpadGestures } from "@/components/editor/TrackpadGestures";
 import { toggleSystemAudio } from "@/engine/systemAudio";
 import { trackPlayer } from "@/engine/trackPlayer";
+import { runTrackAction } from "@/engine/trackActions";
 import { loadImageFile, loadImageFromClipboard } from "@/lib/sourceLoader";
 import { SystemAudioHud } from "@/components/editor/SystemAudioHud";
 
@@ -51,7 +52,6 @@ import { CameraMenu } from "@/components/editor/CameraMenu";
 
 import { StartCameraOverlay } from "@/components/editor/StartCameraOverlay";
 import { ForgeTapHint } from "@/components/editor/ForgeTapHint";
-import { ForgePanel } from "@/components/editor/ForgePanel";
 import { SourceModeToggle } from "@/components/editor/SourceModeToggle";
 import { HotTriggers } from "@/components/editor/HotTriggers";
 import { ActionConfirmation } from "@/components/editor/ActionConfirmation";
@@ -62,8 +62,45 @@ import { useCloudFavorites } from "@/hooks/useCloudFavorites";
 import { JourneyDirector, type JourneyDirectorState } from "@/engine/journeyDirector";
 import type { JourneyMic } from "@/engine/journeyCore";
 import { PUBLIC_EFFECTS } from "@/engine/effects";
-import { useIdleFade, markUiActive } from "@/hooks/useIdleFade";
+import { useIdleFade, markUiActive, isMoshOnlyActivity } from "@/hooks/useIdleFade";
 import { captureQuickThumb } from "@/engine/quickThumb";
+import {
+  FORGE_JOURNEY_STORAGE_KEY,
+  FORGE_JOURNEY_WARNING_MS,
+  formatForgeJourneyRemaining,
+  readForgeJourneyPreview,
+  remainingForgeJourneyMs,
+  startForgeJourneyPreview,
+  stopForgeJourneyPreview,
+  type ForgeJourneyPreview,
+} from "@/engine/forgeJourneyPreview";
+
+// Three/WebGL and the renderer are the heaviest part of MOSH. Keeping them
+// behind this editor-local boundary lets the surrounding shell, controls, and
+// source chooser become interactive before the GPU pipeline finishes loading.
+const GlCanvas = lazy(async () => {
+  const module = await import("@/components/editor/GlCanvas");
+  return { default: module.GlCanvas };
+});
+import { CastStageButton } from "@/components/editor/CastStageButton";
+
+const LEGACY_HOT_TRIGGERS_KEY = "cathedral_legacy_hot_triggers_launchpad_v1";
+
+/** Paints the high-resolution frame selected by Smart Freeze above the live
+ * renderer, without changing its source or interrupting camera playback. */
+function FrozenFrame({ frame }: { frame: HTMLCanvasElement }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const target = ref.current;
+    if (!target) return;
+    target.width = frame.width;
+    target.height = frame.height;
+    const ctx = target.getContext("2d");
+    if (!ctx) return;
+    ctx.drawImage(frame, 0, 0);
+  }, [frame]);
+  return <canvas ref={ref} aria-hidden className="pointer-events-none absolute inset-0 z-30 h-full w-full" />;
+}
 
 // Unified one-screen control rack — no tabs.
 
@@ -90,6 +127,7 @@ export default function Editor() {
   const setMicEnabled = useStore(s => s.setMicEnabled);
   const systemAudioEnabled = useStore(s => s.systemAudioEnabled);
   const setSystemAudioEnabled = useStore(s => s.setSystemAudioEnabled);
+  const trackEnabled = useStore(s => s.trackEnabled);
   const isPerformanceMode = useStore(s => s.isPerformanceMode);
   const setPerformanceMode = useStore(s => s.setPerformanceMode);
   const proModeEnabled = useStore(s => s.proModeEnabled);
@@ -97,7 +135,6 @@ export default function Editor() {
   const [helpCaption, setHelpCaption] = useState<{ text: string; x: number; y: number } | null>(null);
   const saveSlot = useStore(s => s.saveSlot);
   const loadSlot = useStore(s => s.loadSlot);
-  const rerollSeed = useStore(s => s.rerollSeed);
   const layers = useStore(s => s.layers);
   const sourceName = useStore(s => s.sourceName);
   const flashSlot = useStore(s => s.flashSlot);
@@ -114,10 +151,20 @@ export default function Editor() {
   // and the bottom menu rack (all gated on `!hideUI`) never mount for
   // anyone who hasn't already discovered one of those gestures. Idle-fade
   // (`.ui-chrome` + `idleStage`, a separate mechanism) is what actually
-  // makes the chrome disappear after 2.5s of inactivity — this flag is only
+  // makes the chrome disappear after 1.7s of inactivity — this flag is only
   // the manual full-hide, so it should start open.
   const [hideUI, setHideUI] = useState(false);
-  const [holdProgress, setHoldProgress] = useState(0);
+  const [legacyHotTriggers, setLegacyHotTriggers] = useState(() => {
+    if (typeof window === "undefined") return false;
+    try { return window.localStorage.getItem(LEGACY_HOT_TRIGGERS_KEY) === "1"; } catch { return false; }
+  });
+  // Persistent reveal pin — the always-visible top-right toggle that keeps
+  // the hot-trigger rail and menu rack on screen regardless of idle-fade or
+  // Pro Mode's hold-Shift gesture, for anyone who wouldn't otherwise
+  // discover either. Pinning reveals immediately; unpinning folds away
+  // immediately — a plain on/off, not just "stop protecting from the next
+  // auto-hide."
+  const [chromePinned, setChromePinned] = useState(false);
   const [shortcutsHint, setShortcutsHint] = useState(false);
   const [slotShake, setSlotShake] = useState<number | null>(null);
   const isFullscreen = isPerformanceMode;
@@ -131,6 +178,11 @@ export default function Editor() {
   const [reverseOn, setReverseOn] = useState(false);
   const [loopSec, setLoopSec] = useState(0);
   const [freezeOn, setFreezeOn] = useState(false);
+  // A captured final render, rather than merely a paused shader clock. This
+  // lets a quality freeze hold a crisp video/Forge frame too.
+  const [freezeFrame, setFreezeFrame] = useState<HTMLCanvasElement | null>(null);
+  const freezeTimerRef = useRef<number | null>(null);
+  const freezeBusyRef = useRef(false);
   const recorderRef = useRef<CanvasRecorder | null>(null);
   const recCapRef = useRef<number | null>(null);
   /** Set only when toggleRecord captured its own device-audio stream (the
@@ -139,15 +191,23 @@ export default function Editor() {
    *  stream is never stored here; that one's lifecycle belongs to GlCanvas. */
   const recordAudioStreamRef = useRef<MediaStream | null>(null);
   const paywall = usePaywall();
+  const forgePreviewRef = useRef<ForgeJourneyPreview>(
+    typeof window === "undefined"
+      ? { usedMs: 0, startedAt: null }
+      : readForgeJourneyPreview(window.sessionStorage.getItem(FORGE_JOURNEY_STORAGE_KEY)),
+  );
+  const [forgePreviewRemainingMs, setForgePreviewRemainingMs] = useState(() =>
+    remainingForgeJourneyMs(forgePreviewRef.current),
+  );
+  const forgePreviewWarningRef = useRef(false);
   useCloudFavorites();
   const recStartRef = useRef(0);
   const [gifBusy, setGifBusy] = useState(false);
   const [gifProgress, setGifProgress] = useState(0);
   const [actionConfirm, setActionConfirm] = useState<{
-    type: "screenshot" | "gif" | "record";
+    type: "gif" | "record";
     onConfirm: () => void;
   } | null>(null);
-  const [screenshotScanning, setScreenshotScanning] = useState(false);
   const shellRef = useRef<HTMLElement>(null);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const [showFirstTip, setShowFirstTip] = useState(false);
@@ -155,6 +215,8 @@ export default function Editor() {
   const [showMicHint, setShowMicHint] = useState(false);
   const [showMicNudge, setShowMicNudge] = useState(false);
   const micNudgeShownRef = useRef(false);
+  const [showTrackNudge, setShowTrackNudge] = useState(false);
+  const trackNudgeShownRef = useRef(false);
   const [showPerfHint, setShowPerfHint] = useState(false);
   const [transitionKey, setTransitionKey] = useState(0);
   const prevImageRef = useRef<HTMLImageElement | null>(null);
@@ -166,8 +228,12 @@ export default function Editor() {
   useEffect(() => { trackPlayer.noteModeEntry(); }, []);
 
   // UI chrome (and the cursor, see index.css) fades to fully invisible
-  // after 2.5s of inactivity.
-  const idleStage = useIdleFade(2_500);
+  // after 1.7s of inactivity.
+  const idleStage = useIdleFade(1_700, isMoshOnlyActivity);
+  // Pinning bypasses idle-fade entirely — real inactivity no longer fades
+  // .ui-chrome while pinned, independent of hideUI (a separate mechanism;
+  // see chromePinned's declaration for how the two combine).
+  const effectiveIdleStage = chromePinned ? "active" : idleStage;
 
   // Once idle, the page has to stop offering anything the browser itself
   // would interrupt the visual with: no right-click "Save image as…" menu,
@@ -175,17 +241,17 @@ export default function Editor() {
   // comes with it). Native `title`-attribute tooltips don't need separate
   // handling — the chrome they'd hover over already goes pointer-events:none
   // at the same idle mark (see .ui-chrome in index.css), so they can't be
-  // triggered at all once hidden. Same 2.5s mark as everything else fading,
+  // triggered at all once hidden. Same 1.7s mark as everything else fading,
   // deliberately — a second, slightly different timer here would just
   // desync from the fade and read as a bug.
   useEffect(() => {
-    const idle = idleStage === "hidden";
+    const idle = effectiveIdleStage === "hidden";
     document.body.classList.toggle("idle-locked", idle);
     if (!idle) return;
     const onContextMenu = (e: MouseEvent) => e.preventDefault();
     document.addEventListener("contextmenu", onContextMenu);
     return () => document.removeEventListener("contextmenu", onContextMenu);
-  }, [idleStage]);
+  }, [effectiveIdleStage]);
 
   // Help Mode (hold the Pro Mode trigger to reach it): a single delegated
   // listener rather than touching every button's own JSX — every hot
@@ -251,8 +317,9 @@ export default function Editor() {
   const proModeMounted = useRef(false);
   useEffect(() => {
     if (!proModeMounted.current) { proModeMounted.current = true; return; }
+    if (chromePinned) return; // the reveal pin outranks Pro Mode's auto-hide-on-enable
     setHideUI(proModeEnabled);
-  }, [proModeEnabled]);
+  }, [proModeEnabled, chromePinned]);
   const focusTune = useCallback((layerId: string) => {
     useStore.getState().selectLayer(layerId);
     setHideUI(false);
@@ -343,6 +410,10 @@ export default function Editor() {
      asked for, because browsers substitute codecs silently and the mismatch
      is otherwise discovered at the rejection. */
   const exportDeliverable = useCallback(async (specId: string) => {
+    if (isForge && !paywall.isSupporter) {
+      paywall.require("Forge deliverable export");
+      return;
+    }
     const spec = DELIVERABLES_BY_ID[specId];
     const canvas = useStore.getState().glCanvas;
     if (!spec || !canvas) { toast.error("Nothing to export yet"); return; }
@@ -374,7 +445,7 @@ export default function Editor() {
       setExportBusy(false);
       setExportProgress(0);
     }
-  }, [exportBusy]);
+  }, [exportBusy, isForge, paywall]);
 
   const copyPresetLink = useCallback(async () => {
     if (!useStore.getState().layers.length) {
@@ -432,7 +503,58 @@ export default function Editor() {
   const getCanvas = () =>
     (canvasContainerRef.current?.querySelector("canvas") ?? null) as HTMLCanvasElement | null;
 
+  const clearSmartFreeze = useCallback(() => {
+    if (freezeTimerRef.current) {
+      window.clearTimeout(freezeTimerRef.current);
+      freezeTimerRef.current = null;
+    }
+    timeController.cancelFreeze();
+    setFreezeFrame(null);
+    setFreezeOn(false);
+  }, []);
+
+  /** Scan briefly for the cleanest rendered frame, then freeze that exact
+   * output. A second invocation releases it immediately. */
+  const toggleSmartFreeze = useCallback(async () => {
+    if (freezeFrame) {
+      clearSmartFreeze();
+      setIconFlash({ icon: "freeze", label: "Unfreeze", key: performance.now() });
+      return;
+    }
+    if (freezeBusyRef.current) return;
+    const canvas = getCanvas();
+    if (!canvas) return;
+
+    freezeBusyRef.current = true;
+    const notice = toast.loading("Finding the cleanest freeze…", { duration: 1500 });
+    try {
+      const frame = await captureBestFrame(canvas, {
+        durationMs: 1000,
+        intervalMs: 80,
+        sampleSize: 128,
+        preferSeamless: tileMode !== "none",
+      });
+      setFreezeFrame(frame);
+      setFreezeOn(true);
+      timeController.triggerFreeze(1600);
+      setIconFlash({ icon: "freeze", label: "Freeze", key: performance.now() });
+      freezeTimerRef.current = window.setTimeout(clearSmartFreeze, 1600);
+      toast.success("Freeze locked", { id: notice, duration: 1100 });
+    } catch {
+      toast.error("Could not lock a frame", { id: notice });
+      clearSmartFreeze();
+    } finally {
+      freezeBusyRef.current = false;
+    }
+  }, [clearSmartFreeze, freezeFrame, tileMode]);
+
+  useEffect(() => () => clearSmartFreeze(), [clearSmartFreeze]);
+
   const exportBestStill = useCallback(async () => {
+    if (isForge && !paywall.isSupporter) {
+      paywall.require("Forge still export");
+      return;
+    }
     if (exportBusy) return;
     const c = getCanvas();
     if (!c) return;
@@ -463,7 +585,7 @@ export default function Editor() {
       setExportBusy(false);
       setExportProgress(0);
     }
-  }, [exportBusy, tileMode]);
+  }, [exportBusy, isForge, paywall, tileMode]);
 
   // Enter/exit perf mode side effects
   const enterPerf = async () => {
@@ -497,6 +619,18 @@ export default function Editor() {
     micNudgeShownRef.current = true;
     setShowMicNudge(true);
   }, [hasSource, micEnabled, systemAudioEnabled]);
+
+  // If someone has been looking at an active visual for a full minute with
+  // no audio source at all, point them to the music trigger. This is a
+  // consentful prompt, not autoplay: the actual start remains a user click.
+  useEffect(() => {
+    if (!hasSource || micEnabled || systemAudioEnabled || trackEnabled || trackNudgeShownRef.current) return;
+    const timer = window.setTimeout(() => {
+      trackNudgeShownRef.current = true;
+      setShowTrackNudge(true);
+    }, 60_000);
+    return () => window.clearTimeout(timer);
+  }, [hasSource, micEnabled, systemAudioEnabled, trackEnabled]);
 
   // Source-load film cut transition + onboarding abort
   useEffect(() => {
@@ -628,7 +762,7 @@ export default function Editor() {
     };
   }, [shuffleSec]);
 
-  // ── Journey director (supporter feature) ─────────────────────────────
+  // ── Journey director (five-minute Forge preview, then supporter) ─────
   /* Smart and Storm, combined. Offline, no network.
 
      They were halves of one idea. Smart read the room well but then left the
@@ -648,17 +782,74 @@ export default function Editor() {
   const journeyRef = useRef<JourneyDirector | null>(null);
   const journeyPrevShuffleRef = useRef<number | null>(null);
 
+  const persistForgePreview = useCallback((preview: ForgeJourneyPreview) => {
+    forgePreviewRef.current = preview;
+    setForgePreviewRemainingMs(remainingForgeJourneyMs(preview));
+    try {
+      window.sessionStorage.setItem(FORGE_JOURNEY_STORAGE_KEY, JSON.stringify(preview));
+    } catch {
+      // Private browsing can deny storage; the current in-memory session still works.
+    }
+  }, []);
+
   const crossfadeToComposition = useCallback((directed: import("@/engine/compose").DirectedLayer[]) => {
     crossfadeLayers(() => useStore.getState().moshDirected(directed), DIRECTED_FADE_MS);
   }, []);
 
   const toggleJourney = useCallback(() => {
-    if (!paywall.isSupporter) {
+    if (journeyOn) {
+      setJourneyOn(false);
+      return;
+    }
+    if (paywall.isSupporter) {
+      setJourneyOn(true);
+      return;
+    }
+    if (!isForge) {
       paywall.require("Journey mode");
       return;
     }
-    setJourneyOn(v => !v);
-  }, [paywall]);
+    if (remainingForgeJourneyMs(forgePreviewRef.current) === 0) {
+      paywall.require("Forge Journey beyond the free preview");
+      return;
+    }
+    setJourneyOn(true);
+  }, [isForge, journeyOn, paywall]);
+
+  // Forge gets one five-minute, session-persistent Journey preview. The clock
+  // follows active Journey time and is paused as soon as the director stops.
+  useEffect(() => {
+    if (!journeyOn || !isForge || paywall.isSupporter) return;
+
+    persistForgePreview(startForgeJourneyPreview(forgePreviewRef.current));
+    const tick = () => {
+      const remaining = remainingForgeJourneyMs(forgePreviewRef.current);
+      setForgePreviewRemainingMs(remaining);
+      if (remaining <= FORGE_JOURNEY_WARNING_MS && !forgePreviewWarningRef.current) {
+        forgePreviewWarningRef.current = true;
+        toast.message("One minute left in your Forge Journey preview", {
+          description: "Support MOSH to keep the ambient wall running and export it.",
+          action: { label: "Support", onClick: () => navigate("/pricing?unlock=1") },
+          duration: 10_000,
+        });
+      }
+      if (remaining === 0) {
+        persistForgePreview(stopForgeJourneyPreview(forgePreviewRef.current));
+        setJourneyOn(false);
+        toast.message("Forge Journey preview complete", {
+          description: "Support MOSH for uninterrupted ambient walls and clean output.",
+          action: { label: "Support", onClick: () => navigate("/pricing?unlock=1") },
+          duration: 12_000,
+        });
+      }
+    };
+    tick();
+    const timer = window.setInterval(tick, 1_000);
+    return () => {
+      window.clearInterval(timer);
+      persistForgePreview(stopForgeJourneyPreview(forgePreviewRef.current));
+    };
+  }, [isForge, journeyOn, navigate, paywall.isSupporter, persistForgePreview]);
 
   useEffect(() => {
     if (!journeyOn) { setJourneyState(null); return; }
@@ -667,6 +858,9 @@ export default function Editor() {
     if (journeyPrevShuffleRef.current != null) useStore.getState().setShuffleSec(null);
 
     const director = new JourneyDirector({
+      // Forge keeps its ambient-wall character while beginning every full
+      // composition handoff by 8.5s. Everywhere else stays more volatile.
+      pace: isForge ? "forge" : "performance",
       getVideo: () => useStore.getState().videoElement,
       getMic: () => {
         // Published by GlCanvas, which owns the analyser and drives it from the
@@ -685,7 +879,10 @@ export default function Editor() {
            change, not *what*. Picking here keeps the two concerns apart. */
         if (d.kind === "swap") {
           const pick = PUBLIC_EFFECTS[Math.floor(Math.random() * PUBLIC_EFFECTS.length)];
-          useStore.getState().disrupt({ kind: "swap", violence: d.violence, effectId: pick?.id });
+          crossfadeLayers(
+            () => useStore.getState().disrupt({ kind: "swap", violence: d.violence, effectId: pick?.id }),
+            JOURNEY_DISRUPT_FADE_MS,
+          );
           return;
         }
         if (d.kind === "surge") return; // the burst arrives as churn ticks
@@ -709,12 +906,18 @@ export default function Editor() {
       }
       journeyPrevShuffleRef.current = null;
     };
-  }, [journeyOn, crossfadeToComposition]);
+  }, [journeyOn, isForge, crossfadeToComposition]);
 
   // If the user manually re-enables auto-shuffle, gracefully step out.
   useEffect(() => {
     if (journeyOn && shuffleSec != null) setJourneyOn(false);
   }, [shuffleSec, journeyOn]);
+
+  // The free preview is specifically Forge Journey. A Supporter can still
+  // direct uploaded artwork and camera input with Journey as before.
+  useEffect(() => {
+    if (journeyOn && !paywall.isSupporter && sourceMode !== "forge") setJourneyOn(false);
+  }, [journeyOn, paywall.isSupporter, sourceMode]);
 
   const clearAllFx = useCallback(() => {
     useStore.getState().clearAllFx();   // layers + auto-shuffle
@@ -737,55 +940,36 @@ export default function Editor() {
     });
   }, []);
 
-  const takeScreenshot = async () => {
+  const takeScreenshot = () => {
+    if (isForge && !paywall.isSupporter) {
+      paywall.require("Forge screenshot export");
+      return;
+    }
     const c = getCanvas();
     if (!c) return;
-
-    setActionConfirm({
-      type: "screenshot",
-      onConfirm: async () => {
-        setActionConfirm(null);
-        setScreenshotScanning(true);
-        toast.loading("Analyzing frames for best quality…", { duration: 1500 });
-
-        try {
-          // Scan the next ~0.9s for the best frame -- seam-aware when tile
-          // mode is on (captureBestFrame's preferSeamless scores edge
-          // continuity too, same mechanism exportBestStill already uses for
-          // seamless remasters), plain sharpness/colorfulness otherwise.
-          const bestCanvas = await captureBestFrame(c, {
-            durationMs: 900,
-            intervalMs: 80,
-            sampleSize: 128,
-            preferSeamless: tileMode !== "none",
-          });
-
-          // Free tier caps export at 720px on the long edge. Supporters get full res.
-          const longEdge = Math.max(bestCanvas.width, bestCanvas.height);
-          const scale = paywall.isSupporter ? 1 : Math.min(1, 720 / longEdge);
-          const blob = await exportCanvas(bestCanvas, { format: "png", scale, aspect: null });
-          const filename = `mosh-${Date.now()}.png`;
-          shareOrDownload(blob, filename);
-          showExportSuccessToast({
-            message: paywall.isSupporter ? "Screenshot ready" : "Screenshot ready (720p · unlock for full res)",
-            description: canNativeShare() ? "Share sheet opening…" : "Saved to downloads",
-            blob,
-            filename,
-          });
-        } catch (e) {
-          toast.error("Screenshot failed");
-        } finally {
-          setScreenshotScanning(false);
-          // shareOrDownload already marks activity on its own exit paths —
-          // this covers the case where capture/export itself throws before
-          // ever reaching share, so the chrome can't be left hidden either way.
-          markUiActive();
-        }
-      },
-    });
+    try {
+      // This must remain synchronous with the camera-button/key/touch event:
+      // phones regularly block a download that starts after a best-frame scan.
+      // The dedicated Still export retains that slower scan/remaster workflow.
+      const longEdge = Math.max(c.width, c.height);
+      const scale = paywall.isSupporter ? 1 : Math.min(1, 720 / longEdge);
+      downloadCanvasPngNow(c, `mosh-${Date.now()}.png`, scale);
+      toast.success(paywall.isSupporter ? "Screenshot saving" : "Screenshot saving (720p · unlock for full res)", {
+        description: "Saved to this device's downloads/photos flow · C or three-finger tap to capture",
+        duration: 3200,
+      });
+    } catch {
+      toast.error("Screenshot failed");
+    } finally {
+      markUiActive();
+    }
   };
 
   const shareCurrent = useCallback(async () => {
+    if (isForge && !paywall.isSupporter) {
+      paywall.require("Forge sharing");
+      return;
+    }
     const c = getCanvas();
     if (!c) { shareApp(); return; }
     try {
@@ -804,7 +988,7 @@ export default function Editor() {
     } catch {
       await shareApp();
     }
-  }, []);
+  }, [isForge, paywall]);
 
   /** Seconds the GIF button captures on a plain tap. Long-press picks another. */
   const captureGif = useCallback(async (seconds = 7) => {
@@ -864,6 +1048,10 @@ export default function Editor() {
   };
 
   const toggleRecord = async () => {
+    if (!isRecording && isForge && !paywall.isSupporter) {
+      paywall.require("Forge recording export");
+      return;
+    }
     const c = getCanvas();
     if (!c) return;
     if (!CanvasRecorder.isSupported()) {
@@ -1022,10 +1210,13 @@ export default function Editor() {
         return;
       }
 
-      // Single-key Space => reroll seed
-      if (e.code === "Space" && !e.shiftKey) {
+      // Space is the keyboard equivalent of the MOSH button. Shift+Space
+      // walks one step back through the same visual history.
+      if (e.code === "Space") {
         e.preventDefault();
-        rerollSeed();
+        if (e.repeat) return;
+        if (e.shiftKey) undo();
+        else crossfadeLayers(mosh, MOSH_FADE_MS);
         return;
       }
 
@@ -1074,10 +1265,7 @@ export default function Editor() {
       // Z => freeze / slow-mo
       if (!e.shiftKey && (e.key === "z" || e.key === "Z")) {
         e.preventDefault();
-        timeController.triggerFreeze(1400);
-        setFreezeOn(true);
-        window.setTimeout(() => setFreezeOn(false), 1400);
-        setIconFlash({ icon: "freeze", label: "Freeze", key: performance.now() });
+        toggleSmartFreeze();
         return;
       }
       // C => capture screenshot
@@ -1147,6 +1335,16 @@ export default function Editor() {
         return;
       }
 
+      // Theme-track transport — [ previous, ] next, \ shuffle. Every letter
+      // (bare and Shift-combo) is already spoken for elsewhere in this map,
+      // so this borrows the standard media-player bracket convention
+      // instead. Works regardless of whether the track panel is open, and
+      // always ends up playing (matching an ordinary "next" button), so
+      // these work as a real transport control, not just a picker shortcut.
+      if (!e.shiftKey && e.key === "[") { e.preventDefault(); runTrackAction(() => trackPlayer.prevShowcaseTrack()); return; }
+      if (!e.shiftKey && e.key === "]") { e.preventDefault(); runTrackAction(() => trackPlayer.nextShowcaseTrack()); return; }
+      if (!e.shiftKey && e.key === "\\") { e.preventDefault(); runTrackAction(() => trackPlayer.shuffleShowcaseTrack()); return; }
+
       // ————————————— Shift combos —————————————
       if (e.shiftKey && (e.key === "M" || e.key === "m")) { e.preventDefault(); crossfadeLayers(mosh, MOSH_FADE_MS); return; }
       if (e.shiftKey && (e.key === "I" || e.key === "i")) {
@@ -1170,10 +1368,7 @@ export default function Editor() {
       }
       if (e.shiftKey && (e.key === "F" || e.key === "f")) {
         e.preventDefault();
-        timeController.triggerFreeze(1400);
-        setFreezeOn(true);
-        window.setTimeout(() => setFreezeOn(false), 1400);
-        setIconFlash({ icon: "freeze", label: "Freeze", key: performance.now() });
+        toggleSmartFreeze();
         return;
       }
       if (e.shiftKey && (e.key === "R" || e.key === "r")) {
@@ -1196,7 +1391,7 @@ export default function Editor() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [mosh, undo, redo, setMicEnabled, paletteOpen, shortcutsOpen, saveSlot, loadSlot, rerollSeed, flashSlot, exportBestStill, captureGif, saveFavoriteNow, toggleFullscreen, shareCurrent, clearAllFx, toggleJourney]);
+  }, [mosh, undo, redo, setMicEnabled, paletteOpen, shortcutsOpen, saveSlot, loadSlot, flashSlot, exportBestStill, captureGif, saveFavoriteNow, toggleFullscreen, shareCurrent, clearAllFx, toggleJourney, sourceMode, toggleSmartFreeze]);
 
   // First-load shortcuts hint (3s)
   useEffect(() => {
@@ -1247,75 +1442,125 @@ export default function Editor() {
     return () => window.removeEventListener("aegis:toggle-ui", onToggleUI);
   }, []);
 
-  // Long-press (1.5s) anywhere on the visualizer toggles the menu rack.
-  // Listens on window after pointerdown so iOS/Safari can't drop move/up events
-  // even when overlays (MobileGestures, Kaoss) capture the pointer.
+  // Three-finger tap on the visualizer is the touch counterpart to C. It is
+  // intentionally scoped to the canvas and ignores UI controls so it cannot
+  // steal ordinary multi-touch interactions from the editor chrome.
   useEffect(() => {
     const el = canvasContainerRef.current;
     if (!el) return;
-    let timer: number | null = null;
-    let raf = 0;
-    let startedAt = 0;
-    let startX = 0, startY = 0;
-    let activeId: number | null = null;
-    const HOLD_MS = 750;
-
-    const detachWindow = () => {
-      window.removeEventListener("pointermove", onMoveWin);
-      window.removeEventListener("pointerup", onEndWin);
-      window.removeEventListener("pointercancel", onEndWin);
-    };
-    const cancel = () => {
-      if (timer) { window.clearTimeout(timer); timer = null; }
-      if (raf) { cancelAnimationFrame(raf); raf = 0; }
-      activeId = null;
-      detachWindow();
-      setHoldProgress(0);
-    };
-    const tick = () => {
-      const p = Math.min(1, (performance.now() - startedAt) / HOLD_MS);
-      setHoldProgress(p);
-      if (p < 1) raf = requestAnimationFrame(tick);
-    };
-    const onMoveWin = (e: PointerEvent) => {
-      if (activeId !== null && e.pointerId !== activeId) return;
-      const dx = e.clientX - startX, dy = e.clientY - startY;
-      if (dx * dx + dy * dy > 18 * 18) cancel();
-    };
-    const onEndWin = (e: PointerEvent) => {
-      if (activeId !== null && e.pointerId !== activeId) return;
-      cancel();
-    };
+    const activeTouches = new Set<number>();
+    let fired = false;
+    const isCanvasTap = (target: EventTarget | null) =>
+      !(target instanceof HTMLElement) || !target.closest("button, a, input, textarea, [role='slider'], [data-no-longpress]");
     const onDown = (e: PointerEvent) => {
-      if (timer) return; // already tracking
-      // Suspended in Pro Mode — the deliberate hold+second-tap gesture
-      // (see the dedicated Pro Mode effect below) is the only way in there,
-      // so a single-finger hold anywhere must stay fully inert.
-      if (useStore.getState().proModeEnabled) return;
-      if (e.pointerType === "mouse" && e.button !== 0) return;
-      if (e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return;
-      const t = e.target as HTMLElement | null;
-      if (t && t.closest("button, a, input, textarea, [role='slider'], [data-no-longpress]")) return;
-      activeId = e.pointerId;
-      startedAt = performance.now();
-      startX = e.clientX; startY = e.clientY;
-      setHoldProgress(0.001);
-      raf = requestAnimationFrame(tick);
-      timer = window.setTimeout(() => {
-        setHideUI(v => !v);
-        try { if ("vibrate" in navigator) (navigator as any).vibrate?.(12); } catch {}
-        cancel();
-      }, HOLD_MS);
-      window.addEventListener("pointermove", onMoveWin, { passive: true });
-      window.addEventListener("pointerup", onEndWin, { passive: true });
-      window.addEventListener("pointercancel", onEndWin, { passive: true });
+      if (e.pointerType !== "touch" || !isCanvasTap(e.target)) return;
+      activeTouches.add(e.pointerId);
+      if (activeTouches.size !== 3 || fired) return;
+      fired = true;
+      e.preventDefault();
+      try { (navigator as any).vibrate?.(10); } catch {}
+      takeScreenshot();
     };
-    el.addEventListener("pointerdown", onDown);
+    const onEnd = (e: PointerEvent) => {
+      activeTouches.delete(e.pointerId);
+      if (activeTouches.size === 0) fired = false;
+    };
+    el.addEventListener("pointerdown", onDown, { passive: false });
+    window.addEventListener("pointerup", onEnd, { passive: true });
+    window.addEventListener("pointercancel", onEnd, { passive: true });
     return () => {
-      cancel();
       el.removeEventListener("pointerdown", onDown);
+      window.removeEventListener("pointerup", onEnd);
+      window.removeEventListener("pointercancel", onEnd);
     };
-  }, []);
+  }, [takeScreenshot]);
+
+  // Touch-first performance navigation. One-finger horizontal swipes walk the
+  // undo/redo timeline; two-finger tap still toggles Smart Freeze. At the
+  // newest point, swiping forward creates a fresh Mosh instead of going dead.
+  useEffect(() => {
+    const el = canvasContainerRef.current;
+    if (!el) return;
+    type Point = { x: number; y: number };
+    const points = new Map<number, Point>();
+    let start: Point[] = [];
+    let startedAt = 0;
+    let maxTravel = 0;
+    let invalid = false;
+    let handled = false;
+    const isCanvasTouch = (target: EventTarget | null) =>
+      !(target instanceof HTMLElement) || !target.closest("button, a, input, textarea, [role='slider'], [data-no-longpress]");
+    const average = (items: Point[]) => items.reduce((sum, p) => ({ x: sum.x + p.x, y: sum.y + p.y }), { x: 0, y: 0 });
+    const onDown = (e: PointerEvent) => {
+      if (e.pointerType !== "touch" || !isCanvasTouch(e.target)) return;
+      points.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (points.size === 1 || points.size === 2) {
+        start = [...points.values()].map(p => ({ ...p }));
+        startedAt = performance.now();
+        maxTravel = 0;
+        invalid = false;
+        handled = false;
+      } else if (points.size > 2) {
+        // Three fingers belong to screenshot capture, never to this gesture.
+        invalid = true;
+      }
+    };
+    const onMove = (e: PointerEvent) => {
+      const p = points.get(e.pointerId);
+      if (!p) return;
+      p.x = e.clientX;
+      p.y = e.clientY;
+      if (!start.length || start.length !== points.size) return;
+      const now = [...points.values()];
+      for (let i = 0; i < now.length; i++) {
+        maxTravel = Math.max(maxTravel, Math.hypot(now[i].x - start[i].x, now[i].y - start[i].y));
+      }
+    };
+    const onEnd = (e: PointerEvent) => {
+      const point = points.get(e.pointerId);
+      if (!point) return;
+      point.x = e.clientX;
+      point.y = e.clientY;
+      if (!handled && !invalid && (points.size === 1 || points.size === 2) && start.length === points.size) {
+        handled = true;
+        const from = average(start);
+        const to = average([...points.values()]);
+        const count = points.size;
+        const dx = to.x / count - from.x / count;
+        const dy = to.y / count - from.y / count;
+        const elapsed = performance.now() - startedAt;
+        if (Math.abs(dx) >= 72 && Math.abs(dx) > Math.abs(dy) * 1.35) {
+          try { (navigator as any).vibrate?.(10); } catch {}
+          const state = useStore.getState();
+          if (dx < 0) {
+            if (state.future.length) state.redo();
+            else crossfadeLayers(() => useStore.getState().mosh(), MOSH_FADE_MS);
+          } else if (state.past.length) {
+            state.undo();
+          }
+        } else if (count === 2 && elapsed <= 420 && maxTravel <= 20) {
+          try { (navigator as any).vibrate?.(10); } catch {}
+          toggleSmartFreeze();
+        }
+      }
+      points.delete(e.pointerId);
+      if (points.size === 0) {
+        start = [];
+        invalid = false;
+        handled = false;
+      }
+    };
+    el.addEventListener("pointerdown", onDown, { passive: true });
+    window.addEventListener("pointermove", onMove, { passive: true });
+    window.addEventListener("pointerup", onEnd, { passive: true });
+    window.addEventListener("pointercancel", onEnd, { passive: true });
+    return () => {
+      el.removeEventListener("pointerdown", onDown);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onEnd);
+      window.removeEventListener("pointercancel", onEnd);
+    };
+  }, [toggleSmartFreeze]);
 
   // Pro Mode, desktop: holding bare Shift (no other key, no modifiers)
   // shows the menu instantly; releasing it hides it instantly. A true hold,
@@ -1333,9 +1578,11 @@ export default function Editor() {
     const onKeyUp = (e: KeyboardEvent) => {
       if (!useStore.getState().proModeEnabled) return;
       if (e.key !== "Shift") return;
+      if (chromePinned) return; // pin overrides the release-to-hide gesture
       setHideUI(true);
     };
     const forceHidden = () => {
+      if (chromePinned) return;
       if (useStore.getState().proModeEnabled) setHideUI(true);
     };
     window.addEventListener("keydown", onKeyDown);
@@ -1348,7 +1595,7 @@ export default function Editor() {
       window.removeEventListener("blur", forceHidden);
       document.removeEventListener("visibilitychange", forceHidden);
     };
-  }, []);
+  }, [chromePinned]);
 
   // Pro Mode, touch: hold one finger down, tap with a second while the
   // first is still held — toggles the menu. No timer on the first finger;
@@ -1428,8 +1675,8 @@ export default function Editor() {
     <main
       ref={shellRef}
       // Drives the two-stage fade of everything carrying `.ui-chrome`.
-      data-idle={idleStage}
-      className={`editor-shell bg-background text-foreground ${
+      data-idle={effectiveIdleStage}
+      className={`editor-shell ${!isOverlay ? "tactile-cursor" : ""} bg-background text-foreground ${
         isPerformanceMode
           ? "fixed inset-0 z-[9999] flex flex-col overflow-hidden"
           : "min-h-screen flex flex-col"
@@ -1438,15 +1685,16 @@ export default function Editor() {
       <Helmet>
         <title>Editor — MOSH</title>
         <meta name="description" content="Stack GPU effects, map audio to parameters, and perform live in the MOSH visual editor." />
-        <link rel="canonical" href="https://ether-mosh.netlify.app/edit" />
+        <link rel="canonical" href="https://ether-mosh.online/edit" />
         <meta property="og:title" content="MOSH Editor — Real-time visual instrument" />
-        <meta property="og:description" content="Stack 105 GPU effects, sync to audio, export stills and video." />
-        <meta property="og:url" content="https://ether-mosh.netlify.app/edit" />
+        <meta property="og:description" content="Stack 107 GPU effects, sync to audio, export stills and video." />
+        <meta property="og:url" content="https://ether-mosh.online/edit" />
       </Helmet>
       <h1 className="sr-only">MOSH Editor</h1>
       {/* Canvas — fills the viewport by default. All menu UI lives below the fold. */}
       <div
         ref={canvasContainerRef}
+        data-mosh-surface
         onDragOver={(e) => {
           if (Array.from(e.dataTransfer.types).includes("Files")) e.preventDefault();
         }}
@@ -1497,8 +1745,21 @@ export default function Editor() {
         className={`relative bg-background select-none w-full h-[100dvh] shrink-0 no-touch-scroll ${isCameraLive ? "live-ring" : ""}`}
       >
         <div data-tap-fade-target className="absolute inset-0 opacity-100">
-          <GlCanvas />
+          <Suspense
+            fallback={
+              <div
+                role="status"
+                aria-live="polite"
+                className="flex h-full items-center justify-center bg-background font-mono text-[10px] uppercase tracking-[0.28em] text-[hsl(var(--text-tertiary))]"
+              >
+                warming the visual engine…
+              </div>
+            }
+          >
+            <GlCanvas />
+          </Suspense>
         </div>
+        {freezeFrame && <FrozenFrame frame={freezeFrame} />}
         {!hasSource && !isOverlay && <StartCameraOverlay />}
         <SystemAudioHud visible={systemAudioEnabled && !isOverlay} />
         {hasSource && !isForge && !isOverlay && (
@@ -1507,12 +1768,11 @@ export default function Editor() {
         {/* Forge has no photo to assign roles on — GlCanvas binds a plain
             click-to-shuffle directly to its own canvas instead. */}
         {isForge && !isOverlay && <ForgeTapHint />}
-        {isForge && !isPerformanceMode && !isOverlay && <ForgePanel />}
         {/* Always visible, never idle-faded — unlike HotTriggers' effect
             triggers, this is how you get OUT of whichever mode you're in,
             and idle-fade would have hidden it by the exact moment you
             reach for it. */}
-        {!isPerformanceMode && !isOverlay && <SourceModeToggle hidden={hideUI} />}
+        {!isPerformanceMode && !isOverlay && <div className="desktop-visualizer-chrome"><SourceModeToggle hidden={hideUI} /></div>}
         <TrackpadGestures
           targetRef={canvasContainerRef}
           onTogglePerf={togglePerf}
@@ -1521,11 +1781,15 @@ export default function Editor() {
         <KaossSurface />
         <MoshStickerLayer />
         <RippleLayer />
+        {!isOverlay && <InteractionFeedback />}
         <SourceTransition trigger={transitionKey} />
         
         {/* TapToBegin removed — StartCameraOverlay is the live-first empty state and TapToBegin's centered button used to intercept clicks meant for "go live". */} 
-        {!isPerformanceMode && !isOverlay && !hideUI && (
+        {!isPerformanceMode && !isOverlay && (
           <HotTriggers
+            visualizerRef={canvasContainerRef}
+            hidden={hideUI}
+            showLegacyLaunchpad={legacyHotTriggers}
             isRecording={isRecording}
             onToggleRecord={toggleRecord}
             onScreenshot={takeScreenshot}
@@ -1533,21 +1797,20 @@ export default function Editor() {
             onSaveFavorite={saveFavoriteNow}
             onShare={shareCurrent}
             onSupport={() => navigate("/pricing")}
+            onAccount={() => navigate("/account")}
             gifBusy={gifBusy}
             gifProgress={gifProgress}
-            onFreeze={() => {
-              timeController.triggerFreeze(1400);
-              setFreezeOn(true);
-              window.setTimeout(() => setFreezeOn(false), 1400);
-              setIconFlash({ icon: "freeze", label: "Freeze", key: performance.now() });
-            }}
+            onFreeze={toggleSmartFreeze}
             onMicFlash={(on) => setMicFlash({ on, key: performance.now() })}
             showMicNudge={showMicNudge}
             onMicNudgeYes={() => { setMicEnabled(true); setMicFlash({ on: true, key: performance.now() }); setShowMicNudge(false); }}
             onMicNudgeNo={() => setShowMicNudge(false)}
             onMicNudgeExpire={() => setShowMicNudge(false)}
+            showTrackNudge={showTrackNudge}
+            onTrackNudgeDismiss={() => setShowTrackNudge(false)}
             journeyOn={journeyOn}
-            journeyLocked={!paywall.isSupporter}
+            journeyLocked={!paywall.isSupporter && !isForge}
+            journeyPreview={isForge && !paywall.isSupporter}
             onToggleJourney={toggleJourney}
             isFullscreen={isBrowserFs}
             onToggleFullscreen={toggleFullscreen}
@@ -1591,12 +1854,43 @@ export default function Editor() {
               {journeyState.lastDisruption?.reason ?? "settling"}
               {` · next ${(journeyState.nextDisruptMs / 1000).toFixed(1)}s`}
             </p>
+            {isForge && !paywall.isSupporter && (
+              <p className="mt-1 font-mono text-[9px] uppercase tracking-[0.16em] text-[hsl(var(--accent))]">
+                free preview · {formatForgeJourneyRemaining(forgePreviewRemainingMs)} remaining
+              </p>
+            )}
           </div>
         )}
         {!isPerformanceMode && !hideUI && (
-          <div className="ui-chrome absolute top-3 right-3 z-40 pointer-events-auto">
+          <div className="ui-chrome desktop-visualizer-chrome absolute top-3 right-3 z-40 pointer-events-auto">
             <AccountChip />
           </div>
+        )}
+        {/* Persistent reveal pin — deliberately NOT wrapped in .ui-chrome
+            and NOT gated on !hideUI, since its entire job is to be the one
+            thing that's always reachable when everything else is hidden
+            (idle-fade, or Pro Mode's hold-Shift, which not everyone knows
+            about). Subtle by default (low opacity, brightens on hover/when
+            pinned) so it doesn't compete with the chrome it's rescuing. */}
+        {!isPerformanceMode && !isOverlay && (
+          <button
+            type="button"
+            onClick={() => {
+              const next = !chromePinned;
+              setChromePinned(next);
+              setHideUI(!next); // pin -> reveal now; unpin -> fold away now
+            }}
+            aria-label={chromePinned ? "Unpin controls (fold away)" : "Pin controls (keep on screen)"}
+            aria-pressed={chromePinned}
+            title={chromePinned ? "Controls pinned — click to fold away" : "Keep controls on screen"}
+            className={`desktop-visualizer-chrome absolute top-3 right-14 z-40 flex h-6 w-6 items-center justify-center rounded-full border transition pointer-events-auto ${
+              chromePinned
+                ? "border-[hsl(var(--accent))]/60 bg-[hsl(var(--accent))]/15 text-[hsl(var(--accent))]"
+                : "border-white/15 text-white/35 hover:border-white/35 hover:text-white/70"
+            }`}
+          >
+            {chromePinned ? <ChevronUp className="h-3.5 w-3.5" strokeWidth={1.5} /> : <ChevronDown className="h-3.5 w-3.5" strokeWidth={1.5} />}
+          </button>
         )}
         {onboardingActive && !hasSource && (
           <OnboardingPrompts onComplete={() => { setOnboardingActive(false); markOnboardingSeen(); }} />
@@ -1615,84 +1909,13 @@ export default function Editor() {
           <PerformanceTooltip onDismiss={() => { setShowFirstTip(false); markPerfModeSeen(); }} />
         )}
 
-        {/* Long-press affordance — appears while finger is held, fills as a ring */}
-        {holdProgress > 0 && !isPerformanceMode && (
-          <div
-            className="pointer-events-none absolute inset-x-0 bottom-8 z-30 flex flex-col items-center gap-2.5 motion-reduce:animate-none"
-            style={{
-              animation: "holdRingIn 180ms cubic-bezier(0.2, 0.8, 0.2, 1) both",
-              opacity: 0.4 + holdProgress * 0.6,
-            }}
-          >
-            <div
-              className="relative grid place-items-center rounded-full"
-              style={{
-                width: 56,
-                height: 56,
-                background: "radial-gradient(circle, hsl(var(--surface-1) / 0.85) 0%, hsl(var(--surface-1) / 0.55) 60%, transparent 100%)",
-                backdropFilter: "blur(8px)",
-                WebkitBackdropFilter: "blur(8px)",
-                boxShadow: holdProgress > 0.6
-                  ? `0 0 ${12 + holdProgress * 18}px hsl(var(--primary) / ${0.25 + holdProgress * 0.35})`
-                  : "none",
-                transform: `scale(${0.92 + holdProgress * 0.12})`,
-                transition: "box-shadow 80ms linear",
-              }}
-            >
-              <svg viewBox="0 0 36 36" className="absolute inset-0 h-full w-full -rotate-90">
-                <circle
-                  cx="18" cy="18" r="15.5"
-                  fill="none"
-                  stroke="hsl(var(--border-default))"
-                  strokeWidth="1.5"
-                  opacity="0.6"
-                />
-                <circle
-                  cx="18" cy="18" r="15.5"
-                  fill="none"
-                  stroke="hsl(var(--primary))"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeDasharray={2 * Math.PI * 15.5}
-                  strokeDashoffset={(1 - holdProgress) * 2 * Math.PI * 15.5}
-                  style={{ filter: "drop-shadow(0 0 4px hsl(var(--primary) / 0.7))" }}
-                />
-              </svg>
-              <div
-                className="h-1.5 w-1.5 rounded-full"
-                style={{
-                  background: "hsl(var(--primary))",
-                  opacity: 0.5 + holdProgress * 0.5,
-                  boxShadow: `0 0 ${4 + holdProgress * 8}px hsl(var(--primary))`,
-                }}
-              />
-            </div>
-            <div
-              className="font-mono text-[10px] uppercase tracking-[0.32em]"
-              style={{
-                color: "hsl(var(--text-secondary))",
-                textShadow: "0 1px 6px rgba(0,0,0,0.65)",
-              }}
-            >
-              {hideUI ? "hold to reveal controls" : "hold to hide controls"}
-            </div>
-            <style>{`
-              @keyframes holdRingIn {
-                from { opacity: 0; transform: translateY(6px); }
-                to   { opacity: 1; transform: translateY(0); }
-              }
-            `}</style>
-          </div>
-        )}
-        {/* (idle "hold for controls" hint removed per design — discovery is implicit) */}
-
       </div>
 
       {/* Unified menu rack — utility bar + tabs + panel. Lives below the fold.
           ui-chrome idle-fades it on inactivity, same as everything else;
           hideUI (H key / long-press) is the separate manual full-hide. */}
       {!isFullscreen && !hideUI && (
-        <div className="ui-chrome relative z-10 flex flex-col border-t border-[hsl(var(--border-default))] bg-[hsl(var(--surface-1)/0.92)] backdrop-blur-md animate-in slide-in-from-bottom-4 duration-200">
+        <div data-cursor-zone="controls" className="ui-chrome relative z-10 flex flex-col border-t border-[hsl(var(--border-default))] bg-[hsl(var(--surface-1)/0.92)] backdrop-blur-md animate-in slide-in-from-bottom-4 duration-200">
           {/* Thin utility bar */}
           <div className="flex h-10 items-center justify-between gap-2 border-b border-[hsl(var(--border-default))] px-2">
             <div className="flex items-center gap-1">
@@ -1788,6 +2011,7 @@ export default function Editor() {
               >
                 <Keyboard className="h-3.5 w-3.5" strokeWidth={1.5} />
               </button>
+              <CastStageButton />
               <div className="relative">
                 <button
                   onClick={enterPerf}
@@ -1846,6 +2070,38 @@ export default function Editor() {
               </div>
               <BeatPanel />
             </section>
+            <section>
+              <div className="section-header">
+                <h2>MOSH &amp; Older Settings</h2><div className="rule" />
+                <span className="badge">legacy</span>
+              </div>
+              <div className="flex items-center justify-between gap-4 px-3 py-4">
+                <div>
+                  <div className="font-mono text-[11px] uppercase tracking-[0.1em] text-[hsl(var(--text-primary))]">
+                    Legacy hot triggers launchpad
+                  </div>
+                  <p className="mt-1 max-w-[34rem] font-mono text-[9px] leading-relaxed text-[hsl(var(--text-secondary))]">
+                    Restores the older right-side trigger strip. The radial wheel stays active.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={legacyHotTriggers}
+                  aria-label="Legacy hot triggers launchpad"
+                  onClick={() => {
+                    setLegacyHotTriggers(current => {
+                      const next = !current;
+                      try { window.localStorage.setItem(LEGACY_HOT_TRIGGERS_KEY, next ? "1" : "0"); } catch {}
+                      return next;
+                    });
+                  }}
+                  className={`relative h-6 w-11 shrink-0 rounded-full border transition-colors ${legacyHotTriggers ? "border-[hsl(var(--accent))] bg-[hsl(var(--accent)/0.28)]" : "border-[hsl(var(--border-default))] bg-black/30"}`}
+                >
+                  <span className={`absolute top-1/2 h-4 w-4 -translate-y-1/2 rounded-full transition-all ${legacyHotTriggers ? "left-[23px] bg-[hsl(var(--accent))] shadow-[0_0_10px_hsl(var(--accent)/0.7)]" : "left-[3px] bg-[hsl(var(--text-tertiary))]"}`} />
+                </button>
+              </div>
+            </section>
           </div>
         </div>
       )}
@@ -1853,7 +2109,7 @@ export default function Editor() {
 
       {shortcutsOpen && <ShortcutsOverlay onClose={() => setShortcutsOpen(false)} />}
 
-      <AboutTrigger hidden={hideUI || isPerformanceMode || isOverlay || idleStage === "hidden"} />
+      <AboutTrigger hidden={hideUI || isPerformanceMode || isOverlay || effectiveIdleStage === "hidden"} />
 
       {helpCaption && (
         <div
@@ -1899,24 +2155,16 @@ export default function Editor() {
       {actionConfirm && (
         <ActionConfirmation
           title={
-            actionConfirm.type === "screenshot"
-              ? screenshotScanning
-                ? "Scanning frames…"
-                : "Capture screenshot?"
-              : actionConfirm.type === "gif"
+            actionConfirm.type === "gif"
               ? "Capture 7s GIF?"
               : "Start recording?"
           }
           subtitle={
-            actionConfirm.type === "screenshot"
-              ? screenshotScanning
-                ? "Finding the crispest frame…"
-                : "Will analyze next 0.75s for best quality"
-              : actionConfirm.type === "gif"
+            actionConfirm.type === "gif"
               ? "7 seconds · creates seamless loop"
               : undefined
           }
-          autoConfirmMs={actionConfirm.type === "screenshot" && screenshotScanning ? null : 0}
+          autoConfirmMs={0}
           onConfirm={actionConfirm.onConfirm}
           onCancel={() => setActionConfirm(null)}
         />

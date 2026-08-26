@@ -312,6 +312,8 @@ type Actions = {
   setForgeIntensity: (v: number) => void;
   setForgeSeamless: (b: boolean) => void;
   setForgeBaseImage: (img: HTMLImageElement | null, name: string | null) => void;
+  setForgeMosaic: (enabled: boolean) => void;
+  setForgeMosaicDensity: (v: number) => void;
   setForgeOverlay: (v: number) => void;
   /** New seed only — same palette, same effect stack, different source field. */
   reseedForge: () => void;
@@ -478,6 +480,8 @@ export const useStore = create<State & Actions>((set, get) => ({
     stack: [],
     baseImage: null,
     baseName: null,
+    mosaicEnabled: false,
+    mosaicDensity: 0.45,
     overlay: 0.55,
     activeGeneratorId: DRIFT_FIELD.id,
     kaleidoscopeFolds: null,
@@ -1315,6 +1319,8 @@ export const useStore = create<State & Actions>((set, get) => ({
     set({ forge: nextForge, ...(s.sourceMode === "forge" ? { layers: stack } : {}) });
   },
   setForgeBaseImage: (img, name) => set(s => ({ forge: { ...s.forge, baseImage: img, baseName: name } })),
+  setForgeMosaic: (enabled) => set(s => ({ forge: { ...s.forge, mosaicEnabled: enabled } })),
+  setForgeMosaicDensity: (v) => set(s => ({ forge: { ...s.forge, mosaicDensity: Math.max(0, Math.min(1, v)) } })),
   setForgeOverlay: (v) => set(s => ({ forge: { ...s.forge, overlay: v } })),
   reseedForge: () => set(s => ({ forge: { ...s.forge, seed: Math.floor(Math.random() * 0xFFFFFF) } })),
 }));

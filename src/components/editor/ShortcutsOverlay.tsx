@@ -42,6 +42,7 @@ const SECTIONS: Section[] = [
       { keys: ["Shift", "S"], label: "★ Open favorites list" },
       { keys: ["Z"], label: "Freeze · slow-mo" },
       { keys: ["C"], label: "Capture screenshot" },
+      { keys: ["3-finger tap"], label: "Capture screenshot · visualizer" },
       { keys: ["G"], label: "GIF · 7s seamless loop" },
       { keys: ["Alt", "G"], label: "GIF · 5s" },
       { keys: ["Shift", "G"], label: "GIF · 3s" },
@@ -51,7 +52,10 @@ const SECTIONS: Section[] = [
   {
     name: "Live · time fx",
     rows: [
-      { keys: ["Space"], label: "Reroll seed" },
+      { keys: ["Space"], label: "Mosh · randomize" },
+      { keys: ["Shift", "Space"], label: "Undo last Mosh" },
+      { keys: ["Swipe right"], label: "Undo · visualizer" },
+      { keys: ["Swipe left"], label: "Redo / fresh Mosh · visualizer" },
       { keys: ["Shift", "R"], label: "Reverse motion" },
       { keys: ["Shift", "L"], label: "Seamless 8s loop" },
       { keys: ["Shift", "F"], label: "Freeze · alias" },

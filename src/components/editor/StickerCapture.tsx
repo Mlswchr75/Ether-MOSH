@@ -1,11 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Sparkles, Download, X, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useStore } from '@/store/useStore';
+import { useOverlayStore } from '@/store/useOverlayStore';
 import { stickerEngine, type StickerScore } from '@/engine/StickerEngine';
-import { segmentationEngine, type SegSource } from '@/engine/SegmentationEngine';
+import { segmentationEngine, type SegmentableSource } from '@/engine/SegmentationEngine';
+import { OverlayStage } from '@/components/editor/OverlayStage';
+import type { StickerEntry } from '@/store/types';
 
 type Phase = 'idle' | 'capturing' | 'recording' | 'encoding';
+
+function overlayUsesUrl(url: string): boolean {
+  return useOverlayStore.getState().entities.some(entity => entity.asset.url === url);
+}
 
 export function StickerCapture() {
   const stickerMode          = useStore(s => s.stickerMode);
@@ -46,9 +54,18 @@ export function StickerCapture() {
    * an FX stack. Keeps sticker capture working identically across every
    * source mode instead of only camera.
    */
-  const captureSource = (): SegSource | null => vidRef.current ?? imgRef.current ?? glRef.current;
+  const captureSource = (): SegmentableSource | null => vidRef.current ?? imgRef.current ?? glRef.current;
 
   const doFlash = () => { setFlash(true); setTimeout(() => setFlash(false), 150); };
+
+  const publishSticker = useCallback((entry: StickerEntry) => {
+    addSticker(entry);
+    // StickerCapture remains a creation source, but its output now lands in
+    // the universal overlay scene immediately so the user can move, animate,
+    // react or mosh the result instead of only downloading it.
+    useOverlayStore.getState().importStickerEntry(entry);
+    setGalleryOpen(true);
+  }, [addSticker]);
 
   const finishRecording = useCallback(async () => {
     if (phaseRef.current !== 'recording') return;
@@ -66,8 +83,7 @@ export function StickerCapture() {
       doFlash();
       const blob = await stickerEngine.exportAPNG(enhanced, 28);
       const url = URL.createObjectURL(blob);
-      addSticker({ id: crypto.randomUUID(), url, animated: true, w: first.width, h: first.height, ts: Date.now() });
-      setGalleryOpen(true);
+      publishSticker({ id: crypto.randomUUID(), url, animated: true, w: first.width, h: first.height, ts: Date.now() });
     } catch (err) {
       console.error('[sticker] recording capture failed:', err);
       toast.error("Couldn't save that capture — try again");
@@ -75,7 +91,7 @@ export function StickerCapture() {
       setPhase('idle');
       setRecProg(0);
     }
-  }, [addSticker]);
+  }, [publishSticker]);
 
   useEffect(() => {
     if (!stickerMode) return;
@@ -87,12 +103,8 @@ export function StickerCapture() {
       const gl = glRef.current, src = captureSource();
       if (!gl || !src) return;
 
-      if (frameRef.current % 6 === 0) {
-        setScore(stickerEngine.scoreFrame(gl));
-      }
-      if (frameRef.current % 90 === 0) {
-        stickerEngine.refreshBestMask(src);
-      }
+      if (frameRef.current % 6 === 0) setScore(stickerEngine.scoreFrame(gl));
+      if (frameRef.current % 90 === 0) stickerEngine.refreshBestMask(src);
       if (phaseRef.current === 'recording') {
         const mask = stickerEngine.getBestMask();
         if (mask && recFrames.current.length < 30) {
@@ -124,15 +136,14 @@ export function StickerCapture() {
       const blob = await stickerEngine.exportWebP(enhanced, 2);
       doFlash();
       const url = URL.createObjectURL(blob);
-      addSticker({ id: crypto.randomUUID(), url, animated: false, w: enhanced.width * 2, h: enhanced.height * 2, ts: Date.now() });
-      setGalleryOpen(true);
+      publishSticker({ id: crypto.randomUUID(), url, animated: false, w: enhanced.width * 2, h: enhanced.height * 2, ts: Date.now() });
     } catch (err) {
       console.error('[sticker] static capture failed:', err);
       toast.error("Couldn't save that capture — try again");
     } finally {
       setPhase('idle');
     }
-  }, [addSticker]);
+  }, [publishSticker]);
 
   const startRecording = useCallback(() => {
     if (phaseRef.current !== 'idle') return;
@@ -164,11 +175,17 @@ export function StickerCapture() {
 
   const deleteSticker = (id: string) => {
     const item = gallery.find(s => s.id === id);
-    if (item) URL.revokeObjectURL(item.url);
+    // OverlayEntity may share the gallery's blob URL. Never revoke it while a
+    // placed overlay still references it.
+    if (item && !overlayUsesUrl(item.url)) URL.revokeObjectURL(item.url);
     removeSticker(id);
   };
 
-  useEffect(() => () => { gallery?.forEach(s => URL.revokeObjectURL(s.url)); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => {
+    gallery?.forEach(s => {
+      if (!overlayUsesUrl(s.url)) URL.revokeObjectURL(s.url);
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!stickerMode) return null;
 
@@ -177,58 +194,47 @@ export function StickerCapture() {
   const isCapturing = phase === 'capturing' || phase === 'encoding';
   const isPeaking   = glow > 0.75;
   const glowColor   = `hsl(${260 + glow * 60} 100% ${55 + glow * 12}%)`;
+  // The slot is rendered by HotTriggers only while capture mode is active.
+  // Query during render so a hide/reveal of the rail picks up its fresh DOM
+  // node without keeping a stale portal target around.
+  const railSlot = typeof document === 'undefined'
+    ? null
+    : document.getElementById('mosh-sticker-capture-slot');
+
+  const captureButton = (
+    <button
+      type="button"
+      aria-label={isRecording ? 'Finish animated sticker capture' : 'Capture sticker — tap for still, hold for animated'}
+      title={isRecording ? 'Release to finish animated sticker' : 'Capture sticker — tap for still, hold for animated'}
+      data-active={isCapturing || isRecording || undefined}
+      data-tint=""
+      data-no-longpress
+      className="hot-trigger relative"
+      style={{ ['--ht-tint' as string]: glow > 0.5 ? `${260 + glow * 60} 100% 70%` : '0 0% 60%' }}
+      onPointerDown={onPointerDown}
+      onPointerUp={onPointerUp}
+      onPointerLeave={() => { isPointerDown.current = false; if (holdTimer.current) clearTimeout(holdTimer.current); }}
+      onContextMenu={e => e.preventDefault()}
+      disabled={isCapturing}
+    >
+      <span className="hot-trigger__glitch" aria-hidden><Sparkles className="h-4 w-4" strokeWidth={1.5} /></span>
+      <span className="hot-trigger__ico"><Sparkles className={isCapturing ? 'h-4 w-4 animate-spin' : isRecording ? 'h-4 w-4 animate-pulse' : 'h-4 w-4'} strokeWidth={1.5} /></span>
+      {isPeaking && !isRecording && (
+        <span className="pointer-events-none absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full animate-ping" style={{ background: glowColor }} />
+      )}
+    </button>
+  );
 
   return (
     <>
+      {/* Universal overlay interaction surface: imports + placed entities. */}
+      <OverlayStage />
+
       {flash && <div className="pointer-events-none fixed inset-0 z-[200] bg-white/15 animate-pulse" style={{ animationDuration: '0.1s' }} />}
 
-      <div className="pointer-events-auto absolute right-4 z-50 flex flex-col items-end gap-2" style={{ bottom: '7rem' }}>
-        {isRecording && (
-          <div className="relative h-14 w-14 flex items-center justify-center">
-            <svg className="absolute inset-0 -rotate-90" viewBox="0 0 56 56">
-              <circle cx="28" cy="28" r="24" fill="none" stroke={glowColor} strokeWidth="2.5" strokeOpacity="0.2" />
-              <circle cx="28" cy="28" r="24" fill="none" stroke={glowColor} strokeWidth="2.5"
-                strokeDasharray={`${150.8 * recProg} 150.8`}
-                style={{ transition: 'stroke-dasharray 0.08s' }} />
-            </svg>
-            <span className="font-mono text-[7px] uppercase text-white/60">rec</span>
-          </div>
-        )}
-
-        <button
-          className="relative flex items-center justify-center rounded-full bg-black/75 backdrop-blur-sm ring-1 ring-white/15 transition-transform active:scale-90 disabled:opacity-50"
-          style={{
-            width: 52, height: 52,
-            boxShadow: glow > 0.35 ? `0 0 ${Math.round(glow * 28)}px ${Math.round(glow * 8)}px ${glowColor}40` : undefined,
-          }}
-          onPointerDown={onPointerDown}
-          onPointerUp={onPointerUp}
-          onPointerLeave={() => { isPointerDown.current = false; if (holdTimer.current) clearTimeout(holdTimer.current); }}
-          onContextMenu={e => e.preventDefault()}
-          disabled={isCapturing}
-        >
-          <Sparkles
-            size={20}
-            style={{ color: glow > 0.5 ? glowColor : 'hsl(0 0% 60%)' }}
-            className={isCapturing ? 'animate-spin' : isRecording ? 'animate-pulse' : undefined}
-          />
-          {isPeaking && !isRecording && (
-            <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full animate-ping"
-              style={{ background: glowColor }} />
-          )}
-        </button>
-
-        {glow > 0.25 && (
-          <div className="text-right" style={{ opacity: Math.min(glow * 1.5, 1), transition: 'opacity 0.4s' }}>
-            <div className="font-mono text-[7px] uppercase tracking-[0.15em]" style={{ color: glowColor }}>
-              {isRecording ? 'recording…' : isCapturing ? 'processing…' : isPeaking ? '✦ peak' : 'scanning'}
-            </div>
-            <div className="font-mono text-[6px] text-white/30 mt-0.5">
-              sat {Math.round(score.saturation * 100)} · fx {Math.round(score.complexity * 100)}
-            </div>
-          </div>
-        )}
-      </div>
+      {railSlot
+        ? createPortal(captureButton, railSlot)
+        : <div className="pointer-events-auto absolute right-3 top-14 z-30">{captureButton}</div>}
 
       {galleryOpen && gallery.length > 0 && (
         <div className="pointer-events-auto absolute bottom-4 left-0 right-0 z-50 flex items-center gap-1 px-3">

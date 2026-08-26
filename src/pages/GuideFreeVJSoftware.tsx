@@ -2,11 +2,11 @@ import { Helmet } from "react-helmet-async";
 import { Link } from "react-router-dom";
 import LegalLayout, { LegalH2 } from "@/components/LegalLayout";
 
-const canonical = "https://ether-mosh.netlify.app/guides/free-vj-software-browser";
+const canonical = "https://ether-mosh.online/guides/free-vj-software-browser";
 const title = "Free VJ Software: Make Live Visuals in Your Browser";
 const description =
-  "Looking for free VJ software? MOSH runs live, audio-reactive visuals in your browser — no download. Perfect for gigs, parties, and live streams.";
-const ogImage = "https://ether-mosh.netlify.app/og-image.png";
+  "Looking for free VJ software? Ether-MOSH runs live, audio-reactive visuals in your browser — no download. Perfect for gigs, parties, and live streams.";
+const ogImage = "https://ether-mosh.online/og-image.png";
 
 const articleJsonLd = {
   "@context": "https://schema.org",
@@ -27,19 +27,19 @@ const articleJsonLd = {
 const faqs: { q: string; a: string }[] = [
   {
     q: "Is there free VJ software?",
-    a: "Yes — MOSH is free VJ software that runs in your browser with real-time, audio-reactive visuals. No download, no license, no watermark.",
+    a: "Yes — Ether-MOSH is free VJ software that runs in your browser with real-time, audio-reactive visuals. No download, no license, no watermark.",
   },
   {
     q: "Can I VJ from a browser?",
-    a: "Absolutely. MOSH uses your GPU through WebGL, so you can VJ from any modern laptop with just a browser tab.",
+    a: "Absolutely. Ether-MOSH uses your GPU through WebGL, so you can VJ from any modern laptop with just a browser tab.",
   },
   {
-    q: "Does MOSH react to music?",
+    q: "Does Ether-MOSH react to music?",
     a: "Yes. Enable your mic or route system audio and every effect layer reacts to the beat in real time.",
   },
   {
     q: "Can I use it with a projector or live stream?",
-    a: "Yes — put MOSH into fullscreen and use your OS to project or screen-share into OBS/Zoom/Meet for live streams and events.",
+    a: "Yes — put Ether-MOSH into fullscreen and use your OS to project or screen-share into OBS/Zoom/Meet for live streams and events.",
   },
 ];
 
@@ -60,12 +60,12 @@ const H3 = ({ children }: { children: React.ReactNode }) => (
 const GuideFreeVJSoftware = () => (
   <>
     <Helmet>
-      <title>{title} | MOSH</title>
+      <title>{title} | Ether-MOSH</title>
       <meta name="description" content={description} />
       <meta name="keywords" content="free VJ software, VJ software, live visuals" />
       <link rel="canonical" href={canonical} />
       <meta property="og:type" content="article" />
-      <meta property="og:site_name" content="MOSH" />
+      <meta property="og:site_name" content="Ether-MOSH" />
       <meta property="og:title" content={title} />
       <meta property="og:description" content={description} />
       <meta property="og:url" content={canonical} />
@@ -90,7 +90,7 @@ const GuideFreeVJSoftware = () => (
           Great live visuals used to mean an expensive VJ software license, a beefy laptop, and
           hours of setup. Not anymore. This guide walks through how to VJ a full set with free,
           browser-based tools — using{" "}
-          <Link to="/" className="text-accent hover:underline">MOSH</Link>, an audio-reactive
+          <Link to="/" className="text-accent hover:underline">Ether-MOSH</Link>, an audio-reactive
           glitch instrument that runs anywhere a browser does.
         </p>
       </section>
@@ -118,9 +118,9 @@ const GuideFreeVJSoftware = () => (
       </section>
 
       <section>
-        <LegalH2>Why MOSH works as free browser VJ software</LegalH2>
+        <LegalH2>Why Ether-MOSH works as free browser VJ software</LegalH2>
         <p className="mt-3">
-          MOSH ticks every box above and costs nothing to run. It uses WebGL for GPU-accelerated
+          Ether-MOSH ticks every box above and costs nothing to run. It uses WebGL for GPU-accelerated
           glitch, warp, and color effects, listens to your mic or system audio for reactivity, and
           runs in a plain browser tab — meaning your MacBook, Windows laptop, or even a Chromebook
           becomes a VJ rig. All processing happens locally; nothing gets uploaded.
@@ -128,14 +128,14 @@ const GuideFreeVJSoftware = () => (
       </section>
 
       <section>
-        <LegalH2>How to VJ a live set with MOSH</LegalH2>
+        <LegalH2>How to VJ a live set with Ether-MOSH</LegalH2>
         <ol className="mt-3 list-decimal space-y-3 pl-5">
           <li>
-            <strong>Open <Link to="/edit" className="text-accent hover:underline">the MOSH editor</Link></strong>{" "}
+            <strong>Open <Link to="/edit" className="text-accent hover:underline">the Ether-MOSH editor</Link></strong>{" "}
             and go live with your camera or load a video/image source.
           </li>
           <li>
-            <strong>Enable system audio</strong> so MOSH reacts to whatever's playing through your
+            <strong>Enable system audio</strong> so Ether-MOSH reacts to whatever's playing through your
             device — the DJ's mix, your playlist, or a live mic feed.
           </li>
           <li>
@@ -171,7 +171,7 @@ const GuideFreeVJSoftware = () => (
       <section>
         <LegalH2>Ready for bigger shows</LegalH2>
         <p className="mt-3">
-          MOSH is <Link to="/" className="text-accent hover:underline">free to start</Link>. When
+          Ether-MOSH is <Link to="/" className="text-accent hover:underline">free to start</Link>. When
           you're ready for the full kit, the one-time{" "}
           <Link to="/pricing" className="text-accent hover:underline">Supporter upgrade</Link>{" "}
           unlocks Journey mode and cloud-saved presets so your setlist follows you across

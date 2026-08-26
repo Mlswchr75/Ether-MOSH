@@ -8,9 +8,6 @@ import { resolveEntitlementQuery } from "@/lib/entitlements";
 function getPaymentsEnvironment(): "live" | "sandbox" {
   return getPaymentsEnvironmentSafe();
 }
-const FREE_FOR_ALL = false;
-
-
 
 // Accounts that always have full Supporter access (app owner / comp accounts).
 // Keyed on email so it persists across logins and devices.
@@ -36,14 +33,6 @@ export function useEntitlements(): EntitlementsState {
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    // TEMP: payments setup in progress — treat everyone as a supporter.
-    if (FREE_FOR_ALL) {
-      setIsSupporter(true);
-      setHasTipped(false);
-      setLoading(false);
-      setError(null);
-      return;
-    }
     if (!user) {
       setIsSupporter(false);
       setHasTipped(false);

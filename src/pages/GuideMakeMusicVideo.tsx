@@ -2,11 +2,11 @@ import { Helmet } from "react-helmet-async";
 import { Link } from "react-router-dom";
 import LegalLayout, { LegalH2 } from "@/components/LegalLayout";
 
-const canonical = "https://ether-mosh.netlify.app/guides/make-music-video";
+const canonical = "https://ether-mosh.online/guides/make-music-video";
 const title = "How to Make an Audio-Reactive Music Video";
 const description =
-  "Step-by-step guide to creating audio-reactive music visualizers for YouTube, TikTok, and Reels using MOSH's glitch instrument, live effects, and recording tools.";
-const ogImage = "https://ether-mosh.netlify.app/og-image.png";
+  "Step-by-step guide to creating audio-reactive music visualizers for YouTube, TikTok, and Reels using Ether-MOSH's glitch instrument, live effects, and recording tools.";
+const ogImage = "https://ether-mosh.online/og-image.png";
 
 const howToJsonLd = {
   "@context": "https://schema.org",
@@ -14,9 +14,9 @@ const howToJsonLd = {
   name: title,
   description,
   totalTime: "PT15M",
-  tool: [{ "@type": "HowToTool", name: "MOSH glitch instrument" }],
+  tool: [{ "@type": "HowToTool", name: "Ether-MOSH glitch instrument" }],
   step: [
-    { "@type": "HowToStep", name: "Open the MOSH editor", text: "Go to /edit, allow camera or mic access, and pick a source." },
+    { "@type": "HowToStep", name: "Open the Ether-MOSH editor", text: "Go to /edit, allow camera or mic access, and pick a source." },
     { "@type": "HowToStep", name: "Route your audio", text: "Enable mic or system audio so the visuals react to the track in real time." },
     { "@type": "HowToStep", name: "Dial in effects", text: "Layer glitch, feedback, and palette effects until they hit on the beats you care about." },
     { "@type": "HowToStep", name: "Record a take", text: "Hit record, perform the visual through the song, and stop when done." },
@@ -30,10 +30,10 @@ const faqJsonLd = {
   mainEntity: [
     {
       "@type": "Question",
-      name: "Is MOSH a music visualizer?",
+      name: "Is Ether-MOSH a music visualizer?",
       acceptedAnswer: {
         "@type": "Answer",
-        text: "Yes. MOSH is a live audio-reactive glitch instrument. It listens to your mic or system audio and drives visuals in real time, which you can record and export as a music video.",
+        text: "Yes. Ether-MOSH is a live audio-reactive glitch instrument. It listens to your mic or system audio and drives visuals in real time, which you can record and export as a music video.",
       },
     },
     {
@@ -41,7 +41,7 @@ const faqJsonLd = {
       name: "What format should I export for TikTok or Reels?",
       acceptedAnswer: {
         "@type": "Answer",
-        text: "Export as 9:16 vertical WebM or MP4. For YouTube use 16:9. MOSH's export sheet includes both presets.",
+        text: "Export as 9:16 vertical WebM or MP4. For YouTube use 16:9. Ether-MOSH's export sheet includes both presets.",
       },
     },
     {
@@ -49,7 +49,7 @@ const faqJsonLd = {
       name: "Do I need a camera?",
       acceptedAnswer: {
         "@type": "Answer",
-        text: "No. MOSH ships with a procedural source, so you can create visuals without a webcam. Camera and images add extra texture if you want them.",
+        text: "No. Ether-MOSH ships with a procedural source, so you can create visuals without a webcam. Camera and images add extra texture if you want them.",
       },
     },
   ],
@@ -58,7 +58,7 @@ const faqJsonLd = {
 const GuideMakeMusicVideo = () => (
   <>
     <Helmet>
-      <title>{title} | MOSH</title>
+      <title>{title} | Ether-MOSH</title>
       <meta name="description" content={description} />
       <link rel="canonical" href={canonical} />
       <meta property="og:title" content={title} />
@@ -84,7 +84,7 @@ const GuideMakeMusicVideo = () => (
         <p>
           A music visualizer used to mean a plugin ticking along in the background of Winamp. Today
           it's the visual half of your release — the loop on TikTok, the static-but-not-static
-          YouTube upload, the Reel that gets shared because it <em>feels</em> like the track. MOSH is
+          YouTube upload, the Reel that gets shared because it <em>feels</em> like the track. Ether-MOSH is
           a live <strong>glitch instrument</strong> built for exactly that: point it at your audio,
           play with the effects like you'd play a synth, and record the take.
         </p>
@@ -107,24 +107,24 @@ const GuideMakeMusicVideo = () => (
         <LegalH2>1. Open the editor</LegalH2>
         <p className="mt-2">
           Head to <Link to="/edit" className="text-accent hover:underline">/edit</Link>. On first
-          load MOSH will ask for camera and mic permissions. You can skip the camera and use the
+          load Ether-MOSH will ask for camera and mic permissions. You can skip the camera and use the
           built-in procedural source if you'd rather not appear on video — the visuals hold up
           either way.
         </p>
       </section>
 
       <section>
-        <LegalH2>2. Route your audio into MOSH</LegalH2>
+        <LegalH2>2. Route your audio into Ether-MOSH</LegalH2>
         <p className="mt-2">
           Two options, depending on where the track lives:
         </p>
         <ul className="mt-2 list-disc space-y-1 pl-5">
           <li>
-            <strong>Mic</strong> — the simplest path. Play the track from a speaker; MOSH picks it up
+            <strong>Mic</strong> — the simplest path. Play the track from a speaker; Ether-MOSH picks it up
             through the mic. Fine for testing.
           </li>
           <li>
-            <strong>System audio</strong> — capture the browser tab (or your whole system) so MOSH
+            <strong>System audio</strong> — capture the browser tab (or your whole system) so Ether-MOSH
             reacts to the exact waveform. Much cleaner for final takes.
           </li>
         </ul>
@@ -136,7 +136,7 @@ const GuideMakeMusicVideo = () => (
       <section>
         <LegalH2>3. Play the glitch instrument</LegalH2>
         <p className="mt-2">
-          This is where MOSH is different from a preset visualizer. You aren't picking a template —
+          This is where Ether-MOSH is different from a preset visualizer. You aren't picking a template —
           you're performing the visual. Stack effects (feedback, displacement, chroma, tile,
           palette), map them onto the beat, and shuffle when you want a hard cut. Try to land big
           gestures on the moments in the song that already carry weight — drops, breaks, the first

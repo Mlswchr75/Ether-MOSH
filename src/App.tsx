@@ -11,6 +11,7 @@ const ForgeRedirect = lazy(() => import("./pages/ForgeRedirect.tsx"));
 const Install = lazy(() => import("./pages/Install.tsx"));
 const Terms = lazy(() => import("./pages/Terms.tsx"));
 const Privacy = lazy(() => import("./pages/Privacy.tsx"));
+const DeleteAccount = lazy(() => import("./pages/DeleteAccount.tsx"));
 const Pricing = lazy(() => import("./pages/Pricing.tsx"));
 const Refund = lazy(() => import("./pages/Refund.tsx"));
 const Auth = lazy(() => import("./pages/Auth.tsx"));
@@ -22,6 +23,9 @@ const Favorites = lazy(() => import("./pages/Favorites.tsx"));
 const EffectsRegistry = lazy(() => import("./pages/EffectsRegistry.tsx"));
 const Contact = lazy(() => import("./pages/Contact.tsx"));
 const About = lazy(() => import("./pages/About.tsx"));
+const LiveVisuals = lazy(() => import("./pages/LiveVisuals.tsx"));
+const JourneyPortals = lazy(() => import("./pages/JourneyPortals.tsx"));
+const JourneyEmbed = lazy(() => import("./pages/JourneyEmbed.tsx"));
 const OAuthConsent = lazy(() => import("./pages/OAuthConsent.tsx"));
 const GuidesIndex = lazy(() => import("./pages/GuidesIndex.tsx"));
 const GuideAudioReactive = lazy(() => import("./pages/GuideAudioReactive.tsx"));
@@ -47,6 +51,7 @@ const App = () => (
             <Route path="/install" element={<Install />} />
             <Route path="/terms" element={<Terms />} />
             <Route path="/privacy" element={<Privacy />} />
+            <Route path="/delete-account" element={<DeleteAccount />} />
             <Route path="/pricing" element={<Pricing />} />
             <Route path="/refund" element={<Refund />} />
             <Route path="/refunds" element={<Refund />} />
@@ -59,6 +64,9 @@ const App = () => (
             <Route path="/effects" element={<EffectsRegistry />} />
             <Route path="/contact" element={<Contact />} />
             <Route path="/about" element={<About />} />
+            <Route path="/live-visuals" element={<LiveVisuals />} />
+            <Route path="/journey-portals" element={<JourneyPortals />} />
+            <Route path="/embed/journey" element={<JourneyEmbed />} />
             <Route path="/oauth/consent" element={<OAuthConsent />} />
             <Route path="/guides" element={<GuidesIndex />} />
             <Route path="/guides/audio-reactive-music-videos" element={<GuideAudioReactive />} />
@@ -66,7 +74,6 @@ const App = () => (
             <Route path="/guides/how-to-datamosh-a-video" element={<GuideDatamoshVideo />} />
             <Route path="/guides/free-vj-software-browser" element={<GuideFreeVJSoftware />} />
             <Route path="/guides/glitch-effect-video-tiktok" element={<GuideGlitchTikTok />} />
-            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>

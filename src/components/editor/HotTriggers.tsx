@@ -1,15 +1,19 @@
-import { Mic, MicOff, Circle, Square, Sparkles, Scissors, Snowflake, Camera, Shuffle, Star, Play, Pencil, Trash2, X, Film, Lock, Share2, Compass, Maximize2, Minimize2, Gem, Home, SwitchCamera, Crosshair, Eraser, Link2, Upload, Music, Music2, Shuffle as ShuffleIcon, Undo2, Redo2, Gauge, ChevronDown, MonitorSpeaker, Heart, GripVertical, RotateCcw, EyeOff, HelpCircle } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Mic, MicOff, Circle, Square, Sparkles, Scissors, Snowflake, Camera, Shuffle, Star, Play, Pencil, Trash2, X, Film, Lock, Share2, Compass, Maximize2, Minimize2, Gem, Home, SwitchCamera, Crosshair, Eraser, Link2, Upload, Music, Music2, Shuffle as ShuffleIcon, Undo2, Redo2, Gauge, ChevronDown, MonitorSpeaker, Heart, GripVertical, RotateCcw, EyeOff, HelpCircle, SkipBack, SkipForward, Palette, Flame, UserCircle } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { createPortal } from "react-dom";
 import { useStore } from "@/store/useStore";
-import { trackPlayer, DEFAULT_TRACK_TITLE } from "@/engine/trackPlayer";
+import { trackPlayer, DEFAULT_TRACK_TITLE, SHOWCASE_TRACKS } from "@/engine/trackPlayer";
+import { runTrackAction } from "@/engine/trackActions";
 import { requestCameraStream, type CameraFacing } from "@/hooks/useCamera";
 import { IsolationPanel } from "./IsolationPanel";
+import { ForgePanel } from "./ForgePanel";
 import { MoshStickerTrigger } from "./MoshStickerTrigger";
 import { shareUrl } from "@/lib/share";
 import { toggleSystemAudio } from "@/engine/systemAudio";
 import { crossfadeLayers, MOSH_FADE_MS } from "@/engine/layerCrossfade";
 import { cursorFx } from "@/engine/cursorFx";
 import { toast } from "sonner";
+import { clampRadialPoint, defaultRadialPoint, nearestRadialId, type RadialLayout } from "@/lib/radialLayout";
 
 /** Viewport-normalized UV for a client point — used for the one-shot "digital
  *  chaos" burst a hold-branch fires at. An approximation (viewport, not the
@@ -26,6 +30,10 @@ function clientToViewportUv(clientX: number, clientY: number) {
 
 
 type Props = {
+  visualizerRef?: RefObject<HTMLElement>;
+  hidden?: boolean;
+  /** Re-enables the retired right-edge strip without disabling the radial wheel. */
+  showLegacyLaunchpad?: boolean;
   isRecording: boolean;
   onToggleRecord: () => void;
   onScreenshot: () => void;
@@ -33,12 +41,14 @@ type Props = {
   onGif: (seconds?: number) => void;
   onShare?: () => void;
   onSupport?: () => void;
+  onAccount?: () => void;
   gifBusy?: boolean;
   gifProgress?: number; // 0..1
   onMicFlash?: (on: boolean) => void;
   journeyOn?: boolean;
   onToggleJourney?: () => void;
   journeyLocked?: boolean;
+  journeyPreview?: boolean;
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;
   onHome?: () => void;
@@ -55,7 +65,43 @@ type Props = {
   onMicNudgeYes?: () => void;
   onMicNudgeNo?: () => void;
   onMicNudgeExpire?: () => void;
+  /** After a minute of silent play, invite the user to start a soundtrack. */
+  showTrackNudge?: boolean;
+  onTrackNudgeDismiss?: () => void;
 };
+
+export const RADIAL_WHEEL_ARM_MS = 220;
+export const RADIAL_WHEEL_HOLD_MS = 400;
+const MOBILE_WHEEL_FLICK_PX = 54;
+const MOBILE_WHEEL_ROTATION_KEY = "cathedral_mobile_radial_rotation_v1";
+const DESKTOP_WHEEL_LAYOUT_KEY = "cathedral_desktop_radial_layout_v1";
+
+export function radialFlickThreshold(pointerType: string) {
+  return pointerType === "mouse" ? 34 : pointerType === "pen" ? 38 : MOBILE_WHEEL_FLICK_PX;
+}
+
+export function radialHoldJitterTolerance(pointerType: string) {
+  return pointerType === "touch" ? 20 : pointerType === "pen" ? 12 : 8;
+}
+
+export function normalizeRadialDegrees(value: number) {
+  return ((value % 360) + 360) % 360;
+}
+
+export function radialIndexForAngle(angle: number, count: number, rotation = 0) {
+  if (count <= 0) return -1;
+  const step = 360 / count;
+  return Math.round(normalizeRadialDegrees(angle - rotation) / step) % count;
+}
+
+export function radialTriggerIndex(angle: number, distance: number, total: number, rotation = 0) {
+  if (total <= 0) return -1;
+  const outerCount = Math.min(14, total);
+  const innerCount = Math.max(0, total - outerCount);
+  const useInnerRing = innerCount > 0 && distance < 112;
+  const ringIndex = radialIndexForAngle(angle, useInnerRing ? innerCount : outerCount, rotation);
+  return useInnerRing ? outerCount + ringIndex : ringIndex;
+}
 
 /** Auto-Mosh / auto-shuffle interval options — the one list every surface
  *  that touches shuffleSec draws from (this rail, its keyboard cycle in
@@ -72,22 +118,25 @@ const DEFAULT_AUTO_MOSH_SEC = 15;
  *  situational stuff last. Not load-bearing for anything but the *default*
  *  order — "customize layout" lets anyone override it per-browser. */
 const DEFAULT_ORDER = [
-  "home", "undo", "redo",
+  "home", "source-upload", "source-camera", "source-forge", "account", "undo", "redo",
   "mosh", "auto-mosh", "clear-fx", "journey",
   "audio", "sensitivity",
   "freeze", "capture", "gif", "share",
-  "mosh-sticker", "sticker-mode", "isolation", "theme-track",
-  "favorites", "fullscreen", "pro-mode", "switch-camera", "support",
+  "mosh-sticker", "sticker-mode", "sticker-capture", "isolation", "theme-track",
+  "forge-palette", "favorites", "fullscreen", "pro-mode", "switch-camera", "support",
 ] as const;
 
 const TRIGGER_LABELS: Record<string, string> = {
   home: "Back to start", undo: "Undo", redo: "Redo",
+  "source-upload": "Upload source", "source-camera": "Live camera", "source-forge": "Forge source", account: "Account",
   mosh: "Mosh", "auto-mosh": "Auto-Mosh", "clear-fx": "Clear FX", journey: "Journey",
   audio: "Audio (mic / device / beat sync)", sensitivity: "Sensitivity",
   "pro-mode": "Pro Mode — hide all UI",
   freeze: "Freeze", capture: "Capture — tap for a still, hold to record", gif: "GIF loop", share: "Share",
   "mosh-sticker": "Mosh sticker", "sticker-mode": "Sticker capture", isolation: "AI isolation",
+  "sticker-capture": "Capture sticker",
   "theme-track": "Theme track", favorites: "Favorites", fullscreen: "Fullscreen",
+  "forge-palette": "Forge palette and settings",
   "switch-camera": "Switch camera", support: "Support MOSH",
 };
 
@@ -143,7 +192,10 @@ function HotBtn({
     <button
       type="button"
       onClick={onClick}
-      onPointerDown={onPointerDown}
+      onPointerDown={(event) => {
+        event.stopPropagation();
+        onPointerDown?.(event);
+      }}
       onPointerUp={onPointerUp}
       onPointerLeave={onPointerCancel}
       onPointerCancel={onPointerCancel}
@@ -155,6 +207,7 @@ function HotBtn({
       data-active={active || undefined}
       data-tint={tint ? "" : undefined}
       data-no-longpress
+      data-hot-trigger-hold={onPointerDown ? "true" : undefined}
       className="hot-trigger"
       style={{ animationDelay: `${delay}ms`, ...(tint ? { ["--ht-tint" as string]: tint } : {}) }}
     >
@@ -171,7 +224,53 @@ function HotBtn({
  * idle/inactivity fade the row it's mounted in already has — no separate
  * timeout logic here.
  */
-function TrackTrigger({ delay }: { delay: number }) {
+function TrackNudgeToast({ onPlay, onDismiss }: { onPlay: () => void; onDismiss: () => void }) {
+  const [leaving, setLeaving] = useState(false);
+
+  useEffect(() => {
+    const t = window.setTimeout(() => setLeaving(true), 30_000);
+    return () => window.clearTimeout(t);
+  }, []);
+
+  useEffect(() => {
+    if (!leaving) return;
+    const t = window.setTimeout(onDismiss, 520);
+    return () => window.clearTimeout(t);
+  }, [leaving, onDismiss]);
+
+  return (
+    <div
+      role="status"
+      className={`absolute right-full mr-2 top-0 z-50 w-56 rounded-md border border-[hsl(var(--accent))]/40 bg-black/90 p-2.5 backdrop-blur-md panel-in-3d ${leaving ? "bg-glitch-pulse" : ""}`}
+      style={leaving ? undefined : { animation: "panel-in 180ms ease-out both" }}
+    >
+      <div className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-[hsl(var(--accent))]">
+        <Music2 className="h-3 w-3" strokeWidth={1.5} /> need a soundtrack?
+      </div>
+      <p className="mt-1 text-[10px] leading-tight text-white/60">
+        Start the music trigger and MOSH will pick a track at random.
+      </p>
+      <div className="mt-2 flex gap-1.5">
+        <button
+          type="button"
+          onClick={onPlay}
+          className="flex-1 rounded-sm border border-[hsl(var(--accent))]/50 bg-[hsl(var(--accent))]/10 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-[hsl(var(--accent))] transition hover:bg-[hsl(var(--accent))]/20"
+        >
+          Play random
+        </button>
+        <button
+          type="button"
+          onClick={onDismiss}
+          className="flex-1 rounded-sm border border-white/15 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-white/60 transition hover:text-white"
+        >
+          Not now
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function TrackTrigger({ delay, showNudge, onNudgeDismiss }: { delay: number; showNudge?: boolean; onNudgeDismiss?: () => void }) {
   const trackEnabled = useStore(s => s.trackEnabled);
   const trackTitle = useStore(s => s.trackTitle);
   const setTrackEnabled = useStore(s => s.setTrackEnabled);
@@ -179,6 +278,11 @@ function TrackTrigger({ delay }: { delay: number }) {
   const [open, setOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
+
+  const startRandomTrack = () => {
+    runTrackAction(() => trackPlayer.shuffleShowcaseTrack());
+    onNudgeDismiss?.();
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -189,19 +293,25 @@ function TrackTrigger({ delay }: { delay: number }) {
     return () => window.removeEventListener("pointerdown", close);
   }, [open]);
 
+  useEffect(() => {
+    const browse = () => fileRef.current?.click();
+    window.addEventListener("mosh:browse-audio-track", browse);
+    return () => window.removeEventListener("mosh:browse-audio-track", browse);
+  }, []);
+
   return (
     <div ref={wrapRef} className="relative" data-shuffle-picker>
       <button
         type="button"
-        aria-label={trackEnabled ? `Pause ${trackTitle}` : "Play theme track"}
+        aria-label={trackEnabled ? `Pause ${trackTitle}` : "Play a random MOSH track"}
         aria-pressed={trackEnabled}
-        title={trackEnabled ? `Pause · ${trackTitle}` : "Play theme track"}
+        title={trackEnabled ? `Pause · ${trackTitle}` : "Play a random track"}
         data-active={trackEnabled || undefined}
         data-tint=""
         data-no-longpress
         className="hot-trigger"
         style={{ animationDelay: `${delay}ms`, ["--ht-tint" as string]: "262 68% 72%" }}
-        onClick={() => setTrackEnabled(!trackEnabled)}
+        onClick={() => trackEnabled ? setTrackEnabled(false) : startRandomTrack()}
       >
         <span className="hot-trigger__glitch" aria-hidden>
           {trackEnabled ? <Music className="h-4 w-4" strokeWidth={1.5} /> : <Music2 className="h-4 w-4" strokeWidth={1.5} />}
@@ -210,6 +320,7 @@ function TrackTrigger({ delay }: { delay: number }) {
           {trackEnabled ? <Music className="h-4 w-4" strokeWidth={1.5} /> : <Music2 className="h-4 w-4" strokeWidth={1.5} />}
         </span>
       </button>
+      {showNudge && <TrackNudgeToast onPlay={startRandomTrack} onDismiss={() => onNudgeDismiss?.()} />}
       <button
         type="button"
         onPointerDown={(e) => e.stopPropagation()}
@@ -236,6 +347,65 @@ function TrackTrigger({ delay }: { delay: number }) {
           </div>
           <div className="mt-0.5 truncate text-[12px] font-semibold text-[hsl(var(--text-primary))]" title={trackTitle}>
             {trackTitle}
+          </div>
+
+          {/* Bigger, obviously-tappable transport row — the small text
+              menu items below are fine for occasional actions, but
+              skip/shuffle are meant to be reached for repeatedly. */}
+          <div className="mt-2.5 flex items-center justify-center gap-2">
+            <button
+              type="button"
+              role="menuitem"
+              data-no-longpress
+              aria-label="Previous showcase track ([ key)"
+              title="Previous track — ["
+              onClick={() => runTrackAction(() => trackPlayer.prevShowcaseTrack())}
+              className="flex h-9 w-9 items-center justify-center rounded-full border border-[hsl(var(--border-default))] text-[hsl(var(--text-secondary))] transition hover:border-[hsl(var(--accent))] hover:text-[hsl(var(--accent))] active:scale-95"
+            >
+              <SkipBack className="h-4 w-4" strokeWidth={1.5} />
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              data-no-longpress
+              aria-label="Shuffle showcase tracks (\ key)"
+              title="Shuffle — \"
+              onClick={() => runTrackAction(() => trackPlayer.shuffleShowcaseTrack())}
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-[hsl(var(--accent))]/50 text-[hsl(var(--accent))] transition hover:bg-[hsl(var(--accent))]/10 active:scale-95"
+            >
+              <ShuffleIcon className="h-4 w-4" strokeWidth={1.5} />
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              data-no-longpress
+              aria-label="Next showcase track (] key)"
+              title="Next track — ]"
+              onClick={() => runTrackAction(() => trackPlayer.nextShowcaseTrack())}
+              className="flex h-9 w-9 items-center justify-center rounded-full border border-[hsl(var(--border-default))] text-[hsl(var(--text-secondary))] transition hover:border-[hsl(var(--accent))] hover:text-[hsl(var(--accent))] active:scale-95"
+            >
+              <SkipForward className="h-4 w-4" strokeWidth={1.5} />
+            </button>
+          </div>
+
+          <div className="mt-2.5 mb-1 font-mono text-[9px] uppercase tracking-[0.18em] text-[hsl(var(--text-tertiary))]">
+            showcase
+          </div>
+          <div className="flex flex-col gap-0.5">
+            {SHOWCASE_TRACKS.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                role="menuitem"
+                data-no-longpress
+                data-active={trackEnabled && trackTitle === t.title || undefined}
+                onClick={() => { setOpen(false); runTrackAction(() => trackPlayer.useShowcaseTrack(t.id)); }}
+                className="flex w-full items-center gap-2 rounded-sm border border-transparent px-2 py-1.5 text-left font-mono text-[10px] uppercase tracking-[0.1em] text-[hsl(var(--text-secondary))] transition hover:border-[hsl(var(--accent))] hover:text-[hsl(var(--accent))] data-[active]:border-[hsl(var(--accent))]/40 data-[active]:text-[hsl(var(--accent))]"
+              >
+                <Music2 className="h-3 w-3 shrink-0" strokeWidth={1.5} />
+                <span className="truncate">{t.title}</span>
+              </button>
+            ))}
           </div>
 
           <button
@@ -638,14 +808,582 @@ function CustomizeTrigger({
   );
 }
 
+function MobileRadialWheel({
+  ids, registry, visualizerRef, isRecording, onSelect,
+}: {
+  ids: string[];
+  registry: Record<string, ReactNode>;
+  visualizerRef?: RefObject<HTMLElement>;
+  isRecording: boolean;
+  onSelect: (id: string) => void;
+}) {
+  const layerRef = useRef<HTMLDivElement>(null);
+  const wheelRef = useRef<HTMLDivElement>(null);
+  const labelRef = useRef<HTMLSpanElement>(null);
+  const slotRefs = useRef(new Map<string, HTMLDivElement>());
+  const wheelRectRef = useRef<DOMRect | null>(null);
+  const openRef = useRef(false);
+  const gestureRef = useRef({
+    pointerId: -1, x: 0, y: 0, lastX: 0, lastY: 0,
+    startedAt: 0, armed: false, fired: false, cancelled: false, pointerType: "mouse",
+  });
+  const armTimerRef = useRef<number | null>(null);
+  const openTimerRef = useRef<number | null>(null);
+  const persistTimerRef = useRef<number | null>(null);
+  const suppressClickRef = useRef(false);
+  const highlightRef = useRef<string | null>(null);
+  const labelSwapRef = useRef(false);
+  const rotationRef = useRef<number>(Number.NaN);
+  if (Number.isNaN(rotationRef.current)) {
+    try { rotationRef.current = Number(localStorage.getItem(MOBILE_WHEEL_ROTATION_KEY)) || 0; } catch { rotationRef.current = 0; }
+  }
+  const idsRef = useRef(ids);
+  const activateRef = useRef<(id: string) => void>(() => {});
+  idsRef.current = ids;
+  const outerCount = Math.min(14, ids.length);
+  const innerCount = Math.max(0, ids.length - outerCount);
+
+  const clearTimers = () => {
+    if (armTimerRef.current != null) window.clearTimeout(armTimerRef.current);
+    if (openTimerRef.current != null) window.clearTimeout(openTimerRef.current);
+    armTimerRef.current = null;
+    openTimerRef.current = null;
+  };
+
+  const setPhase = (phase: "idle" | "armed" | "open") => {
+    const layer = layerRef.current;
+    if (!layer) return;
+    layer.dataset.phase = phase;
+    openRef.current = phase === "open";
+    wheelRef.current?.setAttribute("aria-hidden", phase === "open" ? "false" : "true");
+  };
+
+  const select = (id: string | null) => {
+    if (highlightRef.current === id) return;
+    if (highlightRef.current) slotRefs.current.get(highlightRef.current)?.removeAttribute("data-highlighted");
+    highlightRef.current = id;
+    if (id) slotRefs.current.get(id)?.setAttribute("data-highlighted", "true");
+    const label = labelRef.current;
+    if (label) {
+      label.textContent = id ? (TRIGGER_LABELS[id] ?? id) : "MOSH";
+      labelSwapRef.current = !labelSwapRef.current;
+      label.dataset.swap = labelSwapRef.current ? "a" : "b";
+    }
+  };
+
+  const activate = (id: string) => {
+    onSelect(id);
+    const slot = slotRefs.current.get(id);
+    slot?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.click();
+  };
+  activateRef.current = activate;
+
+  const cacheWheelRect = () => { wheelRectRef.current = wheelRef.current?.getBoundingClientRect() ?? null; };
+
+  const paintRotation = (next: number) => {
+    rotationRef.current = next;
+    const wheel = wheelRef.current;
+    if (!wheel) return;
+    wheel.style.setProperty("--radial-rotation", `${next}deg`);
+    wheel.style.setProperty("--radial-counter-rotation", `${-next}deg`);
+  };
+
+  const persistRotationSoon = () => {
+    if (persistTimerRef.current != null) window.clearTimeout(persistTimerRef.current);
+    persistTimerRef.current = window.setTimeout(() => {
+      try { localStorage.setItem(MOBILE_WHEEL_ROTATION_KEY, String(rotationRef.current)); } catch {}
+    }, 120);
+  };
+
+  const dismiss = () => {
+    clearTimers();
+    setPhase("idle");
+    select(null);
+  };
+
+  const selectFromFlick = (dx: number, dy: number, pointerType: string) => {
+    const distance = Math.hypot(dx, dy);
+    const threshold = radialFlickThreshold(pointerType);
+    if (distance < threshold) { select(null); return; }
+    const angle = normalizeRadialDegrees(Math.atan2(dy, dx) * 180 / Math.PI + 90);
+    const index = radialTriggerIndex(angle, distance, idsRef.current.length, rotationRef.current);
+    select(idsRef.current[index] ?? null);
+  };
+
+  useEffect(() => {
+    const target = visualizerRef?.current;
+    if (!target) return;
+    const ignored = (eventTarget: EventTarget | null) =>
+      eventTarget instanceof HTMLElement && !!eventTarget.closest("button, a, input, textarea, select, [role='slider'], [data-no-longpress], .mobile-radial-wheel");
+    const onDown = (event: PointerEvent) => {
+      if ((event.pointerType === "mouse" && event.button !== 0) || ignored(event.target) || gestureRef.current.pointerId !== -1) return;
+      clearTimers();
+      gestureRef.current = {
+        pointerId: event.pointerId, x: event.clientX, y: event.clientY,
+        lastX: event.clientX, lastY: event.clientY, startedAt: performance.now(),
+        armed: false, fired: false, cancelled: false, pointerType: event.pointerType || "mouse",
+      };
+      armTimerRef.current = window.setTimeout(() => {
+        if (gestureRef.current.pointerId !== event.pointerId || gestureRef.current.cancelled) return;
+        gestureRef.current.armed = true;
+        setPhase("armed");
+      }, RADIAL_WHEEL_ARM_MS);
+      openTimerRef.current = window.setTimeout(() => {
+        const gesture = gestureRef.current;
+        if (gesture.pointerId !== event.pointerId || gesture.cancelled) return;
+        gesture.fired = true;
+        suppressClickRef.current = true;
+        setPhase("open");
+        cacheWheelRect();
+        selectFromFlick(gesture.lastX - gesture.x, gesture.lastY - gesture.y, gesture.pointerType);
+        try { navigator.vibrate?.(12); } catch {}
+      }, RADIAL_WHEEL_HOLD_MS);
+    };
+    const onMove = (event: PointerEvent) => {
+      const gesture = gestureRef.current;
+      if (event.pointerId !== gesture.pointerId) return;
+      const samples = event.getCoalescedEvents?.() ?? [];
+      const sample = samples[samples.length - 1] ?? event;
+      gesture.lastX = sample.clientX;
+      gesture.lastY = sample.clientY;
+      const dx = sample.clientX - gesture.x;
+      const dy = sample.clientY - gesture.y;
+      const distance = Math.hypot(dx, dy);
+      if (!gesture.fired) {
+        const tolerance = radialHoldJitterTolerance(gesture.pointerType);
+        if (!gesture.armed && performance.now() - gesture.startedAt < RADIAL_WHEEL_ARM_MS && distance > tolerance) {
+          gesture.cancelled = true;
+          clearTimers();
+          setPhase("idle");
+        }
+        return;
+      }
+      selectFromFlick(dx, dy, gesture.pointerType);
+    };
+    const onEnd = (event: PointerEvent) => {
+      if (event.pointerId !== gestureRef.current.pointerId) return;
+      clearTimers();
+      if (gestureRef.current.fired) {
+        selectFromFlick(event.clientX - gestureRef.current.x, event.clientY - gestureRef.current.y, gestureRef.current.pointerType);
+        if (highlightRef.current) activateRef.current(highlightRef.current);
+      }
+      // Always return to idle here — previously this only happened when the
+      // gesture never fired, so a successful hold-flick-release (or a hold
+      // that opened the wheel without landing on a segment) left the wheel
+      // open with its full-screen backdrop still absorbing pointer events.
+      setPhase("idle");
+      select(null);
+      gestureRef.current.pointerId = -1;
+    };
+    const onCancel = (event: PointerEvent) => {
+      if (event.pointerId !== gestureRef.current.pointerId) return;
+      clearTimers();
+      if (!gestureRef.current.fired) setPhase("idle");
+      gestureRef.current.pointerId = -1;
+      select(null);
+    };
+    const onClick = (event: MouseEvent) => {
+      if (!suppressClickRef.current) return;
+      suppressClickRef.current = false;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    };
+    target.addEventListener("pointerdown", onDown, { passive: true });
+    target.addEventListener("click", onClick, true);
+    window.addEventListener("pointermove", onMove, { passive: true });
+    window.addEventListener("pointerrawupdate", onMove as EventListener, { passive: true });
+    window.addEventListener("pointerup", onEnd, { passive: true });
+    window.addEventListener("pointercancel", onCancel, { passive: true });
+    return () => {
+      clearTimers();
+      target.removeEventListener("pointerdown", onDown);
+      target.removeEventListener("click", onClick, true);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerrawupdate", onMove as EventListener);
+      window.removeEventListener("pointerup", onEnd);
+      window.removeEventListener("pointercancel", onCancel);
+    };
+  }, [visualizerRef]);
+
+  const rotateRef = useRef<{ id: number; angle: number; rotation: number } | null>(null);
+  const pointerAngle = (x: number, y: number) => {
+    const rect = wheelRectRef.current ?? wheelRef.current?.getBoundingClientRect();
+    if (!rect) return 0;
+    return Math.atan2(y - (rect.top + rect.height / 2), x - (rect.left + rect.width / 2)) * 180 / Math.PI;
+  };
+  const selectNearest = (x: number, y: number, currentRotation = rotationRef.current) => {
+    const rect = wheelRectRef.current ?? wheelRef.current?.getBoundingClientRect();
+    if (!rect || ids.length === 0) { select(null); return; }
+    const dx = x - (rect.left + rect.width / 2);
+    const dy = y - (rect.top + rect.height / 2);
+    const distance = Math.hypot(dx, dy);
+    if (distance < rect.width * .19 || distance > rect.width * .54) { select(null); return; }
+    const inner = innerCount > 0 && distance < rect.width * .36;
+    const count = inner ? innerCount : outerCount;
+    const offset = inner ? outerCount : 0;
+    const angle = normalizeRadialDegrees(Math.atan2(dy, dx) * 180 / Math.PI + 90);
+    const index = radialIndexForAngle(angle, count, currentRotation);
+    select(ids[offset + index] ?? null);
+  };
+  useEffect(() => {
+    const wheel = wheelRef.current;
+    if (!wheel) return;
+    const onWheel = (event: WheelEvent) => {
+      if (!openRef.current) return;
+      event.preventDefault();
+      const delta = Math.abs(event.deltaY) >= Math.abs(event.deltaX) ? event.deltaY : event.deltaX;
+      const next = rotationRef.current + Math.max(-24, Math.min(24, delta * .18));
+      paintRotation(next);
+      selectNearest(event.clientX, event.clientY, next);
+      persistRotationSoon();
+    };
+    wheel.addEventListener("wheel", onWheel, { passive: false });
+    return () => wheel.removeEventListener("wheel", onWheel);
+  }, [ids.length]);
+
+  useEffect(() => {
+    const onResize = () => { wheelRectRef.current = null; };
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape" && openRef.current) dismiss(); };
+    const onExternalOpen = () => { setPhase("open"); cacheWheelRect(); };
+    const onExternalClose = () => dismiss();
+    window.addEventListener("resize", onResize, { passive: true });
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("mosh:open-hot-triggers", onExternalOpen);
+    window.addEventListener("mosh:close-hot-triggers", onExternalClose);
+    const frame = requestAnimationFrame(() => layerRef.current?.setAttribute("data-prepared", "true"));
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("mosh:open-hot-triggers", onExternalOpen);
+      window.removeEventListener("mosh:close-hot-triggers", onExternalClose);
+      if (persistTimerRef.current != null) window.clearTimeout(persistTimerRef.current);
+    };
+  }, []);
+
+  return (
+    <div ref={layerRef} data-phase="idle" className="mobile-radial-layer pointer-events-none absolute inset-0 z-[70]">
+      <button type="button" className="pointer-events-auto absolute left-1/2 top-1/2 h-px w-px opacity-0" onClick={() => { setPhase("open"); cacheWheelRect(); }} aria-label="Open radial controls" />
+          <button type="button" className="mobile-radial-wheel__backdrop absolute inset-0" aria-label="Close radial controls" onClick={dismiss} />
+          <div
+            ref={wheelRef}
+            className="mobile-radial-wheel absolute left-1/2 top-1/2"
+            role="menu"
+            aria-label="Visualizer controls"
+            aria-hidden="true"
+            style={{
+              ["--radial-rotation" as string]: `${rotationRef.current}deg`,
+              ["--radial-counter-rotation" as string]: `${-rotationRef.current}deg`,
+            }}
+            onPointerDown={(event) => {
+              if (event.target instanceof Element && event.target.closest("[data-radial-action]")) return;
+              cacheWheelRect();
+              rotateRef.current = { id: event.pointerId, angle: pointerAngle(event.clientX, event.clientY), rotation: rotationRef.current };
+              event.currentTarget.setPointerCapture(event.pointerId);
+            }}
+            onPointerMove={(event) => {
+              const drag = rotateRef.current;
+              if (drag && drag.id === event.pointerId) {
+                const next = drag.rotation + pointerAngle(event.clientX, event.clientY) - drag.angle;
+                paintRotation(next);
+                selectNearest(event.clientX, event.clientY, next);
+                return;
+              }
+              selectNearest(event.clientX, event.clientY);
+            }}
+            onPointerLeave={() => { if (!rotateRef.current) select(null); }}
+            onPointerUp={(event) => {
+              if (rotateRef.current?.id !== event.pointerId) return;
+              rotateRef.current = null;
+              persistRotationSoon();
+            }}
+          >
+            <div className="mobile-radial-wheel__rings" aria-hidden><i/><b/><em/></div>
+            {ids.map((id, index) => {
+              const inner = index >= outerCount;
+              const ringIndex = inner ? index - outerCount : index;
+              const count = inner ? innerCount : outerCount;
+              const angle = ringIndex * 360 / Math.max(1, count);
+              const radius = inner ? 29 : 43;
+              return (
+                <div
+                  key={id}
+                  ref={(node) => { if (node) slotRefs.current.set(id, node); else slotRefs.current.delete(id); }}
+                  role="menuitem"
+                  data-radial-id={id}
+                  data-radial-action
+                  className="mobile-radial-wheel__slot"
+                  style={{
+                    ["--slot-angle" as string]: `${angle}deg`,
+                    ["--slot-counter-angle" as string]: `${-angle}deg`,
+                    ["--slot-radius" as string]: `${radius / 100}`,
+                  }}
+                  onClick={() => onSelect(id)}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onPointerEnter={() => select(id)}
+                  onFocus={() => select(id)}
+                >
+                  {registry[id]}
+                </div>
+              );
+            })}
+            <button
+              type="button"
+              className="mobile-radial-wheel__hub"
+              onClick={dismiss}
+              aria-label="Close radial controls"
+            >
+              <span ref={labelRef} className="mobile-radial-wheel__label">MOSH</span>
+              <small>{isRecording ? "REC" : "steer · tap · flick"}</small>
+            </button>
+          </div>
+    </div>
+  );
+}
+
+function DesktopRadialWheel({
+  ids, registry, visualizerRef, isRecording, onSelect,
+}: {
+  ids: string[];
+  registry: Record<string, ReactNode>;
+  visualizerRef?: RefObject<HTMLElement>;
+  isRecording: boolean;
+  onSelect: (id: string) => void;
+}) {
+  const [phase, setPhase] = useState<"idle" | "armed" | "open">("idle");
+  const [editing, setEditing] = useState(false);
+  const [highlighted, setHighlighted] = useState<string | null>(null);
+  const [center, setCenter] = useState({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+  const [layout, setLayout] = useState<RadialLayout>(() => {
+    try { return JSON.parse(localStorage.getItem(DESKTOP_WHEEL_LAYOUT_KEY) || "{}"); } catch { return {}; }
+  });
+  const wheelRef = useRef<HTMLDivElement>(null);
+  const layerRef = useRef<HTMLDivElement>(null);
+  const idsRef = useRef(ids);
+  const layoutRef = useRef(layout);
+  const highlightedRef = useRef<string | null>(null);
+  const gestureRef = useRef({ pointerId: -1, x: 0, y: 0, lastX: 0, lastY: 0, startedAt: 0, fired: false, armed: false, cancelled: false, pointerType: "mouse" });
+  const editDragRef = useRef<{ pointerId: number; id: string } | null>(null);
+  idsRef.current = ids;
+  layoutRef.current = layout;
+
+  const select = (id: string | null) => {
+    highlightedRef.current = id;
+    setHighlighted(id);
+  };
+  const activate = useCallback((id: string) => {
+    onSelect(id);
+    const slot = wheelRef.current?.querySelector<HTMLElement>(`[data-radial-id="${CSS.escape(id)}"]`);
+    slot?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.click();
+  }, [onSelect]);
+  const saveLayout = (next: RadialLayout) => {
+    layoutRef.current = next;
+    setLayout(next);
+    try { localStorage.setItem(DESKTOP_WHEEL_LAYOUT_KEY, JSON.stringify(next)); } catch {}
+  };
+  const pointFromPointer = (clientX: number, clientY: number) => {
+    const rect = wheelRef.current?.getBoundingClientRect();
+    if (!rect) return { x: 0, y: 0 };
+    return {
+      x: (clientX - rect.left - rect.width / 2) / rect.width,
+      y: (clientY - rect.top - rect.height / 2) / rect.height,
+    };
+  };
+
+  const selectFromPointer = (clientX: number, clientY: number, pointerType: string) => {
+    const gesture = gestureRef.current;
+    const size = Math.min(window.innerWidth * 0.78, window.innerHeight * 0.78, 560);
+    const dx = clientX - gesture.x;
+    const dy = clientY - gesture.y;
+    const distance = Math.hypot(dx, dy);
+    if (distance < radialFlickThreshold(pointerType)) { select(null); return; }
+    select(nearestRadialId({ x: dx / size, y: dy / size }, idsRef.current, layoutRef.current, 0.2));
+  };
+
+  useEffect(() => {
+    const target = visualizerRef?.current;
+    if (!target) return;
+    let armTimer: number | null = null;
+    let openTimer: number | null = null;
+    const cancelTimers = () => {
+      if (armTimer != null) window.clearTimeout(armTimer);
+      if (openTimer != null) window.clearTimeout(openTimer);
+      armTimer = null;
+      openTimer = null;
+    };
+    const ignored = (eventTarget: EventTarget | null) =>
+      eventTarget instanceof HTMLElement && !!eventTarget.closest("button, a, input, textarea, select, [role='slider'], [data-no-longpress], .desktop-radial-wheel");
+    const onDown = (event: PointerEvent) => {
+      if (event.pointerType === "touch" || event.button !== 0 || ignored(event.target) || gestureRef.current.pointerId !== -1) return;
+      cancelTimers();
+      gestureRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, lastX: event.clientX, lastY: event.clientY, startedAt: performance.now(), fired: false, armed: false, cancelled: false, pointerType: event.pointerType || "mouse" };
+      armTimer = window.setTimeout(() => {
+        if (gestureRef.current.pointerId !== event.pointerId || gestureRef.current.cancelled) return;
+        gestureRef.current.armed = true;
+        setPhase("armed");
+      }, RADIAL_WHEEL_ARM_MS);
+      openTimer = window.setTimeout(() => {
+        if (gestureRef.current.pointerId !== event.pointerId || gestureRef.current.cancelled) return;
+        const size = Math.min(window.innerWidth * 0.78, window.innerHeight * 0.78, 560);
+        const radius = size / 2 + 12;
+        const nextCenter = {
+          x: Math.max(radius, Math.min(window.innerWidth - radius, event.clientX)),
+          y: Math.max(radius, Math.min(window.innerHeight - radius, event.clientY)),
+        };
+        gestureRef.current = { ...gestureRef.current, x: nextCenter.x, y: nextCenter.y, fired: true };
+        setCenter(nextCenter);
+        setEditing(false);
+        setPhase("open");
+        selectFromPointer(gestureRef.current.lastX, gestureRef.current.lastY, gestureRef.current.pointerType);
+      }, RADIAL_WHEEL_HOLD_MS);
+    };
+    const onMove = (event: PointerEvent) => {
+      const gesture = gestureRef.current;
+      if (event.pointerId !== gesture.pointerId) return;
+      const samples = event.getCoalescedEvents?.() ?? [];
+      const sample = samples[samples.length - 1] ?? event;
+      gesture.lastX = sample.clientX;
+      gesture.lastY = sample.clientY;
+      const distance = Math.hypot(sample.clientX - gesture.x, sample.clientY - gesture.y);
+      if (!gesture.fired) {
+        if (!gesture.armed && performance.now() - gesture.startedAt < RADIAL_WHEEL_ARM_MS && distance > radialHoldJitterTolerance(gesture.pointerType)) {
+          gesture.cancelled = true;
+          cancelTimers();
+          setPhase("idle");
+        }
+        return;
+      }
+      selectFromPointer(sample.clientX, sample.clientY, gesture.pointerType);
+    };
+    const onEnd = (event: PointerEvent) => {
+      if (event.pointerId !== gestureRef.current.pointerId) return;
+      cancelTimers();
+      if (gestureRef.current.fired) {
+        selectFromPointer(event.clientX, event.clientY, gestureRef.current.pointerType);
+        if (highlightedRef.current) activate(highlightedRef.current);
+      }
+      // Always return to idle — previously a hold that opened the wheel but
+      // never landed on a segment (fired with no highlight) hit neither
+      // branch below and left the wheel stuck open.
+      setPhase("idle");
+      gestureRef.current.pointerId = -1;
+      select(null);
+    };
+    target.addEventListener("pointerdown", onDown, { passive: true });
+    window.addEventListener("pointermove", onMove, { passive: true });
+    window.addEventListener("pointerrawupdate", onMove as EventListener, { passive: true });
+    window.addEventListener("pointerup", onEnd, { passive: true });
+    window.addEventListener("pointercancel", onEnd, { passive: true });
+    return () => {
+      cancelTimers();
+      target.removeEventListener("pointerdown", onDown);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerrawupdate", onMove as EventListener);
+      window.removeEventListener("pointerup", onEnd);
+      window.removeEventListener("pointercancel", onEnd);
+    };
+  }, [visualizerRef, activate]);
+
+  useEffect(() => {
+    const open = () => setPhase("open");
+    const close = () => { setPhase("idle"); setEditing(false); select(null); };
+    const key = (event: KeyboardEvent) => { if (event.key === "Escape") close(); };
+    window.addEventListener("mosh:open-hot-triggers", open);
+    window.addEventListener("mosh:close-hot-triggers", close);
+    window.addEventListener("keydown", key);
+    const frame = requestAnimationFrame(() => layerRef.current?.setAttribute("data-prepared", "true"));
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("mosh:open-hot-triggers", open);
+      window.removeEventListener("mosh:close-hot-triggers", close);
+      window.removeEventListener("keydown", key);
+    };
+  }, []);
+
+  return (
+    <div ref={layerRef} data-phase={phase} className="desktop-radial-layer pointer-events-none fixed inset-0 z-[70]">
+        <button type="button" className="pointer-events-auto absolute left-1/2 top-1/2 h-px w-px opacity-0" onClick={() => setPhase("open")} aria-label="Open radial controls" />
+        <button type="button" className="mobile-radial-wheel__backdrop absolute inset-0" aria-label="Close radial controls" onClick={() => { setPhase("idle"); setEditing(false); }} />
+        <div
+          ref={wheelRef}
+          className="desktop-radial-wheel mobile-radial-wheel absolute"
+          style={{ left: center.x, top: center.y }}
+          role="menu"
+          aria-label="Desktop visualizer controls"
+          aria-hidden={phase === "open" ? "false" : "true"}
+        >
+          <div className="mobile-radial-wheel__rings" aria-hidden><i/><b/><em/></div>
+          {ids.map((id, index) => {
+            const point = layout[id] ?? defaultRadialPoint(index, ids.length);
+            return (
+              <div
+                key={id}
+                role="menuitem"
+                data-radial-id={id}
+                data-radial-action
+                data-highlighted={highlighted === id || undefined}
+                data-editing={editing || undefined}
+                className="mobile-radial-wheel__slot"
+                style={{ transform: `translate(-50%, -50%) translate(calc(var(--radial-size) * ${point.x}), calc(var(--radial-size) * ${point.y}))` }}
+                onClickCapture={(event) => { if (editing) { event.preventDefault(); event.stopPropagation(); } }}
+                onClick={() => onSelect(id)}
+                onPointerDown={(event) => event.stopPropagation()}
+                onPointerEnter={() => select(id)}
+                onFocus={() => select(id)}
+              >
+                {registry[id]}
+                {editing && (
+                  <button
+                    type="button"
+                    className="radial-slot-grip"
+                    aria-label={`Move ${TRIGGER_LABELS[id] ?? id}`}
+                    title={`Drag to move ${TRIGGER_LABELS[id] ?? id}`}
+                    onClick={(event) => { event.preventDefault(); event.stopPropagation(); }}
+                    onPointerDown={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      editDragRef.current = { pointerId: event.pointerId, id };
+                      event.currentTarget.setPointerCapture(event.pointerId);
+                    }}
+                    onPointerMove={(event) => {
+                      const drag = editDragRef.current;
+                      if (drag?.pointerId !== event.pointerId || drag.id !== id) return;
+                      saveLayout({ ...layoutRef.current, [id]: clampRadialPoint(pointFromPointer(event.clientX, event.clientY)) });
+                    }}
+                    onPointerUp={(event) => {
+                      if (!editDragRef.current || editDragRef.current.pointerId !== event.pointerId) return;
+                      editDragRef.current = null;
+                      if (event.currentTarget.hasPointerCapture?.(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+                    }}
+                    onPointerCancel={() => { editDragRef.current = null; }}
+                  >
+                    <GripVertical aria-hidden />
+                  </button>
+                )}
+              </div>
+            );
+          })}
+          <div className="mobile-radial-wheel__hub">
+            <button type="button" onClick={() => setEditing(value => !value)} aria-pressed={editing}>
+              <span className="mobile-radial-wheel__label">{editing ? "DONE" : (highlighted ? (TRIGGER_LABELS[highlighted] ?? highlighted) : "MOSH")}</span>
+              <small>{editing ? "drag every icon" : (isRecording ? "REC" : "hold · steer · release")}</small>
+            </button>
+            {editing && <button type="button" className="radial-layout-reset" onClick={() => saveLayout({})}>reset</button>}
+          </div>
+        </div>
+    </div>
+  );
+}
+
 /**
  * Floating cluster of "moshing" cute icons over the visualizer.
  * The DOM overlay is outside <canvas>, so canvas.captureStream() never records these.
  */
 export function HotTriggers({
-  isRecording, onToggleRecord, onScreenshot, onFreeze, onGif, onShare, onSupport, gifBusy, gifProgress,
-  onMicFlash, journeyOn, onToggleJourney, journeyLocked, isFullscreen, onToggleFullscreen, onHome,
-  onClearFx, hasFx, onSaveFavorite, showMicNudge, onMicNudgeYes, onMicNudgeNo, onMicNudgeExpire,
+  visualizerRef, hidden = false, showLegacyLaunchpad = false,
+  isRecording, onToggleRecord, onScreenshot, onFreeze, onGif, onShare, onSupport, onAccount, gifBusy, gifProgress,
+  onMicFlash, journeyOn, onToggleJourney, journeyLocked, journeyPreview, isFullscreen, onToggleFullscreen, onHome,
+  onClearFx, hasFx, onSaveFavorite, showMicNudge, onMicNudgeYes, onMicNudgeNo, onMicNudgeExpire, showTrackNudge, onTrackNudgeDismiss,
 }: Props) {
   const mosh = useStore(s => s.mosh);
   const undo = useStore(s => s.undo);
@@ -654,6 +1392,7 @@ export function HotTriggers({
   const canRedo = useStore(s => s.future.length > 0);
   const shuffleSec = useStore(s => s.shuffleSec);
   const setShuffleSec = useStore(s => s.setShuffleSec);
+  const sourceMode = useStore(s => s.sourceMode);
 
   const [pickerOpen, setPickerOpen] = useState(false);
   const [favOpen, setFavOpen] = useState(false);
@@ -674,8 +1413,14 @@ export function HotTriggers({
   const captureHoldTimerRef = useRef<number | null>(null);
   const favHeldRef = useRef(false);
   const favHoldTimerRef = useRef<number | null>(null);
+  const uploadHeldRef = useRef(false);
+  const uploadHoldTimerRef = useRef<number | null>(null);
 
   const [order, setOrder] = useState<string[]>(() => loadOrder());
+  // A dock needs a stable "current" item even after the pointer leaves. The
+  // last trigger used remains emphasized until another trigger is chosen;
+  // hover/focus temporarily rolls the magnification toward its neighbors.
+  const [selectedTriggerId, setSelectedTriggerId] = useState<string>("mosh");
   const moveOrder = (id: string, dir: -1 | 1) => {
     setOrder(prev => {
       const idx = prev.indexOf(id);
@@ -698,7 +1443,10 @@ export function HotTriggers({
     window.setTimeout(() => el.removeAttribute("data-glitch"), 750);
   };
   const onRailClick = (e: React.MouseEvent) => {
-    fireGlitch((e.target as HTMLElement).closest(".hot-trigger"));
+    const trigger = (e.target as HTMLElement).closest<HTMLElement>(".hot-trigger");
+    fireGlitch(trigger);
+    const id = trigger?.closest<HTMLElement>("[data-trigger-id]")?.dataset.triggerId;
+    if (id) setSelectedTriggerId(id);
   };
   // Ambient glitch: a random idle trigger, ≥3×/min (12–18s spacing averages
   // ~4/min), completely independent of anything the user does.
@@ -718,7 +1466,7 @@ export function HotTriggers({
   // Switch-camera — only shown on touch devices when a live camera stream is active
   const [isTouchScreen, setIsTouchScreen] = useState(false);
   useEffect(() => {
-    const mql = window.matchMedia("(pointer: coarse)");
+    const mql = window.matchMedia("(pointer: coarse), (max-width: 900px)");
     const update = () => setIsTouchScreen(mql.matches);
     update();
     mql.addEventListener("change", update);
@@ -739,6 +1487,7 @@ export function HotTriggers({
   const helpModeEnabled = useStore(s => s.helpModeEnabled);
   const setHelpModeEnabled = useStore(s => s.setHelpModeEnabled);
   const [isoOpen, setIsoOpen] = useState(false);
+  const [forgePanelOpen, setForgePanelOpen] = useState(false);
 
   useEffect(() => {
     if (!isoOpen) return;
@@ -749,6 +1498,16 @@ export function HotTriggers({
     window.addEventListener("pointerdown", onDown, true);
     return () => window.removeEventListener("pointerdown", onDown, true);
   }, [isoOpen]);
+
+  useEffect(() => {
+    if (!forgePanelOpen) return;
+    const onDown = (e: PointerEvent) => {
+      if ((e.target as HTMLElement | null)?.closest("[data-forge-panel]")) return;
+      setForgePanelOpen(false);
+    };
+    window.addEventListener("pointerdown", onDown, true);
+    return () => window.removeEventListener("pointerdown", onDown, true);
+  }, [forgePanelOpen]);
 
 
   const flipCamera = async () => {
@@ -881,11 +1640,54 @@ export function HotTriggers({
     setFavOpen(v => !v);
   };
 
+  const startUploadHold = (e: React.PointerEvent<HTMLButtonElement>) => {
+    uploadHeldRef.current = false;
+    if (uploadHoldTimerRef.current) window.clearTimeout(uploadHoldTimerRef.current);
+    const { clientX, clientY } = e;
+    uploadHoldTimerRef.current = window.setTimeout(() => {
+      uploadHeldRef.current = true;
+      window.dispatchEvent(new Event("mosh:open-upload-settings"));
+      const uv = clientToViewportUv(clientX, clientY);
+      cursorFx.chaos(uv.x, uv.y);
+      try { (navigator as any).vibrate?.(15); } catch {}
+    }, 450);
+  };
+  const endUploadHold = () => {
+    if (uploadHoldTimerRef.current) {
+      window.clearTimeout(uploadHoldTimerRef.current);
+      uploadHoldTimerRef.current = null;
+    }
+  };
+  const onUploadTap = () => {
+    if (uploadHeldRef.current) return;
+    window.dispatchEvent(new CustomEvent("mosh:switch-mode", { detail: "upload" }));
+  };
+
   // ---- Build every trigger once, keyed by id, then render in `order`. ----
   const registry: Record<string, ReactNode> = {
     home: onHome && (
       <HotBtn key="home" delay={0} label="Back to start" onClick={onHome} tint="220 12% 80%">
         <Home className="h-4 w-4" strokeWidth={1.5} />
+      </HotBtn>
+    ),
+    "source-upload": (
+      <HotBtn key="source-upload" delay={0} label="Upload source — hold for photo deck" active={sourceMode === "upload"} onClick={onUploadTap} onPointerDown={startUploadHold} onPointerUp={endUploadHold} onPointerCancel={endUploadHold} tint="326 90% 65%">
+        <Upload className="h-4 w-4" strokeWidth={1.5} />
+      </HotBtn>
+    ),
+    "source-camera": (
+      <HotBtn key="source-camera" delay={0} label="Live camera" active={sourceMode === "camera"} onClick={() => window.dispatchEvent(new CustomEvent("mosh:switch-mode", { detail: "camera" }))} tint="190 90% 62%">
+        <Camera className="h-4 w-4" strokeWidth={1.5} />
+      </HotBtn>
+    ),
+    "source-forge": (
+      <HotBtn key="source-forge" delay={0} label="Forge source" active={sourceMode === "forge"} onClick={() => window.dispatchEvent(new CustomEvent("mosh:switch-mode", { detail: "forge" }))} tint="24 94% 62%">
+        <Flame className="h-4 w-4" strokeWidth={1.5} />
+      </HotBtn>
+    ),
+    account: onAccount && (
+      <HotBtn key="account" delay={0} label="Account" onClick={onAccount} tint="266 70% 75%">
+        <UserCircle className="h-4 w-4" strokeWidth={1.5} />
       </HotBtn>
     ),
     undo: (
@@ -899,9 +1701,11 @@ export function HotTriggers({
       </HotBtn>
     ),
     mosh: (
-      <HotBtn key="mosh" delay={0} label="Mosh" onClick={() => crossfadeLayers(mosh, MOSH_FADE_MS)} tint="12 90% 58%">
-        <Sparkles className="h-4 w-4" strokeWidth={1.5} />
-      </HotBtn>
+      <span key="mosh" data-mosh-input className="contents">
+        <HotBtn delay={0} label="Mosh" onClick={() => crossfadeLayers(mosh, MOSH_FADE_MS)} tint="12 90% 58%">
+          <Sparkles className="h-4 w-4" strokeWidth={1.5} />
+        </HotBtn>
+      </span>
     ),
     "auto-mosh": (
       <div key="auto-mosh" className="relative" data-shuffle-picker>
@@ -986,10 +1790,12 @@ export function HotTriggers({
         key="journey"
         type="button"
         onClick={onToggleJourney}
-        aria-label={journeyLocked ? "Journey (supporter unlock)" : (journeyOn ? "Journey mode on" : "Journey mode off")}
+        aria-label={journeyLocked ? "Journey (supporter unlock)" : (journeyPreview ? "Forge Journey free preview" : (journeyOn ? "Journey mode on" : "Journey mode off"))}
         aria-pressed={journeyOn || undefined}
         title={journeyLocked
           ? "Journey · supporter unlock (I)"
+          : journeyPreview
+            ? (journeyOn ? "Forge Journey on · five-minute preview (I)" : "Forge Journey · five-minute free preview (I)")
           : (journeyOn ? "Journey on · directing itself from motion & sound (I)" : "Journey · sit back, it directs itself (I)")}
         data-active={journeyOn || undefined}
         data-tint=""
@@ -1125,7 +1931,30 @@ export function HotTriggers({
         )}
       </div>
     ),
-    "theme-track": <TrackTrigger key="theme-track" delay={0} />,
+    // StickerCapture owns the actual capture logic, but renders its compact
+    // control into this rail slot when the mode is on (rather than floating a
+    // second, oversized button over export feedback near the bottom-right).
+    "sticker-capture": stickerMode && <div key="sticker-capture" id="mosh-sticker-capture-slot" />,
+    "theme-track": <TrackTrigger key="theme-track" delay={0} showNudge={showTrackNudge} onNudgeDismiss={onTrackNudgeDismiss} />,
+    "forge-palette": sourceMode === "forge" && (
+      <div key="forge-palette" className="relative" data-forge-panel>
+        <HotBtn
+          delay={0}
+          label={forgePanelOpen ? "Close Forge palette and settings" : "Open Forge palette and settings"}
+          active={forgePanelOpen}
+          onClick={() => setForgePanelOpen(open => !open)}
+          tint="318 82% 68%"
+        >
+          <Palette className="h-4 w-4" strokeWidth={1.5} />
+        </HotBtn>
+        {forgePanelOpen && createPortal(
+          <div className="fixed left-3 top-14 z-50 safe-top safe-left" data-forge-panel>
+            <ForgePanel embedded />
+          </div>,
+          document.body,
+        )}
+      </div>
+    ),
     favorites: (
       <div key="favorites" className="relative" data-fav-panel>
         <button
@@ -1301,25 +2130,129 @@ export function HotTriggers({
     ),
   };
 
-  const present = useMemo(() => new Set(order.filter(id => !!registry[id])), [order, registry]);
-  // No wrapper element around each node — the rail's CSS grid targets its
-  // direct children, so every trigger renders exactly as it always did,
-  // just in `order` instead of source order. Reordering does mean the
-  // hand-tuned entrance-delay cascade no longer lines up with position;
-  // every trigger above sets delay={0} for that reason (was ={0..440}).
-  const orderedNodes = order.map(id => registry[id]).filter(Boolean);
+  const availableIds = order.filter(id => !!registry[id]);
+  const present = new Set(availableIds);
+  const [scrollStart, setScrollStart] = useState(0);
+  const wheelCarryRef = useRef(0);
+  const dragIdRef = useRef<string | null>(null);
+  const visibleCount = Math.min(12, availableIds.length);
+  const normalizedStart = availableIds.length ? ((scrollStart % availableIds.length) + availableIds.length) % availableIds.length : 0;
+  const visibleIds = Array.from({ length: visibleCount }, (_, index) => availableIds[(normalizedStart + index) % availableIds.length]);
+
+  useEffect(() => {
+    if (scrollStart < availableIds.length) return;
+    setScrollStart(0);
+  }, [availableIds.length, scrollStart]);
+
+  const reorder = (draggedId: string, targetId: string) => {
+    if (draggedId === targetId) return;
+    setOrder(prev => {
+      const from = prev.indexOf(draggedId);
+      const to = prev.indexOf(targetId);
+      if (from < 0 || to < 0) return prev;
+      const next = [...prev];
+      next.splice(from, 1);
+      next.splice(to, 0, draggedId);
+      saveOrder(next);
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    const rail = railRef.current;
+    if (!rail) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      wheelCarryRef.current += Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
+      if (Math.abs(wheelCarryRef.current) < 24) return;
+      const direction = wheelCarryRef.current > 0 ? 1 : -1;
+      wheelCarryRef.current = 0;
+      setScrollStart(start => start + direction);
+    };
+    rail.addEventListener("wheel", onWheel, { passive: false });
+    return () => rail.removeEventListener("wheel", onWheel);
+  }, [showLegacyLaunchpad]);
+
+  if (hidden) return null;
 
   return (
-    /* top-14 keeps the rail clear of the account chip pinned at top-3/right-3
-       (z-40), which would otherwise sit on top of the first trigger. */
+    <>
+    {isTouchScreen ? (
+      <MobileRadialWheel
+        ids={availableIds}
+        registry={registry}
+        visualizerRef={visualizerRef}
+        isRecording={isRecording}
+        onSelect={setSelectedTriggerId}
+      />
+    ) : (
+      <DesktopRadialWheel
+        ids={availableIds}
+        registry={registry}
+        visualizerRef={visualizerRef}
+        isRecording={isRecording}
+        onSelect={setSelectedTriggerId}
+      />
+    )}
+    {showLegacyLaunchpad && (
+    /* Vertically centered so the dock occupies the right edge evenly across
+       desktop, tablet and phone aspect ratios. */
     <div
-      className="ui-chrome hot-triggers pointer-events-none absolute right-3 top-14 z-30 flex flex-col items-end gap-1 safe-top safe-right"
+      className="ui-chrome hot-triggers pointer-events-none absolute right-3 top-1/2 z-30 flex -translate-y-1/2 flex-col items-end gap-1 safe-right"
     >
-      {/* Auto-wrapping rail: fills a column, then starts a second one inward.
-          No overflow clipping, so left-opening panels stay visible. */}
-      <div ref={railRef} className="hot-trigger-rail pointer-events-auto" onClick={onRailClick}>
-        {orderedNodes}
-        <CustomizeTrigger delay={0} order={order} onMove={moveOrder} onReset={resetOrder} present={present} />
+      <div
+        ref={railRef}
+        className="hot-trigger-rail pointer-events-auto"
+        onClick={onRailClick}
+        aria-label="Hot triggers. Scroll to cycle; drag handles to reorder."
+      >
+        {visibleIds.map(id => (
+          <div
+            key={id}
+            className="hot-trigger-slot"
+            data-trigger-id={id}
+            data-selected={selectedTriggerId === id || undefined}
+            onDragOver={(e) => {
+              e.preventDefault();
+              if (dragIdRef.current) reorder(dragIdRef.current, id);
+            }}
+          >
+            <button
+              type="button"
+              draggable
+              className="hot-trigger-drag"
+              aria-label={`Reorder ${TRIGGER_LABELS[id] ?? id}`}
+              title="Drag to reorder"
+              onDragStart={(e) => {
+                dragIdRef.current = id;
+                e.dataTransfer.effectAllowed = "move";
+                e.dataTransfer.setData("text/plain", id);
+              }}
+              onDragEnd={() => { dragIdRef.current = null; }}
+              onPointerDown={(e) => {
+                dragIdRef.current = id;
+                e.currentTarget.setPointerCapture(e.pointerId);
+              }}
+              onPointerMove={(e) => {
+                if (!dragIdRef.current || !e.currentTarget.hasPointerCapture(e.pointerId)) return;
+                const target = document.elementFromPoint(e.clientX, e.clientY)?.closest<HTMLElement>("[data-trigger-id]");
+                const targetId = target?.dataset.triggerId;
+                if (targetId) reorder(dragIdRef.current, targetId);
+              }}
+              onPointerUp={(e) => {
+                if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+                dragIdRef.current = null;
+              }}
+              onPointerCancel={() => { dragIdRef.current = null; }}
+            >
+              <GripVertical aria-hidden />
+            </button>
+            {registry[id]}
+          </div>
+        ))}
+        <div className="hot-trigger-slot hot-trigger-slot--customize">
+          <CustomizeTrigger delay={0} order={order} onMove={moveOrder} onReset={resetOrder} present={present} />
+        </div>
       </div>
 
       {isRecording && (
@@ -1329,6 +2262,8 @@ export function HotTriggers({
         </div>
       )}
     </div>
+    )}
+    </>
   );
 }
 

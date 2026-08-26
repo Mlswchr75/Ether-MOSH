@@ -6,21 +6,24 @@ import { Check } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 import { useEntitlements } from "@/hooks/useEntitlements";
+import { JourneyPortalInterlude } from "@/components/journey/PortalShapeGallery";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
 
 const FEATURES_FREE = [
-  "105 GPU shader effects",
+  "107 GPU shader effects",
   "Live camera source (front / rear / webcam)",
   "Drag-and-drop or paste any image",
+  "Forge source exploration + one five-minute Journey preview",
   "Beat sync + mic reactivity",
-  "PNG still export",
+  "PNG still export for image and camera sources",
   "9 preset slots (local)",
 ];
 
 const FEATURES_UNLOCK = [
   "Everything in free",
-  "Journey mode (directs itself from motion & sound)",
+  "Uninterrupted Forge Journey ambient walls",
+  "Forge stills, recording, sharing, and deliverable export",
   "Seamless GIF loop capture (7-second perfect loops)",
   "Unlimited recording length (free is capped at 15s)",
   "Full-resolution screenshot exports (free is capped at 720p)",
@@ -69,8 +72,9 @@ export default function Pricing() {
   return (
     <main className="min-h-screen bg-background text-foreground">
       <Helmet>
-        <title>Pricing — MOSH</title>
-        <meta name="description" content="MOSH is free to use. Unlock video export and advanced features for a one-time $4.99 payment." />
+        <title>Pricing — Ether-MOSH</title>
+        <meta name="description" content="Explore Ether-MOSH free. Support Forge Journey, uninterrupted ambient walls, and clean Forge output for a one-time $4.99 payment." />
+        <link rel="canonical" href="https://ether-mosh.online/pricing" />
       </Helmet>
 
       <div className="flex items-center justify-between px-6 pt-6">
@@ -98,7 +102,7 @@ export default function Pricing() {
             Pay once. Own it forever.
           </p>
           <p className="mx-auto mt-4 max-w-md font-mono text-xs leading-relaxed text-foreground/55">
-            MOSH is free to use. One small payment unlocks video export and the full
+            Ether-MOSH is free to use. One small payment unlocks video export and the full
             feature set — no subscription. Sign-in required so your unlock follows you
             to any device or browser using the same account.
           </p>
@@ -143,7 +147,7 @@ export default function Pricing() {
                 recommended
               </span>
             </div>
-            <p className="font-mono text-[10px] uppercase tracking-[0.4em] text-foreground/40">MOSH Unlock</p>
+            <p className="font-mono text-[10px] uppercase tracking-[0.4em] text-foreground/40">Ether-MOSH Unlock</p>
             <p className="mt-2 font-sans text-3xl font-bold tracking-tight">$4.99</p>
             <p className="mt-1 font-mono text-[10px] text-foreground/40">one-time · no subscription</p>
             <ul className="mt-6 space-y-3">
@@ -170,6 +174,8 @@ export default function Pricing() {
           </motion.div>
         </div>
 
+        <JourneyPortalInterlude variant="compact" className="mt-16 border-y border-border/30" />
+
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
@@ -180,7 +186,7 @@ export default function Pricing() {
             tip jar — optional
           </h2>
           <p className="mt-2 font-mono text-xs leading-relaxed text-foreground/55">
-            MOSH is built and maintained by one person. If you're getting value from it,
+            Ether-MOSH is built and maintained by one person. If you're getting value from it,
             a tip keeps the shaders alive.
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
@@ -211,7 +217,7 @@ export default function Pricing() {
           {[
             { q: "Do I need an account?", a: "Yes — a quick free account keeps your unlock synced across devices and both Ether-MOSH deployments during the transition." },
             { q: "What browsers are supported?", a: "Chrome, Firefox, Edge, and Safari on desktop. Chrome and Safari on mobile. WebGL is required; the App will tell you if your browser isn't supported." },
-            { q: "Will I get future updates?", a: "Yes. The one-time payment includes all future updates to MOSH — new effects, features, and improvements." },
+            { q: "Will I get future updates?", a: "Yes. The one-time payment includes all future updates to Ether-MOSH — new effects, features, and improvements." },
             { q: "Is there a refund policy?", a: "Yes. 14-day no-questions-asked refund. See our refund policy for details." },
           ].map(({ q, a }) => (
             <div key={q}>

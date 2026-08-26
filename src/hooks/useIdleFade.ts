@@ -12,6 +12,19 @@ export type IdleStage = "active" | "hidden";
 
 /** Anything that counts as "still here". Scroll included via `wheel`. */
 const ACTIVITY = ["pointermove", "pointerdown", "keydown", "touchstart", "wheel"] as const;
+const UI_CONTROL_SELECTOR = "button, a, input, textarea, select, [role='button'], [role='slider']";
+
+/** Mosh is performance input, not a request for chrome. Pointer movement can
+ * still reveal controls, but the action itself never restarts the idle clock. */
+export function isMoshOnlyActivity(event: Event) {
+  if (event instanceof KeyboardEvent && event.code === "Space") return true;
+  const target = event.target instanceof Element ? event.target : null;
+  if (!target) return false;
+  if (target.closest("[data-mosh-input]")) return true;
+  return (event.type === "pointerdown" || event.type === "touchstart")
+    && !!target.closest("[data-mosh-surface]")
+    && !target.closest(UI_CONTROL_SELECTOR);
+}
 
 /**
  * Programmatic activity signal, for code paths the browser's own DOM events
@@ -35,7 +48,10 @@ export function markUiActive() {
   if (typeof window !== "undefined") window.dispatchEvent(new Event(ACTIVITY_EVENT));
 }
 
-export function useIdleFade(hideMs = 2_000): IdleStage {
+export function useIdleFade(
+  hideMs = 2_000,
+  ignoreActivity?: (event: Event) => boolean,
+): IdleStage {
   const [stage, setStage] = useState<IdleStage>("active");
 
   useEffect(() => {
@@ -54,8 +70,12 @@ export function useIdleFade(hideMs = 2_000): IdleStage {
       setStage(current => (current === "active" ? current : "active"));
       arm();
     };
+    const onActivity = (event: Event) => {
+      if (ignoreActivity?.(event)) return;
+      reset();
+    };
 
-    ACTIVITY.forEach(e => window.addEventListener(e, reset, { passive: true, capture: true }));
+    ACTIVITY.forEach(e => window.addEventListener(e, onActivity, { passive: true, capture: true }));
     // The activity list above only covers events that fire *on this page*.
     // A native file/camera/color picker steals focus for as long as the user
     // takes to use it — no pointermove or keydown reaches the window while
@@ -73,12 +93,12 @@ export function useIdleFade(hideMs = 2_000): IdleStage {
 
     return () => {
       disarm();
-      ACTIVITY.forEach(e => window.removeEventListener(e, reset, { capture: true }));
+      ACTIVITY.forEach(e => window.removeEventListener(e, onActivity, { capture: true }));
       window.removeEventListener("focus", reset);
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener(ACTIVITY_EVENT, reset);
     };
-  }, [hideMs]);
+  }, [hideMs, ignoreActivity]);
 
   return stage;
 }

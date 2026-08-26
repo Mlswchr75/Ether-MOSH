@@ -4,6 +4,11 @@
  * This scaffold defines the API contract and wires the subsystem seams. The
  * WebGL2 baseline and WebGPU path land incrementally behind this surface, so
  * the app never has to change as the engine grows.
+ *
+ * Not the active renderer yet — see this package's README ("Status:
+ * scaffold"). The app currently renders through `src/engine/Renderer.ts`;
+ * every method here is a no-op seam (`render`, `resize`, `setMotionField`,
+ * `setRegions`) until the Phase 1→2 migration lands.
  */
 
 import type {

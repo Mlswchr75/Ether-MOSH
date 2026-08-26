@@ -1,6 +1,16 @@
-// Storm Director — reactive "reality warp" mode. 
+// Storm Director — reactive "reality warp" mode.
 // PARASITIC TRACKING MODE: Identifies up to 5 distinct moving objects (fingers, features),
 // wraps tiny shape-fitting mosh bubbles around them, and sustains effects for seconds to a minute.
+//
+// Superseded: the live app no longer instantiates StormDirector directly —
+// JourneyDirector (journeyDirector.ts) now runs Smart's judgement and
+// Storm's interference together (see the comment above Editor.tsx's Journey
+// director section). This file stays only as the standalone reference this
+// class was extracted from; nothing imports it. Because of that, MotionTracker
+// here can never run concurrently with SmartDirector's own getImageData
+// readback in practice — if this class is ever wired back up standalone,
+// re-check that concurrent-readback cost against whatever else is sampling
+// the same video element at the time.
 
 import { EFFECTS } from "./effects";
 

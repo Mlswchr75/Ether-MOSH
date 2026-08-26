@@ -10,6 +10,27 @@
 import { useStore } from "@/store/useStore";
 import { toast } from "sonner";
 
+export function isMobileAudioCaptureDevice(nav: Pick<Navigator, "userAgent" | "maxTouchPoints"> = navigator) {
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(nav.userAgent) || nav.maxTouchPoints > 1;
+}
+
+function showMobileAudioFallback() {
+  toast.error("Phones can't capture music from another app. Use the mic or load the track into MOSH.", {
+    duration: 9000,
+    action: {
+      label: "Use mic",
+      onClick: () => {
+        useStore.getState().setSystemAudioEnabled(false);
+        useStore.getState().setMicEnabled(true);
+      },
+    },
+    cancel: {
+      label: "Load track",
+      onClick: () => window.dispatchEvent(new Event("mosh:browse-audio-track")),
+    },
+  });
+}
+
 export async function toggleSystemAudio(): Promise<void> {
   const enabled = useStore.getState().systemAudioEnabled;
   if (enabled) {
@@ -18,7 +39,8 @@ export async function toggleSystemAudio(): Promise<void> {
   }
   const md = navigator.mediaDevices as any;
   if (!md?.getDisplayMedia) {
-    toast.error("System audio capture not supported on this device");
+    if (isMobileAudioCaptureDevice()) showMobileAudioFallback();
+    else toast.error("System audio capture isn't supported in this browser — try desktop Chrome");
     return;
   }
   try {
@@ -60,7 +82,9 @@ export async function toggleSystemAudio(): Promise<void> {
     useStore.getState().setSystemAudioEnabled(true);
   } catch (err: any) {
     console.error("[device-audio] getDisplayMedia failed:", err);
-    if (err?.name === "NotAllowedError") {
+    if (isMobileAudioCaptureDevice() && (err?.name === "NotSupportedError" || err?.name === "TypeError")) {
+      showMobileAudioFallback();
+    } else if (err?.name === "NotAllowedError") {
       toast.error("Screen share permission denied");
     } else {
       toast.error(err?.message || "Couldn't capture system audio");

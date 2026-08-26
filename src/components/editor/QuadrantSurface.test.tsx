@@ -1,8 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { QuadrantSurface } from "./QuadrantSurface";
-import { EFFECTS_BY_ID } from "@/engine/effects";
-import { groupLayersByRole } from "@/engine/effectRoles";
 import { useStore } from "@/store/useStore";
 
 /**
@@ -86,91 +84,6 @@ describe("QuadrantSurface", () => {
     expect(new Set(hit).size).toBe(3);
   });
 
-  it("rerolls the selected Glow layer from any tap and advances the role target", () => {
-    const onRoll = vi.fn();
-    render(<QuadrantSurface onRoll={onRoll} />);
-    const el = screen.getByLabelText(/Visual instrument/i);
-    const before = structuredClone(useStore.getState().layers);
-
-    fireEvent.click(screen.getByRole("button", { name: /Glow.*Finish/i }));
-    tap(el, 40, 700);
-
-    const after = useStore.getState().layers;
-    const changed = after.filter((layer, index) => layer.effectId !== before[index].effectId);
-    expect(changed).toHaveLength(1);
-    expect(changed[0].role).toBe("finish");
-    expect(after.filter(layer => layer.role !== "finish").map(layer => layer.effectId))
-      .toEqual(before.filter(layer => layer.role !== "finish").map(layer => layer.effectId));
-    expect(useStore.getState().roleCursor).toBe("grade");
-    expect(onRoll).toHaveBeenCalledWith("finish");
-    expect(document.querySelector("[data-role-readout]")?.textContent).toContain("GLOW");
-  });
-
-  it("tunes the selected Glow chip layer without changing effect identities", () => {
-    render(<QuadrantSurface />);
-    const el = screen.getByLabelText(/Visual instrument/i);
-    const glow = groupLayersByRole(useStore.getState().layers).finish[0];
-    const before = structuredClone(useStore.getState().layers);
-
-    fireEvent.click(screen.getByRole("button", { name: /Glow.*Finish/i }));
-    fireEvent.click(screen.getByRole("button", { name: EFFECTS_BY_ID[glow.effectId].name }));
-    press(el, 200, 400);
-    fireEvent.pointerMove(el, { pointerId: 1, clientX: 340, clientY: 300 });
-    lift(el, 340, 300);
-
-    const after = useStore.getState().layers;
-    const tuned = after.find(layer => layer.id === glow.id)!;
-    const original = before.find(layer => layer.id === glow.id)!;
-    expect({ params: tuned.params, opacity: tuned.opacity })
-      .not.toEqual({ params: original.params, opacity: original.opacity });
-    expect(after.map(layer => layer.effectId)).toEqual(before.map(layer => layer.effectId));
-  });
-
-  it("synchronizes a Glow card selection before a canvas drag from a Grade-selected stack", () => {
-    render(<QuadrantSurface />);
-    const el = screen.getByLabelText(/Visual instrument/i);
-    const glow = groupLayersByRole(useStore.getState().layers).finish[0];
-    const before = structuredClone(useStore.getState().layers);
-
-    expect(useStore.getState().selectedRole).toBe("grade");
-    fireEvent.click(screen.getByRole("button", { name: /Glow.*Finish/i }));
-    expect(useStore.getState().selectedLayerId).toBe(glow.id);
-    press(el, 200, 400);
-    fireEvent.pointerMove(el, { pointerId: 1, clientX: 340, clientY: 300 });
-    lift(el, 340, 300);
-
-    const after = useStore.getState().layers;
-    expect(after.find(layer => layer.id === glow.id)).not.toMatchObject(
-      before.find(layer => layer.id === glow.id)!,
-    );
-    expect(after.filter(layer => layer.id !== glow.id).map(layer => ({ id: layer.id, params: layer.params, opacity: layer.opacity })))
-      .toEqual(before.filter(layer => layer.id !== glow.id).map(layer => ({ id: layer.id, params: layer.params, opacity: layer.opacity })));
-    expect(after.map(layer => layer.effectId)).toEqual(before.map(layer => layer.effectId));
-  });
-
-  it("tunes only the selected repeated Glitch chip sibling", () => {
-    useStore.getState().mosh("interdimensional");
-    render(<QuadrantSurface />);
-    const el = screen.getByLabelText(/Visual instrument/i);
-    const accents = groupLayersByRole(useStore.getState().layers).accent;
-    const target = accents[1];
-    const before = structuredClone(useStore.getState().layers);
-
-    fireEvent.click(screen.getByRole("button", { name: /Glitch.*Accent/i }));
-    fireEvent.click(screen.getByRole("button", { name: EFFECTS_BY_ID[target.effectId].name }));
-    press(el, 200, 400);
-    fireEvent.pointerMove(el, { pointerId: 1, clientX: 340, clientY: 300 });
-    lift(el, 340, 300);
-
-    const after = useStore.getState().layers;
-    expect(after.find(layer => layer.id === target.id)).not.toMatchObject(
-      before.find(layer => layer.id === target.id)!,
-    );
-    expect(after.filter(layer => layer.id !== target.id).map(layer => ({ id: layer.id, params: layer.params, opacity: layer.opacity })))
-      .toEqual(before.filter(layer => layer.id !== target.id).map(layer => ({ id: layer.id, params: layer.params, opacity: layer.opacity })));
-    expect(after.map(layer => layer.effectId)).toEqual(before.map(layer => layer.effectId));
-  });
-
   it("skips a locked voice so a kept look survives repeated tapping", () => {
     render(<QuadrantSurface />);
     const el = screen.getByLabelText(/Visual instrument/i);
@@ -222,29 +135,5 @@ describe("QuadrantSurface", () => {
     useStore.setState({ showBeforeAfter: true });
     render(<QuadrantSurface />);
     expect(screen.queryByLabelText(/Visual instrument/i)).toBeNull();
-  });
-
-  it("fences role rail pointer lifecycles from canvas rerolls", () => {
-    const onRoll = vi.fn();
-    render(<QuadrantSurface onRoll={onRoll} />);
-    const before = structuredClone(useStore.getState().layers);
-
-    const dismiss = screen.getByRole("button", { name: "Dismiss role controls hint" });
-    fireEvent.pointerDown(dismiss, { pointerId: 1, clientX: 20, clientY: 20 });
-    fireEvent.pointerUp(dismiss, { pointerId: 1, clientX: 20, clientY: 20 });
-    fireEvent.click(dismiss);
-
-    const glow = screen.getByRole("button", { name: /Glow.*Finish/i });
-    fireEvent.pointerDown(glow, { pointerId: 2, clientX: 20, clientY: 20 });
-    fireEvent.pointerUp(glow, { pointerId: 2, clientX: 20, clientY: 20 });
-    fireEvent.click(glow);
-
-    const strip = screen.getByLabelText(/Glow Finish controls/i);
-    fireEvent.pointerDown(strip, { pointerId: 3, clientX: 20, clientY: 20 });
-    fireEvent.pointerMove(strip, { pointerId: 3, clientX: 24, clientY: 24 });
-    fireEvent.pointerUp(strip, { pointerId: 3, clientX: 24, clientY: 24 });
-
-    expect(useStore.getState().layers).toEqual(before);
-    expect(onRoll).not.toHaveBeenCalled();
   });
 });

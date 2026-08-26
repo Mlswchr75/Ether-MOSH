@@ -11,7 +11,7 @@
  */
 import type { RenderLayer } from "./Renderer";
 
-type PointKind = "ambient" | "burst" | "chaos";
+type PointKind = "ambient" | "hover" | "burst" | "chaos";
 
 type ActivePoint = {
   kind: PointKind;
@@ -61,11 +61,30 @@ class CursorFxManager {
     });
   }
 
+  /** A much quieter always-on point for mouse and hover-capable stylus input. */
+  hover(key: string, x: number, y: number) {
+    const existing = this.points.get(key);
+    if (existing && existing.kind === "hover") {
+      existing.targetX = x;
+      existing.targetY = y;
+      existing.releasedAt = null;
+      return;
+    }
+    this.points.set(key, {
+      kind: "hover",
+      x, y, targetX: x, targetY: y,
+      bornAt: performance.now(),
+      releasedAt: null,
+      peakAmount: 0.15,
+      radius: 0.075,
+    });
+  }
+
   /** Re-target an already-active ambient point (pointermove). No-op if the
    *  key isn't tracked or has already been released. */
   moveAmbient(key: string, x: number, y: number) {
     const p = this.points.get(key);
-    if (p && p.kind === "ambient" && p.releasedAt == null) {
+    if (p && (p.kind === "ambient" || p.kind === "hover") && p.releasedAt == null) {
       p.targetX = x;
       p.targetY = y;
     }
@@ -107,7 +126,7 @@ class CursorFxManager {
   getActiveLayers(nowMs: number): RenderLayer[] {
     const out: RenderLayer[] = [];
     for (const [key, p] of this.points) {
-      if (p.kind === "ambient") {
+      if (p.kind === "ambient" || p.kind === "hover") {
         p.x += (p.targetX - p.x) * AMBIENT_EASE;
         p.y += (p.targetY - p.y) * AMBIENT_EASE;
         const age = nowMs - p.bornAt;

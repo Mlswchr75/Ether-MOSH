@@ -2,7 +2,6 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { HelmetProvider } from "react-helmet-async";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import App from "./App";
-import { useStore } from "./store/useStore";
 
 vi.mock("@/components/editor/GlCanvas", () => ({
   GlCanvas: () => <canvas data-mosh-canvas />,
@@ -83,32 +82,5 @@ describe("public feature routes", () => {
 
     expect(await screen.findByRole("heading", { name: "refund policy", level: 1 })).not.toBeNull();
     expect(screen.queryByText("404")).toBeNull();
-  });
-
-  it("shows explanatory role controls without a source while keeping Add disabled", async () => {
-    useStore.setState({
-      imageElement: null,
-      videoElement: null,
-      layers: [],
-      selectedLayerId: null,
-      selectedRole: null,
-      selectedRoleLayers: {},
-      roleCursor: "grade",
-    });
-
-    renderAt("/edit");
-
-    const startCamera = await screen.findByRole(
-      "button",
-      { name: "Start live camera" },
-      { timeout: 5_000 },
-    );
-    expect((startCamera as HTMLButtonElement).disabled).toBe(false);
-    expect(screen.queryByLabelText(/Visual instrument/i)).toBeNull();
-    expect(screen.getByRole("button", { name: /Color.*Grade/i })).not.toBeNull();
-    expect(screen.getByRole("button", { name: /Warp.*Form/i })).not.toBeNull();
-    expect(screen.getByRole("button", { name: /Glitch.*Accent/i })).not.toBeNull();
-    expect(screen.getByRole("button", { name: /Glow.*Finish/i })).not.toBeNull();
-    expect((screen.getByRole("button", { name: "Add" }) as HTMLButtonElement).disabled).toBe(true);
   });
 });

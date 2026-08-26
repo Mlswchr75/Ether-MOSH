@@ -9,7 +9,7 @@ import { trackPlayer } from "@/engine/trackPlayer";
 import { EFFECTS_BY_ID } from "@/engine/effects";
 import { timeController } from "@/engine/timefx";
 import { ProceduralSource } from "@/engine/proceduralSource";
-import { paintForgeSource, createForgeRuntime, type ForgeRuntime } from "@/engine/forgeSource";
+import { paintForgeSource, createForgeRuntime, disposeForgeRuntime, type ForgeRuntime } from "@/engine/forgeSource";
 import { AudioWindow, SILENT_FEATURES, type AudioFeatures, type JourneyMic } from "@/engine/journeyCore";
 import { FrequencyStrip, BeatBorder } from "./AudioFeedback";
 import { startAnalyzer, stopAnalyzer, getAudioData } from "@/engine/audioAnalyzer";
@@ -276,7 +276,10 @@ export function GlCanvas() {
 
   // Cleanup forge's Volumetric Bloom WebGL context on unmount — browsers cap
   // concurrent contexts, so this must be released explicitly, not left to GC.
-  useEffect(() => () => { forgeRuntimeRef.current?.volumetric?.dispose(); forgeRuntimeRef.current = null; }, []);
+  useEffect(() => () => {
+    if (forgeRuntimeRef.current) disposeForgeRuntime(forgeRuntimeRef.current);
+    forgeRuntimeRef.current = null;
+  }, []);
 
   // Auto-resume AudioContext on tab refocus
   useEffect(() => {
@@ -384,6 +387,11 @@ export function GlCanvas() {
         useStore.getState().setMicEnabled(false);
       }
     });
+    // Release the capture on unmount too — without this, navigating away
+    // from the editor while mic/system-audio is enabled leaves the
+    // getUserMedia/getDisplayMedia stream and its AudioContext running
+    // indefinitely (the browser's recording indicator stays lit).
+    return () => { mic.stop(); };
   }, [micEnabled, systemAudioEnabled]);
 
   // Auto-resume the AudioContext if iOS suspends it, and — the important

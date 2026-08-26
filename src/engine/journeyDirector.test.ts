@@ -1,7 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  DISRUPT_CEILING_MS, DISRUPT_FLOOR_MS,
-  moodFrom, nextDisruptionMs, nextHoldMs, pickDisruption,
+  DISRUPT_CEILING_MS, DISRUPT_FLOOR_MS, JourneyDirector,
+  forgeInterval, moodFrom, nextDisruptionMs, nextHoldMs, performanceInterval, pickDisruption,
   type DisruptionKind,
 } from "./journeyDirector";
 import { EMPTY_FRAME, SILENT_FEATURES, type AudioFeatures, type FrameStats, type Section } from "./journeyCore";
@@ -82,6 +82,27 @@ describe("the disruption guarantee", () => {
 });
 
 describe("composition pacing", () => {
+  it("starts every Forge composition crossfade before ten seconds", () => {
+    const rand = rng(15);
+    const holds = Array.from({ length: 300 }, () => forgeInterval(60_000, "compose", rand));
+    const disruptions = Array.from({ length: 300 }, () => forgeInterval(30_000, "disrupt", rand));
+    expect(Math.min(...holds)).toBeGreaterThanOrEqual(3_800);
+    expect(Math.max(...holds)).toBeLessThanOrEqual(8_500);
+    expect(Math.min(...disruptions)).toBeGreaterThanOrEqual(1_800);
+    expect(Math.max(...disruptions)).toBeLessThanOrEqual(5_500);
+  });
+
+  it("turns ambient timing into an irregular, active performance pace", () => {
+    const rand = rng(16);
+    const holds = Array.from({ length: 300 }, () => performanceInterval(16_000, "compose", rand));
+    const disruptions = Array.from({ length: 300 }, () => performanceInterval(9_000, "disrupt", rand));
+    expect(Math.min(...holds)).toBeGreaterThanOrEqual(1_600);
+    expect(Math.max(...holds)).toBeLessThanOrEqual(10_000);
+    expect(Math.min(...disruptions)).toBeGreaterThanOrEqual(1_200);
+    expect(Math.max(...disruptions)).toBeLessThanOrEqual(6_500);
+    expect(new Set(holds).size).toBeGreaterThan(200);
+  });
+
   it("quantises to whole bars when there is a tempo to quantise to", () => {
     // 128 BPM → 1875ms per bar. Every hold must be a whole multiple of it, or
     // the change lands near the music rather than on it.
@@ -241,5 +262,51 @@ describe("mood translation", () => {
     const bright = moodFrom(features({ weight: 0.2, brightness: 0.8, energy: 0.7 }), frame(), 0.3, 0.3);
     expect(heavy.bass).toBeGreaterThan(bright.bass);
     expect(bright.treble).toBeGreaterThan(heavy.treble);
+  });
+});
+
+describe("JourneyDirector.stop()", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it("resets state instead of leaving a stop→start cycle surfacing stale readout", () => {
+    const director = new JourneyDirector({
+      getVideo: () => null,
+      getMic: () => null,
+      onCompose: () => {},
+      onDisrupt: () => {},
+    });
+
+    director.start();
+    // Simulate having drifted well away from a fresh start during the run —
+    // a later section and a real disruption on record.
+    (director as unknown as { state: unknown }).state = {
+      ...director.getState(),
+      section: "peak",
+      lastDisruption: { kind: "surge", violence: 1, burstMs: 900, reason: "test" },
+    };
+    (director as unknown as { section: string }).section = "peak";
+
+    director.stop();
+
+    const state = director.getState();
+    expect(state.section).toBe("intro");
+    expect(state.lastDisruption).toBeNull();
+  });
+
+  it("does not leave a pending tick running after stop()", () => {
+    const onCompose = vi.fn();
+    const director = new JourneyDirector({
+      getVideo: () => null,
+      getMic: () => null,
+      onCompose,
+      onDisrupt: () => {},
+      sampleMs: 50,
+    });
+    director.start();
+    director.stop();
+    onCompose.mockClear();
+    vi.advanceTimersByTime(5_000);
+    expect(onCompose).not.toHaveBeenCalled();
   });
 });

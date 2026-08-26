@@ -255,6 +255,9 @@ export type JourneyDirectorState = {
 type Opts = {
   getVideo: () => HTMLVideoElement | null;
   getMic: () => JourneyMic | null;
+  /** Forge is an ambient wall; the ordinary visualiser is an active performance.
+   * Performance keeps compositions and alterations moving much more often. */
+  pace?: "ambient" | "performance" | "forge";
   /** Full arrangement change. */
   onCompose: (layers: DirectedLayer[], state: JourneyDirectorState) => void;
   /** Alteration of the existing arrangement. */
@@ -263,6 +266,36 @@ type Opts = {
   sampleMs?: number;
   rand?: () => number;
 };
+
+/** Compress an ambient director interval into an irregular performance interval.
+ * The floors prevent a blur of un-readable cuts; the caps keep a regular
+ * visualiser from parking on one idea while the Art Director has the wheel. */
+export function performanceInterval(
+  ms: number,
+  kind: "compose" | "disrupt",
+  rand: () => number = Math.random,
+): number {
+  const multiplier = kind === "compose"
+    ? 0.32 + rand() * 0.24
+    : 0.44 + rand() * 0.22;
+  const [floor, ceiling] = kind === "compose" ? [1_600, 10_000] : [1_200, 6_500];
+  return Math.max(floor, Math.min(ceiling, ms * multiplier));
+}
+
+/** Keep Forge Journey evolving as a visual wall without letting one complete
+ * stack own the screen for ten seconds. DIRECTED_FADE_MS finishes the handoff
+ * after this interval, so the 8.5s ceiling leaves room for that crossfade. */
+export function forgeInterval(
+  ms: number,
+  kind: "compose" | "disrupt",
+  rand: () => number = Math.random,
+): number {
+  const multiplier = kind === "compose"
+    ? 0.28 + rand() * 0.18
+    : 0.38 + rand() * 0.18;
+  const [floor, ceiling] = kind === "compose" ? [3_800, 8_500] : [1_800, 5_500];
+  return Math.max(floor, Math.min(ceiling, ms * multiplier));
+}
 
 export class JourneyDirector {
   private opts: Required<Opts>;
@@ -305,6 +338,7 @@ export class JourneyDirector {
       onState: () => {},
       sampleMs: 110,
       rand: Math.random,
+      pace: "ambient",
       ...opts,
     } as Required<Opts>;
 
@@ -313,7 +347,11 @@ export class JourneyDirector {
     this.probe.height = 96;
     this.pctx = this.probe.getContext("2d", { willReadFrequently: true });
 
-    this.state = {
+    this.state = this.initialState();
+  }
+
+  private initialState(): JourneyDirectorState {
+    return {
       features: SILENT_FEATURES,
       reading: classifyStyle(SILENT_FEATURES),
       frame: EMPTY_FRAME,
@@ -348,6 +386,11 @@ export class JourneyDirector {
     this.prevPixels = null;
     this.recentStructural = [];
     this.recentAccent = [];
+    // Without this, a stop→start cycle could briefly surface stale state
+    // (e.g. the last disruption reason) via getState()/onState() before the
+    // next tick overwrites it.
+    this.section = "intro";
+    this.state = this.initialState();
   }
 
   /** Id → score multiplier (0..1) fed to composeFromMood so a recently-used
@@ -450,11 +493,23 @@ export class JourneyDirector {
     this.lastComposeAt = now;
     // Hold the opening arrangement briefly: it is chosen before any audio has
     // been heard, so committing to a full silence-derived hold reads as a stall.
-    this.holdMs = first
+    const ambientHold = first
       ? 3_200
       : nextHoldMs(this.section, features, this.opts.rand);
+    this.holdMs = first
+      ? ambientHold
+      : this.opts.pace === "forge"
+        ? forgeInterval(ambientHold, "compose", this.opts.rand)
+        : this.opts.pace === "performance"
+          ? performanceInterval(ambientHold, "compose", this.opts.rand)
+          : ambientHold;
     this.lastDisruptAt = now;
-    this.disruptInMs = nextDisruptionMs(this.section, features, this.opts.rand);
+    const ambientDisruption = nextDisruptionMs(this.section, features, this.opts.rand);
+    this.disruptInMs = this.opts.pace === "forge"
+      ? forgeInterval(ambientDisruption, "disrupt", this.opts.rand)
+      : this.opts.pace === "performance"
+        ? performanceInterval(ambientDisruption, "disrupt", this.opts.rand)
+        : ambientDisruption;
 
     this.state = {
       ...this.state,
@@ -469,7 +524,12 @@ export class JourneyDirector {
   private disrupt(now: number) {
     const d = pickDisruption(this.section, this.state.frame, this.state.features, this.opts.rand);
     this.lastDisruptAt = now;
-    this.disruptInMs = nextDisruptionMs(this.section, this.state.features, this.opts.rand);
+    const ambientDisruption = nextDisruptionMs(this.section, this.state.features, this.opts.rand);
+    this.disruptInMs = this.opts.pace === "forge"
+      ? forgeInterval(ambientDisruption, "disrupt", this.opts.rand)
+      : this.opts.pace === "performance"
+        ? performanceInterval(ambientDisruption, "disrupt", this.opts.rand)
+        : ambientDisruption;
     this.state = { ...this.state, lastDisruption: d, nextDisruptMs: this.disruptInMs };
     try { this.opts.onDisrupt(d, this.getState()); } catch { /* caller's */ }
 

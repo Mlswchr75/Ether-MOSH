@@ -7,7 +7,8 @@ export default function Refund() {
   return (
     <main className="min-h-screen bg-background text-foreground">
       <Helmet>
-        <title>Refund Policy — MOSH</title>
+        <title>Refund Policy — Ether-MOSH</title>
+        <link rel="canonical" href="https://ether-mosh.online/refund" />
       </Helmet>
 
       <div className="flex items-center justify-between px-6 pt-6">
@@ -35,7 +36,7 @@ export default function Refund() {
             <p>
               We offer a no-questions-asked refund within <span className="text-foreground/90">14 days</span> of
               purchase, as long as you haven't exported more than a handful of files.
-              After 14 days, all sales are final — MOSH is a digital product and
+              After 14 days, all sales are final — Ether-MOSH is a digital product and
               access is granted immediately.
             </p>
           </section>
@@ -77,7 +78,7 @@ export default function Refund() {
               Technical issues
             </h2>
             <p>
-              If MOSH doesn't work on your device (GPU incompatibility, browser bug,
+              If Ether-MOSH doesn't work on your device (GPU incompatibility, browser bug,
               etc.), please tell us before requesting a refund. We'll prioritise fixing
               the issue for you, and issue a refund regardless of the 14-day window if
               we can't resolve it.

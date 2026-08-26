@@ -246,6 +246,8 @@ const BASE_FORGE: ForgeState = {
   stack: [],
   baseImage: null,
   baseName: null,
+  mosaicEnabled: false,
+  mosaicDensity: 0.45,
   overlay: 0,
   activeGeneratorId: "driftField",
   kaleidoscopeFolds: null,

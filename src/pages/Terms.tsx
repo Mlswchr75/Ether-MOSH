@@ -9,7 +9,8 @@ export default function Terms() {
   return (
     <main className="min-h-screen bg-background text-foreground">
       <Helmet>
-        <title>Terms of Service — MOSH</title>
+        <title>Terms of Service — Ether-MOSH</title>
+        <link rel="canonical" href="https://ether-mosh.online/terms" />
       </Helmet>
 
       <div className="flex items-center justify-between px-6 pt-6">
@@ -38,7 +39,7 @@ export default function Terms() {
               1. Acceptance
             </h2>
             <p>
-              By accessing or using MOSH ("the App"), you agree to these Terms of Service.
+              By accessing or using Ether-MOSH ("the App"), you agree to these Terms of Service.
               If you do not agree, do not use the App. We may update these terms at any time;
               continued use after a change constitutes acceptance.
             </p>
@@ -46,10 +47,10 @@ export default function Terms() {
 
           <section>
             <h2 className="mb-3 font-mono text-[10px] uppercase tracking-[0.35em] text-foreground/50">
-              2. What MOSH Is
+              2. What Ether-MOSH Is
             </h2>
             <p>
-              MOSH is a browser-based, audio-reactive visual instrument. It lets you load
+              Ether-MOSH is a browser-based, audio-reactive visual instrument. It lets you load
               images or live camera feeds, apply real-time GPU shader effects, synchronise
               those effects to audio, and export stills or video. All processing happens
               locally in your browser; your images and camera feed are never transmitted to
@@ -65,7 +66,7 @@ export default function Terms() {
               We grant you a personal, non-exclusive, non-transferable licence to use the
               App for your own creative and commercial projects. You may not sublicence,
               resell, or redistribute the App itself or its source code. Artwork you create
-              with MOSH is entirely yours.
+              with Ether-MOSH is entirely yours.
             </p>
           </section>
 
@@ -74,7 +75,7 @@ export default function Terms() {
               4. Payments
             </h2>
             <p>
-              Certain features require a one-time payment ("MOSH Unlock"). Payments are
+              Certain features require a one-time payment ("Ether-MOSH Unlock"). Payments are
               processed securely by Stripe. We do not store your payment card details.
               All prices are in USD. Taxes may apply depending on your jurisdiction.
             </p>
@@ -96,7 +97,7 @@ export default function Terms() {
               6. Prohibited Use
             </h2>
             <p>
-              You agree not to use MOSH to process content that is illegal, defamatory,
+              You agree not to use Ether-MOSH to process content that is illegal, defamatory,
               or infringes on third-party intellectual property rights. You agree not to
               attempt to reverse-engineer, decompile, or extract the shader source code or
               any proprietary algorithms embedded in the App.
