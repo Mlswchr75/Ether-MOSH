@@ -1,0 +1,37 @@
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { HomeInfoCarousel } from "./HomeInfoCarousel";
+
+const renderCarousel = () => render(
+  <MemoryRouter>
+    <HomeInfoCarousel onReturnToInstrument={vi.fn()} />
+  </MemoryRouter>,
+);
+
+afterEach(cleanup);
+
+describe("HomeInfoCarousel", () => {
+  it("loops forward from Contact back to Signal", () => {
+    renderCarousel();
+    const next = screen.getByRole("button", { name: "Next chapter" });
+
+    for (let step = 0; step < 5; step += 1) fireEvent.click(next);
+    expect(screen.getByText(/06 \/ 06 · Contact/i)).toBeTruthy();
+
+    fireEvent.click(next);
+    expect(screen.getByText(/01 \/ 06 · Signal/i)).toBeTruthy();
+  });
+
+  it("loops backward from Signal to Contact", () => {
+    renderCarousel();
+    fireEvent.click(screen.getByRole("button", { name: "Previous chapter" }));
+    expect(screen.getByText(/06 \/ 06 · Contact/i)).toBeTruthy();
+  });
+
+  it("supports keyboard navigation", () => {
+    renderCarousel();
+    fireEvent.keyDown(screen.getByRole("region", { name: "Ether-MOSH live visuals" }), { key: "ArrowRight" });
+    expect(screen.getByText(/02 \/ 06 · About/i)).toBeTruthy();
+  });
+});
