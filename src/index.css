@@ -2008,7 +2008,7 @@
      browser-chrome/safe-area zone. Put its center roughly one quarter of the
      viewport up from the bottom, where it remains thumb-reachable and visible. */
   @media (max-width: 1100px), (pointer: coarse) {
-    .home-info-controls { bottom: calc(24svh - 17px); }
+    .home-info-controls { bottom: calc(20.4svh - 17px); }
   }
 
   @media (prefers-reduced-motion: reduce) {
