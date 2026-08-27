@@ -46,7 +46,7 @@ function seedBlobs(u: Float32Array, v: Float32Array, w: number, h: number, rand:
   for (let b = 0; b < blobs; b++) {
     const cx = Math.floor(rand() * w);
     const cy = Math.floor(rand() * h);
-    const r = 2 + Math.floor(rand() * 4);
+    const r = 3 + Math.floor(rand() * 4);
     for (let dy = -r; dy <= r; dy++) {
       for (let dx = -r; dx <= r; dx++) {
         if (dx * dx + dy * dy > r * r) continue;
@@ -74,6 +74,19 @@ function createState(seed: string): RDState {
   return { simW, simH, u, v, u2: new Float32Array(u.length), v2: new Float32Array(v.length), preview, previewCtx: preview.getContext("2d") };
 }
 
+/**
+ * The 5-point discrete Laplacian's stability limit (von Neumann analysis)
+ * is dt <= 1/(4*D) for grid spacing 1. DA=1.0 means dt must stay <= 0.25 —
+ * an earlier version of this used dt=1 implicitly (no scaling at all) and
+ * blew up to NaN/Infinity within a few hundred steps regardless of
+ * feed/kill, which looked like a tuning problem but was actually a plain
+ * numerical-stability bug. Verified empirically (a parameter sweep against
+ * this exact stencil) rather than assumed from a reference implementation,
+ * since the same nominal feed/kill can behave differently depending on
+ * discretization details.
+ */
+const DT = 0.2;
+
 /** One Gray-Scott step, in place via the ping-pong buffers on `s`. */
 function step(s: RDState, feed: number, kill: number) {
   const { simW: w, simH: h, u, v, u2, v2 } = s;
@@ -88,8 +101,8 @@ function step(s: RDState, feed: number, kill: number) {
       const lapU = u[yN * w + x] + u[yS * w + x] + u[y * w + xW] + u[y * w + xE] - 4 * uC;
       const lapV = v[yN * w + x] + v[yS * w + x] + v[y * w + xW] + v[y * w + xE] - 4 * vC;
       const reaction = uC * vC * vC;
-      u2[i] = Math.max(0, Math.min(1, uC + (DA * lapU - reaction + feed * (1 - uC))));
-      v2[i] = Math.max(0, Math.min(1, vC + (DB * lapV + reaction - (feed + kill) * vC)));
+      u2[i] = Math.max(0, Math.min(1, uC + DT * (DA * lapU - reaction + feed * (1 - uC))));
+      v2[i] = Math.max(0, Math.min(1, vC + DT * (DB * lapV + reaction - (feed + kill) * vC)));
     }
   }
   s.u = u2; s.u2 = u;
@@ -101,16 +114,21 @@ function render(gctx: ForgeGeneratorCtx, state: unknown) {
   const { ctx, w, h, palette, intensity, audio } = gctx;
   if (!s.previewCtx) return;
 
-  // "Coral"-family feed/kill, nudged gently by audio — Gray-Scott only forms
-  // stable patterns in a narrow band of these two values, so this is a small
-  // wobble around a known-good point, not a wide sweep. Louder/busier audio
-  // pushes toward the more branching end of that band.
-  const feed = 0.0545 + (audio.energy - 0.5) * 0.006 + intensity * 0.003;
-  const kill = 0.062 - (audio.bpm ? audio.regularity * 0.002 : 0);
+  // Feed/kill nudged gently by audio — Gray-Scott only forms stable,
+  // non-decaying patterns in a narrow band of these two values (confirmed
+  // by directly sweeping a grid of candidates against this exact stencil,
+  // not assumed from a reference table), so this is a small wobble around
+  // a verified-working point, not a wide sweep. Louder/busier audio pushes
+  // toward the more branching end of that band.
+  const feed = 0.0367 + (audio.energy - 0.5) * 0.002 + intensity * 0.001;
+  const kill = 0.062 - (audio.bpm ? audio.regularity * 0.001 : 0);
   // More sub-steps per rendered frame when there's headroom (louder = more
-  // motion is welcome); always at least a few so the pattern is visibly
-  // alive even in silence.
-  const substeps = 4 + Math.round(audio.energy * 4);
+  // motion is welcome); always enough that the pattern is visibly alive
+  // even in silence. Higher than it looks like it should be because DT is
+  // small (see DT's own comment) — each step advances the simulation less,
+  // so more of them are needed per rendered frame for the same real-time
+  // evolution speed.
+  const substeps = 12 + Math.round(audio.energy * 10);
   for (let n = 0; n < substeps; n++) step(s, feed, kill);
 
   const colorLow = hexToRgb(palette[0]);

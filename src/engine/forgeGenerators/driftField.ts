@@ -35,7 +35,13 @@ function createState(seed: string): DriftFieldState {
 
 function drawMesh(gctx: ForgeGeneratorCtx, s: DriftFieldState) {
   const { ctx, w, h, t, palette, audio } = gctx;
-  const accent = hexToRgb(palette[2]);
+  // Pick the palette's brightest entry for the line color, not a fixed
+  // index — palette[2] is frequently the dark/background slot (verified
+  // live: it rendered the mesh nearly invisible), and which slot is which
+  // isn't a guarantee this generator can rely on.
+  const candidates = palette.map(hexToRgb);
+  const luma = (c: [number, number, number]) => c[0] * 0.299 + c[1] * 0.587 + c[2] * 0.114;
+  const accent = candidates.reduce((a, b) => (luma(b) > luma(a) ? b : a));
   const lineCount = 12 + Math.round(audio.density * 4);
   const warpAmp = h * (0.09 + audio.treble * 0.07);
   const drift = t * (0.08 + audio.energy * 0.1);
@@ -43,11 +49,13 @@ function drawMesh(gctx: ForgeGeneratorCtx, s: DriftFieldState) {
   const span = w + h * 2;
 
   ctx.save();
-  // "screen" so the gradient underneath still shows through the lines —
-  // this is meant to read as a mesh laid over the field, not a mask on it.
-  ctx.globalCompositeOperation = "screen";
-  ctx.strokeStyle = `rgba(${Math.min(255, accent[0] * 1.5)}, ${Math.min(255, accent[1] * 1.5)}, ${Math.min(255, accent[2] * 1.5)}, 0.5)`;
-  ctx.lineWidth = Math.max(1, w * 0.0035);
+  // Additive, not "screen" — screen barely lifts brightness when the field
+  // underneath is already vivid (which drawSeamless's output usually is),
+  // so the mesh read as almost invisible. "lighter" adds the line color
+  // directly, which is what actually reads as an emissive overlay.
+  ctx.globalCompositeOperation = "lighter";
+  ctx.strokeStyle = `rgba(${Math.min(255, accent[0] * 1.7 + 40)}, ${Math.min(255, accent[1] * 1.7 + 40)}, ${Math.min(255, accent[2] * 1.7 + 40)}, 0.85)`;
+  ctx.lineWidth = Math.max(1.5, w * 0.005);
   ctx.lineCap = "round";
 
   const step = Math.max(4, Math.round(w / 90));
