@@ -13,7 +13,12 @@ export default defineConfig(({ mode }) => ({
     },
   },
   build: {
-    sourcemap: "hidden",
+    // "hidden" still writes full .map files into dist/, which Netlify then
+    // serves publicly — anyone who finds the filename (visible right in the
+    // chunk name shown in devtools) gets fully unminified source, GLSL
+    // included. No error-tracking tool in this repo consumes these maps, so
+    // there's no upside to generating them at all.
+    sourcemap: false,
   },
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
   resolve: {
