@@ -1,6 +1,7 @@
 import { Mic, MonitorSpeaker } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { toggleSystemAudio } from "@/engine/systemAudio";
+import { AudioInputControls } from "./AudioInputControls";
 
 type Props = {
   onClose: () => void;
@@ -47,6 +48,8 @@ export function AudioSourcePicker({ onClose, className = "" }: Props) {
           Shares a browser tab's sound — keeps your music playing.
         </div>
       </button>
+      <div className="my-1 h-px bg-white/10" />
+      <AudioInputControls compact />
     </div>
   );
 }

@@ -1,7 +1,8 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUpRight } from "lucide-react";
 import { Link } from "react-router-dom";
 import { liveVisualKeywords, liveVisualOfferings, liveVisualSocials } from "@/content/liveVisuals";
+import { AmbientGlitch } from "./AmbientGlitch";
 
 const slideNames = ["Signal", "About", "Offerings", "Dyles", "Skills", "Contact"] as const;
 
@@ -14,9 +15,28 @@ const wrapSlide = (index: number) => (index + slideNames.length) % slideNames.le
 export const HomeInfoCarousel = ({ onReturnToInstrument }: HomeInfoCarouselProps) => {
   const [active, setActive] = useState(0);
   const [direction, setDirection] = useState<1 | -1>(1);
+  const [visible, setVisible] = useState(false);
+  const sectionRef = useRef<HTMLElement>(null);
   const gesture = useRef<{ x: number; y: number; pointerId: number } | null>(null);
   const wheelCarry = useRef(0);
   const wheelLocked = useRef(false);
+
+  // The info story lives one full viewport above the landing point. Keep its
+  // ambient motion completely asleep until a visitor actually scrolls there.
+  useEffect(() => {
+    const section = sectionRef.current;
+    if (!section) return;
+    if (typeof IntersectionObserver === "undefined") {
+      setVisible(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      ([entry]) => setVisible(entry.isIntersecting),
+      { threshold: 0.18 },
+    );
+    observer.observe(section);
+    return () => observer.disconnect();
+  }, []);
 
   const move = useCallback((amount: 1 | -1) => {
     setDirection(amount);
@@ -66,8 +86,10 @@ export const HomeInfoCarousel = ({ onReturnToInstrument }: HomeInfoCarouselProps
 
   return (
     <section
+      ref={sectionRef}
       className="home-info-carousel relative h-full w-full overflow-hidden"
       data-info-carousel
+      data-visible={visible || undefined}
       tabIndex={0}
       aria-roledescription="carousel"
       aria-label="Ether-MOSH live visuals"
@@ -77,15 +99,17 @@ export const HomeInfoCarousel = ({ onReturnToInstrument }: HomeInfoCarouselProps
       onPointerCancel={() => { gesture.current = null; }}
       onKeyDown={onKeyDown}
     >
+      <AmbientGlitch active={visible} />
       <div className="home-info-grid" aria-hidden />
       <div className="home-info-orbit" aria-hidden><i/><i/><i/></div>
+      <div className="home-info-signal-tears" aria-hidden><i/><i/><i/><i/></div>
 
       <header className="home-info-mast">
         <span>MOSH / live visuals / Dyles Mavis</span>
         <span aria-live="polite">{String(active + 1).padStart(2, "0")} / {String(slideNames.length).padStart(2, "0")} · {slideNames[active]}</span>
       </header>
 
-      <div key={active} className={`home-info-slide home-info-slide--${direction > 0 ? "next" : "previous"}`} aria-roledescription="slide" aria-label={`${active + 1} of ${slideNames.length}: ${slideNames[active]}`}>
+      <div key={active} className={`home-info-slide home-info-slide--${direction > 0 ? "next" : "previous"}${active === 0 ? " home-info-slide--signal" : ""}`} aria-roledescription="slide" aria-label={`${active + 1} of ${slideNames.length}: ${slideNames[active]}`}>
         {active === 0 && <>
           <div className="home-info-hero">
             <p className="home-info-kicker">Live performance · tour content · generative systems</p>

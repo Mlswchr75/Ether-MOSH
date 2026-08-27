@@ -116,6 +116,9 @@ export function GlCanvas() {
   const micEnabled = useStore(s => s.micEnabled);
   const systemAudioEnabled = useStore(s => s.systemAudioEnabled);
   const micSensitivity = useStore(s => s.micSensitivity);
+  const audioInputDeviceId = useStore(s => s.audioInputDeviceId);
+  const audioInputDeviceLabel = useStore(s => s.audioInputDeviceLabel);
+  const audioInputChannel = useStore(s => s.audioInputChannel);
   const lastAppliedBpmAtRef = useRef(0);
   const audioSmoothRef = useRef<Map<string, number>>(new Map());
   const isPerformanceMode = useStore(s => s.isPerformanceMode);
@@ -326,6 +329,7 @@ export function GlCanvas() {
   // hot trigger (1 = no-op, matches behavior before that control existed).
   const sensitivity = useStore(s => s.sensitivity);
   useEffect(() => { micRef.current.sensitivity = micSensitivity * sensitivity; }, [micSensitivity, sensitivity]);
+  useEffect(() => { micRef.current.setInputChannel(audioInputChannel); }, [audioInputChannel]);
 
   // Lightweight singleton analyzer mirrored off the system-audio stream.
   useEffect(() => {
@@ -366,16 +370,38 @@ export function GlCanvas() {
         return;
       }
     }
-    mic.start(wantSource, presetStream).then(() => {
+    const currentAudioInputChannel = useStore.getState().audioInputChannel;
+    mic.start(wantSource, presetStream, {
+      input: {
+        deviceId: audioInputDeviceId,
+        label: audioInputDeviceLabel,
+        channel: currentAudioInputChannel,
+      },
+      onInputEnded: () => {
+        if (!useStore.getState().micEnabled) return;
+        useStore.getState().setMicEnabled(false);
+        toast.error("Audio input disconnected — reconnect it, then choose it again");
+      },
+    }).then((result) => {
+      if (wantSource === "mic") window.dispatchEvent(new Event("mosh:audio-input-ready"));
+      if (wantSource === "mic" && !result.requestedDeviceFound) {
+        toast.error("Saved audio interface wasn't available — using the default input");
+      }
       toast.success(wantSource === "system"
         ? "Routing device audio — every layer reacts"
-        : "Listening — every layer is now sound-reactive");
+        : `Listening to ${result.label} — every layer is sound-reactive`);
     }).catch((err) => {
+      if (err?.name === "AbortError") return;
       console.error("[audio] capture failed:", err);
       const isSystem = wantSource === "system";
-      const msg = (err && err.name) === "NotAllowedError"
+      const errorName = err?.name;
+      const msg = errorName === "NotAllowedError"
         ? `${isSystem ? "Screen share" : "Microphone"} permission denied`
-        : (err?.message || (isSystem ? "Couldn't capture system audio" : "Microphone unavailable"));
+        : !isSystem && (errorName === "NotReadableError" || errorName === "TrackStartError")
+          ? "Audio interface is busy — close other audio apps or enable shared/multi-client mode"
+          : !isSystem && (errorName === "NotFoundError" || errorName === "DevicesNotFoundError")
+            ? "Audio input disconnected or unavailable"
+            : (err?.message || (isSystem ? "Couldn't capture system audio" : "Microphone unavailable"));
       if (isSystem) {
         useStore.getState().setSystemAudioEnabled(false);
         toast.error(`${msg} — falling back to microphone`);
@@ -392,7 +418,7 @@ export function GlCanvas() {
     // getUserMedia/getDisplayMedia stream and its AudioContext running
     // indefinitely (the browser's recording indicator stays lit).
     return () => { mic.stop(); };
-  }, [micEnabled, systemAudioEnabled]);
+  }, [micEnabled, systemAudioEnabled, audioInputDeviceId, audioInputDeviceLabel]);
 
   // Auto-resume the AudioContext if iOS suspends it, and — the important
   // direction — fully release the mic/device-audio capture when the tab is

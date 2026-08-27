@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useStore } from "@/store/useStore";
 import { Heart, Mic, MicOff, MonitorSpeaker } from "lucide-react";
 import { toggleSystemAudio } from "@/engine/systemAudio";
+import { AudioInputControls } from "./AudioInputControls";
 
 export function BeatPanel() {
   const bpm = useStore(s => s.bpm);
@@ -124,6 +125,8 @@ export function BeatPanel() {
             {Math.round(meter * 100)}
           </span>
         </div>
+
+        <AudioInputControls />
 
         <div>
           <Label htmlFor="beat-sensitivity">Sensitivity · {micSensitivity.toFixed(2)}×</Label>

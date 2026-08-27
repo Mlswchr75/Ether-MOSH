@@ -40,6 +40,11 @@ import { extractPalette } from "@/engine/imagePalette";
 import { BIOME_LABELS, biomeAccentHex } from "@/engine/imagePalette";
 import { upscaleImage } from "@/engine/upscaler";
 import { trackPlayer } from "@/engine/trackPlayer";
+import {
+  loadAudioInputPreference,
+  saveAudioInputPreference,
+  type AudioInputChannel,
+} from "@/engine/audioInput";
 import { toast } from "sonner";
 
 /**
@@ -124,6 +129,11 @@ type State = {
   beatEnabled: boolean;
   micEnabled: boolean;
   systemAudioEnabled: boolean;
+  /** Browser audio-input preference. A remembered label lets us recover USB
+   * interfaces whose opaque device id changes after permissions/site reset. */
+  audioInputDeviceId: string | null;
+  audioInputDeviceLabel: string | null;
+  audioInputChannel: AudioInputChannel;
   /** Theme-track playback, mutually exclusive with mic/system audio. */
   trackEnabled: boolean;
   trackTitle: string;
@@ -250,6 +260,8 @@ type Actions = {
   setBeatEnabled: (b: boolean) => void;
   setMicEnabled: (b: boolean) => void;
   setSystemAudioEnabled: (b: boolean) => void;
+  setAudioInputDevice: (deviceId: string | null, label?: string | null) => void;
+  setAudioInputChannel: (channel: AudioInputChannel) => void;
   setTrackEnabled: (b: boolean) => void;
   setTrackMeta: (title: string, artist: string) => void;
   setMicSensitivity: (v: number) => void;
@@ -419,6 +431,8 @@ const sampleParam = (
   return v;
 };
 
+const storedAudioInput = loadAudioInputPreference();
+
 export const useStore = create<State & Actions>((set, get) => ({
   imageUrl: null,
   imageElement: null,
@@ -435,6 +449,9 @@ export const useStore = create<State & Actions>((set, get) => ({
   beatEnabled: false,
   micEnabled: false,
   systemAudioEnabled: false,
+  audioInputDeviceId: storedAudioInput.deviceId,
+  audioInputDeviceLabel: storedAudioInput.label,
+  audioInputChannel: storedAudioInput.channel,
   trackEnabled: false,
   trackTitle: trackPlayer.title,
   trackArtist: trackPlayer.artist,
@@ -918,6 +935,19 @@ export const useStore = create<State & Actions>((set, get) => ({
     if (b && useStore.getState().trackEnabled) trackPlayer.pause();
     set(s => b ? { systemAudioEnabled: true, micEnabled: false, trackEnabled: false } : { systemAudioEnabled: false });
   },
+  setAudioInputDevice: (deviceId, label = null) => set((state) => {
+    const next = { deviceId, label: deviceId ? label : null, channel: state.audioInputChannel };
+    saveAudioInputPreference(next);
+    return { audioInputDeviceId: next.deviceId, audioInputDeviceLabel: next.label };
+  }),
+  setAudioInputChannel: (channel) => set((state) => {
+    saveAudioInputPreference({
+      deviceId: state.audioInputDeviceId,
+      label: state.audioInputDeviceLabel,
+      channel,
+    });
+    return { audioInputChannel: channel };
+  }),
   setTrackEnabled: (b) => {
     if (b) {
       trackPlayer.play().then(() => {

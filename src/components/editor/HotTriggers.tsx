@@ -11,6 +11,7 @@ import { MotifMaestroPanel } from "./MotifMaestroPanel";
 import { MoshStickerTrigger } from "./MoshStickerTrigger";
 import { shareUrl } from "@/lib/share";
 import { toggleSystemAudio } from "@/engine/systemAudio";
+import { AudioInputControls } from "./AudioInputControls";
 import { crossfadeLayers, MOSH_FADE_MS } from "@/engine/layerCrossfade";
 import { cursorFx } from "@/engine/cursorFx";
 import { toast } from "sonner";
@@ -328,12 +329,12 @@ function TrackTrigger({ delay, showNudge, onNudgeDismiss }: { delay: number; sho
       <button
         type="button"
         onPointerDown={(e) => e.stopPropagation()}
-        onClick={() => setOpen(o => !o)}
+        onClick={(event) => { event.stopPropagation(); setOpen(o => !o); }}
         aria-label="Track options"
         aria-expanded={open || undefined}
         aria-haspopup="menu"
         data-no-longpress
-        className="absolute -bottom-1 -right-1 grid h-3.5 w-3.5 place-items-center rounded-full bg-black/70 text-[hsl(var(--text-secondary))] transition hover:text-[hsl(var(--accent))]"
+        className="pointer-events-auto absolute -bottom-1 -right-1 z-20 grid h-5 w-5 place-items-center rounded-full bg-black/80 text-[hsl(var(--text-secondary))] transition hover:text-[hsl(var(--accent))]"
         title="Track options"
       >
         <ShuffleIcon className="h-2 w-2" strokeWidth={2.5} />
@@ -598,7 +599,7 @@ function AudioTrigger({ delay, onMicFlash }: { delay: number; onMicFlash?: (on: 
         className="absolute -bottom-1 -right-1 grid h-3.5 w-3.5 place-items-center rounded-full bg-black/70 text-[hsl(var(--text-secondary))] transition hover:text-[hsl(var(--accent))]"
         title="Audio options — source & beat sync"
       >
-        <ChevronDown className="h-2.5 w-2.5" strokeWidth={2.5} />
+        <ChevronDown className="h-3 w-3" strokeWidth={2.5} />
       </button>
 
       {open && (
@@ -608,6 +609,7 @@ function AudioTrigger({ delay, onMicFlash }: { delay: number; onMicFlash?: (on: 
           role="menu"
           aria-label="Audio options"
           onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
         >
           <div className="mb-1 font-mono text-[9px] uppercase tracking-[0.2em] text-[hsl(var(--accent))]">source</div>
           <button
@@ -626,6 +628,9 @@ function AudioTrigger({ delay, onMicFlash }: { delay: number; onMicFlash?: (on: 
           >
             <MonitorSpeaker className="h-3 w-3" strokeWidth={1.5} /> Device audio
           </button>
+
+          <div className="my-2 h-px bg-white/10" />
+          <AudioInputControls compact />
 
           <div className="my-2 h-px bg-white/10" />
 
@@ -918,7 +923,7 @@ function MobileRadialWheel({
     const target = visualizerRef?.current;
     if (!target) return;
     const ignored = (eventTarget: EventTarget | null) =>
-      eventTarget instanceof HTMLElement && !!eventTarget.closest("button, a, input, textarea, select, [role='slider'], [data-no-longpress], .mobile-radial-wheel");
+      eventTarget instanceof Element && !!eventTarget.closest("button, a, input, textarea, select, [role='slider'], [data-no-longpress], .mobile-radial-wheel");
     const onDown = (event: PointerEvent) => {
       if ((event.pointerType === "mouse" && event.button !== 0) || ignored(event.target) || gestureRef.current.pointerId !== -1) return;
       clearTimers();
@@ -1215,8 +1220,12 @@ function DesktopRadialWheel({
       armTimer = null;
       openTimer = null;
     };
+    // SVG icons are Elements but not HTMLElements. Treat clicks on the icon
+    // inside a nested button as control clicks too, otherwise the radial
+    // gesture listener starts underneath the button and closes the wheel on
+    // pointer-up before its popover can be used.
     const ignored = (eventTarget: EventTarget | null) =>
-      eventTarget instanceof HTMLElement && !!eventTarget.closest("button, a, input, textarea, select, [role='slider'], [data-no-longpress], .desktop-radial-wheel");
+      eventTarget instanceof Element && !!eventTarget.closest("button, a, input, textarea, select, [role='slider'], [data-no-longpress], .desktop-radial-wheel");
     const onDown = (event: PointerEvent) => {
       if (event.pointerType === "touch" || event.button !== 0 || ignored(event.target) || gestureRef.current.pointerId !== -1) return;
       cancelTimers();

@@ -567,15 +567,23 @@
       background: linear-gradient(135deg, hsl(var(--accent) / .74), hsl(var(--primary) / .5));
       box-shadow: 3px -2px 0 hsl(var(--primary) / .7), -3px 2px 0 hsl(var(--accent) / .7), 0 0 25px hsl(var(--accent) / .78);
     }
+    .mobile-radial-wheel__slot:has([role="menu"]) { z-index: 60; }
     .mobile-radial-wheel__slot > div > div[role="menu"],
-    .mobile-radial-wheel__slot > div > div[class*="right-full"] {
+    .mobile-radial-wheel__slot > div > div[class*="right-full"],
+    .mobile-radial-wheel__slot [data-audio-source-picker][role="menu"] {
       position: fixed;
       left: 50%;
       right: auto;
-      top: calc(50% + var(--radial-size) * .13);
-      transform: translateX(-50%);
+      top: 50%;
+      transform: translate(-50%, -50%);
       margin: 0;
       max-width: min(86vw, 360px);
+    }
+    .mobile-radial-wheel__slot [data-audio-source-picker][role="menu"] {
+      max-height: calc(var(--radial-size) * .7);
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      touch-action: pan-y;
     }
     .mobile-radial-wheel__hub {
       position: absolute;
@@ -1609,13 +1617,14 @@
   }
   .home-info-grid {
     position: absolute;
-    inset: 0;
+    inset: -54px;
     opacity: .28;
     background-image:
       linear-gradient(hsl(var(--foreground) / .08) 1px, transparent 1px),
       linear-gradient(90deg, hsl(var(--foreground) / .08) 1px, transparent 1px);
     background-size: 54px 54px;
     mask-image: linear-gradient(90deg, transparent, black 24%, black 86%, transparent);
+    will-change: transform;
   }
   .home-info-orbit {
     position: absolute;
@@ -1636,6 +1645,49 @@
   }
   .home-info-orbit i:nth-child(2) { inset: 8% 24%; rotate: 32deg; border-color: hsl(var(--primary) / .58); }
   .home-info-orbit i:nth-child(3) { inset: 25% 6%; rotate: 74deg; border-color: hsl(var(--accent) / .58); }
+  .home-info-carousel[data-visible="true"] .home-info-grid { animation: home-info-grid-drift 13s linear infinite; }
+  .home-info-carousel[data-visible="true"] .home-info-orbit { animation: home-info-orbit-breathe 8s ease-in-out infinite alternate; }
+  .home-info-carousel[data-visible="true"] .home-info-orbit i:first-child { animation: home-info-orbit-spin-a 23s linear infinite; }
+  .home-info-carousel[data-visible="true"] .home-info-orbit i:nth-child(2) { animation: home-info-orbit-spin-b 31s linear infinite; }
+  .home-info-carousel[data-visible="true"] .home-info-orbit i:nth-child(3) { animation: home-info-orbit-spin-c 19s linear infinite reverse; }
+  @keyframes home-info-grid-drift { to { transform: translate3d(54px, 54px, 0); } }
+  @keyframes home-info-orbit-breathe {
+    from { transform: translate3d(-1.5%, -1%, 0) scale(.96); filter: hue-rotate(-8deg); }
+    to { transform: translate3d(1.5%, 1%, 0) scale(1.05); filter: hue-rotate(12deg); }
+  }
+  @keyframes home-info-orbit-spin-a { to { rotate: 347deg; } }
+  @keyframes home-info-orbit-spin-b { to { rotate: -328deg; } }
+  @keyframes home-info-orbit-spin-c { to { rotate: 434deg; } }
+  .home-info-signal-tears {
+    position: absolute;
+    z-index: 1;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+  }
+  .home-info-signal-tears i {
+    position: absolute;
+    left: -18%;
+    width: 42%;
+    height: clamp(2px, .55vh, 7px);
+    opacity: 0;
+    background: linear-gradient(90deg, transparent, hsl(var(--accent) / .76), hsl(var(--primary) / .62), transparent);
+    box-shadow: 0 0 18px hsl(var(--primary) / .34);
+    mix-blend-mode: screen;
+    will-change: transform, opacity;
+  }
+  .home-info-signal-tears i:nth-child(1) { top: 19%; animation-delay: -1.4s; animation-duration: 7.1s; }
+  .home-info-signal-tears i:nth-child(2) { top: 43%; width: 30%; animation-delay: -4.8s; animation-duration: 9.3s; }
+  .home-info-signal-tears i:nth-child(3) { top: 68%; width: 55%; animation-delay: -2.6s; animation-duration: 8.2s; }
+  .home-info-signal-tears i:nth-child(4) { top: 82%; width: 24%; animation-delay: -6.1s; animation-duration: 10.4s; }
+  .home-info-carousel[data-visible="true"] .home-info-signal-tears i { animation-name: home-info-signal-tear; animation-timing-function: steps(8, end); animation-iteration-count: infinite; }
+  @keyframes home-info-signal-tear {
+    0%, 76%, 100% { opacity: 0; transform: translate3d(0, 0, 0) scaleX(.2); }
+    78% { opacity: .24; transform: translate3d(45vw, -3px, 0) scaleX(.62); }
+    81% { opacity: .72; transform: translate3d(93vw, 2px, 0) scaleX(1.15); }
+    84% { opacity: .16; transform: translate3d(137vw, -1px, 0) scaleX(.42); }
+    86% { opacity: 0; transform: translate3d(155vw, 0, 0) scaleX(.12); }
+  }
   @media (max-width: 700px) {
     .home-info-orbit { width: 105vw; right: -48vw; opacity: .38; }
     .home-info-panel h2 { font-size: clamp(47px, 16.5vw, 92px); }
@@ -1676,12 +1728,16 @@
   .home-info-slide--next { animation: home-info-next 440ms cubic-bezier(.22, 1, .36, 1) both; }
   .home-info-slide--previous { animation: home-info-previous 440ms cubic-bezier(.22, 1, .36, 1) both; }
   @keyframes home-info-next {
-    from { opacity: 0; translate: 5vw 0; filter: blur(7px); }
-    to { opacity: 1; translate: 0 0; filter: blur(0); }
+    0% { opacity: 0; translate: 7vw 0; clip-path: inset(47% 0 47% 0); filter: blur(7px) hue-rotate(70deg) contrast(1.7); }
+    24% { opacity: .82; translate: -1.4vw 0; clip-path: inset(8% 0 64% 0); filter: blur(1px) hue-rotate(-30deg) contrast(1.35); }
+    52% { opacity: 1; translate: .6vw 0; clip-path: inset(55% 0 7% 0); filter: blur(0) hue-rotate(12deg) contrast(1.08); }
+    100% { opacity: 1; translate: 0 0; clip-path: inset(0); filter: none; }
   }
   @keyframes home-info-previous {
-    from { opacity: 0; translate: -5vw 0; filter: blur(7px); }
-    to { opacity: 1; translate: 0 0; filter: blur(0); }
+    0% { opacity: 0; translate: -7vw 0; clip-path: inset(47% 0 47% 0); filter: blur(7px) hue-rotate(-70deg) contrast(1.7); }
+    24% { opacity: .82; translate: 1.4vw 0; clip-path: inset(64% 0 8% 0); filter: blur(1px) hue-rotate(30deg) contrast(1.35); }
+    52% { opacity: 1; translate: -.6vw 0; clip-path: inset(7% 0 55% 0); filter: blur(0) hue-rotate(-12deg) contrast(1.08); }
+    100% { opacity: 1; translate: 0 0; clip-path: inset(0); filter: none; }
   }
   .home-info-kicker {
     margin: 0 0 clamp(14px, 2.5vh, 26px);
@@ -1698,6 +1754,13 @@
     text-transform: uppercase;
   }
   .home-info-slide h2 span { color: hsl(var(--primary)); }
+  .home-info-carousel[data-visible="true"] .home-info-slide h2 { animation: home-info-title-signal 6.8s steps(1, end) infinite; }
+  @keyframes home-info-title-signal {
+    0%, 88%, 92%, 100% { transform: translate3d(0, 0, 0); text-shadow: none; }
+    89% { transform: translate3d(-2px, 0, 0); text-shadow: 3px 0 hsl(var(--primary) / .72), -3px 0 hsl(var(--accent) / .7); }
+    90% { transform: translate3d(2px, -1px, 0); text-shadow: -5px 0 hsl(var(--primary) / .55), 4px 1px hsl(var(--accent) / .7); }
+    91% { transform: translate3d(0, 1px, 0); text-shadow: 2px 0 hsl(var(--accent) / .38); }
+  }
   .home-info-hero { align-self: stretch; margin-block: auto; }
   .home-info-bottom-copy {
     display: flex;
@@ -1904,6 +1967,7 @@
     .home-info-mast { top: 20px; left: 18px; right: 18px; font-size: 7px; letter-spacing: .16em; }
     .home-info-mast span:first-child { max-width: 55%; }
     .home-info-slide { padding: 74px 18px 108px; }
+    .home-info-slide--signal { padding-bottom: max(28px, env(safe-area-inset-bottom)); }
     .home-info-slide h2 { font-size: clamp(43px, 15.2vw, 80px); }
     .home-info-bottom-copy { flex-direction: column; align-items: flex-start; gap: 18px; }
     .home-info-editorial,
@@ -1940,10 +2004,22 @@
     .home-info-controls { bottom: 14px; }
   }
 
+  /* On phones and tablets the carousel rail previously sat inside the bottom
+     browser-chrome/safe-area zone. Put its center roughly one quarter of the
+     viewport up from the bottom, where it remains thumb-reachable and visible. */
+  @media (max-width: 1100px), (pointer: coarse) {
+    .home-info-controls { bottom: calc(24svh - 17px); }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .reel-gate, .reel-glitch-in, .reel-glitch-out,
     .reel-hint, .reel-hint-arrow, .info-hint, .info-hint-arrow,
-    .home-info-slide { animation: none !important; }
+    .home-info-slide,
+    .home-info-grid,
+    .home-info-orbit,
+    .home-info-orbit i,
+    .home-info-slide h2 { animation: none !important; }
+    .home-info-signal-tears { display: none; }
   }
 
   /* Ambient background glitching behind the reel — ownerless flecks of
