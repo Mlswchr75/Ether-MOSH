@@ -12,6 +12,13 @@ import { lazy, Suspense, useEffect, useRef, useState } from "react";
  * critical path for anyone who never scrolls there, without treating a
  * synthetic run any differently than a real visitor: both get the content
  * exactly when it's about to enter view, neither before nor after.
+ *
+ * rootMargin is intentionally 0: every section here is exactly one
+ * viewport tall (snap-y), so this sentinel's top edge sits flush with the
+ * bottom edge of the hero section. Any positive margin — even a couple
+ * hundred px meant as a "preload a little early" buffer — puts the trigger
+ * distance at effectively zero on most screens, so it fires as soon as the
+ * hero paints instead of waiting for an actual scroll.
  */
 const DemoReelPanel = lazy(() =>
   import("./DemoReelPanel").then(m => ({ default: m.DemoReelPanel })),
@@ -32,7 +39,7 @@ export const LazyDemoReelPanel = ({ onSelect }: Props) => {
       (entries) => {
         if (entries.some(e => e.isIntersecting)) setVisible(true);
       },
-      { rootMargin: "200px" },
+      { rootMargin: "0px" },
     );
     observer.observe(el);
     return () => observer.disconnect();
