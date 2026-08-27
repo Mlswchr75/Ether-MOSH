@@ -29,7 +29,33 @@
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet" />
+    <!--
+      Loaded non-render-blocking: a plain `rel=stylesheet` here holds up first
+      paint on a cross-origin fetch (DNS + TLS + request), which is fine when
+      Google's edge answers in tens of ms and a real liability the moment it
+      doesn't — a slow or failed response stalls the whole page behind a
+      stylesheet for two typefaces. `display=swap` in the URL already means
+      text renders in a fallback font the instant local CSS is ready and
+      swaps once this loads, so deferring it costs nothing but a possible
+      font swap that was already going to happen.
+    -->
+    <!--
+      No `onload` attribute here on purpose: the CSP below ships without
+      'unsafe-inline' in script-src, so an inline event-handler attribute
+      would be silently dropped by the browser and this stylesheet would
+      stay media="print" forever. The swap to media="all" happens in
+      main.tsx instead, which is an external module script and so isn't
+      subject to that restriction.
+    -->
+    <link
+      id="gfonts-stylesheet"
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;700&display=swap"
+      media="print"
+    />
+    <noscript>
+      <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet" />
+    </noscript>
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
 
     <script type="application/ld+json">

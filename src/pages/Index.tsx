@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "react-router-dom";
-import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Helmet } from "react-helmet-async";
 import { ChevronsUp, Flame, Upload, Video } from "lucide-react";
 import { toast } from "sonner";
@@ -10,6 +10,7 @@ import { haptic } from "@/hooks/useHaptics";
 import { defaultFacing, requestCameraStream } from "@/hooks/useCamera";
 import { useAuth } from "@/hooks/useAuth";
 import { LazyMoshingBackdrop } from "@/components/home/LazyMoshingBackdrop";
+import { LazyDemoReelPanel } from "@/components/home/LazyDemoReelPanel";
 import { AboutTrigger } from "@/components/AboutOverlay";
 import { BioFlicker } from "@/components/home/BioFlicker";
 import { RebellionNudge } from "@/components/home/RebellionNudge";
@@ -18,10 +19,6 @@ import { GlitchWordField, KEEP_OUT } from "@/components/home/GlitchWordField";
 import { HeroWord, HERO_ANCHOR } from "@/components/home/HeroWord";
 import { HomeInfoCarousel } from "@/components/home/HomeInfoCarousel";
 import { titleAmbience } from "@/engine/titleAmbience";
-
-const DemoReelPanel = lazy(() =>
-  import("@/components/home/DemoReelPanel").then(m => ({ default: m.DemoReelPanel })),
-);
 
 const EASE_SNAP = [0.22, 1, 0.36, 1] as const;
 
@@ -404,9 +401,7 @@ const Index = () => {
       </div>
       </section>
 
-      <Suspense fallback={<div className="h-screen w-screen shrink-0 snap-start bg-background" />}>
-        <DemoReelPanel onSelect={loadFromUrl} />
-      </Suspense>
+      <LazyDemoReelPanel onSelect={loadFromUrl} />
     </main>
   );
 };
