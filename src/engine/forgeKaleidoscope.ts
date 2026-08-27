@@ -7,7 +7,10 @@
  * visible seam.
  */
 
-export const KALEIDOSCOPE_FOLD_OPTIONS = [4, 6, 8] as const;
+// 2 gives a plain bilateral (butterfly/Rorschach-blot) mirror rather than a
+// radial pie-wedge split — still an even count, so it's compatible with the
+// same "mirrored copies line up cleanly" constraint as 4/6/8.
+export const KALEIDOSCOPE_FOLD_OPTIONS = [2, 4, 6, 8] as const;
 
 export function applyKaleidoscope(
   ctx: CanvasRenderingContext2D,

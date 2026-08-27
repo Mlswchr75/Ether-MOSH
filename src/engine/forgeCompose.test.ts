@@ -172,7 +172,7 @@ describe("forge generator selection", () => {
     }
     for (const g of GENERATORS) {
       const share = (counts[g.id] ?? 0) / rolls;
-      // Flat weighting over 4 ids is ~25% each; allow a wide band so this
+      // Generator selection is intentionally close to flat; allow a wide band so this
       // isn't flaky, while still catching one generator dominating or being
       // starved.
       expect(share).toBeGreaterThan(0.1);
@@ -187,7 +187,7 @@ describe("forge generator selection", () => {
     for (let i = 0; i < 200; i++) {
       const fold = rollKaleidoscope(rand);
       if (fold === null) sawNull = true;
-      else { sawFold = true; expect([4, 6, 8]).toContain(fold); }
+      else { sawFold = true; expect([2, 4, 6, 8]).toContain(fold); }
     }
     expect(sawNull).toBe(true);
     expect(sawFold).toBe(true);
