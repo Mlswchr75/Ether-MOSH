@@ -1,7 +1,7 @@
 import { Link, useNavigate } from "react-router-dom";
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Helmet } from "react-helmet-async";
-import { Flame, Upload, Video } from "lucide-react";
+import { ChevronsUp, Flame, Upload, Video } from "lucide-react";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
 import { useStore } from "@/store/useStore";
@@ -349,11 +349,13 @@ const Index = () => {
           type="button"
           initial={{ opacity: 0, y: -8 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 1.35 }}
+          transition={{ duration: 0.55, delay: 0.9 }}
           onClick={(e) => { e.stopPropagation(); scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" }); }}
-          className="info-hint pointer-events-auto absolute left-1/2 top-[4.75rem] z-20 -translate-x-1/2 whitespace-nowrap font-mono text-[9px] uppercase tracking-[0.28em] text-foreground/45 transition-colors hover:text-accent"
+          aria-label="Scroll up to explore live visuals"
+          className="info-hint pointer-events-auto absolute left-1/2 top-[4.5rem] z-20 -translate-x-1/2"
         >
-          <span className="info-hint-arrow inline-block">↑</span> live visuals · about · bookings
+          <span className="info-hint-arrow" aria-hidden><ChevronsUp /></span>
+          <span className="info-hint-copy"><strong>Scroll up</strong><small>Explore live visuals</small></span>
         </motion.button>
 
         {/* Bottom credit */}
