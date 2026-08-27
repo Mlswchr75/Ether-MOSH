@@ -4,6 +4,18 @@
   status = 301
   force = true
 
+# The production-branch alias Netlify auto-generates (<branch>--<site>.netlify.app)
+# is a second public hostname for the exact same live deploy, distinct from
+# ether-mosh.netlify.app above and not matched by that rule — confirmed live via
+# curl, it was serving the site directly instead of redirecting. Deploy-preview
+# and other branch-deploy subdomains are deliberately NOT covered by a wildcard
+# here; those need to stay independently viewable for testing.
+[[redirects]]
+  from = "https://ether-mosh--ether-mosh.netlify.app/*"
+  to = "https://ether-mosh.online/:splat"
+  status = 301
+  force = true
+
 # Belt-and-suspenders: refuse any .map file even if one is ever
 # accidentally reintroduced (build.sourcemap in vite.config.ts is the
 # actual fix — this just backstops it at the edge).
