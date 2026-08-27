@@ -10,19 +10,13 @@
  * different visual language from the cellular generators.
  */
 import { defineGenerator, type ForgeGeneratorCtx } from "../forgeGenerators";
-import { fbm2 } from "../forgeNoise";
+import { fbm2, hashSeedToInt } from "../forgeNoise";
 import { hexToRgb } from "../seamlessSource";
 
 export type ContourBandsState = { seedNum: number };
 
-function hashSeed(seed: string): number {
-  let h = 0;
-  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) | 0;
-  return h;
-}
-
 function createState(seed: string): ContourBandsState {
-  return { seedNum: hashSeed(seed) };
+  return { seedNum: hashSeedToInt(seed) };
 }
 
 function render(gctx: ForgeGeneratorCtx, state: unknown) {

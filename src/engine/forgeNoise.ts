@@ -32,6 +32,13 @@ export function valueNoise2(x: number, y: number, seed = 0): number {
   return lerp(lerp(n00, n10, sx), lerp(n01, n11, sx), sy);
 }
 
+/** Turns a string seed into the numeric seed valueNoise2/fbm2 want. */
+export function hashSeedToInt(seed: string): number {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) | 0;
+  return h;
+}
+
 /** Fractal Brownian motion — layered value noise, still ~[0,1]. */
 export function fbm2(x: number, y: number, seed = 0, octaves = 3): number {
   let total = 0, amp = 0.5, freq = 1, max = 0;

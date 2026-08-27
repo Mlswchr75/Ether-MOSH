@@ -42,11 +42,17 @@ function installCanvas2DPolyfillIfNeeded() {
     createRadialGradient() {
       return { addColorStop: () => {} };
     }
+    strokeStyle: unknown = "#000";
+    lineWidth = 1;
+    lineCap: unknown = "butt";
     save() {}
     restore() {}
     beginPath() {}
     arc() {}
     fill() {}
+    moveTo() {}
+    lineTo() {}
+    stroke() {}
   }
 
   const contexts = new WeakMap<HTMLCanvasElement, MockCtx2D>();
