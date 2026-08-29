@@ -69,7 +69,8 @@ function runWorker(
     const worker = new Worker(new URL("./upscaler.worker.ts", import.meta.url), { type: "module" });
     worker.onmessage = (event: MessageEvent<{ ok: boolean; blob?: Blob; error?: string }>) => {
       worker.terminate();
-      event.data.ok && event.data.blob ? resolve(event.data.blob) : reject(new Error(event.data.error || "Upscale failed"));
+      if (event.data.ok && event.data.blob) resolve(event.data.blob);
+      else reject(new Error(event.data.error || "Upscale failed"));
     };
     worker.onerror = (event) => { worker.terminate(); reject(new Error(event.message)); };
     worker.postMessage({ bitmap, targetW, targetH, format, quality }, [bitmap]);
