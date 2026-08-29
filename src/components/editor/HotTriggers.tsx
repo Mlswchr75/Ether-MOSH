@@ -62,12 +62,6 @@ type Props = {
   /** Captures a thumbnail + shareable link, then saves. Falls back to the
    *  store's bare saveFavorite() (no thumb/link) if not provided. */
   onSaveFavorite?: () => void;
-  /** First real content this session and nothing's listening yet — nudge
-   *  toward turning the mic on, anchored to the audio trigger. */
-  showMicNudge?: boolean;
-  onMicNudgeYes?: () => void;
-  onMicNudgeNo?: () => void;
-  onMicNudgeExpire?: () => void;
   /** After a minute of silent play, invite the user to start a soundtrack. */
   showTrackNudge?: boolean;
   onTrackNudgeDismiss?: () => void;
@@ -473,60 +467,6 @@ function TrackTrigger({ delay, showNudge, onNudgeDismiss }: { delay: number; sho
           />
         </div>
       )}
-    </div>
-  );
-}
-
-/**
- * Nudges toward turning the mic on the first time there's actually something
- * on screen this session. Anchored as a sibling of the audio trigger (same
- * recipe HintPulse uses elsewhere: a `relative` wrapper, this drops in next
- * to it) rather than a portal, so it visually points straight at the button
- * it's asking about. Stays up to 60s, then glitches out via the same one-shot
- * bg-glitch-pulse used for ambient corruption elsewhere in the app.
- */
-function MicNudgeToast({ onYes, onNo, onExpire }: { onYes: () => void; onNo: () => void; onExpire: () => void }) {
-  const [leaving, setLeaving] = useState(false);
-
-  useEffect(() => {
-    const t = window.setTimeout(() => setLeaving(true), 60_000);
-    return () => window.clearTimeout(t);
-  }, []);
-
-  useEffect(() => {
-    if (!leaving) return;
-    const t = window.setTimeout(onExpire, 520);
-    return () => window.clearTimeout(t);
-  }, [leaving, onExpire]);
-
-  return (
-    <div
-      role="status"
-      className={`absolute right-full mr-2 top-0 z-50 w-56 rounded-md border border-[hsl(var(--accent))]/40 bg-black/90 p-2.5 backdrop-blur-md panel-in-3d ${leaving ? "bg-glitch-pulse" : ""}`}
-      style={leaving ? undefined : { animation: "panel-in 180ms ease-out both" }}
-    >
-      <div className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-[hsl(var(--accent))]">
-        <Mic className="h-3 w-3" strokeWidth={1.5} /> react to sound?
-      </div>
-      <p className="mt-1 text-[10px] leading-tight text-white/60">
-        Turn on the mic (or route a tab's audio) and the effects move with it.
-      </p>
-      <div className="mt-2 flex gap-1.5">
-        <button
-          type="button"
-          onClick={() => { onYes(); }}
-          className="flex-1 rounded-sm border border-[hsl(var(--accent))]/50 bg-[hsl(var(--accent))]/10 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-[hsl(var(--accent))] transition hover:bg-[hsl(var(--accent))]/20"
-        >
-          Yes
-        </button>
-        <button
-          type="button"
-          onClick={() => { onNo(); }}
-          className="flex-1 rounded-sm border border-white/15 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-white/60 transition hover:text-white"
-        >
-          Not now
-        </button>
-      </div>
     </div>
   );
 }
@@ -1399,7 +1339,7 @@ export function HotTriggers({
   visualizerRef, hidden = false, showLegacyLaunchpad = false,
   isRecording, onToggleRecord, onScreenshot, onFreeze, onGif, onShare, onSupport, onAccount, gifBusy, gifProgress,
   onMicFlash, journeyOn, onToggleJourney, journeyLocked, journeyPreview, isFullscreen, onToggleFullscreen, onHome,
-  onClearFx, hasFx, onSaveFavorite, showMicNudge, onMicNudgeYes, onMicNudgeNo, onMicNudgeExpire, showTrackNudge, onTrackNudgeDismiss,
+  onClearFx, hasFx, onSaveFavorite, showTrackNudge, onTrackNudgeDismiss,
 }: Props) {
   const mosh = useStore(s => s.mosh);
   const undo = useStore(s => s.undo);
@@ -1849,14 +1789,6 @@ export function HotTriggers({
     ),
     audio: (
       <div key="audio" className="relative">
-        {/* Mic-nudge anchors here so it points straight at this button. */}
-        {showMicNudge && (
-          <MicNudgeToast
-            onYes={() => onMicNudgeYes?.()}
-            onNo={() => onMicNudgeNo?.()}
-            onExpire={() => onMicNudgeExpire?.()}
-          />
-        )}
         <AudioTrigger delay={0} onMicFlash={onMicFlash} />
       </div>
     ),

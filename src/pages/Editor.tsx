@@ -55,6 +55,7 @@ import { StartCameraOverlay } from "@/components/editor/StartCameraOverlay";
 import { ForgeTapHint } from "@/components/editor/ForgeTapHint";
 import { SourceModeToggle } from "@/components/editor/SourceModeToggle";
 import { HotTriggers } from "@/components/editor/HotTriggers";
+import { MicNudgeToast } from "@/components/editor/MicNudgeToast";
 import { ActionConfirmation } from "@/components/editor/ActionConfirmation";
 import { showExportSuccessToast } from "@/components/editor/ExportShareToast";
 import { AccountChip } from "@/components/AccountChip";
@@ -1866,10 +1867,6 @@ export default function Editor() {
             gifProgress={gifProgress}
             onFreeze={toggleSmartFreeze}
             onMicFlash={(on) => setMicFlash({ on, key: performance.now() })}
-            showMicNudge={showMicNudge}
-            onMicNudgeYes={() => { setMicEnabled(true); setMicFlash({ on: true, key: performance.now() }); setShowMicNudge(false); }}
-            onMicNudgeNo={() => setShowMicNudge(false)}
-            onMicNudgeExpire={() => setShowMicNudge(false)}
             showTrackNudge={showTrackNudge}
             onTrackNudgeDismiss={() => setShowTrackNudge(false)}
             journeyOn={journeyOn}
@@ -1888,6 +1885,17 @@ export default function Editor() {
               try { useMoshStickerStore.getState().disposeAll(); } catch {}
               navigate("/");
             }}
+          />
+        )}
+        {/* Standalone, not nested inside HotTriggers — the hot-trigger rail
+            now lives inside a press-and-hold radial wheel that's hidden by
+            default, which buried this prompt along with it and made it show
+            up unreliably. This has to stay reachable regardless of whether
+            that wheel (or idle-fade chrome) is open. */}
+        {!isPerformanceMode && !isOverlay && showMicNudge && (
+          <MicNudgeToast
+            onYes={() => { setMicEnabled(true); setMicFlash({ on: true, key: performance.now() }); setShowMicNudge(false); }}
+            onNo={() => setShowMicNudge(false)}
           />
         )}
         {journeyOn && (
