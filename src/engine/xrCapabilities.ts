@@ -2,6 +2,29 @@ export function isMetaQuestUserAgent(userAgent: string): boolean {
   return /OculusBrowser|Meta Quest|Quest(?: 2| 3| Pro)?|Oculus/i.test(userAgent);
 }
 
+/** VR chrome is intentionally opt-in outside an actual Quest/Oculus browser.
+ * Some ordinary Android/desktop browsers expose partial WebXR support; probing
+ * and rendering immersive controls there adds work to the hot render path and
+ * makes Forge look like it has VR bolted on even when nobody asked for it. */
+export const XR_UI_OVERRIDE_KEY = "cathedral_xr_ui_override_v1";
+export const XR_UI_OVERRIDE_EVENT = "mosh:xr-ui-override";
+export type XrUiOverride = "auto" | "on" | "off";
+
+export function readXrUiOverride(storage?: Pick<Storage, "getItem"> | null): XrUiOverride {
+  try {
+    const value = storage?.getItem(XR_UI_OVERRIDE_KEY);
+    return value === "on" || value === "off" ? value : "auto";
+  } catch {
+    return "auto";
+  }
+}
+
+export function shouldOfferXrUi(userAgent: string, override: XrUiOverride = "auto"): boolean {
+  if (override === "on") return true;
+  if (override === "off") return false;
+  return isMetaQuestUserAgent(userAgent);
+}
+
 export type XrExperienceMode = "visualizer" | "room";
 
 export function sessionModeForExperience(mode: XrExperienceMode): XRSessionMode {
