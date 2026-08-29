@@ -2,7 +2,7 @@
  * VrButton — enters immersive WebXR when a headset (Quest / Occlusion-class)
  * is detected. Hidden entirely on devices without immersive-vr support.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Glasses, Maximize2, PanelsTopLeft } from "lucide-react";
 import { vrMode } from "@/engine/vrMode";
 import { MoshRenderer } from "@/engine/Renderer";
@@ -18,6 +18,7 @@ export function VrButton({ getRenderer, getFrame }: Props) {
   const [supported, setSupported] = useState(false);
   const [active, setActive] = useState(vrMode.active);
   const [enteredOnce, setEnteredOnce] = useState(vrMode.active);
+  const wasActiveRef = useRef(vrMode.active);
   const questBrowser = isMetaQuestUserAgent(navigator.userAgent);
 
   useEffect(() => {
@@ -26,6 +27,10 @@ export function VrButton({ getRenderer, getFrame }: Props) {
     const off = vrMode.onChange((next) => {
       setActive(next);
       if (next) setEnteredOnce(true);
+      if (wasActiveRef.current && !next) {
+        toast.success("Window mode", { description: "Use the Horizon control bar to move or resize MOSH beside other apps." });
+      }
+      wasActiveRef.current = next;
     });
     return () => { alive = false; off(); };
   }, []);
@@ -35,7 +40,6 @@ export function VrButton({ getRenderer, getFrame }: Props) {
   const onClick = async () => {
     if (active) {
       await vrMode.exit();
-      toast.success("Window mode", { description: "Use the Horizon control bar to move or resize MOSH beside other apps." });
       return;
     }
     const r = getRenderer();
