@@ -7,8 +7,14 @@ import { useEffect, useRef, useState } from "react";
 import { Glasses, Maximize2, PanelsTopLeft, Scan } from "lucide-react";
 import { vrMode } from "@/engine/vrMode";
 import { MoshRenderer } from "@/engine/Renderer";
-import { isMetaQuestUserAgent } from "@/engine/xrCapabilities";
-import type { XrExperienceMode } from "@/engine/xrCapabilities";
+import {
+  isMetaQuestUserAgent,
+  readXrUiOverride,
+  shouldOfferXrUi,
+  XR_UI_OVERRIDE_EVENT,
+  type XrExperienceMode,
+  type XrUiOverride,
+} from "@/engine/xrCapabilities";
 import { toast } from "sonner";
 
 type Props = {
@@ -20,11 +26,35 @@ export function VrButton({ getRenderer, getFrame }: Props) {
   const [supported, setSupported] = useState({ visualizer: false, room: false });
   const [active, setActive] = useState(vrMode.active);
   const [enteredOnce, setEnteredOnce] = useState(vrMode.active);
+  const [uiOverride, setUiOverride] = useState<XrUiOverride>(() =>
+    typeof window === "undefined" ? "auto" : readXrUiOverride(window.localStorage)
+  );
   const wasActiveRef = useRef(vrMode.active);
   const questBrowser = isMetaQuestUserAgent(navigator.userAgent);
+  const offerXrUi = shouldOfferXrUi(navigator.userAgent, uiOverride);
+
+  useEffect(() => {
+    const syncOverride = () => setUiOverride(readXrUiOverride(window.localStorage));
+    window.addEventListener(XR_UI_OVERRIDE_EVENT, syncOverride);
+    window.addEventListener("storage", syncOverride);
+    return () => {
+      window.removeEventListener(XR_UI_OVERRIDE_EVENT, syncOverride);
+      window.removeEventListener("storage", syncOverride);
+    };
+  }, []);
 
   useEffect(() => {
     let alive = true;
+
+    // Critical performance gate: normal phones/desktops do not touch the
+    // WebXR capability API at all. Quest/Oculus auto-enables; Hot Triggers can
+    // explicitly force the probe on for unusual headsets, or force it off.
+    if (!offerXrUi) {
+      setSupported({ visualizer: false, room: false });
+      if (vrMode.active && uiOverride === "off") void vrMode.exit();
+      return () => { alive = false; };
+    }
+
     Promise.all([vrMode.isSupported("visualizer"), vrMode.isSupported("room")]).then(([visualizer, room]) => {
       if (alive) setSupported({ visualizer, room });
     });
@@ -37,9 +67,9 @@ export function VrButton({ getRenderer, getFrame }: Props) {
       wasActiveRef.current = next;
     });
     return () => { alive = false; off(); };
-  }, []);
+  }, [offerXrUi, uiOverride]);
 
-  if (!supported.visualizer && !supported.room) return null;
+  if ((!offerXrUi && !active) || (!supported.visualizer && !supported.room && !active)) return null;
 
   const onClick = async (mode: XrExperienceMode = "visualizer") => {
     if (active) {
