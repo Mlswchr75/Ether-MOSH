@@ -8,13 +8,14 @@ import { FORGE_PALETTES } from "@/engine/forgePalettes";
 import { seamScore } from "@/engine/tileSafety";
 import { healToSeamless, renderSizeFor, DEFAULT_HEAL_BAND } from "@/engine/seamlessHeal";
 import { downloadBlob } from "@/engine/export";
+import { blobWithDpi } from "@/engine/pngDpi";
 import { usePaywall } from "@/hooks/usePaywall";
 
 /**
- * Print sizes. 2048 covers most garment panels at 150 DPI; 4096 is there for
- * large-format and for anything a fulfiller will scale up.
+ * Native print sizes. The 5K/8K options match the shared print-ready export;
+ * every PNG is stamped at 300 DPI after lossless encoding.
  */
-const EXPORT_SIZES = [1024, 2048, 4096] as const;
+const EXPORT_SIZES = [2048, 4096, 5000, 8000] as const;
 
 /**
  * Forge-only controls — palette, base photo, seamless tiling, density, seed,
@@ -151,9 +152,10 @@ export function ForgePanel({ embedded = false }: { embedded?: boolean }) {
         setSeam(score);
       } catch { /* advisory only — never block the save */ }
 
-      const blob = await new Promise<Blob | null>(res => finalCanvas.toBlob(res, "image/png"));
-      if (!blob) throw new Error("Encoding failed");
-      downloadBlob(blob, `mosh-forge-${currentForge.seed.toString(16)}-${size}${seamless ? "-tile" : ""}.png`);
+      const encoded = await new Promise<Blob | null>(res => finalCanvas.toBlob(res, "image/png"));
+      if (!encoded) throw new Error("Encoding failed");
+      const blob = await blobWithDpi(encoded, 300);
+      downloadBlob(blob, `ether-mosh-forge-${currentForge.seed.toString(16)}_${size}x${size}_300dpi${seamless ? "_seamless-tile" : ""}.png`);
 
       const pct = score !== null ? `${(score * 100).toFixed(1)}%` : "n/a";
       if (!seamless) {
@@ -329,7 +331,7 @@ export function ForgePanel({ embedded = false }: { embedded?: boolean }) {
               title={`Export ${sz}x${sz} PNG${forge.seamless ? " (seamless tile)" : ""}`}
               className="flex-1 rounded-sm border border-primary/60 py-1 font-mono text-[9px] uppercase tracking-[0.1em] text-primary transition hover:bg-primary/10 disabled:opacity-40"
             >
-              {sz >= 1024 ? `${sz / 1024}k` : sz}
+              {sz === 2048 || sz === 4096 ? `${sz / 1024}k` : `${sz / 1000}k`}
             </button>
           ))}
         </div>

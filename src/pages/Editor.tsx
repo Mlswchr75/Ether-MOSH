@@ -13,6 +13,7 @@ import { ShufflePanel } from "@/components/editor/ShufflePanel";
 import { ParamDock } from "@/components/editor/ParamDock";
 import { BeatPanel } from "@/components/editor/BeatPanel";
 import { downloadCanvasPngNow, exportCanvas, downloadBlob, remasterCanvas } from "@/engine/export";
+import { exportPrintReady, type PrintFormat } from "@/engine/printExport";
 import { captureBestFrame } from "@/engine/bestFrame";
 import { captureLoopingGif } from "@/engine/gifCapture";
 import { CanvasRecorder } from "@/engine/recorder";
@@ -172,6 +173,7 @@ export default function Editor() {
   const [isRecording, setIsRecording] = useState(false);
   const [exportBusy, setExportBusy] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
+  const [printExportOpen, setPrintExportOpen] = useState(false);
   const [recElapsed, setRecElapsed] = useState(0);
   const [micFlash, setMicFlash] = useState<null | { on: boolean; key: number }>(null);
   const [bpmFlash, setBpmFlash] = useState<null | { bpm: number; key: number }>(null);
@@ -587,6 +589,46 @@ export default function Editor() {
       setExportProgress(0);
     }
   }, [exportBusy, isForge, paywall, tileMode]);
+
+  const exportPrintStill = useCallback(async (longEdge: 5000 | 8000, format: PrintFormat = "jpg") => {
+    if (isForge && !paywall.isSupporter) {
+      paywall.require("Forge print-ready export");
+      return;
+    }
+    if (exportBusy) return;
+    const canvas = getCanvas();
+    if (!canvas) return;
+    setPrintExportOpen(false);
+    setExportBusy(true);
+    setExportProgress(0.05);
+    const notice = toast.loading(`Building ${longEdge / 1000}K · 300 DPI print file…`, { duration: 60_000 });
+    try {
+      const state = useStore.getState();
+      const effects = state.layers.filter(layer => !layer.hidden).slice(0, 3).map(layer => layer.effectId);
+      const subject = effects.length ? effects.join("-") : (isForge ? `forge-${state.forge.seed.toString(16)}` : "visual");
+      const result = await exportPrintReady(canvas, {
+        longEdge,
+        format,
+        dpi: 300,
+        quality: 1,
+        baseName: `ether-mosh-${subject}`,
+      });
+      setExportProgress(1);
+      await shareOrDownload(result.blob, result.filename);
+      showExportSuccessToast({
+        id: notice,
+        message: `${result.width}×${result.height} · ${result.dpi} DPI ready`,
+        description: format === "jpg" ? "Maximum-quality print JPG" : "Lossless print PNG",
+        blob: result.blob,
+        filename: result.filename,
+      });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Print export failed", { id: notice });
+    } finally {
+      setExportBusy(false);
+      setExportProgress(0);
+    }
+  }, [exportBusy, isForge, paywall]);
 
   // Enter/exit perf mode side effects
   const enterPerf = async () => {
@@ -2048,16 +2090,42 @@ export default function Editor() {
               </div>
               <div className="mx-1 h-5 w-px bg-[hsl(var(--border-default))]" />
               {/* Improved Export — gradient, glow, distinct shape */}
-              <button
-                onClick={exportBestStill}
-                disabled={exportBusy}
-                className="group relative ml-1 inline-flex h-8 items-center gap-1.5 overflow-hidden rounded-sm border border-primary/60 bg-gradient-to-r from-primary/90 via-primary to-primary-glow px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.2em] text-primary-foreground shadow-[0_0_20px_hsl(var(--primary)/0.45)] transition hover:shadow-[0_0_28px_hsl(var(--primary)/0.7)] active:scale-95"
-                title="Export (⌘E)"
-              >
-                <Download className="h-3.5 w-3.5" strokeWidth={2} />
-                <span>{exportBusy ? `${Math.round(exportProgress * 100)}%` : "Export"}</span>
-                <span className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/25 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
-              </button>
+              <div className="relative ml-1 flex">
+                <button
+                  onClick={exportBestStill}
+                  disabled={exportBusy}
+                  className="group relative inline-flex h-8 items-center gap-1.5 overflow-hidden rounded-l-sm border border-r-0 border-primary/60 bg-gradient-to-r from-primary/90 via-primary to-primary-glow px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.2em] text-primary-foreground shadow-[0_0_20px_hsl(var(--primary)/0.45)] transition hover:shadow-[0_0_28px_hsl(var(--primary)/0.7)] active:scale-95"
+                  title="Quick still export (⌘E)"
+                >
+                  <Download className="h-3.5 w-3.5" strokeWidth={2} />
+                  <span>{exportBusy ? `${Math.round(exportProgress * 100)}%` : "Export"}</span>
+                  <span className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/25 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
+                </button>
+                <button
+                  type="button"
+                  disabled={exportBusy}
+                  aria-label="Print-ready export options"
+                  aria-expanded={printExportOpen}
+                  onClick={() => setPrintExportOpen(open => !open)}
+                  className="flex h-8 w-7 items-center justify-center rounded-r-sm border border-primary/60 bg-primary text-primary-foreground"
+                  title="Print-ready 5K / 8K · 300 DPI"
+                >
+                  <ChevronDown className={`h-3.5 w-3.5 transition-transform ${printExportOpen ? "rotate-180" : ""}`} />
+                </button>
+                {printExportOpen && (
+                  <div className="absolute right-0 top-10 z-[10020] w-56 rounded-sm border border-[hsl(var(--border-default))] bg-black/95 p-1.5 shadow-2xl backdrop-blur-md">
+                    <p className="px-2 py-1 font-mono text-[8px] uppercase tracking-[0.2em] text-white/45">Print ready · actual pixels · 300 DPI</p>
+                    {([5000, 8000] as const).map(size => (
+                      <button key={size} type="button" onClick={() => void exportPrintStill(size, "jpg")} className="flex w-full items-center justify-between rounded-sm px-2 py-2 font-mono text-[10px] uppercase text-white/85 hover:bg-white/10">
+                        <span>{size / 1000}K maximum-quality JPG</span><span className="text-primary">300</span>
+                      </button>
+                    ))}
+                    <button type="button" onClick={() => void exportPrintStill(5000, "png")} className="flex w-full items-center justify-between rounded-sm px-2 py-2 font-mono text-[10px] uppercase text-white/85 hover:bg-white/10">
+                      <span>5K lossless PNG</span><span className="text-primary">300</span>
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
