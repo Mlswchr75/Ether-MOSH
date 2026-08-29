@@ -128,4 +128,24 @@ describe("requestCameraStream facing", () => {
     const stream = await requestCameraStream({ facing: "user" });
     expect(stream.getVideoTracks()).toHaveLength(1);
   });
+
+  it("never substitutes Quest's avatar selfie camera for a room camera", async () => {
+    const track = makeTrack(null, "Meta Avatar Camera");
+    const getUserMedia = vi.fn(async () => makeStream(track));
+    Object.defineProperty(globalThis, "navigator", {
+      configurable: true,
+      value: {
+        userAgent: "Mozilla/5.0 OculusBrowser Quest 3",
+        mediaDevices: { getUserMedia, enumerateDevices: async () => [] },
+        permissions: undefined,
+      },
+    });
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: { isSecureContext: true, location: { hostname: "localhost" }, matchMedia: () => ({ matches: true }) },
+    });
+
+    await expect(requestCameraStream({ facing: "environment" })).rejects.toMatchObject({ cameraError: "notfound" });
+    expect(track.stop).toHaveBeenCalled();
+  });
 });

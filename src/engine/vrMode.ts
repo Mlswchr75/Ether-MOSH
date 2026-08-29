@@ -11,33 +11,40 @@
 import * as THREE from "three";
 import { MoshRenderer } from "./Renderer";
 import { useStore } from "@/store/useStore";
-import { hasHorizontalThumbstickFlick, isThumbstickCentered, resolveXrTextureSize, runFlatRenderPass } from "./xrCapabilities";
+import { hasHorizontalThumbstickFlick, isQuestAvatarCamera, isThumbstickCentered, resolveXrTextureSize, runFlatRenderPass, sessionModeForExperience, type XrExperienceMode } from "./xrCapabilities";
 import { activateXrHotTrigger, getXrHotTriggers, type XrHotTrigger } from "./xrHotTriggers";
 
-const DOME_RADIUS = 24;
+export const XR_DOME_RADIUS = 24;
+export const XR_CAMERA_FAR = XR_DOME_RADIUS * 2;
 const TOGGLE_W = 0.42;
 const TOGGLE_H = 0.105;
 const MENU_ITEM_SIZE = 0.13;
 
 type XrControllerEvents = {
-  addEventListener: (type: "selectstart" | "selectend" | "squeezestart", listener: () => void) => void;
-  removeEventListener: (type: "selectstart" | "selectend" | "squeezestart", listener: () => void) => void;
+  addEventListener: (type: "selectstart" | "selectend" | "squeezestart" | "connected" | "disconnected", listener: () => void) => void;
+  removeEventListener: (type: "selectstart" | "selectend" | "squeezestart" | "connected" | "disconnected", listener: () => void) => void;
 };
 
-type XrMenuItem = { trigger: XrHotTrigger; mesh: THREE.Mesh; texture: THREE.CanvasTexture };
+type XrMenuItem = { trigger: XrHotTrigger; mesh: THREE.Mesh; texture: THREE.CanvasTexture; canvas: HTMLCanvasElement };
 
 export class VrMode {
   active = false;
   private session: XRSession | null = null;
   private mosh: MoshRenderer | null = null;
   private renderFrame: (() => void) | null = null;
+  private experienceMode: XrExperienceMode = "visualizer";
   private scene = new THREE.Scene();
+  /** Dedicated perspective camera supplies a valid XR near/far range. The
+   * renderer's orthographic post-processing camera is intentionally 0..1 and
+   * clipped the old 24m dome completely out of both headset eyes. */
+  private xrBaseCamera = new THREE.PerspectiveCamera(70, 1, 0.03, XR_CAMERA_FAR);
   private output: THREE.WebGLRenderTarget | null = null;
   private dome: THREE.Mesh | null = null;
   private toggle: THREE.Mesh | null = null;
   private toggleTexture: THREE.CanvasTexture | null = null;
   private menu = new THREE.Group();
   private menuItems: XrMenuItem[] = [];
+  private menuMeshes: THREE.Mesh[] = [];
   private menuVisible = false;
   private menuSource: THREE.Object3D | null = null;
   private selectStartedWithMenu = false;
@@ -46,19 +53,32 @@ export class VrMode {
   private controllerDisposables: Array<{
     controller: THREE.Group;
     events: XrControllerEvents;
-    ray: THREE.Line;
-    geometry: THREE.BufferGeometry;
-    material: THREE.Material;
+    cursor: THREE.Sprite;
+    cursorMaterial: THREE.SpriteMaterial;
+    cursorTexture: THREE.CanvasTexture;
+    ripple: THREE.Sprite;
+    rippleMaterial: THREE.SpriteMaterial;
+    rippleTexture: THREE.CanvasTexture;
+    rippleStartedAt: number;
     onSelect: () => void;
     onSelectEnd: () => void;
     onSqueeze: () => void;
+    onConnected: () => void;
+    onDisconnected: () => void;
   }> = [];
   private raycaster = new THREE.Raycaster();
+  private rayRotation = new THREE.Matrix4();
+  private rayOrigin = new THREE.Vector3();
+  private rayDirection = new THREE.Vector3();
+  private cameraPosition = new THREE.Vector3();
+  private cameraQuaternion = new THREE.Quaternion();
   private toggleHovered = false;
   private prevXrEnabled = false;
   private cleaning = false;
   private flickLatched = new WeakSet<object>();
   private listeners = new Set<(active: boolean) => void>();
+
+  get mode(): XrExperienceMode { return this.experienceMode; }
 
   onChange(fn: (active: boolean) => void) {
     this.listeners.add(fn);
@@ -69,27 +89,36 @@ export class VrMode {
     for (const fn of this.listeners) fn(this.active);
   }
 
-  async isSupported(): Promise<boolean> {
+  async isSupported(mode: XrExperienceMode = "visualizer"): Promise<boolean> {
     const xr = (navigator as Navigator & { xr?: XRSystem }).xr;
     if (!xr?.isSessionSupported) return false;
     try {
-      return await xr.isSessionSupported("immersive-vr");
+      return await xr.isSessionSupported(sessionModeForExperience(mode));
     } catch {
       return false;
     }
   }
 
-  async enter(mosh: MoshRenderer, renderFrame: () => void): Promise<void> {
+  async enter(mosh: MoshRenderer, renderFrame: () => void, mode: XrExperienceMode = "visualizer"): Promise<void> {
     if (this.active) return;
     const xr = (navigator as Navigator & { xr?: XRSystem }).xr;
     if (!xr) throw new Error("WebXR is unavailable in this browser");
 
-    const session = await xr.requestSession("immersive-vr", {
+    if (mode === "room") {
+      const state = useStore.getState();
+      const tracks = state.videoStream?.getVideoTracks() ?? [];
+      if (state.cameraFacing === "user" || tracks.some(track => isQuestAvatarCamera(track.label))) {
+        state.clearVideoSource();
+      }
+    }
+
+    const session = await xr.requestSession(sessionModeForExperience(mode), {
       optionalFeatures: ["local-floor", "bounded-floor", "hand-tracking", "layers"],
     });
 
     this.mosh = mosh;
     this.renderFrame = renderFrame;
+    this.experienceMode = mode;
     this.session = session;
     this.cleaning = false;
 
@@ -142,14 +171,18 @@ export class VrMode {
     });
     mosh.setXrTarget(this.output);
 
+    const domeMaterial = new THREE.MeshBasicMaterial({
+      map: this.output.texture,
+      side: THREE.BackSide,
+      toneMapped: false,
+      depthWrite: false,
+      transparent: this.experienceMode === "room",
+      opacity: this.experienceMode === "room" ? 0.42 : 1,
+      blending: this.experienceMode === "room" ? THREE.AdditiveBlending : THREE.NormalBlending,
+    });
     this.dome = new THREE.Mesh(
-      new THREE.SphereGeometry(DOME_RADIUS, 48, 32),
-      new THREE.MeshBasicMaterial({
-        map: this.output.texture,
-        side: THREE.BackSide,
-        toneMapped: false,
-        depthWrite: false,
-      }),
+      new THREE.SphereGeometry(XR_DOME_RADIUS, 48, 32),
+      domeMaterial,
     );
     this.dome.frustumCulled = false;
     this.scene.add(this.dome);
@@ -172,32 +205,65 @@ export class VrMode {
     const gl = mosh.renderer;
     for (let i = 0; i < 2; i++) {
       const controller = gl.xr.getController(i);
-      const geometry = new THREE.BufferGeometry().setFromPoints([
-        new THREE.Vector3(0, 0, 0),
-        new THREE.Vector3(0, 0, -1),
-      ]);
-      const material = new THREE.LineBasicMaterial({ color: 0xff3ca6, transparent: true, opacity: 0.72 });
-      const ray = new THREE.Line(geometry, material);
-      ray.scale.z = 3;
-      controller.add(ray);
+      const cursorTexture = this.makeCursorTexture(false);
+      const cursorMaterial = new THREE.SpriteMaterial({ map: cursorTexture, transparent: true, depthTest: false, toneMapped: false });
+      const cursor = new THREE.Sprite(cursorMaterial);
+      cursor.scale.setScalar(0.028);
+      cursor.renderOrder = 1100;
+      cursor.visible = false;
+      const rippleTexture = this.makeCursorTexture(true);
+      const rippleMaterial = new THREE.SpriteMaterial({ map: rippleTexture, transparent: true, opacity: 0, depthTest: false, toneMapped: false });
+      const ripple = new THREE.Sprite(rippleMaterial);
+      ripple.scale.setScalar(0.03);
+      ripple.renderOrder = 1090;
+      ripple.visible = false;
+      this.scene.add(cursor, ripple);
       const onSelect = () => this.onSelectStart(controller);
       const onSelectEnd = () => this.onSelectEnd(controller);
       const onSqueeze = () => useStore.getState().rerollSeed();
+      const onConnected = () => { cursor.visible = true; ripple.visible = true; };
+      const onDisconnected = () => { cursor.visible = false; ripple.visible = false; };
       const events = controller as unknown as XrControllerEvents;
       events.addEventListener("selectstart", onSelect);
       events.addEventListener("selectend", onSelectEnd);
       events.addEventListener("squeezestart", onSqueeze);
+      events.addEventListener("connected", onConnected);
+      events.addEventListener("disconnected", onDisconnected);
       this.scene.add(controller);
       this.controllers.push(controller);
-      this.controllerDisposables.push({ controller, events, ray, geometry, material, onSelect, onSelectEnd, onSqueeze });
+      this.controllerDisposables.push({ controller, events, cursor, cursorMaterial, cursorTexture, ripple, rippleMaterial, rippleTexture, rippleStartedAt: -1, onSelect, onSelectEnd, onSqueeze, onConnected, onDisconnected });
     }
 
-    // Gaze-select devices do not necessarily populate getController().
+    // Gaze-select devices do not necessarily populate getController(). Reuse
+    // the same open/select/dismiss state machine instead of treating gaze as
+    // an unconditional emergency exit.
     this.session?.addEventListener("select", (event: XRInputSourceEvent) => {
-      // A gaze ray is always centered while the head-locked toggle sits below
-      // center, so a gaze-only tap is treated directly as the mode switch.
-      if (event.inputSource.targetRayMode === "gaze") void this.exit();
+      if (event.inputSource.targetRayMode !== "gaze") return;
+      if (this.menuVisible) this.onSelectEnd(null);
+      else this.onSelectStart(null);
     });
+  }
+
+  private makeCursorTexture(ripple: boolean): THREE.CanvasTexture {
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = 128;
+    const ctx = canvas.getContext("2d")!;
+    ctx.beginPath();
+    ctx.arc(64, 64, ripple ? 48 : 24, 0, Math.PI * 2);
+    ctx.lineWidth = ripple ? 5 : 8;
+    ctx.strokeStyle = ripple ? "rgba(255,255,255,0.92)" : "rgba(255,60,166,0.96)";
+    ctx.stroke();
+    if (!ripple) {
+      ctx.beginPath();
+      ctx.arc(64, 64, 5, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(255,255,255,0.95)";
+      ctx.fill();
+    }
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.generateMipmaps = false;
+    texture.minFilter = THREE.LinearFilter;
+    return texture;
   }
 
   private buildHotTriggerMenu(): void {
@@ -212,7 +278,12 @@ export class VrMode {
       const ringCount = inner ? triggers.length - outerCount : outerCount;
       const angle = (ringIndex / Math.max(1, ringCount)) * Math.PI * 2 - Math.PI / 2;
       const radius = inner ? 0.38 : 0.64;
-      const texture = this.makeMenuTexture(trigger.label, false);
+      const canvas = document.createElement("canvas");
+      canvas.width = canvas.height = 256;
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.generateMipmaps = false;
+      texture.minFilter = THREE.LinearFilter;
       const mesh = new THREE.Mesh(
         new THREE.PlaneGeometry(MENU_ITEM_SIZE, MENU_ITEM_SIZE),
         new THREE.MeshBasicMaterial({ map: texture, transparent: true, toneMapped: false, depthTest: false }),
@@ -221,15 +292,17 @@ export class VrMode {
       mesh.renderOrder = 910;
       mesh.userData.xrHotTriggerId = trigger.id;
       this.menu.add(mesh);
-      this.menuItems.push({ trigger, mesh, texture });
+      this.menuMeshes.push(mesh);
+      const item = { trigger, mesh, texture, canvas };
+      this.paintMenuTexture(item, false);
+      this.menuItems.push(item);
     }
     this.scene.add(this.menu);
   }
 
-  private makeMenuTexture(label: string, highlighted: boolean): THREE.CanvasTexture {
-    const canvas = document.createElement("canvas");
-    canvas.width = 256;
-    canvas.height = 256;
+  private paintMenuTexture(item: XrMenuItem, highlighted: boolean): void {
+    const { canvas, texture } = item;
+    const label = item.trigger.label;
     const ctx = canvas.getContext("2d")!;
     ctx.beginPath();
     ctx.arc(128, 128, 116, 0, Math.PI * 2);
@@ -252,9 +325,7 @@ export class VrMode {
     }
     if (line) lines.push(line);
     lines.slice(0, 3).forEach((value, i, visible) => ctx.fillText(value, 128, 128 + (i - (visible.length - 1) / 2) * 28));
-    const texture = new THREE.CanvasTexture(canvas);
-    texture.colorSpace = THREE.SRGBColorSpace;
-    return texture;
+    texture.needsUpdate = true;
   }
 
   private paintToggle(): void {
@@ -281,19 +352,21 @@ export class VrMode {
   private pointsAtToggle(source: THREE.Object3D | null): boolean {
     if (!this.toggle || !this.mosh) return false;
     if (source) {
-      const rotation = new THREE.Matrix4().extractRotation(source.matrixWorld);
+      this.rayRotation.extractRotation(source.matrixWorld);
       this.raycaster.ray.origin.setFromMatrixPosition(source.matrixWorld);
-      this.raycaster.ray.direction.set(0, 0, -1).applyMatrix4(rotation);
+      this.raycaster.ray.direction.set(0, 0, -1).applyMatrix4(this.rayRotation);
     } else {
       const camera = this.mosh.renderer.xr.getCamera();
-      const rotation = new THREE.Matrix4().extractRotation(camera.matrixWorld);
+      this.rayRotation.extractRotation(camera.matrixWorld);
       this.raycaster.ray.origin.setFromMatrixPosition(camera.matrixWorld);
-      this.raycaster.ray.direction.set(0, 0, -1).applyMatrix4(rotation);
+      this.raycaster.ray.direction.set(0, 0, -1).applyMatrix4(this.rayRotation);
     }
     return this.raycaster.intersectObject(this.toggle, false).length > 0;
   }
 
-  private onSelectStart(source: THREE.Object3D): void {
+  private onSelectStart(source: THREE.Object3D | null): void {
+    const disposable = this.controllerDisposables.find(item => item.controller === source);
+    if (disposable) disposable.rippleStartedAt = performance.now();
     if (this.pointsAtToggle(source)) {
       void this.exit();
       return;
@@ -303,7 +376,7 @@ export class VrMode {
     if (!this.menuVisible) this.showMenu();
   }
 
-  private onSelectEnd(source: THREE.Object3D): void {
+  private onSelectEnd(source: THREE.Object3D | null): void {
     if (!this.menuVisible) return;
     this.updateMenuHighlight(source);
     const selection = this.highlightedMenuItem;
@@ -324,12 +397,11 @@ export class VrMode {
   private showMenu(): void {
     if (!this.mosh) return;
     const camera = this.mosh.renderer.xr.getCamera();
-    const position = new THREE.Vector3();
-    const quaternion = new THREE.Quaternion();
-    camera.getWorldPosition(position);
-    camera.getWorldQuaternion(quaternion);
-    this.menu.position.copy(position).add(new THREE.Vector3(0, 0, -1.45).applyQuaternion(quaternion));
-    this.menu.quaternion.copy(quaternion);
+    camera.getWorldPosition(this.cameraPosition);
+    camera.getWorldQuaternion(this.cameraQuaternion);
+    this.rayDirection.set(0, 0, -1.45).applyQuaternion(this.cameraQuaternion);
+    this.menu.position.copy(this.cameraPosition).add(this.rayDirection);
+    this.menu.quaternion.copy(this.cameraQuaternion);
     this.menu.visible = true;
     this.menuVisible = true;
   }
@@ -350,19 +422,40 @@ export class VrMode {
   }
 
   private repaintMenuItem(item: XrMenuItem, highlighted: boolean): void {
-    const next = this.makeMenuTexture(item.trigger.label, highlighted);
-    (item.mesh.material as THREE.MeshBasicMaterial).map = next;
-    item.texture.dispose();
-    item.texture = next;
+    this.paintMenuTexture(item, highlighted);
   }
 
   private updateMenuHighlight(source: THREE.Object3D | null): void {
-    if (!this.menuVisible || !source) { this.setHighlightedMenuItem(null); return; }
-    const rotation = new THREE.Matrix4().extractRotation(source.matrixWorld);
-    this.raycaster.ray.origin.setFromMatrixPosition(source.matrixWorld);
-    this.raycaster.ray.direction.set(0, 0, -1).applyMatrix4(rotation);
-    const hit = this.raycaster.intersectObjects(this.menuItems.map(item => item.mesh), false)[0];
+    if (!this.menuVisible || !this.mosh) { this.setHighlightedMenuItem(null); return; }
+    const raySource = source ?? this.mosh.renderer.xr.getCamera();
+    this.rayRotation.extractRotation(raySource.matrixWorld);
+    this.raycaster.ray.origin.setFromMatrixPosition(raySource.matrixWorld);
+    this.raycaster.ray.direction.set(0, 0, -1).applyMatrix4(this.rayRotation);
+    const hit = this.raycaster.intersectObjects(this.menuMeshes, false)[0];
     this.setHighlightedMenuItem(hit ? this.menuItems.find(item => item.mesh === hit.object) ?? null : null);
+  }
+
+  private updateControllerCursors(now: number): void {
+    const interactive = [this.toggle, ...(this.menuVisible ? this.menuMeshes : [])]
+      .filter((item): item is THREE.Mesh => item !== null);
+    for (const item of this.controllerDisposables) {
+      this.rayRotation.extractRotation(item.controller.matrixWorld);
+      this.rayOrigin.setFromMatrixPosition(item.controller.matrixWorld);
+      this.rayDirection.set(0, 0, -1).applyMatrix4(this.rayRotation).normalize();
+      this.raycaster.ray.origin.copy(this.rayOrigin);
+      this.raycaster.ray.direction.copy(this.rayDirection);
+      const hit = interactive.length ? this.raycaster.intersectObjects(interactive, false)[0] : null;
+      item.cursor.position.copy(hit?.point ?? this.rayDirection.multiplyScalar(1.2).add(this.rayOrigin));
+      item.ripple.position.copy(item.cursor.position);
+      const elapsed = item.rippleStartedAt < 0 ? Infinity : now - item.rippleStartedAt;
+      if (elapsed < 320) {
+        const progress = elapsed / 320;
+        item.rippleMaterial.opacity = 1 - progress;
+        item.ripple.scale.setScalar(0.03 + progress * 0.12);
+      } else {
+        item.rippleMaterial.opacity = 0;
+      }
+    }
   }
 
   private updateThumbstickSwitch(): void {
@@ -392,16 +485,14 @@ export class VrMode {
     runFlatRenderPass(gl.xr, () => this.renderFrame?.());
 
     const camera = gl.xr.getCamera();
-    const cameraPosition = new THREE.Vector3();
-    const cameraQuaternion = new THREE.Quaternion();
-    camera.getWorldPosition(cameraPosition);
-    camera.getWorldQuaternion(cameraQuaternion);
+    camera.getWorldPosition(this.cameraPosition);
+    camera.getWorldQuaternion(this.cameraQuaternion);
 
-    this.dome?.position.copy(cameraPosition);
+    this.dome?.position.copy(this.cameraPosition);
     if (this.toggle) {
-      const localOffset = new THREE.Vector3(0, -0.26, -0.82).applyQuaternion(cameraQuaternion);
-      this.toggle.position.copy(cameraPosition).add(localOffset);
-      this.toggle.quaternion.copy(cameraQuaternion);
+      this.rayDirection.set(0, -0.26, -0.82).applyQuaternion(this.cameraQuaternion);
+      this.toggle.position.copy(this.cameraPosition).add(this.rayDirection);
+      this.toggle.quaternion.copy(this.cameraQuaternion);
     }
 
     const hovered = this.controllers.some((controller) => this.pointsAtToggle(controller));
@@ -410,10 +501,11 @@ export class VrMode {
       this.paintToggle();
     }
     if (this.menuVisible) this.updateMenuHighlight(this.menuSource);
+    this.updateControllerCursors(performance.now());
     this.updateThumbstickSwitch();
 
     gl.setRenderTarget(null);
-    gl.render(this.scene, camera);
+    gl.render(this.scene, this.xrBaseCamera);
   }
 
   private cleanup(): void {
@@ -433,9 +525,13 @@ export class VrMode {
       item.events.removeEventListener("selectstart", item.onSelect);
       item.events.removeEventListener("selectend", item.onSelectEnd);
       item.events.removeEventListener("squeezestart", item.onSqueeze);
-      item.controller.remove(item.ray);
-      item.geometry.dispose();
-      item.material.dispose();
+      item.events.removeEventListener("connected", item.onConnected);
+      item.events.removeEventListener("disconnected", item.onDisconnected);
+      this.scene.remove(item.cursor, item.ripple);
+      item.cursorMaterial.dispose();
+      item.cursorTexture.dispose();
+      item.rippleMaterial.dispose();
+      item.rippleTexture.dispose();
     }
     this.controllers = [];
     this.controllerDisposables = [];
@@ -448,6 +544,7 @@ export class VrMode {
       this.menu.remove(item.mesh);
     }
     this.menuItems = [];
+    this.menuMeshes = [];
     this.hideMenu();
 
     disposeMesh(this.scene, this.dome);
@@ -463,6 +560,7 @@ export class VrMode {
     this.renderFrame = null;
     this.toggleHovered = false;
     this.active = false;
+    this.experienceMode = "visualizer";
     this.emit();
     this.cleaning = false;
   }

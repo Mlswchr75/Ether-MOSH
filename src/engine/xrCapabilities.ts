@@ -2,6 +2,18 @@ export function isMetaQuestUserAgent(userAgent: string): boolean {
   return /OculusBrowser|Meta Quest|Quest(?: 2| 3| Pro)?|Oculus/i.test(userAgent);
 }
 
+export type XrExperienceMode = "visualizer" | "room";
+
+export function sessionModeForExperience(mode: XrExperienceMode): XRSessionMode {
+  return mode === "room" ? "immersive-ar" : "immersive-vr";
+}
+
+/** Quest's browser can expose the avatar selfie camera as the only ordinary
+ * getUserMedia device. Never treat that virtual camera as a room-facing feed. */
+export function isQuestAvatarCamera(label: string): boolean {
+  return /avatar|selfie/i.test(label);
+}
+
 /** Quest Touch controllers commonly expose the thumbstick as axes 2/3, while
  * some WebXR runtimes expose it as 0/1. Accept either layout. */
 export function hasHorizontalThumbstickFlick(axes: readonly number[], threshold = 0.85): boolean {
