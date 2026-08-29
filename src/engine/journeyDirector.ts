@@ -42,7 +42,7 @@
 
 import { composeFromMood, type Mood } from "./smartDirector";
 import { MotionTracker } from "./stormDirector";
-import type { DirectedLayer } from "./compose";
+import { recencyPenalty, type DirectedLayer } from "./compose";
 import {
   AudioWindow, EMPTY_FRAME, SILENT_FEATURES,
   analyseFrame, barMs, classifyStyle, nextSection,
@@ -394,15 +394,11 @@ export class JourneyDirector {
   }
 
   /** Id → score multiplier (0..1) fed to composeFromMood so a recently-used
-   *  effect has to earn its way back in rather than simply winning again. */
+   *  effect has to earn its way back in rather than simply winning again.
+   *  Shared with regular moshing's own recency memory — see recencyPenalty's
+   *  own doc in compose.ts for why this moved there. */
   private recentPenalty(): Map<string, number> {
-    const penalty = new Map<string, number>();
-    this.recentStructural.forEach((id, i) => {
-      const mult = Math.min(1, 0.12 + i * 0.18); // most recent: 0.12, decaying outward
-      if (!penalty.has(id) || mult < (penalty.get(id) as number)) penalty.set(id, mult);
-    });
-    for (const id of this.recentAccent) if (!penalty.has(id)) penalty.set(id, 0.65);
-    return penalty;
+    return recencyPenalty(this.recentStructural, this.recentAccent);
   }
 
   private rememberComposition(layers: DirectedLayer[]) {

@@ -19,6 +19,7 @@ import {
   type Look,
   type Role,
 } from "@/engine/artDirector";
+import { recencyPenalty } from "@/engine/compose";
 import { generateSeed, rngFromSeed } from "@/engine/seed";
 import { presetToUrl, type PresetPayload } from "@/engine/presetUrl";
 import {
@@ -63,10 +64,17 @@ function generateFavoriteName(layers: Layer[]): string {
 }
 
 const HISTORY_LIMIT = 20;
-/** How many recently-used effects a full mosh avoids reaching for. */
-const MOSH_MEMORY = 8;
-/** How many recent art directions to rotate past before reusing one. */
-const LOOK_MEMORY = 4;
+/** Recency-memory windows feeding recencyPenalty (see compose.ts) — the
+ *  same shape and the same numbers Journey mode's own memory uses (
+ *  recentStructural/recentAccent in journeyDirector.ts), so a repeat is
+ *  suppressed on the same curve everywhere in the app rather than one mode
+ *  hard-excluding on a fixed window and another softly decaying. `form` is
+ *  the load-bearing role here (Journey's "structural" equivalent) and gets
+ *  the tighter, more steeply-decaying memory; everything else shares the
+ *  flatter one. */
+const RECENT_FORM_MEMORY = 5;
+const RECENT_OTHER_MEMORY = 10;
+const LOOK_MEMORY = 5;
 
 /**
  * How many parts of the composition each intensity fills.
@@ -234,8 +242,14 @@ type State = {
   stickerGallery: StickerEntry[];
   /** Which camera is active ('user' = front, 'environment' = rear). */
   cameraFacing: CameraFacing | null;
-  /** Recently-used effect ids across full moshes (anti-repetition). */
-  recentEffects: string[];
+  /** Recently-used *form-role* effect ids — the load-bearing pick, so this
+   *  is the tighter-windowed, more steeply-decaying half of recencyPenalty's
+   *  input (see compose.ts). Anti-repetition, softly: see mosh()/rerollRole/
+   *  addRole for how this feeds the director rather than hard-excluding. */
+  recentFormEffects: string[];
+  /** Recently-used effect ids from every other role — the flatter-penalty
+   *  half of the same memory. */
+  recentOtherEffects: string[];
   /** Recently-used look ids. Rotating the art direction — not just the
    *  effects — is what keeps consecutive moshes from reading the same. */
   recentLooks: string[];
@@ -537,7 +551,8 @@ export const useStore = create<State & Actions>((set, get) => ({
   roleCursor: "grade",
   selectedRole: null,
   selectedRoleLayers: {},
-  recentEffects: [],
+  recentFormEffects: [],
+  recentOtherEffects: [],
   recentLooks: [],
   currentLook: null,
   currentBrief: null,
@@ -786,8 +801,16 @@ export const useStore = create<State & Actions>((set, get) => ({
       roleCount: ROLE_COUNT[inten],
       chaos: CHAOS[inten],
       wildness: rollWildness(rand, WILD_FLOOR[inten]),
-      avoidLooks: s.recentLooks,
-      avoidEffects: [...s.recentEffects, ...locked.map(l => l.effectId)],
+      // Soft, decaying suppression instead of a hard exclude — the same
+      // memory Journey mode uses (see recencyPenalty in compose.ts) rather
+      // than regular moshing's old fixed-window hard-avoid, which is the
+      // gap that made the two shuffle noticeably differently.
+      lookPenalty: recencyPenalty(s.recentLooks, []),
+      effectPenalty: recencyPenalty(s.recentFormEffects, s.recentOtherEffects),
+      // A locked layer's effect id is a real hard constraint, not a
+      // preference — the director must never reach for it since it's
+      // already pinned in a fixed slot.
+      avoidEffects: locked.map(l => l.effectId),
     });
 
     const fresh: Layer[] = composition.layers.map(cl => {
@@ -806,7 +829,8 @@ export const useStore = create<State & Actions>((set, get) => ({
       };
     });
 
-    const usedIds = composition.layers.map(l => l.effectId);
+    const formIds = composition.layers.filter(l => l.role === "form").map(l => l.effectId);
+    const otherIds = composition.layers.filter(l => l.role !== "form").map(l => l.effectId);
     const layers = [...locked, ...fresh];
     const selection = resetRoleSelection(layers);
     return {
@@ -814,8 +838,11 @@ export const useStore = create<State & Actions>((set, get) => ({
       past: pushPast(s), future: [],
       layers,
       seed,
-      recentEffects: [...s.recentEffects, ...usedIds].slice(-MOSH_MEMORY),
-      recentLooks: [...s.recentLooks, composition.look.id].slice(-LOOK_MEMORY),
+      // Most-recent-first, same ordering recencyPenalty expects (see its
+      // own doc: index 0 gets the strongest suppression, decaying outward).
+      recentFormEffects: [...formIds, ...s.recentFormEffects].slice(0, RECENT_FORM_MEMORY),
+      recentOtherEffects: [...otherIds, ...s.recentOtherEffects].slice(0, RECENT_OTHER_MEMORY),
+      recentLooks: [composition.look.id, ...s.recentLooks].slice(0, LOOK_MEMORY),
       currentLook: {
         id: composition.look.id,
         name: composition.look.name,
@@ -845,7 +872,7 @@ export const useStore = create<State & Actions>((set, get) => ({
     const rand = rngFromSeed(generateSeed());
     const brief = s.currentBrief ?? briefFrom(analyzeSource(s.videoElement ?? s.imageElement));
     const look: Look = (s.currentLook && LOOKS_LOOKUP[s.currentLook.id])
-      ?? chooseLook(brief, rand, s.recentLooks);
+      ?? chooseLook(brief, rand, [], recencyPenalty(s.recentLooks, []));
     const affinity = skewedAffinity(rand);
     const wildness = rollWildness(rand, WILD_FLOOR[s.intensity]);
     const composed = composeRoleLayer(role, look, brief, rand, {
@@ -853,6 +880,7 @@ export const useStore = create<State & Actions>((set, get) => ({
       affinityTarget: affinity,
       wildness,
       existingRegion: target.region ?? null,
+      penalty: recencyPenalty(s.recentFormEffects, s.recentOtherEffects),
     });
     if (!composed) return null;
     const def = EFFECTS_BY_ID[composed.effectId];
@@ -885,7 +913,9 @@ export const useStore = create<State & Actions>((set, get) => ({
       selectedRole: role,
       selectedRoleLayers: { ...s.selectedRoleLayers, [role]: target.id },
       roleCursor: nextRole,
-      recentEffects: [...s.recentEffects, composed.effectId].slice(-MOSH_MEMORY),
+      ...(role === "form"
+        ? { recentFormEffects: [composed.effectId, ...s.recentFormEffects].slice(0, RECENT_FORM_MEMORY) }
+        : { recentOtherEffects: [composed.effectId, ...s.recentOtherEffects].slice(0, RECENT_OTHER_MEMORY) }),
       currentBrief: brief,
       currentLook: { id: look.id, name: look.name, blurb: look.blurb },
       lastRoleRoll: record,
@@ -899,13 +929,14 @@ export const useStore = create<State & Actions>((set, get) => ({
     const rand = rngFromSeed(generateSeed());
     const brief = s.currentBrief ?? briefFrom(analyzeSource(s.videoElement ?? s.imageElement));
     const look: Look = (s.currentLook && LOOKS_LOOKUP[s.currentLook.id])
-      ?? chooseLook(brief, rand, s.recentLooks);
+      ?? chooseLook(brief, rand, [], recencyPenalty(s.recentLooks, []));
     const affinity = skewedAffinity(rand);
     const composed = composeRoleLayer(role, look, brief, rand, {
       exclude: s.layers.map(layer => layer.effectId),
       affinityTarget: affinity,
       wildness: rollWildness(rand, WILD_FLOOR[s.intensity]),
       existingRegion: null,
+      penalty: recencyPenalty(s.recentFormEffects, s.recentOtherEffects),
     });
     if (!composed) return null;
     const def = EFFECTS_BY_ID[composed.effectId];
@@ -938,7 +969,9 @@ export const useStore = create<State & Actions>((set, get) => ({
       selectedLayerId: layer.id, selectedRole: role,
       selectedRoleLayers: { ...s.selectedRoleLayers, [role]: layer.id },
       roleCursor: nextAvailableRole(layers, role) ?? role,
-      recentEffects: [...s.recentEffects, layer.effectId].slice(-MOSH_MEMORY),
+      ...(role === "form"
+        ? { recentFormEffects: [layer.effectId, ...s.recentFormEffects].slice(0, RECENT_FORM_MEMORY) }
+        : { recentOtherEffects: [layer.effectId, ...s.recentOtherEffects].slice(0, RECENT_OTHER_MEMORY) }),
       currentBrief: brief,
       currentLook: { id: look.id, name: look.name, blurb: look.blurb },
       lastRoleRoll: record,
