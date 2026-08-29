@@ -1,31 +1,26 @@
 /**
- * vrMode — immersive WebXR playback for Quest / Occlusion-class headsets.
+ * Immersive WebXR playback for Meta Quest and other standards-compliant
+ * headsets. MOSH renders its normal flat post-processing pipeline into a
+ * texture, then this class presents that texture inside a head-centered dome.
  *
- * The mosh pipeline keeps rendering exactly as it does on the flat canvas,
- * except the final blit is redirected into an offscreen render target. That
- * texture is then mapped onto a huge inward-facing sphere so the viewer is
- * fully engulfed by the visualizer in 360°.
- *
- * Controls in-headset:
- *   • Controller trigger on empty space   → MOSH
- *   • Controller ray + trigger on panel   → panel button
- *   • Squeeze / grip                      → reroll seed
- *   • Gaze + tap (no controllers)         → same select path
- * The floating panel billboards back in front of the viewer whenever they
- * turn away from it, so the controls are always reachable.
+ * The always-visible MODE toggle is part of the headset scene, not the MOSH
+ * output texture, so it can never leak into still/video exports. Selecting it
+ * exits immersive WebXR and returns to Horizon's movable/resizable Browser
+ * panel. A horizontal thumbstick flick performs the same switch.
  */
 import * as THREE from "three";
 import { MoshRenderer } from "./Renderer";
 import { useStore } from "@/store/useStore";
-import type { Intensity } from "@/store/types";
+import { hasHorizontalThumbstickFlick, isThumbstickCentered, resolveXrTextureSize, runFlatRenderPass } from "./xrCapabilities";
 
-const INTENSITIES: Intensity[] = ["mild", "savage", "nuclear", "interdimensional"];
+const DOME_RADIUS = 24;
+const TOGGLE_W = 0.42;
+const TOGGLE_H = 0.105;
 
-type Btn = { label: () => string; run: () => void };
-
-const PANEL_W = 0.62;
-const PANEL_H = 0.38;
-const COLS = 2;
+type XrControllerEvents = {
+  addEventListener: (type: "selectstart" | "squeezestart", listener: () => void) => void;
+  removeEventListener: (type: "selectstart" | "squeezestart", listener: () => void) => void;
+};
 
 export class VrMode {
   active = false;
@@ -33,275 +28,302 @@ export class VrMode {
   private mosh: MoshRenderer | null = null;
   private renderFrame: (() => void) | null = null;
   private scene = new THREE.Scene();
-  private rtOut: THREE.WebGLRenderTarget | null = null;
+  private output: THREE.WebGLRenderTarget | null = null;
   private dome: THREE.Mesh | null = null;
-  private panel: THREE.Mesh | null = null;
-  private panelCanvas: HTMLCanvasElement | null = null;
-  private panelTex: THREE.CanvasTexture | null = null;
+  private toggle: THREE.Mesh | null = null;
+  private toggleTexture: THREE.CanvasTexture | null = null;
   private controllers: THREE.Group[] = [];
+  private controllerDisposables: Array<{
+    controller: THREE.Group;
+    events: XrControllerEvents;
+    ray: THREE.Line;
+    geometry: THREE.BufferGeometry;
+    material: THREE.Material;
+    onSelect: () => void;
+    onSqueeze: () => void;
+  }> = [];
   private raycaster = new THREE.Raycaster();
-  private hoverIndex = -1;
+  private toggleHovered = false;
   private prevXrEnabled = false;
+  private cleaning = false;
+  private flickLatched = new WeakSet<object>();
   private listeners = new Set<(active: boolean) => void>();
-
-  private buttons: Btn[] = [
-    { label: () => "MOSH", run: () => useStore.getState().mosh() },
-    { label: () => "RESHUFFLE", run: () => useStore.getState().rerollSeed() },
-    { label: () => "UNDO", run: () => useStore.getState().undo() },
-    { label: () => "CLEAR", run: () => useStore.getState().clearLayers() },
-    {
-      label: () => useStore.getState().intensity.toUpperCase(),
-      run: () => {
-        const cur = useStore.getState().intensity;
-        const next = INTENSITIES[(INTENSITIES.indexOf(cur) + 1) % INTENSITIES.length];
-        useStore.getState().setIntensity(next);
-      },
-    },
-    {
-      label: () => (useStore.getState().micEnabled ? "MIC ON" : "MIC OFF"),
-      run: () => useStore.getState().setMicEnabled(!useStore.getState().micEnabled),
-    },
-    { label: () => "EXIT VR", run: () => void this.exit() },
-  ];
 
   onChange(fn: (active: boolean) => void) {
     this.listeners.add(fn);
     return () => this.listeners.delete(fn);
   }
-  private emit() { for (const fn of this.listeners) fn(this.active); }
 
-  async isSupported(): Promise<boolean> {
-    const xr = (navigator as any).xr;
-    if (!xr?.isSessionSupported) return false;
-    try { return await xr.isSessionSupported("immersive-vr"); } catch { return false; }
+  private emit() {
+    for (const fn of this.listeners) fn(this.active);
   }
 
-  async enter(mosh: MoshRenderer, renderFrame: () => void) {
-    if (this.active) return;
-    const xr = (navigator as any).xr;
-    if (!xr) throw new Error("WebXR unavailable");
+  async isSupported(): Promise<boolean> {
+    const xr = (navigator as Navigator & { xr?: XRSystem }).xr;
+    if (!xr?.isSessionSupported) return false;
+    try {
+      return await xr.isSessionSupported("immersive-vr");
+    } catch {
+      return false;
+    }
+  }
 
-    const session: XRSession = await xr.requestSession("immersive-vr", {
+  async enter(mosh: MoshRenderer, renderFrame: () => void): Promise<void> {
+    if (this.active) return;
+    const xr = (navigator as Navigator & { xr?: XRSystem }).xr;
+    if (!xr) throw new Error("WebXR is unavailable in this browser");
+
+    const session = await xr.requestSession("immersive-vr", {
       optionalFeatures: ["local-floor", "bounded-floor", "hand-tracking", "layers"],
     });
 
     this.mosh = mosh;
     this.renderFrame = renderFrame;
     this.session = session;
+    this.cleaning = false;
 
     const gl = mosh.renderer;
     this.prevXrEnabled = gl.xr.enabled;
-    gl.xr.enabled = true;
-    await gl.xr.setSession(session as any);
-    try { gl.xr.setReferenceSpaceType("local-floor"); } catch { /* fallback handled by three */ }
+    try {
+      const enabledFeatures = (session as XRSession & { enabledFeatures?: readonly string[] }).enabledFeatures;
+      gl.xr.setReferenceSpaceType(enabledFeatures?.includes("local-floor") ? "local-floor" : "local");
+      gl.xr.enabled = true;
+      await gl.xr.setSession(session);
 
-    this.buildScene();
-    this.active = true;
-    this.emit();
+      this.buildScene();
+      this.active = true;
+      this.emit();
 
-    session.addEventListener("end", () => this.cleanup());
-
-    gl.setAnimationLoop(() => this.frame());
+      session.addEventListener("end", () => this.cleanup(), { once: true });
+      gl.setAnimationLoop(() => this.frame());
+    } catch (error) {
+      try { await session.end(); } catch { /* session never fully started */ }
+      this.cleanup();
+      throw error;
+    }
   }
 
-  async exit() {
-    try { await this.session?.end(); } catch { /* already ending */ }
-    this.cleanup();
+  async exit(): Promise<void> {
+    const session = this.session;
+    if (!session) {
+      this.cleanup();
+      return;
+    }
+    try {
+      await session.end();
+      this.cleanup();
+    } catch {
+      this.cleanup();
+    }
   }
 
-  /* ---------- scene ---------- */
-
-  private buildScene() {
+  private buildScene(): void {
     const mosh = this.mosh!;
-    const rt = new THREE.WebGLRenderTarget(2048, 1024, {
+    const outputSize = resolveXrTextureSize(
+      navigator.hardwareConcurrency || 4,
+      mosh.renderer.capabilities.maxTextureSize,
+    );
+    this.output = new THREE.WebGLRenderTarget(outputSize.width, outputSize.height, {
       minFilter: THREE.LinearFilter,
       magFilter: THREE.LinearFilter,
       depthBuffer: false,
+      stencilBuffer: false,
     });
-    this.rtOut = rt;
-    mosh.setXrTarget(rt);
+    mosh.setXrTarget(this.output);
 
-    // 360° dome — the viewer sits inside the visualizer.
-    const domeGeo = new THREE.SphereGeometry(24, 64, 40);
-    const domeMat = new THREE.MeshBasicMaterial({
-      map: rt.texture,
-      side: THREE.BackSide,
-      toneMapped: false,
-      depthWrite: false,
-    });
-    this.dome = new THREE.Mesh(domeGeo, domeMat);
+    this.dome = new THREE.Mesh(
+      new THREE.SphereGeometry(DOME_RADIUS, 48, 32),
+      new THREE.MeshBasicMaterial({
+        map: this.output.texture,
+        side: THREE.BackSide,
+        toneMapped: false,
+        depthWrite: false,
+      }),
+    );
+    this.dome.frustumCulled = false;
     this.scene.add(this.dome);
 
-    // Control panel.
     const canvas = document.createElement("canvas");
-    canvas.width = 620; canvas.height = 380;
-    this.panelCanvas = canvas;
-    this.panelTex = new THREE.CanvasTexture(canvas);
-    this.panelTex.colorSpace = THREE.SRGBColorSpace;
-    this.panel = new THREE.Mesh(
-      new THREE.PlaneGeometry(PANEL_W, PANEL_H),
-      new THREE.MeshBasicMaterial({ map: this.panelTex, transparent: true, toneMapped: false })
+    canvas.width = 840;
+    canvas.height = 210;
+    this.toggleTexture = new THREE.CanvasTexture(canvas);
+    this.toggleTexture.colorSpace = THREE.SRGBColorSpace;
+    this.toggle = new THREE.Mesh(
+      new THREE.PlaneGeometry(TOGGLE_W, TOGGLE_H),
+      new THREE.MeshBasicMaterial({ map: this.toggleTexture, transparent: true, toneMapped: false, depthTest: false }),
     );
-    this.panel.position.set(0, 1.3, -0.9);
-    this.scene.add(this.panel);
-    this.paintPanel();
+    this.toggle.renderOrder = 1000;
+    this.toggle.frustumCulled = false;
+    this.scene.add(this.toggle);
+    this.paintToggle();
 
-    // Controllers + laser rays.
-    const gl = this.mosh!.renderer;
+    const gl = mosh.renderer;
     for (let i = 0; i < 2; i++) {
-      const c = gl.xr.getController(i);
-      const geo = new THREE.BufferGeometry().setFromPoints([
+      const controller = gl.xr.getController(i);
+      const geometry = new THREE.BufferGeometry().setFromPoints([
         new THREE.Vector3(0, 0, 0),
         new THREE.Vector3(0, 0, -1),
       ]);
-      const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ transparent: true, opacity: 0.7 }));
-      line.name = "ray";
-      line.scale.z = 3;
-      c.add(line);
-      c.addEventListener("selectstart", () => this.onSelect(c));
-      c.addEventListener("squeezestart", () => useStore.getState().rerollSeed());
-      this.scene.add(c);
-      this.controllers.push(c);
+      const material = new THREE.LineBasicMaterial({ color: 0xff3ca6, transparent: true, opacity: 0.72 });
+      const ray = new THREE.Line(geometry, material);
+      ray.scale.z = 3;
+      controller.add(ray);
+      const onSelect = () => this.onSelect(controller);
+      const onSqueeze = () => useStore.getState().rerollSeed();
+      const events = controller as unknown as XrControllerEvents;
+      events.addEventListener("selectstart", onSelect);
+      events.addEventListener("squeezestart", onSqueeze);
+      this.scene.add(controller);
+      this.controllers.push(controller);
+      this.controllerDisposables.push({ controller, events, ray, geometry, material, onSelect, onSqueeze });
     }
-    // Gaze / tap fallback when no controllers are present.
-    this.session?.addEventListener("select", (e: any) => {
-      if (e?.inputSource?.targetRayMode === "gaze") this.onSelect(null);
+
+    // Gaze-select devices do not necessarily populate getController().
+    this.session?.addEventListener("select", (event: XRInputSourceEvent) => {
+      // A gaze ray is always centered while the head-locked toggle sits below
+      // center, so a gaze-only tap is treated directly as the mode switch.
+      if (event.inputSource.targetRayMode === "gaze") void this.exit();
     });
   }
 
-  private paintPanel() {
-    const c = this.panelCanvas;
-    if (!c) return;
-    const ctx = c.getContext("2d")!;
-    const rows = Math.ceil(this.buttons.length / COLS);
-    ctx.clearRect(0, 0, c.width, c.height);
-    ctx.fillStyle = "rgba(6,6,10,0.82)";
-    ctx.fillRect(0, 0, c.width, c.height);
-    ctx.strokeStyle = "rgba(255,255,255,0.16)";
-    ctx.lineWidth = 3;
-    ctx.strokeRect(1.5, 1.5, c.width - 3, c.height - 3);
-
-    const pad = 14;
-    const cw = (c.width - pad * (COLS + 1)) / COLS;
-    const ch = (c.height - pad * (rows + 1)) / rows;
-    this.buttons.forEach((b, i) => {
-      const col = i % COLS, row = Math.floor(i / COLS);
-      const x = pad + col * (cw + pad);
-      const y = pad + row * (ch + pad);
-      const hot = i === this.hoverIndex;
-      ctx.fillStyle = hot ? "rgba(255,255,255,0.92)" : "rgba(255,255,255,0.08)";
-      ctx.fillRect(x, y, cw, ch);
-      ctx.strokeStyle = hot ? "rgba(255,255,255,1)" : "rgba(255,255,255,0.25)";
-      ctx.lineWidth = 2;
-      ctx.strokeRect(x, y, cw, ch);
-      ctx.fillStyle = hot ? "#08080c" : "rgba(255,255,255,0.92)";
-      ctx.font = "600 26px ui-monospace, monospace";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(b.label(), x + cw / 2, y + ch / 2);
-    });
-    if (this.panelTex) this.panelTex.needsUpdate = true;
+  private paintToggle(): void {
+    const canvas = this.toggleTexture?.image as HTMLCanvasElement | undefined;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.beginPath();
+    ctx.roundRect(5, 5, canvas.width - 10, canvas.height - 10, 54);
+    ctx.fillStyle = this.toggleHovered ? "rgba(255,60,166,0.96)" : "rgba(5,5,10,0.82)";
+    ctx.fill();
+    ctx.lineWidth = 8;
+    ctx.strokeStyle = this.toggleHovered ? "#ffffff" : "rgba(255,60,166,0.95)";
+    ctx.stroke();
+    ctx.fillStyle = "#ffffff";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = "700 52px ui-monospace, SFMono-Regular, Menlo, monospace";
+    ctx.fillText("WINDOW MODE  ↔", canvas.width / 2, canvas.height / 2);
+    this.toggleTexture!.needsUpdate = true;
   }
 
-  /* ---------- interaction ---------- */
-
-  private hitTest(source: THREE.Object3D | null): number {
-    if (!this.panel) return -1;
-    const ray = this.raycaster;
+  private pointsAtToggle(source: THREE.Object3D | null): boolean {
+    if (!this.toggle || !this.mosh) return false;
     if (source) {
-      const m = new THREE.Matrix4().identity().extractRotation(source.matrixWorld);
-      ray.ray.origin.setFromMatrixPosition(source.matrixWorld);
-      ray.ray.direction.set(0, 0, -1).applyMatrix4(m);
+      const rotation = new THREE.Matrix4().extractRotation(source.matrixWorld);
+      this.raycaster.ray.origin.setFromMatrixPosition(source.matrixWorld);
+      this.raycaster.ray.direction.set(0, 0, -1).applyMatrix4(rotation);
     } else {
-      const cam = this.mosh!.renderer.xr.getCamera();
-      ray.ray.origin.setFromMatrixPosition(cam.matrixWorld);
-      ray.ray.direction.set(0, 0, -1).applyMatrix4(new THREE.Matrix4().extractRotation(cam.matrixWorld));
+      const camera = this.mosh.renderer.xr.getCamera();
+      const rotation = new THREE.Matrix4().extractRotation(camera.matrixWorld);
+      this.raycaster.ray.origin.setFromMatrixPosition(camera.matrixWorld);
+      this.raycaster.ray.direction.set(0, 0, -1).applyMatrix4(rotation);
     }
-    const hits = ray.intersectObject(this.panel, false);
-    if (!hits.length || !hits[0].uv) return -1;
-    const rows = Math.ceil(this.buttons.length / COLS);
-    const col = Math.min(COLS - 1, Math.floor(hits[0].uv.x * COLS));
-    const row = Math.min(rows - 1, Math.floor((1 - hits[0].uv.y) * rows));
-    const idx = row * COLS + col;
-    return idx < this.buttons.length ? idx : -1;
+    return this.raycaster.intersectObject(this.toggle, false).length > 0;
   }
 
-  private onSelect(source: THREE.Object3D | null) {
-    const idx = this.hitTest(source);
-    if (idx >= 0) this.buttons[idx].run();
-    else useStore.getState().mosh(); // trigger anywhere in the void
-    this.paintPanel();
+  private onSelect(source: THREE.Object3D | null): void {
+    if (this.pointsAtToggle(source)) void this.exit();
+    else useStore.getState().mosh();
   }
 
-  /* ---------- frame ---------- */
-
-  private frame() {
-    if (!this.active || !this.mosh) return;
-    // 1) Run the normal mosh pipeline — it now blits into rtOut.
-    this.renderFrame?.();
-
-    const gl = this.mosh.renderer;
-    const cam = gl.xr.getCamera();
-
-    // Keep the panel reachable: billboard it back in front of the viewer.
-    if (this.panel) {
-      const camPos = new THREE.Vector3().setFromMatrixPosition(cam.matrixWorld);
-      const fwd = new THREE.Vector3(0, 0, -1).applyMatrix4(
-        new THREE.Matrix4().extractRotation(cam.matrixWorld)
-      );
-      const want = camPos.clone().add(fwd.multiplyScalar(0.95)).add(new THREE.Vector3(0, -0.25, 0));
-      if (this.panel.position.distanceTo(want) > 0.45) {
-        this.panel.position.lerp(want, 0.08);
+  private updateThumbstickSwitch(): void {
+    for (const input of this.session?.inputSources ?? []) {
+      const gamepad = (input as XRInputSource & { gamepad?: Gamepad }).gamepad;
+      if (!gamepad) continue;
+      if (this.flickLatched.has(input)) {
+        if (isThumbstickCentered(gamepad.axes)) this.flickLatched.delete(input);
+        continue;
       }
-      this.panel.lookAt(camPos);
+      if (hasHorizontalThumbstickFlick(gamepad.axes)) {
+        this.flickLatched.add(input);
+        void this.exit();
+        return;
+      }
     }
-
-    // Hover feedback from either controller.
-    let hover = -1;
-    for (const c of this.controllers) {
-      const idx = this.hitTest(c);
-      if (idx >= 0) { hover = idx; break; }
-    }
-    if (hover !== this.hoverIndex) { this.hoverIndex = hover; this.paintPanel(); }
-
-    // 2) Draw the immersive scene to the headset.
-    gl.setRenderTarget(null);
-    gl.render(this.scene, cam);
   }
 
-  /* ---------- teardown ---------- */
-
-  private cleanup() {
-    if (!this.mosh) { this.active = false; this.emit(); return; }
+  private frame(): void {
+    if (!this.active || !this.mosh) return;
     const gl = this.mosh.renderer;
-    gl.setAnimationLoop(null);
-    gl.xr.enabled = this.prevXrEnabled;
-    this.mosh.setXrTarget(null);
 
-    this.controllers.forEach(c => this.scene.remove(c));
+    // MOSH's post-processing passes use an orthographic camera. Keep WebXR
+    // substitution disabled for those offscreen passes, then re-enable it only
+    // for the final headset scene. This is the critical separation the old
+    // implementation lacked.
+    runFlatRenderPass(gl.xr, () => this.renderFrame?.());
+
+    const camera = gl.xr.getCamera();
+    const cameraPosition = new THREE.Vector3();
+    const cameraQuaternion = new THREE.Quaternion();
+    camera.getWorldPosition(cameraPosition);
+    camera.getWorldQuaternion(cameraQuaternion);
+
+    this.dome?.position.copy(cameraPosition);
+    if (this.toggle) {
+      const localOffset = new THREE.Vector3(0, -0.26, -0.82).applyQuaternion(cameraQuaternion);
+      this.toggle.position.copy(cameraPosition).add(localOffset);
+      this.toggle.quaternion.copy(cameraQuaternion);
+    }
+
+    const hovered = this.controllers.some((controller) => this.pointsAtToggle(controller));
+    if (hovered !== this.toggleHovered) {
+      this.toggleHovered = hovered;
+      this.paintToggle();
+    }
+    this.updateThumbstickSwitch();
+
+    gl.setRenderTarget(null);
+    gl.render(this.scene, camera);
+  }
+
+  private cleanup(): void {
+    if (!this.active && !this.mosh && !this.session) return;
+    if (this.cleaning) return;
+    this.cleaning = true;
+    const mosh = this.mosh;
+    if (mosh) {
+      const gl = mosh.renderer;
+      gl.setAnimationLoop(null);
+      mosh.setXrTarget(null);
+      gl.xr.enabled = this.prevXrEnabled;
+    }
+
+    for (const controller of this.controllers) this.scene.remove(controller);
+    for (const item of this.controllerDisposables) {
+      item.events.removeEventListener("selectstart", item.onSelect);
+      item.events.removeEventListener("squeezestart", item.onSqueeze);
+      item.controller.remove(item.ray);
+      item.geometry.dispose();
+      item.material.dispose();
+    }
     this.controllers = [];
-    if (this.dome) {
-      this.dome.geometry.dispose();
-      (this.dome.material as THREE.Material).dispose();
-      this.scene.remove(this.dome);
-      this.dome = null;
-    }
-    if (this.panel) {
-      this.panel.geometry.dispose();
-      (this.panel.material as THREE.Material).dispose();
-      this.scene.remove(this.panel);
-      this.panel = null;
-    }
-    this.panelTex?.dispose(); this.panelTex = null; this.panelCanvas = null;
-    this.rtOut?.dispose(); this.rtOut = null;
+    this.controllerDisposables = [];
 
+    disposeMesh(this.scene, this.dome);
+    disposeMesh(this.scene, this.toggle);
+    this.dome = null;
+    this.toggle = null;
+    this.toggleTexture?.dispose();
+    this.toggleTexture = null;
+    this.output?.dispose();
+    this.output = null;
     this.session = null;
     this.mosh = null;
     this.renderFrame = null;
-    this.hoverIndex = -1;
+    this.toggleHovered = false;
     this.active = false;
     this.emit();
+    this.cleaning = false;
   }
+}
+
+function disposeMesh(scene: THREE.Scene, mesh: THREE.Mesh | null): void {
+  if (!mesh) return;
+  mesh.geometry.dispose();
+  const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+  for (const material of materials) material.dispose();
+  scene.remove(mesh);
 }
 
 export const vrMode = new VrMode();
