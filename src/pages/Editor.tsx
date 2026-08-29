@@ -58,6 +58,7 @@ import { HotTriggers } from "@/components/editor/HotTriggers";
 import { MicNudgeToast } from "@/components/editor/MicNudgeToast";
 import { ActionConfirmation } from "@/components/editor/ActionConfirmation";
 import { showExportSuccessToast } from "@/components/editor/ExportShareToast";
+import { notifyExportStarted } from "@/components/editor/ExportRegisteredToast";
 import { AccountChip } from "@/components/AccountChip";
 import { usePaywall } from "@/hooks/usePaywall";
 import { useCloudFavorites } from "@/hooks/useCloudFavorites";
@@ -126,6 +127,7 @@ export default function Editor() {
   const canUndo = useStore(s => s.past.length > 0);
   const canRedo = useStore(s => s.future.length > 0);
   const mosh = useStore(s => s.mosh);
+  const exportSettings = useStore(s => s.exportSettings);
   const micEnabled = useStore(s => s.micEnabled);
   const setMicEnabled = useStore(s => s.setMicEnabled);
   const systemAudioEnabled = useStore(s => s.systemAudioEnabled);
@@ -602,7 +604,8 @@ export default function Editor() {
     setPrintExportOpen(false);
     setExportBusy(true);
     setExportProgress(0.05);
-    const notice = toast.loading(`Building ${longEdge / 1000}K · 300 DPI print file…`, { duration: 60_000 });
+    notifyExportStarted("print");
+    const notice = toast.loading(`Building ${longEdge / 1000}K · ${exportSettings.printDpi} DPI print file…`, { duration: 60_000 });
     try {
       const state = useStore.getState();
       const effects = state.layers.filter(layer => !layer.hidden).slice(0, 3).map(layer => layer.effectId);
@@ -610,7 +613,7 @@ export default function Editor() {
       const result = await exportPrintReady(canvas, {
         longEdge,
         format,
-        dpi: 300,
+        dpi: exportSettings.printDpi,
         quality: 1,
         baseName: `ether-mosh-${subject}`,
       });
@@ -629,7 +632,7 @@ export default function Editor() {
       setExportBusy(false);
       setExportProgress(0);
     }
-  }, [exportBusy, isForge, paywall]);
+  }, [exportBusy, isForge, paywall, exportSettings.printDpi]);
 
   // Enter/exit perf mode side effects
   const enterPerf = async () => {
@@ -992,6 +995,7 @@ export default function Editor() {
     const c = getCanvas();
     if (!c) return;
     try {
+      notifyExportStarted("screenshot");
       // This must remain synchronous with the camera-button/key/touch event:
       // phones regularly block a download that starts after a best-frame scan.
       // The dedicated Still export retains that slower scan/remaster workflow.
@@ -1017,9 +1021,10 @@ export default function Editor() {
     const c = getCanvas();
     if (!c) { shareApp(); return; }
     try {
+      notifyExportStarted("share");
       const longEdge = Math.max(c.width, c.height);
       const scale = Math.min(1, 1440 / longEdge);
-      const blob = await exportCanvas(c, { format: "jpg", scale, aspect: null, quality: 0.9 });
+      const blob = await exportCanvas(c, { format: "jpg", scale, aspect: null, quality: exportSettings.shareQuality });
       const shared = await shareBlob(blob, `mosh-${Date.now()}.jpg`, {
         title: "MOSH",
         text: "made with MOSH — brutalist webgl visualizer",
@@ -1032,40 +1037,42 @@ export default function Editor() {
     } catch {
       await shareApp();
     }
-  }, [isForge, paywall]);
+  }, [isForge, paywall, exportSettings.shareQuality]);
 
   /** Seconds the GIF button captures on a plain tap. Long-press picks another. */
-  const captureGif = useCallback(async (seconds = 7) => {
+  const captureGif = useCallback(async (seconds?: number) => {
     if (gifBusy) return;
     if (!paywall.require("Seamless GIF loop")) return;
     const c = getCanvas();
     if (!c) { toast.error("No visualizer to capture"); return; }
 
+    const dur = seconds ?? exportSettings.gifDefaultSeconds;
     setActionConfirm({
       type: "gif",
       onConfirm: async () => {
         setActionConfirm(null);
+        notifyExportStarted("gif");
         setGifBusy(true);
         setGifProgress(0);
         // Pause auto-shuffle so the mosh effect stays locked for the whole window.
         const prevShuffle = useStore.getState().shuffleSec;
         if (prevShuffle != null) useStore.getState().setShuffleSec(null);
-        const t = toast.loading(`Locking mosh · capturing ${seconds}s seamless GIF…`, { duration: 30_000 });
+        const t = toast.loading(`Locking mosh · capturing ${dur}s seamless GIF…`, { duration: 30_000 });
         try {
           const result = await captureLoopingGif(c, {
-            durationMs: Math.round(seconds * 1000),
-            fps: 12,
-            maxWidth: 480,
+            durationMs: Math.round(dur * 1000),
+            fps: exportSettings.gifFps,
+            maxWidth: exportSettings.gifMaxWidth,
             onProgress: (phase, p) => {
               // Weight capture as 0..0.7, encode as 0.7..1
               setGifProgress(phase === "capture" ? p * 0.7 : 0.7 + p * 0.3);
             },
           });
-          const filename = `mosh-${Date.now()}_${seconds}s_loop.gif`;
+          const filename = `mosh-${Date.now()}_${dur}s_loop.gif`;
           downloadBlob(result.blob, filename);
           const quality = result.loopScore > 0.85 ? "tight loop" : result.loopScore > 0.6 ? "clean loop" : "loop";
           showExportSuccessToast({
-            message: `${seconds}s GIF saved · ${result.frameCount}f · ${quality}`,
+            message: `${dur}s GIF saved · ${result.frameCount}f · ${quality}`,
             blob: result.blob,
             filename,
             id: t,
@@ -1080,7 +1087,7 @@ export default function Editor() {
         }
       },
     });
-  }, [gifBusy, paywall]);
+  }, [gifBusy, paywall, exportSettings.gifDefaultSeconds, exportSettings.gifFps, exportSettings.gifMaxWidth]);
 
 
   /** Stops and clears the audio stream toggleRecord captured for itself, if
@@ -1138,7 +1145,8 @@ export default function Editor() {
                 }
               }
             }
-            rec.start(c, 30, { audioStream });
+            rec.start(c, exportSettings.videoFps, { audioStream, preferMp4: exportSettings.videoFormat === "mp4" });
+            notifyExportStarted("video");
             recStartRef.current = performance.now();
             setRecElapsed(0);
             setIsRecording(true);
@@ -1291,6 +1299,19 @@ export default function Editor() {
         e.preventDefault();
         if (e.repeat) return;
         window.dispatchEvent(new CustomEvent("mosh:make-sticker"));
+        return;
+      }
+      // Shift+K => jump straight into Lottie Sticker Mode and capture,
+      // without needing scissors mode open or the Lottie checkbox already
+      // ticked first. Opens the sticker panel (so the preview/checkbox are
+      // visibly on) via the store directly, then hands off to
+      // StickerCapture's own listener (always-mounted, same event-bridge
+      // pattern as "mosh:make-sticker" above) for the actual capture.
+      if (e.shiftKey && (e.key === "k" || e.key === "K")) {
+        e.preventDefault();
+        if (e.repeat) return;
+        useStore.getState().setStickerMode(true);
+        window.dispatchEvent(new CustomEvent("mosh:capture-lottie-sticker"));
         return;
       }
 

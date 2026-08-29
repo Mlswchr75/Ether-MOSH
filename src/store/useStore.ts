@@ -111,6 +111,56 @@ const WILD_FLOOR: Record<Intensity, number> = {
   interdimensional: 0.62,
 };
 
+/**
+ * One shared settings object for every export path in the app — screenshot,
+ * share, GIF, video recording, print-ready stills, Forge/Motif/Seamless tile
+ * export. Centralizing these (rather than each export function hardcoding
+ * its own constants) is what makes a single "export settings" panel able to
+ * actually change behavior everywhere at once, instead of just displaying
+ * numbers nothing reads.
+ */
+export type ExportSettings = {
+  /** GIF capture: frames/sec, longest-edge cap in px, default tap duration. */
+  gifFps: number;
+  gifMaxWidth: number;
+  gifDefaultSeconds: number;
+  /** Video recording: MediaRecorder mimeType preference order and target fps.
+   *  "mp4" doesn't force MP4 — browsers that can't encode it still fall back
+   *  — it just tries H.264 first for wider compatibility (editing apps, iOS
+   *  share targets) instead of WebM's better-quality-per-bit default. */
+  videoFormat: "webm" | "mp4";
+  videoFps: number;
+  /** Stamped into every print-grade raster export (print-ready stills, Forge
+   *  tile export, Motif tile export, Seamless tile export) — doesn't touch
+   *  pixels, just the file's density metadata a print shop reads. */
+  printDpi: 150 | 300 | 600;
+  /** Share-sheet JPG quality, 0..1. */
+  shareQuality: number;
+};
+
+const EXPORT_SETTINGS_KEY = "cathedral_export_settings_v1";
+
+const DEFAULT_EXPORT_SETTINGS: ExportSettings = {
+  gifFps: 12,
+  gifMaxWidth: 480,
+  gifDefaultSeconds: 7,
+  videoFormat: "webm",
+  videoFps: 30,
+  printDpi: 300,
+  shareQuality: 0.9,
+};
+
+function loadExportSettings(): ExportSettings {
+  if (typeof localStorage === "undefined") return DEFAULT_EXPORT_SETTINGS;
+  try {
+    const raw = localStorage.getItem(EXPORT_SETTINGS_KEY);
+    if (!raw) return DEFAULT_EXPORT_SETTINGS;
+    return { ...DEFAULT_EXPORT_SETTINGS, ...JSON.parse(raw) };
+  } catch {
+    return DEFAULT_EXPORT_SETTINGS;
+  }
+}
+
 type State = {
   imageUrl: string | null;
   imageElement: HTMLImageElement | null;
@@ -143,6 +193,8 @@ type State = {
    *  audio-mapped modulator strength across every mode. 1 = no-op (the exact
    *  behavior before this field existed). */
   sensitivity: number;
+  /** Shared config for every export path — see ExportSettings' own doc. */
+  exportSettings: ExportSettings;
   isPerformanceMode: boolean;
   showMetersInPerformance: boolean;
   /** Hides all chrome by default; the only way back in is the deliberate
@@ -266,6 +318,7 @@ type Actions = {
   setTrackMeta: (title: string, artist: string) => void;
   setMicSensitivity: (v: number) => void;
   setSensitivity: (v: number) => void;
+  setExportSettings: (patch: Partial<ExportSettings>) => void;
   setPerformanceMode: (b: boolean) => void;
   togglePerformanceMode: () => void;
   setShowMetersInPerformance: (b: boolean) => void;
@@ -457,6 +510,7 @@ export const useStore = create<State & Actions>((set, get) => ({
   trackArtist: trackPlayer.artist,
   micSensitivity: 1,
   sensitivity: 1,
+  exportSettings: loadExportSettings(),
   isPerformanceMode: false,
   showMetersInPerformance: typeof localStorage !== "undefined" && localStorage.getItem("cathedral_meters_in_perf") === "1",
   proModeEnabled: typeof localStorage !== "undefined" && localStorage.getItem("cathedral_pro_mode") === "1",
@@ -965,6 +1019,11 @@ export const useStore = create<State & Actions>((set, get) => ({
   setTrackMeta: (title, artist) => set({ trackTitle: title, trackArtist: artist }),
   setMicSensitivity: (v) => set({ micSensitivity: v }),
   setSensitivity: (v) => set({ sensitivity: v }),
+  setExportSettings: (patch) => set(s => {
+    const next = { ...s.exportSettings, ...patch };
+    try { localStorage.setItem(EXPORT_SETTINGS_KEY, JSON.stringify(next)); } catch {}
+    return { exportSettings: next };
+  }),
   setPerformanceMode: (b) => set({ isPerformanceMode: b }),
   togglePerformanceMode: () => set(s => ({ isPerformanceMode: !s.isPerformanceMode })),
   setShowMetersInPerformance: (b) => {

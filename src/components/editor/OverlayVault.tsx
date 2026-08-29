@@ -15,6 +15,7 @@ import { useOverlayStore } from "@/store/useOverlayStore";
 import { useStore } from "@/store/useStore";
 import { segmentationEngine } from "@/engine/SegmentationEngine";
 import { assetFromStickerSource, resolveStickerSource, withOptionalForgeIsolation } from "@/engine/overlay/stickerSource";
+import { notifyExportStarted } from "@/components/editor/ExportRegisteredToast";
 
 export function OverlayVault({ showCaptureButton = true }: { showCaptureButton?: boolean }) {
   const [open, setOpen] = useState(false);
@@ -110,6 +111,7 @@ export function OverlayVault({ showCaptureButton = true }: { showCaptureButton?:
   };
 
   const downloadRecord = (record: OverlayVaultRecord) => {
+    notifyExportStarted("sticker");
     const url = URL.createObjectURL(record.blob);
     const a = document.createElement("a");
     a.href = url;
