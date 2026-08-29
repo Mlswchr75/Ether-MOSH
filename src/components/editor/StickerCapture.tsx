@@ -15,6 +15,7 @@ import { lottieJsonBlob } from '@/engine/overlay/stickerLottie';
 import {
   analyzeOrganicFocus,
   buildEncodedFrameSequenceLottie,
+  contentFrameSize,
   drawLottieStickerPreview,
   encodeTransparentStickerGif,
   encodeStickerFramesForLottie,
@@ -69,14 +70,18 @@ export function StickerCapture() {
       raf = requestAnimationFrame(draw);
       const source = glRef.current, preview = previewRef.current;
       if (!source || !preview || source.width < 2 || source.height < 2) return;
-      const maxWidth = window.matchMedia('(max-width: 700px)').matches ? 480 : 720;
-      const scale = Math.min(1, maxWidth / source.width);
-      const width = Math.max(2, Math.round(source.width * scale));
-      const height = Math.max(2, Math.round(source.height * scale));
-      if (preview.width !== width || preview.height !== height) { preview.width = width; preview.height = height; }
       if (!focusRef.current || frame++ % 8 === 0) focusRef.current = analyzeOrganicFocus(source, focusRef.current);
+      const focus = focusRef.current;
+      if (!focus) return;
+      // The frame itself is content-shaped now — size the preview canvas
+      // from the focus's own bounding box aspect (computed after analysis,
+      // not assumed from the source's landscape aspect beforehand) so a
+      // tall, thin or asymmetric shape actually previews as tall and thin.
+      const maxDimension = window.matchMedia('(max-width: 700px)').matches ? 480 : 720;
+      const { width, height } = contentFrameSize(focus, maxDimension);
+      if (preview.width !== width || preview.height !== height) { preview.width = width; preview.height = height; }
       const ctx = preview.getContext('2d');
-      if (ctx && focusRef.current) drawLottieStickerPreview(ctx, source, focusRef.current, lottieBackground, now / 1000);
+      if (ctx) drawLottieStickerPreview(ctx, source, focus, lottieBackground, now / 1000);
     };
     raf = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(raf);
@@ -190,14 +195,25 @@ export function StickerCapture() {
       const fps = 8;
       const count = Math.max(8, Math.round(loopSeconds * fps));
       const maxDimension = window.matchMedia('(max-width: 700px)').matches ? 288 : 360;
-      const scale = Math.min(1, maxDimension / Math.max(source.width, source.height));
-      const width = Math.max(2, Math.round(source.width * scale));
-      const height = Math.max(2, Math.round(source.height * scale));
-      const frames: ImageData[] = [];
+      // A single analysis can land on a mid-motion frame — reading twice
+      // before committing gives the frame that's about to be locked for
+      // this whole capture a fairer read of where the content actually
+      // sits.
       let focus = analyzeOrganicFocus(source, focusRef.current);
+      focus = analyzeOrganicFocus(source, focus);
+      // The output canvas's dimensions — and the source region it's
+      // cropped from — are committed once here rather than re-derived
+      // every frame: an animated Lottie/GIF needs a single fixed canvas
+      // size across all its frames, so the *frame* (crop window + aspect)
+      // has to stay put for the capture even though the *alpha shape*
+      // inside it keeps analyzing and evolving in real time below.
+      const committedBox = { left: focus.left, right: focus.right, top: focus.top, bottom: focus.bottom };
+      const { width, height } = contentFrameSize(focus, maxDimension);
+      const frames: ImageData[] = [];
       for (let index = 0; index < count; index++) {
         if (index % 3 === 0) focus = analyzeOrganicFocus(source, focus);
-        frames.push(renderOrganicStickerFrame(source, width, height, focus, index / fps));
+        const renderFocus = { ...focus, ...committedBox };
+        frames.push(renderOrganicStickerFrame(source, renderFocus, width, height, index / fps));
         setLottieProgress((index + 1) / count * .72);
         if (index < count - 1) await new Promise(resolve => setTimeout(resolve, 1000 / fps));
       }

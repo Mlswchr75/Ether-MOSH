@@ -1,241 +1,315 @@
 import { GIFEncoder, applyPalette, quantize } from "gifenc";
 
-export type OrganicFocus = {
-  x: number;
-  y: number;
-  rx: number;
-  ry: number;
-  phase: number;
-  /** Per-angle radius deltas derived from the current frame's structures. */
-  contour?: Float32Array;
-  /** Signed angular travel detected between consecutive analyzed frames. */
-  flow?: number;
-  /** 0 (soft gradient, a face, smoke) .. 1 (hard directional edges — a
-   *  building, a logo, a fence). Derived from how sharply the contour's
-   *  reach swings bin-to-bin; drives how little the shape gets smoothed,
-   *  how rectangular the base silhouette leans, how thin the mask's edge
-   *  transition is, and how much a frame trusts its own fresh read over
-   *  its history. This is what keeps the mask from defaulting to a blob. */
-  jaggedness?: number;
-  /** Superellipse exponent for the base silhouette — ~2 (rounded) for
-   *  organic content, up toward ~3.8 (squared-off) for geometric content.
-   *  Derived from jaggedness so even the shape underneath the contour
-   *  extension already leans toward what the content actually looks like. */
-  power?: number;
-};
-export type LottieStickerBackground = "black" | "white";
-
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
-
-const CONTOUR_BINS = 96;
-const TAU = Math.PI * 2;
-
-function contourAt(contour: Float32Array | undefined, angle: number) {
-  if (!contour?.length) return 0;
-  const position = ((angle / TAU) % 1 + 1) % 1 * contour.length;
-  const left = Math.floor(position) % contour.length;
-  const right = (left + 1) % contour.length;
-  const mix = position - Math.floor(position);
-  return contour[left] * (1 - mix) + contour[right] * mix;
-}
-
-function detectedAngularFlow(current: Float32Array, previous?: Float32Array) {
-  if (!previous || previous.length !== current.length) return 0;
-  let bestShift = 0, bestError = Infinity;
-  for (let shift = -6; shift <= 6; shift++) {
-    let error = 0;
-    for (let index = 0; index < current.length; index++) {
-      const prior = previous[(index - shift + current.length) % current.length];
-      const delta = current[index] - prior;
-      error += delta * delta;
-    }
-    if (error < bestError) { bestError = error; bestShift = shift; }
-  }
-  return bestShift * TAU / current.length;
-}
+const clamp01 = (value: number) => clamp(value, 0, 1);
+const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
 /**
- * The true geometric ceiling on how far the mask can extend at a given
- * angle before it would draw past the sticker's own output frame (minus a
- * small margin) — naturally larger along the axes than toward the corners,
- * which is exactly the "reach out as far as it can before the actual tile
- * borders" behavior content-driven extension should be free to use. Used to
- * be clamped to a flat 1.28 regardless of what the geometry actually
- * allowed, which was the main reason nothing could ever reach past a small
- * bump on the base ellipse — raised well past that so a sustained structural
- * read (a beam, a limb, a shard) can genuinely ride out toward the edge.
+ * Resolution of the content-energy field analyzeOrganicFocus samples at.
+ * Every cell gets its own reading — this is what makes the mask capable of
+ * any topology (a hole, two disconnected fragments, a spiral, a thin
+ * trailing streak) rather than the single radius-per-angle a polar contour
+ * could ever express, which can only ever describe a shape star-convex
+ * from one center. Cheap enough to run several times a second: 9k cells is
+ * well under what a 64×36 SourceStats pass elsewhere in this app already
+ * does routinely.
  */
-function safeRadiusScale(focus: OrganicFocus, angle: number, power = 2.25) {
-  const margin = .035;
-  const norm = Math.pow(Math.abs(Math.cos(angle)) ** power + Math.abs(Math.sin(angle)) ** power, 1 / power);
-  const vx = Math.cos(angle) / norm * focus.rx;
-  const vy = Math.sin(angle) / norm * focus.ry;
-  let limit = 2.7;
-  if (vx > 0) limit = Math.min(limit, (1 - margin - focus.x) / vx);
-  else if (vx < 0) limit = Math.min(limit, (margin - focus.x) / vx);
-  if (vy > 0) limit = Math.min(limit, (1 - margin - focus.y) / vy);
-  else if (vy < 0) limit = Math.min(limit, (margin - focus.y) / vy);
-  return clamp(limit, .72, 2.7);
-}
+export const FIELD_SIZE = 96;
 
-/** Fast content-aware focal and contour analysis. Besides choosing the visual
- * center, it samples structural energy along radial lanes. Lines, folds and
- * repeating bands that continue through the base silhouette pull narrow parts
- * of the mask outward; quiet lanes contract. Frame-to-frame angular
- * correlation supplies flow for spirals and rotating structures. */
+export type OrganicFocus = {
+  /**
+   * Tight bounding box of where the content's own energy exceeds its
+   * adaptive threshold, in SOURCE-frame normalized coordinates (0..1) —
+   * each side read independently, so the result is exactly as asymmetric
+   * as the content actually is. A shape that sprawls left and barely
+   * right, or stretches tall and thin, produces a box that says exactly
+   * that; it is never pulled back toward a centered, symmetric region.
+   * This is what the sticker's own output frame gets cropped to — the
+   * *frame*, not just the alpha inside a fixed frame, is content-shaped.
+   */
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+  /**
+   * The energy field itself, already temporally smoothed — sampled on a
+   * FIELD_SIZE × FIELD_SIZE grid in SOURCE-frame space (not yet remapped
+   * to the bounding box), so it can be resampled into any output size.
+   */
+  field: Float32Array;
+  /**
+   * Adaptive threshold (mean + a data-driven multiple of spread)
+   * separating "this is content" from "this is background" in the field
+   * above — recomputed on every analysis, never a fixed constant, so a
+   * low-contrast frame and a blown-out one both get a real cut instead of
+   * one guessing wrong for the other.
+   */
+  threshold: number;
+  /**
+   * 0 (soft gradient — smoke, a face, a glow) .. 1 (hard directional edges
+   * — a logo, a girder, a fence). The field's own high-frequency energy
+   * relative to a blurred copy of itself. Drives feather width, how much a
+   * frame trusts its fresh read over its history, and how tightly the
+   * bounding box itself is allowed to move frame to frame.
+   */
+  jaggedness: number;
+  /** 2D drift of the content's centroid between analyses, in normalized
+   *  units — bends the mask's feather to trail behind motion instead of
+   *  just breathing in place. The 2D generalization of what used to be an
+   *  angular-only flow term. */
+  flowX: number;
+  flowY: number;
+  /** Frame-local phase for the small "alive" jitter — advances every
+   *  analysis regardless of content. */
+  phase: number;
+};
+
+const emptyFocus = (): OrganicFocus => ({
+  left: .12, right: .88, top: .12, bottom: .88,
+  field: new Float32Array(FIELD_SIZE * FIELD_SIZE).fill(.5),
+  threshold: .3, jaggedness: 0, flowX: 0, flowY: 0, phase: 0,
+});
+
+/**
+ * Content-aware focal analysis — the whole reason this file can build a
+ * mask that never guesses.
+ *
+ * Builds a genuine per-pixel energy field over the source (edge strength +
+ * local color contrast), derives an adaptive threshold from the field's own
+ * distribution, and reads the field's real bounding box off independently
+ * on all four sides. A single-valued "radius per angle" model (what this
+ * used to be) can only ever describe star-convex blobs; a real 2D field can
+ * express anything — because nothing here assumes the shape has one center
+ * it radiates from.
+ */
 export function analyzeOrganicFocus(source: HTMLCanvasElement, previous?: OrganicFocus): OrganicFocus {
-  const size = 72;
+  const size = FIELD_SIZE;
   // The live GL canvas can be transiently 0×0 mid-capture — a resize, a
   // source-mode switch, WebGL context recreation — not just before capture
   // starts. drawImage throws on a 0×0 source, so this used to surface as an
   // export crash if the hiccup landed on any frame but the first; holding
   // onto the previous read for one tick (or a sane default with none yet)
   // is a better failure than losing the whole capture.
-  if (source.width < 1 || source.height < 1) return previous ?? { x: .5, y: .5, rx: .43, ry: .42, phase: 0 };
+  if (source.width < 1 || source.height < 1) return previous ?? emptyFocus();
   const canvas = document.createElement("canvas"); canvas.width = size; canvas.height = size;
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
-  if (!ctx) return previous ?? { x: .5, y: .5, rx: .43, ry: .42, phase: 0 };
+  if (!ctx) return previous ?? emptyFocus();
   ctx.drawImage(source, 0, 0, size, size);
   const data = ctx.getImageData(0, 0, size, size).data;
-  let total = 0, sx = 0, sy = 0, variance = 0, totalEnergy = 0;
-  const energy = new Float32Array(size * size);
+
   const lum = (x: number, y: number) => {
     const i = (clamp(y, 0, size - 1) * size + clamp(x, 0, size - 1)) * 4;
     return data[i] * .2126 + data[i + 1] * .7152 + data[i + 2] * .0722;
   };
-  for (let y = 1; y < size - 1; y++) for (let x = 1; x < size - 1; x++) {
+
+  // Raw per-pixel content signal: edge strength plus local chroma range.
+  // Either alone misses cases the other catches — a flat-colored
+  // silhouette against a flat background has real edges but low chroma
+  // range at its center; a colorful soft gradient is the opposite.
+  const raw = new Float32Array(size * size);
+  let sum = 0, sumSq = 0;
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
     const i = (y * size + x) * 4;
     const max = Math.max(data[i], data[i + 1], data[i + 2]);
     const min = Math.min(data[i], data[i + 1], data[i + 2]);
     const edge = Math.abs(lum(x + 1, y) - lum(x - 1, y)) + Math.abs(lum(x, y + 1) - lum(x, y - 1));
-    const center = Math.exp(-(((x / size - .5) ** 2 + (y / size - .5) ** 2) / .24));
-    const weight = .01 + edge / 255 * .58 + (max - min) / 255 * .25 + center * .16;
-    total += weight; sx += x * weight; sy += y * weight; variance += edge;
-    const structure = clamp(edge / 255 * .72 + (max - min) / 255 * .28, 0, 1.5);
-    energy[y * size + x] = structure;
-    totalEnergy += structure;
+    const v = clamp(edge / 255 * .72 + (max - min) / 255 * .34, 0, 2);
+    raw[y * size + x] = v;
+    sum += v; sumSq += v * v;
   }
-  const targetX = clamp((sx / Math.max(total, .001)) / size, .41, .59);
-  const targetY = clamp((sy / Math.max(total, .001)) / size, .40, .60);
-  const coherence = clamp(variance / (size * size * 85), 0, 1);
-  const x = previous ? previous.x * .7 + targetX * .3 : targetX;
-  const y = previous ? previous.y * .7 + targetY * .3 : targetY;
-  const rx = .415 + coherence * .02, ry = .405 + (1 - coherence) * .02;
-  const meanEnergy = totalEnergy / ((size - 2) * (size - 2));
+  const n = size * size;
+  const mean = sum / n;
+  const variance = Math.max(0, sumSq / n - mean * mean);
+  const stddev = Math.sqrt(variance);
 
-  // Raw radial reach per angle: how far outward the source's own structure —
-  // an edge, a limb, a girder, a shard — actually continues before the
-  // signal dies out. Searched well past the nominal frame (up to ~1.72×) so
-  // content that genuinely extends that far has something to find; how much
-  // of this un-smoothed read survives into the final contour depends on how
-  // jagged it turns out to be, below.
-  const raw = new Float32Array(CONTOUR_BINS);
-  for (let bin = 0; bin < CONTOUR_BINS; bin++) {
-    const angle = bin / CONTOUR_BINS * TAU;
-    let strongest = 0, strongestRadius = .78, outerRun = 0, bestRunRadius = .82;
-    for (let step = 0; step < 26; step++) {
-      const radius = .58 + step * .044;
-      const px = clamp(Math.round((x + Math.cos(angle) * rx * radius) * size), 1, size - 2);
-      const py = clamp(Math.round((y + Math.sin(angle) * ry * radius) * size), 1, size - 2);
-      const signal = energy[py * size + px];
-      if (signal > strongest) { strongest = signal; strongestRadius = radius; }
-      if (signal > meanEnergy * 1.1 + .02) {
-        outerRun++;
-        if (outerRun >= 2) bestRunRadius = radius;
-      } else outerRun = Math.max(0, outerRun - 1);
+  // Jaggedness — how much of the field's own energy is high-frequency
+  // texture rather than smooth gradient. Computed from the raw field
+  // against a cheap box-blurred copy of itself, before temporal smoothing
+  // touches either.
+  const blurred = new Float32Array(size * size);
+  let blurDiffSq = 0;
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    let s = 0, c = 0;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      const xx = x + dx, yy = y + dy;
+      if (xx < 0 || xx >= size || yy < 0 || yy >= size) continue;
+      s += raw[yy * size + xx]; c++;
     }
-    const reached = Math.max(strongestRadius, bestRunRadius);
-    const pull = (reached - .82) * .95 + (strongest - meanEnergy) * .22;
-    raw[bin] = clamp(pull, -.14, 1.7);
+    const b = s / c;
+    blurred[y * size + x] = b;
+    const d = raw[y * size + x] - b;
+    blurDiffSq += d * d;
+  }
+  const jaggedness = clamp01(Math.sqrt(blurDiffSq / n) * 3.4);
+
+  // Temporal field blend — jagged content trusts its fresh read almost
+  // entirely (a hard edge should snap to a new true position, not lag);
+  // smooth content leans on its history so the shape doesn't flicker
+  // pixel to pixel between two nearly-identical reads. Each cell also
+  // leans on its own blurred neighborhood rather than the raw single-texel
+  // value, so isolated sensor noise can't drive the cut on its own.
+  const temporalWeight = previous ? clamp01(.62 - jaggedness * .48) : 0;
+  const field = new Float32Array(n);
+  for (let idx = 0; idx < n; idx++) {
+    const fresh = raw[idx] * .3 + blurred[idx] * .7;
+    field[idx] = previous ? previous.field[idx] * temporalWeight + fresh * (1 - temporalWeight) : fresh;
   }
 
-  // Jaggedness: how sharply the reach swings from one angle to the next.
-  // A hard-edged silhouette (a building, a logo, a chain-link fence) jumps
-  // bin to bin; a soft gradient or a face changes gradually. This single
-  // number is what separates "reads as this specific shape" from "always a
-  // blob" — it sets how little the contour below gets smoothed, how
-  // rectangular the base silhouette leans, how thin the mask's edge
-  // transition is, and how much a frame trusts its own fresh read over its
-  // history, all in one place rather than each picking its own heuristic.
-  let curvature = 0;
-  for (let bin = 0; bin < CONTOUR_BINS; bin++) {
-    const d2 = raw[(bin + 1) % CONTOUR_BINS] - 2 * raw[bin] + raw[(bin - 1 + CONTOUR_BINS) % CONTOUR_BINS];
-    curvature += d2 * d2;
-  }
-  const jaggedness = clamp(Math.sqrt(curvature / CONTOUR_BINS) * 7.5, 0, 1);
-  const power = 1.9 + jaggedness * 1.9;
+  // Adaptive threshold — data-driven every single analysis, never a fixed
+  // constant, so a low-contrast frame and a blown-out one both get a real
+  // cut instead of one guessing wrong for the other.
+  const threshold = Math.max(.06, mean + stddev * .55);
 
-  const contour = new Float32Array(CONTOUR_BINS);
-  // How much of the un-smoothed read survives (vs. the 5-tap blur below) —
-  // mostly-raw for jagged content, mostly-blurred for organic content.
-  const rawWeight = .22 + jaggedness * .66;
-  // How much this frame trusts its own history vs. its fresh read — jagged
-  // content is allowed to snap onto a new true edge rather than dragging
-  // the previous frame's shape toward it over several frames.
-  const temporalWeight = .62 - jaggedness * .42;
-  for (let bin = 0; bin < CONTOUR_BINS; bin++) {
-    const angle = bin / CONTOUR_BINS * TAU;
-    const broad = (raw[(bin - 2 + CONTOUR_BINS) % CONTOUR_BINS] + raw[(bin - 1 + CONTOUR_BINS) % CONTOUR_BINS] * 2 + raw[bin] * 3 + raw[(bin + 1) % CONTOUR_BINS] * 2 + raw[(bin + 2) % CONTOUR_BINS]) / 9;
-    const structural = raw[bin] * rawWeight + broad * (1 - rawWeight);
-    const temporal = previous?.contour?.length === CONTOUR_BINS ? previous.contour[bin] * temporalWeight + structural * (1 - temporalWeight) : structural;
-    contour[bin] = clamp(temporal, -.1, safeRadiusScale({ x, y, rx, ry, phase: 0 }, angle, power) - 1);
+  // Bounding box — independently on all four sides, exactly as asymmetric
+  // as the field actually is. This is the "sprawls left, barely right"
+  // requirement: nothing here assumes or restores symmetry.
+  let left = size, right = -1, top = size, bottom = -1;
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    if (field[y * size + x] >= threshold) {
+      if (x < left) left = x;
+      if (x > right) right = x;
+      if (y < top) top = y;
+      if (y > bottom) bottom = y;
+    }
   }
-  const measuredFlow = detectedAngularFlow(contour, previous?.contour);
-  const flow = clamp((previous?.flow ?? 0) * .6 + measuredFlow * .4, -.22, .22);
-  return { x, y, rx, ry, phase: (previous?.phase ?? 0) + .31 + flow * 1.8, contour, flow, jaggedness, power };
+  const hasContent = right >= left && bottom >= top;
+  const pad = 1.5; // a couple of field cells of breathing room around the true edge
+  let boxLeft = hasContent ? clamp01((left - pad) / size) : .12;
+  let boxRight = hasContent ? clamp01((right + pad) / size) : .88;
+  let boxTop = hasContent ? clamp01((top - pad) / size) : .12;
+  let boxBottom = hasContent ? clamp01((bottom + pad) / size) : .88;
+  // Never fully degenerate — a single hot cell shouldn't produce a
+  // zero-area frame.
+  if (boxRight - boxLeft < .08) { const c = (boxLeft + boxRight) / 2; boxLeft = clamp01(c - .04); boxRight = clamp01(c + .04); }
+  if (boxBottom - boxTop < .08) { const c = (boxTop + boxBottom) / 2; boxTop = clamp01(c - .04); boxBottom = clamp01(c + .04); }
+
+  // Temporally blend the box itself the same way the field does — jagged
+  // or fast-moving content is allowed to resize/reposition the frame
+  // quickly; calm content keeps the frame steady so the crop doesn't drift
+  // for no reason.
+  const boxWeight = previous ? clamp01(.72 - jaggedness * .5) : 0;
+  const finalLeft = previous ? lerp(boxLeft, previous.left, boxWeight) : boxLeft;
+  const finalRight = previous ? lerp(boxRight, previous.right, boxWeight) : boxRight;
+  const finalTop = previous ? lerp(boxTop, previous.top, boxWeight) : boxTop;
+  const finalBottom = previous ? lerp(boxBottom, previous.bottom, boxWeight) : boxBottom;
+
+  const cx = (finalLeft + finalRight) / 2, cy = (finalTop + finalBottom) / 2;
+  const prevCx = previous ? (previous.left + previous.right) / 2 : cx;
+  const prevCy = previous ? (previous.top + previous.bottom) / 2 : cy;
+  const flowX = clamp((cx - prevCx) * 6, -1, 1);
+  const flowY = clamp((cy - prevCy) * 6, -1, 1);
+
+  return {
+    left: finalLeft, right: finalRight, top: finalTop, bottom: finalBottom,
+    field, threshold, jaggedness, flowX, flowY,
+    phase: (previous?.phase ?? 0) + .31,
+  };
 }
 
-export function organicMaskAlpha(nx: number, ny: number, focus: OrganicFocus, time: number) {
-  const jaggedness = focus.jaggedness ?? 0;
-  const power = focus.power ?? 2.25;
-  const dx = nx - focus.x, dy = ny - focus.y;
-  const angle = Math.atan2(dy / focus.ry, dx / focus.rx);
-  // The base silhouette's own exponent leans rectangular for geometric
-  // content and rounded for organic content — the shape reads as content-
-  // shaped even before the contour extension below has any say.
-  const baseRadius = Math.pow(Math.pow(Math.abs(dx) / focus.rx, power) + Math.pow(Math.abs(dy) / focus.ry, power), 1 / power);
-  // Angular travel bends outer protrusions behind rotating content, creating a
-  // trailing spiral instead of rotating the entire sticker as one rigid blob.
-  const trailingAngle = angle - (focus.flow ?? 0) * clamp((baseRadius - .45) * 2.2, 0, 1);
-  const contentPull = contourAt(focus.contour, trailingAngle);
-  // A sharp edge shouldn't wobble into softness, so the idle "alive" jitter
-  // shrinks as content gets more jagged; organic content keeps the fuller
-  // flowing motion.
-  const living = (Math.sin(angle * 3 + focus.phase + time * .52) * .032 + Math.sin(angle * 7 - time * .31) * .014) * (1 - jaggedness * .6);
-  const radiusScale = clamp(1 + contentPull + living, .74, 2.75);
-  // The mask edge itself narrows for jagged content — a crisp cut that
-  // actually reads as the object's own boundary — and stays a soft flowing
-  // feather for organic content. Interpolated rather than switched, so a
-  // frame that's part hard-edged object against part soft glow lands
-  // in between instead of snapping between two looks.
-  const band = .15 - jaggedness * .105;
-  const t = clamp((1 - baseRadius / radiusScale) / band, 0, 1);
-  const organic = t * t * (3 - 2 * t);
-  // A hard transparent rim plus a short feather guarantees breathing room
-  // even while a fast-moving tendril briefly outruns the analyzed contour.
-  // Keeping this branch arithmetic-only matters because it runs per pixel.
-  const edgeDistance = Math.min(nx, 1 - nx, ny, 1 - ny);
-  const rim = clamp((edgeDistance - .03) / .025, 0, 1);
-  return organic * rim * rim * (3 - 2 * rim);
+/**
+ * Output canvas dimensions for a capture — the content's own bounding box
+ * aspect ratio, scaled to fit within maxDimension on its longer side.
+ * Never forced back to the source's own aspect: a tall, thin shape gets a
+ * tall, thin frame; a shape that's nearly square gets a square one. This is
+ * the "doesn't always have to be landscape" behavior — the frame itself is
+ * content-shaped, not just the alpha drawn inside a fixed landscape canvas.
+ */
+export function contentFrameSize(focus: OrganicFocus, maxDimension: number): { width: number; height: number } {
+  const aspect = (focus.right - focus.left) / Math.max(.001, focus.bottom - focus.top);
+  let width: number, height: number;
+  if (aspect >= 1) { width = maxDimension; height = maxDimension / aspect; }
+  else { height = maxDimension; width = maxDimension * aspect; }
+  return { width: Math.max(2, Math.round(width)), height: Math.max(2, Math.round(height)) };
 }
 
-export function renderOrganicStickerFrame(source: HTMLCanvasElement, width: number, height: number, focus: OrganicFocus, time: number): ImageData {
+/** Bilinear-sample the energy field at a normalized SOURCE-frame coordinate. */
+function sampleField(focus: OrganicFocus, u: number, v: number): number {
+  const size = FIELD_SIZE;
+  const fx = clamp(u * size - .5, 0, size - 1);
+  const fy = clamp(v * size - .5, 0, size - 1);
+  const x0 = Math.floor(fx), y0 = Math.floor(fy);
+  const x1 = Math.min(size - 1, x0 + 1), y1 = Math.min(size - 1, y0 + 1);
+  const tx = fx - x0, ty = fy - y0;
+  const f = focus.field;
+  const a = f[y0 * size + x0], b = f[y0 * size + x1];
+  const c = f[y1 * size + x0], d = f[y1 * size + x1];
+  return lerp(lerp(a, b, tx), lerp(c, d, tx), ty);
+}
+
+/**
+ * Crop the source to the focus's own bounding box and cut it by the energy
+ * field's threshold, soft-edged. Because the cut comes straight from a real
+ * per-pixel field rather than a reconstructed radial contour, it can be any
+ * topology the content actually has — a hole, disconnected fragments, a
+ * spiral, a thin trailing streak — never approximated as one star-convex
+ * blob.
+ */
+export function renderOrganicStickerFrame(
+  source: HTMLCanvasElement,
+  focus: OrganicFocus,
+  width: number,
+  height: number,
+  time: number,
+): ImageData {
   const canvas = document.createElement("canvas"); canvas.width = width; canvas.height = height;
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
   if (!ctx) throw new Error("Lottie Sticker canvas unavailable");
-  // Same transient-0×0 hiccup analyzeOrganicFocus guards against — drawImage
-  // throws on a 0×0 source. Skipping the draw for this one tick (leaving the
-  // frame blank/transparent) is a far better failure than losing an entire
-  // multi-second capture to a mid-loop resize.
-  if (source.width > 0 && source.height > 0) ctx.drawImage(source, 0, 0, width, height);
+
+  const boxW = Math.max(.001, focus.right - focus.left);
+  const boxH = Math.max(.001, focus.bottom - focus.top);
+  // Draw only the content's own bounding box from the source, scaled to
+  // fill this output canvas — the crop *is* the frame now, not the full
+  // source scaled down with a mask floating somewhere inside it.
+  // Same transient-0×0 hiccup analyzeOrganicFocus guards against —
+  // drawImage throws on a 0×0 source. Skipping the draw for this one tick
+  // (leaving the frame blank/transparent) is a far better failure than
+  // losing an entire multi-second capture to a mid-loop resize.
+  if (source.width > 0 && source.height > 0) {
+    const sx = focus.left * source.width, sy = focus.top * source.height;
+    const sw = Math.max(1, boxW * source.width), sh = Math.max(1, boxH * source.height);
+    ctx.drawImage(source, sx, sy, sw, sh, 0, 0, width, height);
+  }
   const frame = ctx.getImageData(0, 0, width, height);
+
+  // Feather width, in field-units so it scales with FIELD_SIZE rather than
+  // output size — jagged content gets a thin, crisp cut that reads as its
+  // own true edge; smooth content keeps a soft flowing feather.
+  const featherLo = lerp(.09, .025, focus.jaggedness);
+  const featherHi = featherLo + lerp(.05, .012, focus.jaggedness);
+  const featherSpan = Math.max(.001, featherHi + featherLo);
+  // A hard transparent rim at the crop's own edges — breathing room even
+  // where the field's threshold crossing runs right to the boundary.
+  const rimPx = Math.max(1, Math.round(Math.min(width, height) * .028));
+
   for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
     const i = (y * width + x) * 4;
-    const alpha = organicMaskAlpha((x + .5) / width, (y + .5) / height, focus, time);
+    // Map this output pixel back into SOURCE-frame normalized space,
+    // offset slightly against the flow so the mask trails behind fast
+    // motion — the 2D generalization of the old system's "protrusions
+    // bend behind rotating content".
+    const u = focus.left + (x + .5) / width * boxW - focus.flowX * .02;
+    const v = focus.top + (y + .5) / height * boxH - focus.flowY * .02;
+    const value = sampleField(focus, u, v);
+    // Soft threshold: a smoothstep band straddling the adaptive threshold.
+    // This is what lets the mask trace any topology the field actually has
+    // — a hole reads as a hole, two separate hot regions read as two
+    // separate pieces, a thin bright streak reads as a thin streak —
+    // instead of approximating everything as one star-convex blob.
+    const t = clamp01((value - (focus.threshold - featherLo)) / featherSpan);
+    let alpha = t * t * (3 - 2 * t);
+    // Small idle "alive" jitter so a static image doesn't produce a
+    // perfectly frozen cut — shrinks as content gets more jagged.
+    const jitter = (Math.sin(x * .19 + focus.phase + time * .6) * .02 + Math.sin(y * .23 - time * .4) * .02) * (1 - focus.jaggedness * .6);
+    alpha = clamp01(alpha + jitter * alpha);
+    const edgeDist = Math.min(x, width - 1 - x, y, height - 1 - y);
+    const rim = clamp01(edgeDist / rimPx);
+    alpha *= rim * rim * (3 - 2 * rim);
     frame.data[i + 3] = Math.round(frame.data[i + 3] * alpha);
   }
   return frame;
 }
+
+export type LottieStickerBackground = "black" | "white";
 
 export function drawLottieStickerPreview(ctx: CanvasRenderingContext2D, source: HTMLCanvasElement, focus: OrganicFocus, background: LottieStickerBackground, time: number) {
   const { width, height } = ctx.canvas;
@@ -251,7 +325,7 @@ export function drawLottieStickerPreview(ctx: CanvasRenderingContext2D, source: 
     gradient.addColorStop(1, `rgba(${base},${base},${base},0)`);
     ctx.fillStyle = gradient; ctx.fillRect(0, 0, width, height);
   }
-  const masked = renderOrganicStickerFrame(source, width, height, focus, time);
+  const masked = renderOrganicStickerFrame(source, focus, width, height, time);
   const work = document.createElement("canvas"); work.width = width; work.height = height;
   work.getContext("2d")?.putImageData(masked, 0, 0);
   ctx.drawImage(work, 0, 0);
