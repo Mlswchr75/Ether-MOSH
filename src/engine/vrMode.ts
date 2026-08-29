@@ -12,15 +12,19 @@ import * as THREE from "three";
 import { MoshRenderer } from "./Renderer";
 import { useStore } from "@/store/useStore";
 import { hasHorizontalThumbstickFlick, isThumbstickCentered, resolveXrTextureSize, runFlatRenderPass } from "./xrCapabilities";
+import { activateXrHotTrigger, getXrHotTriggers, type XrHotTrigger } from "./xrHotTriggers";
 
 const DOME_RADIUS = 24;
 const TOGGLE_W = 0.42;
 const TOGGLE_H = 0.105;
+const MENU_ITEM_SIZE = 0.13;
 
 type XrControllerEvents = {
-  addEventListener: (type: "selectstart" | "squeezestart", listener: () => void) => void;
-  removeEventListener: (type: "selectstart" | "squeezestart", listener: () => void) => void;
+  addEventListener: (type: "selectstart" | "selectend" | "squeezestart", listener: () => void) => void;
+  removeEventListener: (type: "selectstart" | "selectend" | "squeezestart", listener: () => void) => void;
 };
+
+type XrMenuItem = { trigger: XrHotTrigger; mesh: THREE.Mesh; texture: THREE.CanvasTexture };
 
 export class VrMode {
   active = false;
@@ -32,6 +36,12 @@ export class VrMode {
   private dome: THREE.Mesh | null = null;
   private toggle: THREE.Mesh | null = null;
   private toggleTexture: THREE.CanvasTexture | null = null;
+  private menu = new THREE.Group();
+  private menuItems: XrMenuItem[] = [];
+  private menuVisible = false;
+  private menuSource: THREE.Object3D | null = null;
+  private selectStartedWithMenu = false;
+  private highlightedMenuItem: XrMenuItem | null = null;
   private controllers: THREE.Group[] = [];
   private controllerDisposables: Array<{
     controller: THREE.Group;
@@ -40,6 +50,7 @@ export class VrMode {
     geometry: THREE.BufferGeometry;
     material: THREE.Material;
     onSelect: () => void;
+    onSelectEnd: () => void;
     onSqueeze: () => void;
   }> = [];
   private raycaster = new THREE.Raycaster();
@@ -142,6 +153,7 @@ export class VrMode {
     );
     this.dome.frustumCulled = false;
     this.scene.add(this.dome);
+    this.buildHotTriggerMenu();
 
     const canvas = document.createElement("canvas");
     canvas.width = 840;
@@ -168,14 +180,16 @@ export class VrMode {
       const ray = new THREE.Line(geometry, material);
       ray.scale.z = 3;
       controller.add(ray);
-      const onSelect = () => this.onSelect(controller);
+      const onSelect = () => this.onSelectStart(controller);
+      const onSelectEnd = () => this.onSelectEnd(controller);
       const onSqueeze = () => useStore.getState().rerollSeed();
       const events = controller as unknown as XrControllerEvents;
       events.addEventListener("selectstart", onSelect);
+      events.addEventListener("selectend", onSelectEnd);
       events.addEventListener("squeezestart", onSqueeze);
       this.scene.add(controller);
       this.controllers.push(controller);
-      this.controllerDisposables.push({ controller, events, ray, geometry, material, onSelect, onSqueeze });
+      this.controllerDisposables.push({ controller, events, ray, geometry, material, onSelect, onSelectEnd, onSqueeze });
     }
 
     // Gaze-select devices do not necessarily populate getController().
@@ -184,6 +198,63 @@ export class VrMode {
       // center, so a gaze-only tap is treated directly as the mode switch.
       if (event.inputSource.targetRayMode === "gaze") void this.exit();
     });
+  }
+
+  private buildHotTriggerMenu(): void {
+    this.menu.visible = false;
+    this.menu.renderOrder = 900;
+    const triggers = getXrHotTriggers();
+    const outerCount = Math.min(14, triggers.length);
+    for (let index = 0; index < triggers.length; index++) {
+      const trigger = triggers[index];
+      const inner = index >= outerCount;
+      const ringIndex = inner ? index - outerCount : index;
+      const ringCount = inner ? triggers.length - outerCount : outerCount;
+      const angle = (ringIndex / Math.max(1, ringCount)) * Math.PI * 2 - Math.PI / 2;
+      const radius = inner ? 0.38 : 0.64;
+      const texture = this.makeMenuTexture(trigger.label, false);
+      const mesh = new THREE.Mesh(
+        new THREE.PlaneGeometry(MENU_ITEM_SIZE, MENU_ITEM_SIZE),
+        new THREE.MeshBasicMaterial({ map: texture, transparent: true, toneMapped: false, depthTest: false }),
+      );
+      mesh.position.set(Math.cos(angle) * radius, Math.sin(angle) * radius, 0);
+      mesh.renderOrder = 910;
+      mesh.userData.xrHotTriggerId = trigger.id;
+      this.menu.add(mesh);
+      this.menuItems.push({ trigger, mesh, texture });
+    }
+    this.scene.add(this.menu);
+  }
+
+  private makeMenuTexture(label: string, highlighted: boolean): THREE.CanvasTexture {
+    const canvas = document.createElement("canvas");
+    canvas.width = 256;
+    canvas.height = 256;
+    const ctx = canvas.getContext("2d")!;
+    ctx.beginPath();
+    ctx.arc(128, 128, 116, 0, Math.PI * 2);
+    ctx.fillStyle = highlighted ? "rgba(255,60,166,0.98)" : "rgba(5,5,10,0.88)";
+    ctx.fill();
+    ctx.lineWidth = highlighted ? 12 : 7;
+    ctx.strokeStyle = highlighted ? "#ffffff" : "rgba(255,60,166,0.92)";
+    ctx.stroke();
+    ctx.fillStyle = "#ffffff";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = "700 23px ui-monospace, monospace";
+    const words = label.toUpperCase().split(/\s+/);
+    const lines: string[] = [];
+    let line = "";
+    for (const word of words) {
+      const candidate = line ? `${line} ${word}` : word;
+      if (candidate.length > 13 && line) { lines.push(line); line = word; }
+      else line = candidate;
+    }
+    if (line) lines.push(line);
+    lines.slice(0, 3).forEach((value, i, visible) => ctx.fillText(value, 128, 128 + (i - (visible.length - 1) / 2) * 28));
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    return texture;
   }
 
   private paintToggle(): void {
@@ -222,9 +293,76 @@ export class VrMode {
     return this.raycaster.intersectObject(this.toggle, false).length > 0;
   }
 
-  private onSelect(source: THREE.Object3D | null): void {
-    if (this.pointsAtToggle(source)) void this.exit();
-    else useStore.getState().mosh();
+  private onSelectStart(source: THREE.Object3D): void {
+    if (this.pointsAtToggle(source)) {
+      void this.exit();
+      return;
+    }
+    this.selectStartedWithMenu = this.menuVisible;
+    this.menuSource = source;
+    if (!this.menuVisible) this.showMenu();
+  }
+
+  private onSelectEnd(source: THREE.Object3D): void {
+    if (!this.menuVisible) return;
+    this.updateMenuHighlight(source);
+    const selection = this.highlightedMenuItem;
+    if (selection) {
+      activateXrHotTrigger(selection.trigger.id);
+      this.hideMenu();
+      return;
+    }
+    // Releasing the gesture that opened the wheel leaves it available. Once it
+    // is already persistent, a tap outside dismisses it.
+    if (this.selectStartedWithMenu) {
+      this.hideMenu();
+      return;
+    }
+    this.menuSource = source;
+  }
+
+  private showMenu(): void {
+    if (!this.mosh) return;
+    const camera = this.mosh.renderer.xr.getCamera();
+    const position = new THREE.Vector3();
+    const quaternion = new THREE.Quaternion();
+    camera.getWorldPosition(position);
+    camera.getWorldQuaternion(quaternion);
+    this.menu.position.copy(position).add(new THREE.Vector3(0, 0, -1.45).applyQuaternion(quaternion));
+    this.menu.quaternion.copy(quaternion);
+    this.menu.visible = true;
+    this.menuVisible = true;
+  }
+
+  private hideMenu(): void {
+    this.setHighlightedMenuItem(null);
+    this.menu.visible = false;
+    this.menuVisible = false;
+    this.menuSource = null;
+    this.selectStartedWithMenu = false;
+  }
+
+  private setHighlightedMenuItem(next: XrMenuItem | null): void {
+    if (next === this.highlightedMenuItem) return;
+    if (this.highlightedMenuItem) this.repaintMenuItem(this.highlightedMenuItem, false);
+    this.highlightedMenuItem = next;
+    if (next) this.repaintMenuItem(next, true);
+  }
+
+  private repaintMenuItem(item: XrMenuItem, highlighted: boolean): void {
+    const next = this.makeMenuTexture(item.trigger.label, highlighted);
+    (item.mesh.material as THREE.MeshBasicMaterial).map = next;
+    item.texture.dispose();
+    item.texture = next;
+  }
+
+  private updateMenuHighlight(source: THREE.Object3D | null): void {
+    if (!this.menuVisible || !source) { this.setHighlightedMenuItem(null); return; }
+    const rotation = new THREE.Matrix4().extractRotation(source.matrixWorld);
+    this.raycaster.ray.origin.setFromMatrixPosition(source.matrixWorld);
+    this.raycaster.ray.direction.set(0, 0, -1).applyMatrix4(rotation);
+    const hit = this.raycaster.intersectObjects(this.menuItems.map(item => item.mesh), false)[0];
+    this.setHighlightedMenuItem(hit ? this.menuItems.find(item => item.mesh === hit.object) ?? null : null);
   }
 
   private updateThumbstickSwitch(): void {
@@ -271,6 +409,7 @@ export class VrMode {
       this.toggleHovered = hovered;
       this.paintToggle();
     }
+    if (this.menuVisible) this.updateMenuHighlight(this.menuSource);
     this.updateThumbstickSwitch();
 
     gl.setRenderTarget(null);
@@ -292,6 +431,7 @@ export class VrMode {
     for (const controller of this.controllers) this.scene.remove(controller);
     for (const item of this.controllerDisposables) {
       item.events.removeEventListener("selectstart", item.onSelect);
+      item.events.removeEventListener("selectend", item.onSelectEnd);
       item.events.removeEventListener("squeezestart", item.onSqueeze);
       item.controller.remove(item.ray);
       item.geometry.dispose();
@@ -299,6 +439,16 @@ export class VrMode {
     }
     this.controllers = [];
     this.controllerDisposables = [];
+
+    this.scene.remove(this.menu);
+    for (const item of this.menuItems) {
+      item.mesh.geometry.dispose();
+      (item.mesh.material as THREE.Material).dispose();
+      item.texture.dispose();
+      this.menu.remove(item.mesh);
+    }
+    this.menuItems = [];
+    this.hideMenu();
 
     disposeMesh(this.scene, this.dome);
     disposeMesh(this.scene, this.toggle);

@@ -2168,7 +2168,17 @@ export function HotTriggers({
     return () => rail.removeEventListener("wheel", onWheel);
   }, [showLegacyLaunchpad]);
 
-  if (hidden) return null;
+  // Performance/immersive mode hides the DOM chrome, but Quest still needs the
+  // live action registry. Keep one non-rendered copy mounted so the WebXR
+  // wheel invokes these exact handlers instead of drifting into a second set
+  // of trigger implementations.
+  if (hidden) {
+    return (
+      <div hidden aria-hidden data-xr-hot-trigger-registry>
+        {availableIds.map(id => <div key={id} data-trigger-id={id}>{registry[id]}</div>)}
+      </div>
+    );
+  }
 
   return (
     <>

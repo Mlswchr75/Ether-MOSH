@@ -1850,10 +1850,10 @@ export default function Editor() {
         <SourceTransition trigger={transitionKey} />
         
         {/* TapToBegin removed — StartCameraOverlay is the live-first empty state and TapToBegin's centered button used to intercept clicks meant for "go live". */} 
-        {!isPerformanceMode && !isOverlay && (
+        {!isOverlay && (
           <HotTriggers
             visualizerRef={canvasContainerRef}
-            hidden={hideUI}
+            hidden={hideUI || isPerformanceMode}
             showLegacyLaunchpad={legacyHotTriggers}
             isRecording={isRecording}
             onToggleRecord={toggleRecord}
