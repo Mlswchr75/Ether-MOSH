@@ -9,6 +9,7 @@ import { seamScore } from "@/engine/tileSafety";
 import { healToSeamless, renderSizeFor, DEFAULT_HEAL_BAND } from "@/engine/seamlessHeal";
 import { downloadBlob } from "@/engine/export";
 import { blobWithDpi } from "@/engine/pngDpi";
+import { notifyExportStarted } from "./ExportRegisteredToast";
 import { usePaywall } from "@/hooks/usePaywall";
 import { validateDecodedDimensions, validateImageUpload } from "@/lib/mediaFileSafety";
 
@@ -70,6 +71,7 @@ export function ForgePanel({ embedded = false }: { embedded?: boolean }) {
     if (exporting) return;
     if (!paywall.require("Forge tile export")) return;
     setExporting(true);
+    notifyExportStarted("forge-tile");
     const seamless = useStore.getState().forge.seamless;
     const t0 = toast.loading(seamless ? "Finding the cleanest frame…" : `Rendering ${size}x${size}…`);
     let off: HTMLCanvasElement | null = null;
@@ -160,8 +162,9 @@ export function ForgePanel({ embedded = false }: { embedded?: boolean }) {
 
       const encoded = await new Promise<Blob | null>(res => finalCanvas.toBlob(res, "image/png"));
       if (!encoded) throw new Error("Encoding failed");
-      const blob = await blobWithDpi(encoded, 300);
-      downloadBlob(blob, `ether-mosh-forge-${currentForge.seed.toString(16)}_${size}x${size}_300dpi${seamless ? "_seamless-tile" : ""}.png`);
+      const dpi = useStore.getState().exportSettings.printDpi;
+      const blob = await blobWithDpi(encoded, dpi);
+      downloadBlob(blob, `ether-mosh-forge-${currentForge.seed.toString(16)}_${size}x${size}_${dpi}dpi${seamless ? "_seamless-tile" : ""}.png`);
 
       const pct = score !== null ? `${(score * 100).toFixed(1)}%` : "n/a";
       if (!seamless) {

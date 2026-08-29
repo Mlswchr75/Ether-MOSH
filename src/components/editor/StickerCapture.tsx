@@ -9,6 +9,7 @@ import { segmentationEngine } from '@/engine/SegmentationEngine';
 import { OverlayStage } from '@/components/editor/OverlayStage';
 import type { StickerEntry } from '@/store/types';
 import { downloadBlob } from '@/engine/export';
+import { notifyExportStarted } from '@/components/editor/ExportRegisteredToast';
 import { saveOverlayAsset } from '@/engine/overlay/vault';
 import { lottieJsonBlob } from '@/engine/overlay/stickerLottie';
 import {
@@ -172,8 +173,20 @@ export function StickerCapture() {
     const source = glRef.current;
     if (!source || phaseRef.current !== 'idle') return;
     setPhase('encoding'); setLottieProgress(0);
+    notifyExportStarted('sticker');
     const toastId = toast.loading('Capturing transparent Lottie loop…', { duration: 30_000 });
     try {
+      // The canvas can be mid-resize for a moment right after switching
+      // source modes — reachable more easily now that Shift+K can jump
+      // straight into a fresh capture without the mode having settled
+      // first. Give it a brief window rather than failing on a zero-size
+      // read (drawImage throws on a 0×0 source).
+      let ready = source.width > 1 && source.height > 1;
+      for (let attempt = 0; !ready && attempt < 20; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, 50));
+        ready = source.width > 1 && source.height > 1;
+      }
+      if (!ready) throw new Error('Nothing to capture yet — try again in a moment');
       const fps = 8;
       const count = Math.max(8, Math.round(loopSeconds * fps));
       const maxDimension = window.matchMedia('(max-width: 700px)').matches ? 288 : 360;
@@ -219,6 +232,16 @@ export function StickerCapture() {
     }
   }, [includeGif, loopSeconds]);
 
+  // Shift+K, handled globally in Editor.tsx (this component is always
+  // mounted, same "always-listening" setup as "mosh:make-sticker" above) —
+  // reveals the Lottie checkbox as on and captures immediately, without
+  // needing scissors mode opened or the checkbox already ticked first.
+  useEffect(() => {
+    const onShortcut = () => { setLottieMode(true); void exportLottieSticker(); };
+    window.addEventListener('mosh:capture-lottie-sticker', onShortcut);
+    return () => window.removeEventListener('mosh:capture-lottie-sticker', onShortcut);
+  }, [exportLottieSticker]);
+
   const onPointerDown = () => {
     isPointerDown.current = true;
     // Animated capture needs temporal video frames. Uploads and generated
@@ -236,6 +259,7 @@ export function StickerCapture() {
   };
 
   const downloadSticker = (item: { id: string; url: string; animated: boolean }) => {
+    notifyExportStarted('sticker');
     const a = document.createElement('a');
     a.href = item.url;
     a.download = `mosh-sticker-${item.id.slice(0,8)}.${item.animated ? 'apng' : 'webp'}`;

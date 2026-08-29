@@ -1,4 +1,4 @@
-import { Mic, MicOff, Circle, Square, Sparkles, Scissors, Snowflake, Camera, Shuffle, Star, Play, Pencil, Trash2, X, Film, Lock, Share2, Compass, Maximize2, Minimize2, Gem, Home, SwitchCamera, Crosshair, Eraser, Link2, Upload, Music, Music2, Shuffle as ShuffleIcon, Undo2, Redo2, Gauge, ChevronDown, MonitorSpeaker, Heart, GripVertical, RotateCcw, EyeOff, HelpCircle, SkipBack, SkipForward, Palette, Flame, UserCircle, Library } from "lucide-react";
+import { Mic, MicOff, Circle, Square, Sparkles, Scissors, Snowflake, Camera, Shuffle, Star, Play, Pencil, Trash2, X, Film, Lock, Share2, Compass, Maximize2, Minimize2, Gem, Home, SwitchCamera, Crosshair, Eraser, Link2, Upload, Music, Music2, Shuffle as ShuffleIcon, Undo2, Redo2, Gauge, ChevronDown, MonitorSpeaker, Heart, GripVertical, RotateCcw, EyeOff, HelpCircle, SkipBack, SkipForward, Palette, Flame, UserCircle, Library, Download } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { useStore } from "@/store/useStore";
@@ -8,6 +8,7 @@ import { requestCameraStream, type CameraFacing } from "@/hooks/useCamera";
 import { IsolationPanel } from "./IsolationPanel";
 import { ForgePanel } from "./ForgePanel";
 import { MotifMaestroPanel } from "./MotifMaestroPanel";
+import { ExportSettingsPanel } from "./ExportSettingsPanel";
 import { MoshStickerTrigger } from "./MoshStickerTrigger";
 import { shareUrl } from "@/lib/share";
 import { toggleSystemAudio } from "@/engine/systemAudio";
@@ -118,7 +119,7 @@ const DEFAULT_ORDER = [
   "home", "source-upload", "source-camera", "source-forge", "source-motif", "account", "undo", "redo",
   "mosh", "auto-mosh", "clear-fx", "journey",
   "audio", "sensitivity",
-  "freeze", "capture", "gif", "share",
+  "freeze", "capture", "gif", "share", "export-settings",
   "mosh-sticker", "sticker-mode", "sticker-capture", "sticker-tools", "sticker-vault", "isolation", "theme-track",
   "forge-palette", "motif-maestro", "favorites", "fullscreen", "pro-mode", "switch-camera", "support",
 ] as const;
@@ -130,6 +131,7 @@ const TRIGGER_LABELS: Record<string, string> = {
   audio: "Audio (mic / device / beat sync)", sensitivity: "Sensitivity",
   "pro-mode": "Pro Mode — hide all UI",
   freeze: "Freeze", capture: "Capture — tap for a still, hold to record", gif: "GIF loop", share: "Share",
+  "export-settings": "Export settings — format, quality, and DPI for every export",
   "mosh-sticker": "Mosh sticker", "sticker-mode": "Sticker capture", isolation: "AI isolation",
   "sticker-capture": "Capture sticker",
   "sticker-tools": "Sticker tools",
@@ -1445,6 +1447,7 @@ export function HotTriggers({
   const [isoOpen, setIsoOpen] = useState(false);
   const [forgePanelOpen, setForgePanelOpen] = useState(false);
   const [motifPanelOpen, setMotifPanelOpen] = useState(false);
+  const [exportSettingsOpen, setExportSettingsOpen] = useState(false);
 
   useEffect(() => {
     if (!isoOpen) return;
@@ -1475,6 +1478,26 @@ export function HotTriggers({
     window.addEventListener("pointerdown", onDown, true);
     return () => window.removeEventListener("pointerdown", onDown, true);
   }, [motifPanelOpen]);
+
+  useEffect(() => {
+    if (!exportSettingsOpen) return;
+    const onDown = (e: PointerEvent) => {
+      if ((e.target as HTMLElement | null)?.closest("[data-export-settings-panel]")) return;
+      setExportSettingsOpen(false);
+    };
+    window.addEventListener("pointerdown", onDown, true);
+    return () => window.removeEventListener("pointerdown", onDown, true);
+  }, [exportSettingsOpen]);
+
+  // Reachable from outside this component too — the "export started" toast
+  // (fired by any export path, anywhere in the app) opens this same panel
+  // when tapped, via the same plain-window-event pattern useIdleFade's
+  // markUiActive() uses to cross that same module boundary.
+  useEffect(() => {
+    const open = () => setExportSettingsOpen(true);
+    window.addEventListener("mosh:open-export-settings", open);
+    return () => window.removeEventListener("mosh:open-export-settings", open);
+  }, []);
 
 
   const flipCamera = async () => {
@@ -1840,6 +1863,25 @@ export function HotTriggers({
       <HotBtn key="share" delay={0} label="Share" onClick={onShare} tint="228 85% 72%">
         <Share2 className="h-4 w-4" strokeWidth={1.5} />
       </HotBtn>
+    ),
+    "export-settings": (
+      <div key="export-settings" className="relative" data-export-settings-panel>
+        <HotBtn
+          delay={0}
+          label={exportSettingsOpen ? "Close export settings" : "Export settings — format, quality, and DPI for every export"}
+          active={exportSettingsOpen}
+          onClick={() => setExportSettingsOpen(open => !open)}
+          tint="42 90% 62%"
+        >
+          <Download className="h-4 w-4" strokeWidth={1.5} />
+        </HotBtn>
+        {exportSettingsOpen && createPortal(
+          <div className="fixed right-3 top-14 z-[95] safe-top safe-right" data-export-settings-panel>
+            <ExportSettingsPanel onClose={() => setExportSettingsOpen(false)} />
+          </div>,
+          document.body,
+        )}
+      </div>
     ),
     "mosh-sticker": <MoshStickerTrigger key="mosh-sticker" delay={0} />,
     "sticker-mode": (

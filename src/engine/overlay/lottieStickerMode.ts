@@ -10,6 +10,18 @@ export type OrganicFocus = {
   contour?: Float32Array;
   /** Signed angular travel detected between consecutive analyzed frames. */
   flow?: number;
+  /** 0 (soft gradient, a face, smoke) .. 1 (hard directional edges — a
+   *  building, a logo, a fence). Derived from how sharply the contour's
+   *  reach swings bin-to-bin; drives how little the shape gets smoothed,
+   *  how rectangular the base silhouette leans, how thin the mask's edge
+   *  transition is, and how much a frame trusts its own fresh read over
+   *  its history. This is what keeps the mask from defaulting to a blob. */
+  jaggedness?: number;
+  /** Superellipse exponent for the base silhouette — ~2 (rounded) for
+   *  organic content, up toward ~3.8 (squared-off) for geometric content.
+   *  Derived from jaggedness so even the shape underneath the contour
+   *  extension already leans toward what the content actually looks like. */
+  power?: number;
 };
 export type LottieStickerBackground = "black" | "white";
 
@@ -42,18 +54,28 @@ function detectedAngularFlow(current: Float32Array, previous?: Float32Array) {
   return bestShift * TAU / current.length;
 }
 
-function safeRadiusScale(focus: OrganicFocus, angle: number) {
+/**
+ * The true geometric ceiling on how far the mask can extend at a given
+ * angle before it would draw past the sticker's own output frame (minus a
+ * small margin) — naturally larger along the axes than toward the corners,
+ * which is exactly the "reach out as far as it can before the actual tile
+ * borders" behavior content-driven extension should be free to use. Used to
+ * be clamped to a flat 1.28 regardless of what the geometry actually
+ * allowed, which was the main reason nothing could ever reach past a small
+ * bump on the base ellipse — raised well past that so a sustained structural
+ * read (a beam, a limb, a shard) can genuinely ride out toward the edge.
+ */
+function safeRadiusScale(focus: OrganicFocus, angle: number, power = 2.25) {
   const margin = .035;
-  const power = 2.25;
   const norm = Math.pow(Math.abs(Math.cos(angle)) ** power + Math.abs(Math.sin(angle)) ** power, 1 / power);
   const vx = Math.cos(angle) / norm * focus.rx;
   const vy = Math.sin(angle) / norm * focus.ry;
-  let limit = 2;
+  let limit = 2.7;
   if (vx > 0) limit = Math.min(limit, (1 - margin - focus.x) / vx);
   else if (vx < 0) limit = Math.min(limit, (margin - focus.x) / vx);
   if (vy > 0) limit = Math.min(limit, (1 - margin - focus.y) / vy);
   else if (vy < 0) limit = Math.min(limit, (margin - focus.y) / vy);
-  return clamp(limit, .72, 1.28);
+  return clamp(limit, .72, 2.7);
 }
 
 /** Fast content-aware focal and contour analysis. Besides choosing the visual
@@ -63,6 +85,13 @@ function safeRadiusScale(focus: OrganicFocus, angle: number) {
  * correlation supplies flow for spirals and rotating structures. */
 export function analyzeOrganicFocus(source: HTMLCanvasElement, previous?: OrganicFocus): OrganicFocus {
   const size = 72;
+  // The live GL canvas can be transiently 0×0 mid-capture — a resize, a
+  // source-mode switch, WebGL context recreation — not just before capture
+  // starts. drawImage throws on a 0×0 source, so this used to surface as an
+  // export crash if the hiccup landed on any frame but the first; holding
+  // onto the previous read for one tick (or a sane default with none yet)
+  // is a better failure than losing the whole capture.
+  if (source.width < 1 || source.height < 1) return previous ?? { x: .5, y: .5, rx: .43, ry: .42, phase: 0 };
   const canvas = document.createElement("canvas"); canvas.width = size; canvas.height = size;
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
   if (!ctx) return previous ?? { x: .5, y: .5, rx: .43, ry: .42, phase: 0 };
@@ -93,49 +122,94 @@ export function analyzeOrganicFocus(source: HTMLCanvasElement, previous?: Organi
   const y = previous ? previous.y * .7 + targetY * .3 : targetY;
   const rx = .415 + coherence * .02, ry = .405 + (1 - coherence) * .02;
   const meanEnergy = totalEnergy / ((size - 2) * (size - 2));
+
+  // Raw radial reach per angle: how far outward the source's own structure —
+  // an edge, a limb, a girder, a shard — actually continues before the
+  // signal dies out. Searched well past the nominal frame (up to ~1.72×) so
+  // content that genuinely extends that far has something to find; how much
+  // of this un-smoothed read survives into the final contour depends on how
+  // jagged it turns out to be, below.
   const raw = new Float32Array(CONTOUR_BINS);
   for (let bin = 0; bin < CONTOUR_BINS; bin++) {
     const angle = bin / CONTOUR_BINS * TAU;
     let strongest = 0, strongestRadius = .78, outerRun = 0, bestRunRadius = .82;
-    for (let step = 0; step < 21; step++) {
-      const radius = .62 + step * .032;
+    for (let step = 0; step < 26; step++) {
+      const radius = .58 + step * .044;
       const px = clamp(Math.round((x + Math.cos(angle) * rx * radius) * size), 1, size - 2);
       const py = clamp(Math.round((y + Math.sin(angle) * ry * radius) * size), 1, size - 2);
       const signal = energy[py * size + px];
       if (signal > strongest) { strongest = signal; strongestRadius = radius; }
-      if (signal > meanEnergy * 1.12 + .025) {
+      if (signal > meanEnergy * 1.1 + .02) {
         outerRun++;
         if (outerRun >= 2) bestRunRadius = radius;
       } else outerRun = Math.max(0, outerRun - 1);
     }
     const reached = Math.max(strongestRadius, bestRunRadius);
-    const pull = (reached - .88) * .52 + (strongest - meanEnergy) * .13;
-    raw[bin] = clamp(pull, -.085, .235);
+    const pull = (reached - .82) * .95 + (strongest - meanEnergy) * .22;
+    raw[bin] = clamp(pull, -.14, 1.7);
   }
+
+  // Jaggedness: how sharply the reach swings from one angle to the next.
+  // A hard-edged silhouette (a building, a logo, a chain-link fence) jumps
+  // bin to bin; a soft gradient or a face changes gradually. This single
+  // number is what separates "reads as this specific shape" from "always a
+  // blob" — it sets how little the contour below gets smoothed, how
+  // rectangular the base silhouette leans, how thin the mask's edge
+  // transition is, and how much a frame trusts its own fresh read over its
+  // history, all in one place rather than each picking its own heuristic.
+  let curvature = 0;
+  for (let bin = 0; bin < CONTOUR_BINS; bin++) {
+    const d2 = raw[(bin + 1) % CONTOUR_BINS] - 2 * raw[bin] + raw[(bin - 1 + CONTOUR_BINS) % CONTOUR_BINS];
+    curvature += d2 * d2;
+  }
+  const jaggedness = clamp(Math.sqrt(curvature / CONTOUR_BINS) * 7.5, 0, 1);
+  const power = 1.9 + jaggedness * 1.9;
+
   const contour = new Float32Array(CONTOUR_BINS);
+  // How much of the un-smoothed read survives (vs. the 5-tap blur below) —
+  // mostly-raw for jagged content, mostly-blurred for organic content.
+  const rawWeight = .22 + jaggedness * .66;
+  // How much this frame trusts its own history vs. its fresh read — jagged
+  // content is allowed to snap onto a new true edge rather than dragging
+  // the previous frame's shape toward it over several frames.
+  const temporalWeight = .62 - jaggedness * .42;
   for (let bin = 0; bin < CONTOUR_BINS; bin++) {
     const angle = bin / CONTOUR_BINS * TAU;
     const broad = (raw[(bin - 2 + CONTOUR_BINS) % CONTOUR_BINS] + raw[(bin - 1 + CONTOUR_BINS) % CONTOUR_BINS] * 2 + raw[bin] * 3 + raw[(bin + 1) % CONTOUR_BINS] * 2 + raw[(bin + 2) % CONTOUR_BINS]) / 9;
-    const structural = raw[bin] * .48 + broad * .52;
-    const temporal = previous?.contour?.length === CONTOUR_BINS ? previous.contour[bin] * .58 + structural * .42 : structural;
-    contour[bin] = clamp(temporal, -.08, safeRadiusScale({ x, y, rx, ry, phase: 0 }, angle) - 1);
+    const structural = raw[bin] * rawWeight + broad * (1 - rawWeight);
+    const temporal = previous?.contour?.length === CONTOUR_BINS ? previous.contour[bin] * temporalWeight + structural * (1 - temporalWeight) : structural;
+    contour[bin] = clamp(temporal, -.1, safeRadiusScale({ x, y, rx, ry, phase: 0 }, angle, power) - 1);
   }
   const measuredFlow = detectedAngularFlow(contour, previous?.contour);
   const flow = clamp((previous?.flow ?? 0) * .6 + measuredFlow * .4, -.22, .22);
-  return { x, y, rx, ry, phase: (previous?.phase ?? 0) + .31 + flow * 1.8, contour, flow };
+  return { x, y, rx, ry, phase: (previous?.phase ?? 0) + .31 + flow * 1.8, contour, flow, jaggedness, power };
 }
 
 export function organicMaskAlpha(nx: number, ny: number, focus: OrganicFocus, time: number) {
+  const jaggedness = focus.jaggedness ?? 0;
+  const power = focus.power ?? 2.25;
   const dx = nx - focus.x, dy = ny - focus.y;
   const angle = Math.atan2(dy / focus.ry, dx / focus.rx);
-  const baseRadius = Math.pow(Math.pow(Math.abs(dx) / focus.rx, 2.25) + Math.pow(Math.abs(dy) / focus.ry, 2.25), 1 / 2.25);
+  // The base silhouette's own exponent leans rectangular for geometric
+  // content and rounded for organic content — the shape reads as content-
+  // shaped even before the contour extension below has any say.
+  const baseRadius = Math.pow(Math.pow(Math.abs(dx) / focus.rx, power) + Math.pow(Math.abs(dy) / focus.ry, power), 1 / power);
   // Angular travel bends outer protrusions behind rotating content, creating a
   // trailing spiral instead of rotating the entire sticker as one rigid blob.
   const trailingAngle = angle - (focus.flow ?? 0) * clamp((baseRadius - .45) * 2.2, 0, 1);
   const contentPull = contourAt(focus.contour, trailingAngle);
-  const living = Math.sin(angle * 3 + focus.phase + time * .52) * .032 + Math.sin(angle * 7 - time * .31) * .014;
-  const radiusScale = clamp(1 + contentPull + living, .78, 1.26);
-  const t = clamp((1 - baseRadius / radiusScale) / .115, 0, 1);
+  // A sharp edge shouldn't wobble into softness, so the idle "alive" jitter
+  // shrinks as content gets more jagged; organic content keeps the fuller
+  // flowing motion.
+  const living = (Math.sin(angle * 3 + focus.phase + time * .52) * .032 + Math.sin(angle * 7 - time * .31) * .014) * (1 - jaggedness * .6);
+  const radiusScale = clamp(1 + contentPull + living, .74, 2.75);
+  // The mask edge itself narrows for jagged content — a crisp cut that
+  // actually reads as the object's own boundary — and stays a soft flowing
+  // feather for organic content. Interpolated rather than switched, so a
+  // frame that's part hard-edged object against part soft glow lands
+  // in between instead of snapping between two looks.
+  const band = .15 - jaggedness * .105;
+  const t = clamp((1 - baseRadius / radiusScale) / band, 0, 1);
   const organic = t * t * (3 - 2 * t);
   // A hard transparent rim plus a short feather guarantees breathing room
   // even while a fast-moving tendril briefly outruns the analyzed contour.
@@ -149,7 +223,11 @@ export function renderOrganicStickerFrame(source: HTMLCanvasElement, width: numb
   const canvas = document.createElement("canvas"); canvas.width = width; canvas.height = height;
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
   if (!ctx) throw new Error("Lottie Sticker canvas unavailable");
-  ctx.drawImage(source, 0, 0, width, height);
+  // Same transient-0×0 hiccup analyzeOrganicFocus guards against — drawImage
+  // throws on a 0×0 source. Skipping the draw for this one tick (leaving the
+  // frame blank/transparent) is a far better failure than losing an entire
+  // multi-second capture to a mid-loop resize.
+  if (source.width > 0 && source.height > 0) ctx.drawImage(source, 0, 0, width, height);
   const frame = ctx.getImageData(0, 0, width, height);
   for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
     const i = (y * width + x) * 4;
