@@ -238,7 +238,12 @@ export const EFFECTS: EffectDef[] = [
     col.r = texture2D(uTex, vUv + o * 1.35).r;
     col.g = texture2D(uTex, vUv + o * 0.15).g;
     col.b = texture2D(uTex, vUv - o * 1.05).b;
-    gl_FragColor = vec4(col, 1.0);
+    // Alpha has no channels to chromatically split, so it rides the
+    // unshifted position — that's still the shake's own displacement of
+    // vUv upstream, so a transparent source's silhouette still shakes with
+    // the effect, just without the per-channel fringing that only makes
+    // sense for color.
+    gl_FragColor = vec4(col, texture2D(uTex, vUv).a);
     `),
 
   fx("scanBreak", "Scan Break", "corruption", "Horizontal line tears.",
@@ -261,7 +266,10 @@ export const EFFECTS: EffectDef[] = [
     col.b = texture2D(uTex, uv - vec2(sep, 0.0)).b;
     // Signal spike along the tear edge.
     col += vec3(0.7, 0.85, 1.0) * band * abs(shift) * 0.5;
-    gl_FragColor = vec4(col, 1.0);
+    // uv already carries the tear's own horizontal/vertical displacement, so
+    // sampling alpha there lets a transparent source's silhouette tear with
+    // the rest of the frame instead of staying fixed underneath it.
+    gl_FragColor = vec4(col, texture2D(uTex, uv).a);
     `),
 
   fx("frameSmear", "Frame Smear", "corruption", "Directional motion smear.",
@@ -297,7 +305,8 @@ export const EFFECTS: EffectDef[] = [
     // Phosphor persistence rather than a three-tap lighten. Bright areas burn a
     // decaying trail into the frame the way a CRT does, which is a different
     // idea from Echo Trails' rotating ghosts and no longer reads like haze.
-    vec3 cur = texture2D(uTex, vUv).rgb;
+    vec4 curTex = texture2D(uTex, vUv);
+    vec3 cur = curTex.rgb;
     vec3 burn = vec3(0.0);
     float w = 0.0;
     vec2 drift = vec2(uOffset, uOffset * 0.45);
@@ -313,7 +322,10 @@ export const EFFECTS: EffectDef[] = [
     burn /= max(w, 0.001);
     // Trails skew green-white as real phosphor decay does.
     vec3 col = cur + burn * vec3(0.72, 1.0, 0.80) * uAmount * 4.5;
-    gl_FragColor = vec4(col, 1.0);
+    // The burn is an additive glow within the current frame's own
+    // silhouette, not a separate object, so alpha just follows the base
+    // sample rather than blending in the trail taps' own alpha.
+    gl_FragColor = vec4(col, curTex.a);
     `),
 
   // ── COLOR CHAOS ───────────────────────────────────────────────────
@@ -339,7 +351,9 @@ export const EFFECTS: EffectDef[] = [
     // Prismatic rim where the split is widest.
     float rim = smoothstep(0.25, 0.75, rr) * uAmount;
     col += vec3(0.40, 0.14, 0.62) * rim * 0.45;
-    gl_FragColor = vec4(col, 1.0);
+    // Alpha rides the green channel's sample — the smallest divergence of
+    // the three, closest to the undisplaced position.
+    gl_FragColor = vec4(col, texture2D(uTex, vUv + dir * k * 0.25).a);
     `),
 
   fx("hueRotate", "Hue Rotate", "color", "Rotate the entire color wheel.",
@@ -400,7 +414,9 @@ export const EFFECTS: EffectDef[] = [
     col += (noise(vUv * vec2(60.0, 700.0) + tape) - 0.5) * uAmount * 0.34 * (0.3 + trackBand);
     // Interlace darkening so it reads as a tape image rather than a tint.
     col *= 1.0 - 0.24 * uAmount * step(0.5, fract(vUv.y * uResolution.y * 0.5));
-    gl_FragColor = vec4(col, 1.0);
+    // uv already carries the tracking wobble, so a transparent source's
+    // silhouette wobbles with the tape rather than staying rigid under it.
+    gl_FragColor = vec4(col, texture2D(uTex, uv).a);
     `),
 
   fx("scanlines", "CRT Scanlines", "color", "Cathode ray tube banding.",
@@ -530,7 +546,10 @@ export const EFFECTS: EffectDef[] = [
     col.r = texture2D(uTex, p * (k * (1.0 + uFringe*0.10)) + 0.5).r;
     col.g = texture2D(uTex, p * k + 0.5).g;
     col.b = texture2D(uTex, p * (k * (1.0 - uFringe*0.10)) + 0.5).b;
-    gl_FragColor = vec4(col, 1.0);
+    // Alpha follows the un-fringed lens curve (the green channel's UV) — a
+    // transparent source's silhouette barrels/pinches with the lens, just
+    // without the chromatic fringe that only applies to color.
+    gl_FragColor = vec4(col, texture2D(uTex, p * k + 0.5).a);
     `),
 
   fx("twirl", "Twirl", "geometry", "Spiral swirl from center.",
@@ -615,11 +634,16 @@ export const EFFECTS: EffectDef[] = [
     // Refract through the fog so it displaces as well as tints; a pure tint is
     // what made it interchangeable with grain and haze.
     vec2 uv = vUv + vec2(n1 - 0.5, n2 - 0.5) * density * 0.045;
-    vec3 c = texture2D(uTex, uv).rgb;
+    vec4 cTex = texture2D(uTex, uv);
+    vec3 c = cTex.rgb;
     // Scattering: the bank glows where the frame behind it is bright.
     float glow = max(0.0, dot(discBlur(vUv, 16.0), vec3(0.299, 0.587, 0.114)) - 0.32);
     vec3 haze = mix(hsv2rgb(vec3(uHue, 0.35, 0.72)), vec3(1.0, 0.95, 0.86), clamp(glow * 1.8, 0.0, 1.0));
-    gl_FragColor = vec4(mix(c, haze, density), 1.0);
+    // The haze is atmosphere sitting in front of the subject, not a
+    // separate opaque object, so it shouldn't punch new holes in — or fill
+    // in — a transparent source's own silhouette. Alpha rides the
+    // refracted uv (the fog's own displacement), unaffected by the color mix.
+    gl_FragColor = vec4(mix(c, haze, density), cTex.a);
     `),
 
   fx("lightLeak", "Light Leak", "atmosphere", "Vintage edge flares.",
@@ -737,7 +761,8 @@ export const EFFECTS: EffectDef[] = [
     float r = texture2D(uTex, vUv+dr).r;
     float g = texture2D(uTex, vUv+dg).g;
     float b = texture2D(uTex, vUv+db).b;
-    gl_FragColor = vec4(r,g,b,1.0);
+    // Alpha rides the green channel's own breathing offset.
+    gl_FragColor = vec4(r,g,b,texture2D(uTex, vUv+dg).a);
     `),
 
   fx("oilSlick", "Oil Slick", "color", "Iridescent thin-film interference based on luminance.",
@@ -1049,7 +1074,8 @@ export const EFFECTS: EffectDef[] = [
     [{ key: "punch", label: "Punch", min: 0, max: 1, default: 0.55 },
      { key: "depth", label: "Depth", min: 0, max: 1, default: 0.4 }],
     `
-    vec3 c = texture2D(uTex, vUv).rgb;
+    vec4 srcTex = texture2D(uTex, vUv);
+    vec3 c = srcTex.rgb;
     // Pull the black point down so shadows have real density instead of sitting
     // grey. Renormalised so highlights don't move with it.
     float bp = uDepth * 0.18;
@@ -1063,7 +1089,7 @@ export const EFFECTS: EffectDef[] = [
     s = mix(s, smoothstep(vec3(0.0), vec3(1.0), s), clamp(t - 1.0, 0.0, 1.0));
     // A contrast curve desaturates as it compresses — put the colour back.
     float l = dot(s, vec3(0.299, 0.587, 0.114));
-    gl_FragColor = vec4(clamp(mix(vec3(l), s, 1.0 + uPunch * 0.45), 0.0, 1.0), 1.0);
+    gl_FragColor = vec4(clamp(mix(vec3(l), s, 1.0 + uPunch * 0.45), 0.0, 1.0), srcTex.a);
     `),
 
   // ── SIGNATURE SET ─────────────────────────────────────────────────
@@ -1116,7 +1142,8 @@ export const EFFECTS: EffectDef[] = [
       texture2D(uTex, vUv + off * 0.7).b
     );
     col += vec3(0.55, 0.75, 1.0) * max(0.0, ring) * amt * 1.15;
-    gl_FragColor = vec4(col, 1.0);
+    // Alpha rides the green channel's own refracted offset.
+    gl_FragColor = vec4(col, texture2D(uTex, vUv + off).a);
     `),
 
   fx("liquidChrome", "Liquid Chrome", "color", "Molten mercury — the frame reskinned as poured metal.",
@@ -1147,7 +1174,10 @@ export const EFFECTS: EffectDef[] = [
     vec3 metal = mix(base * (0.55 + l * 0.9), sky * (0.4 + l * 0.8), uSheen);
     float spec = pow(max(0.0, dot(rfl, normalize(vec3(0.4, 0.6, 1.0)))), mix(6.0, 120.0, uSheen));
     vec3 col = metal + spec * (0.4 + uPulse * 0.8) * mix(0.35, 1.0, uSheen);
-    gl_FragColor = vec4(col, 1.0);
+    // "Mirror" mode replaces the surface's color, not its identity — the
+    // silhouette is still the same object, so alpha rides the same
+    // flow-displaced uv the color itself samples from.
+    gl_FragColor = vec4(col, texture2D(uTex, uv).a);
     `),
 
   fx("voronoiShatter", "Voronoi Shatter", "geometry", "Organic cellular fracture — safety glass mid-break.",
@@ -1233,7 +1263,7 @@ export const EFFECTS: EffectDef[] = [
     // Faint travelling interference fringes sell the grating.
     float fringe = sin(dot(vUv, dir) * 140.0 - uTime * 1.5) * 0.5 + 0.5;
     col *= 1.0 + fringe * uSpread * 0.12;
-    gl_FragColor = vec4(col, 1.0);
+    gl_FragColor = vec4(col, texture2D(uTex, vUv).a);
     `),
 
   fx("neonContour", "Neon Contour", "atmosphere", "Everything redrawn as glowing hue-cycling neon tubing.",
@@ -1259,7 +1289,7 @@ export const EFFECTS: EffectDef[] = [
     // Higher glow dims the plate further so the tubing reads as light.
     vec3 base = texture2D(uTex, vUv).rgb * mix(0.55, 0.08, uGlow);
     vec3 col = base + hue * edge * (0.6 + uGlow * 2.2) * (0.75 + uPulse * 0.8);
-    gl_FragColor = vec4(col, 1.0);
+    gl_FragColor = vec4(col, texture2D(uTex, vUv).a);
     `),
 
   fx("inkFlow", "Ink Flow", "corruption", "Pixels dragged along a curling current — ink bleeding through water.",
@@ -1298,7 +1328,8 @@ export const EFFECTS: EffectDef[] = [
     [{ key: "amount", label: "Amount", min: 0, max: 1, default: 0.7 },
      { key: "scale", label: "Dot Size", min: 0, max: 1, default: 0.45 }],
     `
-    vec3 c = texture2D(uTex, vUv).rgb;
+    vec4 srcTex = texture2D(uTex, vUv);
+    vec3 c = srcTex.rgb;
     float px = mix(160.0, 26.0, uScale);
     vec2 a = vUv * uResolution / uResolution.y * px;
     // Each ink gets its own screen angle, the way real process printing avoids
@@ -1312,14 +1343,15 @@ export const EFFECTS: EffectDef[] = [
       float d = length(cell) * 2.0;
       outC[i] = 1.0 - smoothstep(ink[i] - 0.25, ink[i] + 0.25, d);
     }
-    gl_FragColor = vec4(mix(c, 1.0 - outC, uAmount), 1.0);
+    gl_FragColor = vec4(mix(c, 1.0 - outC, uAmount), srcTex.a);
     `),
 
   fx("crossHatch", "Cross Hatch", "color", "Pen-and-ink engraving that follows the shading.",
     [{ key: "amount", label: "Amount", min: 0, max: 1, default: 0.75 },
      { key: "density", label: "Density", min: 0, max: 1, default: 0.5 }],
     `
-    vec3 c = texture2D(uTex, vUv).rgb;
+    vec4 srcTex = texture2D(uTex, vUv);
+    vec3 c = srcTex.rgb;
     float l = dot(c, vec3(0.299, 0.587, 0.114));
     vec2 a = vUv * uResolution / uResolution.y * mix(90.0, 320.0, uDensity);
     // Four hatch layers, each cutting in as the tone gets darker.
@@ -1329,7 +1361,7 @@ export const EFFECTS: EffectDef[] = [
     if (l < 0.42) h = min(h, smoothstep(0.0, 0.5, abs(sin(a.y * 0.9))));
     if (l < 0.22) h = min(h, smoothstep(0.0, 0.5, abs(sin(a.x * 0.9))));
     vec3 ink = mix(vec3(0.06, 0.05, 0.08), vec3(0.98, 0.97, 0.94), h);
-    gl_FragColor = vec4(mix(c, ink, uAmount), 1.0);
+    gl_FragColor = vec4(mix(c, ink, uAmount), srcTex.a);
     `),
 
   fx("kuwahara", "Painterly", "color", "Kuwahara smoothing — oil paint that keeps its edges.",
@@ -1337,7 +1369,8 @@ export const EFFECTS: EffectDef[] = [
      { key: "radius", label: "Brush", min: 2, max: 16, default: 7 }],
     `
     vec2 px = uRadius / uResolution;
-    vec3 c = texture2D(uTex, vUv).rgb;
+    vec4 srcTex = texture2D(uTex, vUv);
+    vec3 c = srcTex.rgb;
     // Four overlapping quadrants; the flattest one wins. That is what keeps
     // edges crisp while flat areas go smooth — a blur would soften both.
     vec3 bestMean = c;
@@ -1359,7 +1392,7 @@ export const EFFECTS: EffectDef[] = [
       float v = varv.r + varv.g + varv.b;
       if (v < bestVar) { bestVar = v; bestMean = mean; }
     }
-    gl_FragColor = vec4(mix(c, bestMean, uAmount), 1.0);
+    gl_FragColor = vec4(mix(c, bestMean, uAmount), srcTex.a);
     `),
 
   fx("anaglyph", "Anaglyph", "color", "Red/cyan stereo — depth faked from luminance.",
@@ -1380,14 +1413,15 @@ export const EFFECTS: EffectDef[] = [
     // Push the channels apart rather than just swapping them, so the red/cyan
     // fringing reads the way real anaglyph does.
     vec3 stereo = vec3(left.r * 1.15, right.g * 0.95, right.b * 1.1);
-    gl_FragColor = vec4(mix(texture2D(uTex, vUv).rgb, stereo, uAmount), 1.0);
+    gl_FragColor = vec4(mix(texture2D(uTex, vUv).rgb, stereo, uAmount), texture2D(uTex, vUv).a);
     `),
 
   fx("photocopy", "Photocopy", "color", "Blown-out repro with toner grain.",
     [{ key: "amount", label: "Amount", min: 0, max: 1, default: 0.8 },
      { key: "bias", label: "Exposure", min: 0, max: 1, default: 0.5 }],
     `
-    vec3 c = texture2D(uTex, vUv).rgb;
+    vec4 srcTex = texture2D(uTex, vUv);
+    vec3 c = srcTex.rgb;
     float l = dot(c, vec3(0.299, 0.587, 0.114));
     // Local average decides the cut, so the whole frame doesn't crush to one
     // tone the way a fixed threshold would.
@@ -1397,14 +1431,15 @@ export const EFFECTS: EffectDef[] = [
     toner *= 0.82 + 0.18 * noise(vUv * 420.0);
     vec3 paper = vec3(0.96, 0.95, 0.92);
     vec3 res = mix(paper, vec3(0.05, 0.05, 0.07), toner);
-    gl_FragColor = vec4(mix(c, res, uAmount), 1.0);
+    gl_FragColor = vec4(mix(c, res, uAmount), srcTex.a);
     `),
 
   fx("contourMap", "Contour Map", "color", "Tone quantised into topographic bands.",
     [{ key: "amount", label: "Amount", min: 0, max: 1, default: 0.7 },
      { key: "bands", label: "Bands", min: 0, max: 1, default: 0.45 }],
     `
-    vec3 c = texture2D(uTex, vUv).rgb;
+    vec4 srcTex = texture2D(uTex, vUv);
+    vec3 c = srcTex.rgb;
     float l = dot(c, vec3(0.299, 0.587, 0.114));
     float n = mix(4.0, 26.0, uBands);
     float q = floor(l * n) / n;
@@ -1412,7 +1447,7 @@ export const EFFECTS: EffectDef[] = [
     float edge = abs(fract(l * n) - 0.5) * 2.0;
     float line = smoothstep(0.86, 1.0, edge);
     vec3 banded = hsv2rgb(vec3(fract(0.62 - q * 0.72), 0.62, 0.35 + q * 0.75));
-    gl_FragColor = vec4(mix(c, banded + line * 0.55, uAmount), 1.0);
+    gl_FragColor = vec4(mix(c, banded + line * 0.55, uAmount), srcTex.a);
     `),
 
   fx("emboss", "Relief", "geometry", "Lit metal relief stamped from the image.",
@@ -1431,7 +1466,7 @@ export const EFFECTS: EffectDef[] = [
     float diff = max(0.0, dot(n, lightDir));
     float spec = pow(max(0.0, dot(reflect(-lightDir, n), vec3(0.0, 0.0, 1.0))), 24.0);
     vec3 metal = vec3(0.46, 0.47, 0.52) * (0.35 + diff * 0.9) + spec * 0.85;
-    gl_FragColor = vec4(mix(texture2D(uTex, vUv).rgb, metal, uAmount), 1.0);
+    gl_FragColor = vec4(mix(texture2D(uTex, vUv).rgb, metal, uAmount), texture2D(uTex, vUv).a);
     `),
 
   fx("extrude", "Extrude", "geometry", "The frame pushed into 3D relief and viewed off-axis.",
@@ -1446,6 +1481,10 @@ export const EFFECTS: EffectDef[] = [
     vec2 view = vec2(0.55, -0.35) * uAmount * 0.16;
     float steps = mix(4.0, 14.0, uLayers);
     vec3 col = texture2D(uTex, vUv).rgb;
+    // Tracks the same sample the color comes from — the base pixel until a
+    // slice hits, then whichever displaced position "won" — so a transparent
+    // source's silhouette gets pushed into the same 3D relief as its color.
+    float outA = texture2D(uTex, vUv).a;
     float found = 0.0;
     // March back along the view ray; the first slice whose height clears the
     // ray wins, which produces real occlusion between near and far tones.
@@ -1453,11 +1492,12 @@ export const EFFECTS: EffectDef[] = [
       if (float(i) > steps) break;
       float t = float(i) / steps;
       vec2 uv = vUv + view * t;
-      float h = dot(texture2D(uTex, clamp(uv, 0.0, 1.0)).rgb, L);
+      vec4 hitTex = texture2D(uTex, clamp(uv, 0.0, 1.0));
+      float h = dot(hitTex.rgb, L);
       if (found < 0.5 && h > 1.0 - t * 1.15) {
         // Shade the extruded wall so the relief has visible sides.
-        vec3 hit = texture2D(uTex, clamp(uv, 0.0, 1.0)).rgb;
-        col = mix(col, hit * (0.45 + 0.75 * (1.0 - t)), uAmount);
+        col = mix(col, hitTex.rgb * (0.45 + 0.75 * (1.0 - t)), uAmount);
+        outA = hitTex.a;
         found = 1.0;
       }
     }
@@ -1465,14 +1505,15 @@ export const EFFECTS: EffectDef[] = [
     float edge = abs(dot(texture2D(uTex, vUv + view * 0.35).rgb, L)
                    - dot(texture2D(uTex, vUv).rgb, L));
     col += vec3(0.55, 0.72, 1.0) * smoothstep(0.06, 0.3, edge) * uAmount * 0.55;
-    gl_FragColor = vec4(col, 1.0);
+    gl_FragColor = vec4(col, outA);
     `),
 
   fx("moire", "Moire", "geometry", "Two grids beating against each other.",
     [{ key: "amount", label: "Amount", min: 0, max: 1, default: 0.6 },
      { key: "pitch", label: "Pitch", min: 0, max: 1, default: 0.5 }],
     `
-    vec3 c = texture2D(uTex, vUv).rgb;
+    vec4 srcTex = texture2D(uTex, vUv);
+    vec3 c = srcTex.rgb;
     vec2 a = vUv * uResolution / uResolution.y;
     float f = mix(60.0, 420.0, uPitch);
     float ang = 0.08 + uTime * 0.05;
@@ -1483,7 +1524,7 @@ export const EFFECTS: EffectDef[] = [
     float g2 = sin(r.x * f * 1.04) * sin(r.y * f * 1.04);
     float beat = (g1 * g2) * 0.5 + 0.5;
     vec3 tint = hsv2rgb(vec3(fract(beat * 0.6 + uTime * 0.03), 0.55, 1.0));
-    gl_FragColor = vec4(mix(c, c * (0.35 + beat * 1.3) * tint * 1.4, uAmount), 1.0);
+    gl_FragColor = vec4(mix(c, c * (0.35 + beat * 1.3) * tint * 1.4, uAmount), srcTex.a);
     `),
 
   fx("slitScan", "Slit Scan", "corruption", "Each column sampled from a different moment.",
@@ -1498,10 +1539,13 @@ export const EFFECTS: EffectDef[] = [
     float phase = sin(col * 24.0 + uTime * 1.6) * 0.5 + 0.5;
     float pull = (phase - 0.5) * uAmount * 0.55;
     vec2 uv = vec2(vUv.x, clamp(vUv.y + pull, 0.0, 1.0));
-    vec3 c = texture2D(uTex, uv).rgb;
+    vec4 srcTex = texture2D(uTex, uv);
+    vec3 c = srcTex.rgb;
     // Seam highlight so the slice boundaries stay legible.
     float seam = smoothstep(0.0, 0.02, abs(fract(vUv.x * n) - 0.5) * 2.0);
-    gl_FragColor = vec4(c * (0.75 + seam * 0.35), 1.0);
+    // uv already carries the per-column time-slice pull, so a transparent
+    // source's silhouette slit-scans along with its color.
+    gl_FragColor = vec4(c * (0.75 + seam * 0.35), srcTex.a);
     `),
 
   fx("rollingShutter", "Rolling Shutter", "corruption", "CMOS jello — the frame read line by line.",
@@ -1515,10 +1559,13 @@ export const EFFECTS: EffectDef[] = [
     float skew = sin(t + row * mix(3.0, 14.0, uWobble)) * uAmount * 0.13;
     skew += (row - 0.5) * uAmount * 0.06;
     vec2 uv = vec2(clamp(vUv.x + skew, 0.0, 1.0), vUv.y);
-    vec3 c = texture2D(uTex, uv).rgb;
+    vec4 srcTex = texture2D(uTex, uv);
+    vec3 c = srcTex.rgb;
     // Slight per-row exposure drift, as real sensors show under flicker.
     c *= 0.9 + 0.2 * sin(t * 2.0 + row * 40.0) * uAmount;
-    gl_FragColor = vec4(c, 1.0);
+    // uv already carries the row skew, so a transparent source's silhouette
+    // shears with the jello rather than staying rigid under it.
+    gl_FragColor = vec4(c, srcTex.a);
     `),
 
   fx("echoTrails", "Echo Trails", "corruption", "Feedback ghosts spiralling off the subject.",
@@ -1543,14 +1590,17 @@ export const EFFECTS: EffectDef[] = [
       acc += texture2D(uTex, clamp(uv, 0.0, 1.0)).rgb * mix(vec3(1.0), tint, 0.6) * k;
       w += k;
     }
-    gl_FragColor = vec4(acc / w, 1.0);
+    // The ghosts are an additive overlay within the base frame's own
+    // silhouette, so alpha follows the undisplaced center sample.
+    gl_FragColor = vec4(acc / w, texture2D(uTex, vUv).a);
     `),
 
   fx("caustics", "Caustics", "atmosphere", "Pool light dancing over everything.",
     [{ key: "amount", label: "Amount", min: 0, max: 1, default: 0.6 },
      { key: "scale", label: "Scale", min: 0, max: 1, default: 0.5 }],
     `
-    vec3 c = texture2D(uTex, vUv).rgb;
+    vec4 srcTex = texture2D(uTex, vUv);
+    vec3 c = srcTex.rgb;
     float sc = mix(4.0, 18.0, uScale);
     vec2 p = vUv * sc;
     float t = uTime * 0.5;
@@ -1561,14 +1611,15 @@ export const EFFECTS: EffectDef[] = [
     float ridge = 1.0 - clamp((a + b) * 2.4, 0.0, 1.0);
     ridge = pow(ridge, 3.5);
     vec3 light = vec3(0.62, 0.88, 1.0) * ridge;
-    gl_FragColor = vec4(c + light * uAmount * 2.2 * (0.7 + uPulse * 0.6), 1.0);
+    gl_FragColor = vec4(c + light * uAmount * 2.2 * (0.7 + uPulse * 0.6), srcTex.a);
     `),
 
   fx("anamorphic", "Anamorphic Flare", "atmosphere", "Horizontal blue streaks off the highlights.",
     [{ key: "amount", label: "Amount", min: 0, max: 1, default: 0.6 },
      { key: "length", label: "Length", min: 0, max: 1, default: 0.55 }],
     `
-    vec3 c = texture2D(uTex, vUv).rgb;
+    vec4 srcTex = texture2D(uTex, vUv);
+    vec3 c = srcTex.rgb;
     vec3 L = vec3(0.299, 0.587, 0.114);
     float reach = mix(0.02, 0.20, uLength);
     // Streak purely along X — the signature of an anamorphic lens, and the
@@ -1584,7 +1635,7 @@ export const EFFECTS: EffectDef[] = [
       w += k;
     }
     streak /= w;
-    gl_FragColor = vec4(c + streak * vec3(0.35, 0.6, 1.0) * uAmount * 9.0, 1.0);
+    gl_FragColor = vec4(c + streak * vec3(0.35, 0.6, 1.0) * uAmount * 9.0, srcTex.a);
     `),
 
   // ── PORTED FROM THE LOVABLE BUILD ─────────────────────────────────
@@ -1775,7 +1826,7 @@ export const EFFECTS: EffectDef[] = [
     float a = uAngle * 6.2831853;
     vec2 dir = vec2(cos(a), sin(a));
     vec2 off = dir * signedD * uAmount * (0.16 + uPulse * 0.10);
-    gl_FragColor = vec4(texture2D(uTex, clamp(vUv - off, 0.0, 1.0)).rgb, 1.0);
+    gl_FragColor = texture2D(uTex, clamp(vUv - off, 0.0, 1.0));
     `),
 
   fx("dimensionSplit", "Dimension Split", "dimension", "A seam tears across reality and the two halves pull apart at different depths, light bleeding from the rift.",
@@ -1795,13 +1846,16 @@ export const EFFECTS: EffectDef[] = [
     // than the wall does — the tear has volume rather than being a flat cut.
     float push = side * uAmount * (0.035 + d * 0.16);
     vec2 uv = clamp(vUv - n * push, 0.0, 1.0);
-    vec3 c = texture2D(uTex, uv).rgb;
+    vec4 srcTex = texture2D(uTex, uv);
+    vec3 c = srcTex.rgb;
 
     // Rift edge: exposure blows out where the two halves separated, which is
     // what sells it as light escaping from behind the image.
     float edge = exp(-abs(t) * (34.0 - uGlow * 22.0));
     c += edge * uGlow * (0.55 + uPulse * 0.45) * vec3(0.75, 0.86, 1.0);
-    gl_FragColor = vec4(c, 1.0);
+    // uv already carries the rift's own pull, so a transparent source's
+    // silhouette tears apart along with its color.
+    gl_FragColor = vec4(c, srcTex.a);
     `),
 
   fx("timeShatter", "Time Shatter", "dimension", "The image breaks into shards and every shard is showing a different moment. Your head arrives before your shoulders.",
@@ -1823,7 +1877,12 @@ export const EFFECTS: EffectDef[] = [
     // A small positional slip per shard so the plate looks displaced as well
     // as desynchronised.
     vec2 slip = (vec2(h, h2) - 0.5) * uSlip * 0.05;
-    gl_FragColor = vec4(timeAt(vUv + slip, age), 1.0);
+    // The history ring (timeAt) only carries color, not alpha, so a
+    // transparent source's silhouette follows this shard's own slipped
+    // position in the *current* frame rather than its historical shape —
+    // close enough for anything that isn't itself changing shape frame to
+    // frame, and still moves with the shard's own displacement.
+    gl_FragColor = vec4(timeAt(vUv + slip, age), texture2D(uTex, vUv + slip).a);
     `),
 
   fx("parallaxExplode", "Parallax Explode", "dimension", "Near things fly outward faster than far things. The room turns inside out around you.",
@@ -1836,7 +1895,7 @@ export const EFFECTS: EffectDef[] = [
     // (a plain zoom), at high curve only the nearest surfaces launch.
     float w = pow(clamp(d, 0.0, 1.0), 0.4 + uCurve * 2.6);
     vec2 off = dir * w * uAmount * (0.42 + uPulse * 0.5);
-    gl_FragColor = vec4(texture2D(uTex, clamp(vUv - off, 0.0, 1.0)).rgb, 1.0);
+    gl_FragColor = texture2D(uTex, clamp(vUv - off, 0.0, 1.0));
     `),
 
   fx("depthEcho", "Depth Echo", "dimension", "Only you leave ghosts. The room behind you stays perfectly still and perfectly sharp.",
@@ -1844,7 +1903,8 @@ export const EFFECTS: EffectDef[] = [
      { key: "strength", label: "Strength", min: 0, max: 1, default: 0.7 },
      { key: "gate", label: "Depth Gate", min: 0, max: 1, default: 0.42 }],
     `
-    vec3 cur = texture2D(uTex, vUv).rgb;
+    vec4 curTex = texture2D(uTex, vUv);
+    vec3 cur = curTex.rgb;
     float d = depthAt(vUv);
     // Three points along the ring rather than one, so the trail is a continuous
     // wake instead of a single detached copy.
@@ -1853,7 +1913,10 @@ export const EFFECTS: EffectDef[] = [
               + timeAt(vUv, uReach) * 0.2;
     float g = smoothstep(uGate - 0.16, uGate + 0.16, d);
     vec3 echo = max(cur, past * uStrength);
-    gl_FragColor = vec4(mix(cur, echo, g), 1.0);
+    // The history ring only carries color, so alpha rides the current
+    // frame's own value at this position — the ghosting is additive glow
+    // within the subject's current silhouette, not a separate shape.
+    gl_FragColor = vec4(mix(cur, echo, g), curTex.a);
     `),
 
   fx("strataSlice", "Strata", "dimension", "Horizontal strata, each one running on its own clock and sliding by its own depth. Time becomes a place.",
@@ -1869,7 +1932,9 @@ export const EFFECTS: EffectDef[] = [
     // further than the band above it crossing only wall.
     vec2 uv = vUv;
     uv.x += (h - 0.5) * uSlide * 0.24 * (0.25 + d);
-    gl_FragColor = vec4(timeAt(uv, age), 1.0);
+    // timeAt only carries color; alpha follows this same slid uv in the
+    // current frame instead.
+    gl_FragColor = vec4(timeAt(uv, age), texture2D(uTex, uv).a);
     `),
 
   fx("chronoBleed", "Chrono Bleed", "dimension", "Red, green and blue arrive from three different moments — colour separated across time instead of space.",
@@ -1882,8 +1947,9 @@ export const EFFECTS: EffectDef[] = [
     float s = uSpread * mix(1.0, 0.25 + d * 1.15, uDepthBias);
     float r = timeAt(vUv, s).r;
     float g = timeAt(vUv, s * 0.45).g;
-    float b = texture2D(uTex, vUv).b;
-    gl_FragColor = vec4(r, g, b, 1.0);
+    vec4 curTex = texture2D(uTex, vUv);
+    float b = curTex.b;
+    gl_FragColor = vec4(r, g, b, curTex.a);
     `),
 
   // ── FLOW & OPTICS ─────────────────────────────────────────────────
@@ -1901,15 +1967,15 @@ export const EFFECTS: EffectDef[] = [
     // Six taps walked backwards along the flow vector. A single offset only
     // shifts the image; a walk leaves a wake, which is what reads as drag.
     vec2 step = f * uAmount * 0.09 * (0.4 + uReach);
-    vec3 acc = texture2D(uTex, vUv).rgb;
+    vec4 acc = texture2D(uTex, vUv);
     float w = 1.0;
     for (int i = 1; i < 6; i++) {
       float fi = float(i);
       float wi = 1.0 - fi / 6.0;
-      acc += texture2D(uTex, clamp(vUv - step * fi, 0.0, 1.0)).rgb * wi;
+      acc += texture2D(uTex, clamp(vUv - step * fi, 0.0, 1.0)) * wi;
       w += wi;
     }
-    gl_FragColor = vec4(acc / w, 1.0);
+    gl_FragColor = acc / w;
     `),
 
   fx("flowTurbulence", "Turbulence", "dimension", "Motion becomes a fluid field — the frame churns and curls around anything that moves.",
@@ -1925,7 +1991,7 @@ export const EFFECTS: EffectDef[] = [
     vec2 dir = mix(f, curl, uSwirl);
     float n = noise(vUv * (3.0 + uScale * 22.0) + uTime * 0.35);
     vec2 off = dir * uAmount * 0.14 * (0.55 + n * 0.9) * (0.7 + uPulse * 0.7);
-    gl_FragColor = vec4(texture2D(uTex, clamp(vUv - off, 0.0, 1.0)).rgb, 1.0);
+    gl_FragColor = texture2D(uTex, clamp(vUv - off, 0.0, 1.0));
     `),
 
   fx("glassRefract", "Glass", "geometry", "The frame becomes a sheet of moulded glass — living crystal that bends the light behind it.",
@@ -1944,7 +2010,8 @@ export const EFFECTS: EffectDef[] = [
     vec2 n = vec2(hx - h, hy - h) * 9.0;
 
     vec2 off = n * uThickness * 0.075;
-    vec3 c = texture2D(uTex, clamp(vUv + off, 0.0, 1.0)).rgb;
+    vec4 srcTex = texture2D(uTex, clamp(vUv + off, 0.0, 1.0));
+    vec3 c = srcTex.rgb;
 
     // Dispersion: the channels take slightly different paths through the
     // thickness, which is the giveaway that light passed through a solid.
@@ -1955,7 +2022,11 @@ export const EFFECTS: EffectDef[] = [
     // as having a direction it is being lit from.
     float spec = pow(max(0.0, dot(normalize(n + 0.0001), normalize(vec2(0.6, 0.8)))), 3.0);
     c += spec * uSheen * 0.4;
-    gl_FragColor = vec4(c, 1.0);
+    // Alpha rides the un-dispersed (green channel's) refracted position —
+    // a transparent source's silhouette bends through the "glass" with its
+    // color, just without the per-channel dispersion that only applies to
+    // hue.
+    gl_FragColor = vec4(c, srcTex.a);
     `),
 
   fx("chromaAberrate", "Aberration", "color", "Real lens dispersion — colour splits harder toward the edges, exactly as glass does it.",
@@ -1972,7 +2043,7 @@ export const EFFECTS: EffectDef[] = [
     c.r = texture2D(uTex, clamp(vUv - rel * k, 0.0, 1.0)).r;
     c.g = texture2D(uTex, vUv).g;
     c.b = texture2D(uTex, clamp(vUv + rel * k, 0.0, 1.0)).b;
-    gl_FragColor = vec4(c, 1.0);
+    gl_FragColor = vec4(c, texture2D(uTex, vUv).a);
     `),
 
   fx("crtPhosphor", "CRT", "atmosphere", "Curved glass, phosphor stripes and a bleeding shadow mask. A real tube, not a scanline overlay.",
@@ -1986,10 +2057,13 @@ export const EFFECTS: EffectDef[] = [
     uv *= 1.0 + dot(uv, uv) * uCurve * 0.22;
     uv = uv * 0.5 + 0.5;
     if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
-      gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return;
+      // Off the curved tube's own edge — transparent, not opaque black, so
+      // a transparent source's silhouette doesn't gain a solid frame around it.
+      gl_FragColor = vec4(0.0); return;
     }
 
-    vec3 c = texture2D(uTex, uv).rgb;
+    vec4 srcTex = texture2D(uTex, uv);
+    vec3 c = srcTex.rgb;
     c += discBlur(uv, 5.0) * uBleed * 0.6;
 
     // Aperture grille: each screen column belongs to one phosphor stripe.
@@ -2005,7 +2079,9 @@ export const EFFECTS: EffectDef[] = [
     c *= 0.72 + 0.28 * sin(uv.y * uResolution.y * 3.14159);
     vec2 e = abs(uv - 0.5);
     c *= 1.0 - smoothstep(0.42, 0.72, max(e.x, e.y)) * 0.5;
-    gl_FragColor = vec4(c, 1.0);
+    // uv already carries the tube's own barrel warp, so a transparent
+    // source's silhouette curves with the glass.
+    gl_FragColor = vec4(c, srcTex.a);
     `),
 
   fx("mandalaBloom", "Mandala", "geometry", "Radial mirror symmetry with drifting rotation — a kaleidoscope that breathes.",
@@ -2027,7 +2103,7 @@ export const EFFECTS: EffectDef[] = [
     r *= 1.0 - uZoom * 0.45;
     vec2 uv = vec2(cos(a), sin(a)) * r;
     uv.x /= uResolution.x / max(1.0, uResolution.y);
-    gl_FragColor = vec4(texture2D(uTex, clamp(uv + 0.5, 0.0, 1.0)).rgb, 1.0);
+    gl_FragColor = texture2D(uTex, clamp(uv + 0.5, 0.0, 1.0));
     `),
 
   fx("volumetricShaft", "Volumetric Shaft", "atmosphere", "Light shafts cast outward from the brightest points, with dust hanging in them.",
@@ -2038,7 +2114,8 @@ export const EFFECTS: EffectDef[] = [
     // Radial occlusion march from the frame centre. Each step samples further
     // out and keeps only what is bright, so light appears to travel through the
     // volume rather than being painted on it.
-    vec3 base = texture2D(uTex, vUv).rgb;
+    vec4 baseTex = texture2D(uTex, vUv);
+    vec3 base = baseTex.rgb;
     vec2 dir = (vUv - 0.5) * (0.024 + uReach * 0.055);
     vec3 acc = vec3(0.0);
     float w = 1.0;
@@ -2051,7 +2128,7 @@ export const EFFECTS: EffectDef[] = [
     }
     acc /= 6.0;
     vec3 tint = mix(vec3(1.0), vec3(1.25, 1.02, 0.72), uWarmth);
-    gl_FragColor = vec4(base + acc * tint * uAmount * (1.2 + uPulse * 0.8), 1.0);
+    gl_FragColor = vec4(base + acc * tint * uAmount * (1.2 + uPulse * 0.8), baseTex.a);
     `),
 
   fx("emberField", "Embers", "atmosphere", "A field of drifting embers that surges on the beat and lights the frame from within.",
@@ -2059,7 +2136,8 @@ export const EFFECTS: EffectDef[] = [
      { key: "drift", label: "Drift", min: 0, max: 1, default: 0.5 },
      { key: "glow", label: "Glow", min: 0, max: 1, default: 0.6 }],
     `
-    vec3 base = texture2D(uTex, vUv).rgb;
+    vec4 baseTex = texture2D(uTex, vUv);
+    vec3 base = baseTex.rgb;
     float cells = 8.0 + uDensity * 30.0;
     vec2 p = vUv * cells;
     p.y -= uTime * (0.25 + uDrift * 1.1);
@@ -2070,7 +2148,7 @@ export const EFFECTS: EffectDef[] = [
     vec2 cell = floor(p);
     vec2 f = fract(p);
     float h = rand(cell);
-    if (h < 0.55) { gl_FragColor = vec4(base, 1.0); return; }
+    if (h < 0.55) { gl_FragColor = vec4(base, baseTex.a); return; }
 
     vec2 c = vec2(rand(cell + 3.1), rand(cell + 7.7));
     float d = length(f - c);
@@ -2079,7 +2157,7 @@ export const EFFECTS: EffectDef[] = [
     // as one sheet, and the beat surges all of them together on top of that.
     float tw = 0.55 + 0.45 * sin(uTime * (2.2 + h * 5.0) + h * 26.0);
     vec3 col = mix(vec3(1.0, 0.55, 0.18), vec3(1.0, 0.88, 0.6), h);
-    gl_FragColor = vec4(base + col * spark * tw * uGlow * (1.0 + uPulse * 1.5), 1.0);
+    gl_FragColor = vec4(base + col * spark * tw * uGlow * (1.0 + uPulse * 1.5), baseTex.a);
     `),
 
   fx("volumetricPull", "Volumetric Pull", "dimension", "The subject stretches toward the lens while the room falls away behind. Depth as a physical force.",
@@ -2096,7 +2174,7 @@ export const EFFECTS: EffectDef[] = [
     float ang = (d - 0.35) * uSwirl * 1.6 * (0.6 + uPulse * 0.8);
     float ca = cos(ang), sa = sin(ang);
     rel = mat2(ca, -sa, sa, ca) * rel * z;
-    gl_FragColor = vec4(texture2D(uTex, clamp(rel + 0.5, 0.0, 1.0)).rgb, 1.0);
+    gl_FragColor = texture2D(uTex, clamp(rel + 0.5, 0.0, 1.0));
     `),
 
   // ── PAINT & FIRE ──────────────────────────────────────────────────
