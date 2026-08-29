@@ -1,6 +1,7 @@
 import { defineTool, type ToolContext } from "@lovable.dev/mcp-js";
 import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
+import { safeMcpError } from "../security";
 
 function supabaseForUser(ctx: ToolContext) {
   return createClient(
@@ -36,7 +37,7 @@ export default defineTool({
     if (sourceType) q = q.eq("source_type", sourceType);
     const { data, error } = await q;
     if (error) {
-      return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
+      return safeMcpError("list-saved-presets", error);
     }
     return {
       content: [{ type: "text", text: `${data?.length ?? 0} preset(s)\n\n${JSON.stringify(data, null, 2)}` }],

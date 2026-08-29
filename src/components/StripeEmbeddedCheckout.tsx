@@ -3,6 +3,7 @@ import { EmbeddedCheckoutProvider, EmbeddedCheckout } from "@stripe/react-stripe
 import type { Stripe } from "@stripe/stripe-js";
 import { getStripe, getStripeEnvironment } from "@/lib/stripe";
 import { supabase } from "@/integrations/supabase/client";
+import { createSupportReference } from "@/lib/supportReference";
 
 interface StripeEmbeddedCheckoutProps {
   priceId: string;
@@ -44,11 +45,15 @@ export function StripeEmbeddedCheckout({
         },
       });
       if (error || !data?.clientSecret) {
-        throw new Error(error?.message || data?.error || "Failed to create checkout session");
+        const reference = createSupportReference("pay");
+        console.error(`[checkout:${reference}] session creation failed`, error ?? data?.error ?? "Missing client secret");
+        throw new Error(`Payments could not be started. Try again; if it continues, contact support with ${reference}.`);
       }
       return data.clientSecret as string;
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : "Failed to create checkout session";
+      const message = error instanceof Error && error.message.startsWith("Payments could not be started.")
+        ? error.message
+        : "Payments could not be started. Please try again.";
       setCheckoutError(message);
       throw error;
     }

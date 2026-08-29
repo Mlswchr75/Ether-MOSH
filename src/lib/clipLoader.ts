@@ -1,6 +1,7 @@
 import { toast } from "sonner";
 import type { StickerClip } from "@/store/moshStickerStore";
 import { MAX_CLIP_SECONDS } from "@/store/moshStickerStore";
+import { validateDecodedDimensions, validateImageUpload, validateVideoUpload } from "@/lib/mediaFileSafety";
 
 function isGifFile(file: File): boolean {
   return file.type === "image/gif" || /\.gif$/i.test(file.name);
@@ -54,6 +55,8 @@ function resolveDuration(video: HTMLVideoElement): Promise<number> {
 }
 
 async function loadVideoClip(file: File): Promise<StickerClip> {
+  const fileIssue = validateVideoUpload(file);
+  if (fileIssue) throw new Error(fileIssue);
   const url = URL.createObjectURL(file);
   const video = document.createElement("video");
   video.muted = true;
@@ -62,13 +65,20 @@ async function loadVideoClip(file: File): Promise<StickerClip> {
   video.preload = "auto";
   video.crossOrigin = "anonymous";
 
-  await new Promise<void>((resolve, reject) => {
-    video.onloadedmetadata = () => resolve();
-    video.onerror = () => reject(new Error("Video decode failed"));
-    // lgtm[js/xss-through-dom] -- always a local blob: object URL; see
-    // assertBlobUrl's doc comment.
-    video.src = assertBlobUrl(url);
-  });
+  try {
+    await new Promise<void>((resolve, reject) => {
+      video.onloadedmetadata = () => resolve();
+      video.onerror = () => reject(new Error("Video decode failed"));
+      // lgtm[js/xss-through-dom] -- always a local blob: object URL; see
+      // assertBlobUrl's doc comment.
+      video.src = assertBlobUrl(url);
+    });
+    const dimensionIssue = validateDecodedDimensions(video.videoWidth, video.videoHeight);
+    if (dimensionIssue) throw new Error(dimensionIssue);
+  } catch (error) {
+    URL.revokeObjectURL(url);
+    throw error;
+  }
 
   const resolved = await resolveDuration(video);
   const duration = Number.isFinite(resolved) ? resolved : 0;
@@ -89,18 +99,27 @@ async function loadVideoClip(file: File): Promise<StickerClip> {
 }
 
 async function loadGifClip(file: File): Promise<StickerClip> {
+  const fileIssue = validateImageUpload(file);
+  if (fileIssue) throw new Error(fileIssue);
   const url = URL.createObjectURL(file);
   const img = new Image();
   img.decoding = "async";
 
-  await new Promise<void>((resolve, reject) => {
-    img.onload = () => resolve();
-    img.onerror = () => reject(new Error("GIF decode failed"));
-    // lgtm[js/xss-through-dom] -- always a local blob: object URL; see
-    // assertBlobUrl's doc comment.
-    img.src = assertBlobUrl(url);
-  });
-  if (img.decode) await img.decode().catch(() => undefined);
+  try {
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = () => reject(new Error("GIF decode failed"));
+      // lgtm[js/xss-through-dom] -- always a local blob: object URL; see
+      // assertBlobUrl's doc comment.
+      img.src = assertBlobUrl(url);
+    });
+    if (img.decode) await img.decode().catch(() => undefined);
+    const dimensionIssue = validateDecodedDimensions(img.naturalWidth, img.naturalHeight);
+    if (dimensionIssue) throw new Error(dimensionIssue);
+  } catch (error) {
+    URL.revokeObjectURL(url);
+    throw error;
+  }
 
   return {
     kind: "gif",

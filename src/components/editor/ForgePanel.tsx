@@ -9,6 +9,7 @@ import { seamScore } from "@/engine/tileSafety";
 import { healToSeamless, renderSizeFor, DEFAULT_HEAL_BAND } from "@/engine/seamlessHeal";
 import { downloadBlob } from "@/engine/export";
 import { usePaywall } from "@/hooks/usePaywall";
+import { validateDecodedDimensions, validateImageUpload } from "@/lib/mediaFileSafety";
 
 /**
  * Print sizes. 2048 covers most garment panels at 150 DPI; 4096 is there for
@@ -40,11 +41,16 @@ export function ForgePanel({ embedded = false }: { embedded?: boolean }) {
   const [seam, setSeam] = useState<number | null>(null);
 
   const loadBase = useCallback((file: File) => {
+    const fileIssue = validateImageUpload(file);
+    if (fileIssue) { toast.error(fileIssue); return; }
     const url = URL.createObjectURL(file);
     const img = new Image();
     img.onload = () => {
+      const dimensionIssue = validateDecodedDimensions(img.naturalWidth, img.naturalHeight);
+      if (dimensionIssue) { URL.revokeObjectURL(url); toast.error(dimensionIssue); return; }
       setForgeBaseImage(img, file.name);
       setSeam(null);
+      URL.revokeObjectURL(url);
       toast.success("Photo loaded", { description: "Turn on photo mosaic to multiply it into a live field" });
     };
     img.onerror = () => { URL.revokeObjectURL(url); toast.error("Couldn't read that image"); };

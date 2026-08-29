@@ -16,6 +16,7 @@ import { crossfadeLayers, MOSH_FADE_MS } from "@/engine/layerCrossfade";
 import { cursorFx } from "@/engine/cursorFx";
 import { toast } from "sonner";
 import { clampRadialPoint, defaultRadialPoint, nearestRadialId, type RadialLayout } from "@/lib/radialLayout";
+import { validateAudioUpload } from "@/lib/mediaFileSafety";
 
 /** Viewport-normalized UV for a client point — used for the one-shot "digital
  *  chaos" burst a hold-branch fires at. An approximation (viewport, not the
@@ -454,6 +455,8 @@ function TrackTrigger({ delay, showNudge, onNudgeDismiss }: { delay: number; sho
               const f = e.target.files?.[0];
               e.target.value = "";
               if (!f) return;
+              const issue = validateAudioUpload(f);
+              if (issue) { toast.error(issue); return; }
               const url = URL.createObjectURL(f);
               const name = f.name.replace(/\.[^.]+$/, "");
               try {
