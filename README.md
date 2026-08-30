@@ -1,421 +1,88 @@
 # ETHER-MOSH
 
-### An Aesthetic Rebellion Instrument by Dyles Mavis
+### An Aesthetic Rebellion instrument, by Dyles Mavis
 
-**ETHER-MOSH** is an experimental visual instrument built around one simple premise:
+> *In a digital world, some things can live forever.*
 
-> **Beautiful things are allowed to break.**
+I built Ether-Mosh because I kept looking at still images and wondering what they'd look like if they weren't allowed to sit still. Not filtered. Not "enhanced." Actually pushed — stretched, fractured, glitched, mutated — until whatever's underneath starts to surface.
 
-Born from the visual language of **Dyles Mavis**, **Aesthetic Rebellion**, and **Maximalist Motifs**, Ether-Mosh exists somewhere between image laboratory, digital sketchbook, visual synthesizer, and controlled catastrophe.
-
-It takes familiar imagery and pushes it somewhere unfamiliar.
-
-Not necessarily cleaner.
-Not necessarily prettier.
-**Just more alive.**
+It's part image lab, part visual synth, part controlled catastrophe. Upload something boring. Push it somewhere it was never supposed to go. Some people call that animating. I call it annihilating.
 
 ---
 
-## THE PHILOSOPHY
+## The idea behind it
 
-Ether-Mosh isn't interested in making another collection of disposable filters.
+I'm not trying to add another folder of disposable filters to the internet. I'm interested in what happens *during* transformation — the moment an image stops being the thing you uploaded and hasn't yet become whatever it's turning into.
 
-It's an exploration of **transformation**.
+Images can stretch. Sound can be seen. Color can fracture. Geometry can wander off. And every once in a while, somewhere in the wreckage, something genuinely better than the original shows up.
 
-Images can stretch.
-Color can fracture.
-Geometry can wander.
-Texture can accumulate.
-Order can collapse.
-
-And occasionally, somewhere inside the wreckage, something considerably more interesting appears.
-
-The underlying philosophy is simple:
-
-**Chaos is a material.**
-
-The artist decides what to do with it.
+**Vision is the canvas. Chaos is the medium.** You're the artist — I just built the mosh pit.
 
 ---
 
-# DYLES MAVIS
+## Who's behind this
 
-Ether-Mosh is part of the broader creative ecosystem of **Dyles Mavis** — an ongoing practice centered around digital art, visual experimentation, maximalist composition, psychedelic aesthetics, unexpected juxtapositions, and the beautiful friction between structure and disorder.
+I go by **Dyles Mavis**. Ether-Mosh lives inside a bigger practice I call **Aesthetic Rebellion**, and the visual language that comes out of it — dense, maximalist, a little unhinged — I call **Maximalist Motifs**. It shows up as prints, apparel, patterns, motion work, generative experiments, and now this: an actual interactive instrument.
 
-The work doesn't belong neatly inside one medium.
+None of it is trying to look "clean." Aesthetic Rebellion is the rejection of the idea that digital art has to behave — no sterile templates, no visual sameness, no pretending an image can't get weird. Glitches are gestures here, not errors. Artifacts are texture. The chaos *is* the authorship.
 
-It moves.
-
-Print.
-Pattern.
-Apparel.
-Digital imagery.
-Motion.
-Visual effects.
-Generative experimentation.
-Interactive media.
-
-Ether-Mosh is one more piece of that expanding visual vocabulary.
+If Maximalist Motifs is the visual world I've been building for years, Ether-Mosh is the part of it you can touch.
 
 ---
 
-# AESTHETIC REBELLION
+## Where the name comes from
 
-**Aesthetic Rebellion** is the philosophy behind the work.
+"Ether" is the invisible stuff that's supposedly everywhere and nowhere — the medium between one thing and the next. That's the space this app lives in: between the image you started with and whatever it's about to become. Between signal and noise. Between an accident and something you'd frame.
 
-Not rebellion for rebellion's sake.
+## What a "mosh" actually is
 
-Rebellion against the assumption that digital art needs to remain pristine.
-
-Against sterile templates.
-
-Against visual sameness.
-
-Against the idea that an image has to behave itself.
-
-Ether-Mosh treats distortion as a creative language rather than an error.
-
-**Glitches become gestures.
-Artifacts become texture.
-Imperfections become composition.
-Chaos becomes authorship.**
+A mosh isn't just randomness thrown at a picture. It's a controlled departure — enough uncertainty to knock a composition off its axis without losing the plot entirely. The goal was never *maximum* destruction. It's *interesting* destruction — the sweet spot where the source is still recognizable enough to give you context, but the result is something new.
 
 ---
 
-# MAXIMALIST MOTIFS
+## What it's actually good for
 
-Ether-Mosh also belongs to the world of **Maximalist Motifs** — where visual density, repetition, color, texture, pattern, abstraction, and visual excess are encouraged to coexist.
+Ether-Mosh is browser-based, works on desktop and phone, and is built for people who look at a photo and think *"yeah, but what if we wrecked it a little."* There's no single workflow. Upload something. Start pushing sliders. Follow whatever accident shows up. Keep the parts that work, throw out the rest.
 
-The goal isn't minimal input → predictable output.
+It's been a visual sketchbook, a texture generator, a source of finished artwork, a motion-study tool, and more than once, a very productive rabbit hole. There's no "correct" output — the destination is the discovery.
 
-The goal is discovery.
-
-A single image can become radically different depending on how it is interpreted, transformed, layered, interrupted, or pushed beyond its original visual boundaries.
-
-Think less:
-
-**"Apply Effect."**
-
-And more:
-
-**"What happens if I keep going?"**
+**The visual territory it plays in:** digital distortion, chromatic displacement, pixel manipulation, geometric deformation, color mutation, analog-style degradation, psychedelic transformation, recursive structures, texture buildup, pattern disruption, and abstract motion. That list keeps growing — this is a living lab, not a finished toolbox.
 
 ---
 
-# THE ETHER
+## Why I made this instead of another filter app
 
-The name comes from the idea of an invisible creative medium surrounding everything.
+Because the internet has plenty of software that hands you a template, a filter, a preset, and an export button. I wanted to ask a different question: **what happens if we stop trying to make the image behave?**
 
-A space between image and image.
-
-Between signal and noise.
-
-Between intention and accident.
-
-Between the original thing and whatever it becomes next.
-
-**Ether-Mosh lives there.**
+The aesthetic I'm chasing sits somewhere between psychedelic maximalism, digital decay, neon futurism, analog nostalgia, and underground club energy. It should feel *discovered*, not manufactured — a little dangerous, a little ridiculous, occasionally elegant, and hopefully unforgettable.
 
 ---
 
-# WHAT IT IS
+## The manifesto version, if you want it short
 
-Ether-Mosh is a browser-based experimental visualizer and image transformation environment designed for artists, designers, creators, performers, makers, and anyone who has ever looked at an image and thought:
+Make it beautiful. Then make it strange. Break the symmetry. Keep the accident. Push the color past where it's comfortable. Ignore whatever rule doesn't serve the piece. And when the image finally stops looking like what it started as — don't rush to fix it.
 
-**"Yeah... but what if we absolutely wrecked it?"**
-
-It is designed around experimentation rather than a single prescribed workflow.
-
-Upload something.
-
-Start pushing.
-
-Follow the accident.
-
-Keep the beautiful parts.
-
-Destroy the rest.
+Maybe that was the point.
 
 ---
 
-# THE MOSH
+## Status
 
-At the center of the experience is the idea of the **Mosh**.
+This is an evolving, experimental project — expect changes, expect weird detours, expect some ideas to die on the vine. That's the process, not a bug in it.
 
-A Mosh is not simply randomization.
+I'm not exhaustively documenting the internals here on purpose. This README is the creative territory, not the full machinery underneath — some of that's better found by actually using the thing.
 
-It is a controlled departure from the original.
+## Ownership
 
-A way of introducing uncertainty into an otherwise intentional composition.
-
-The objective isn't maximum destruction.
-
-It's **interesting destruction**.
-
-The sweet spot where the source remains recognizable enough to provide context while the transformation becomes something entirely new.
+Ether-Mosh, and everything around it — the name, the visual identity, the branding, the artwork — belongs to the Dyles Mavis / Aesthetic Rebellion / Maximalist Motifs world. Being visible in this repo doesn't mean it's free to reuse, resell, or repurpose. Check the license before you build on top of any of it.
 
 ---
-
-# VISUAL TERRITORY
-
-Ether-Mosh explores a broad family of visual phenomena, including:
-
-* Digital distortion
-* Chromatic displacement
-* Pixel manipulation
-* Geometric deformation
-* Temporal artifacts
-* Color mutation
-* Analog-inspired degradation
-* Psychedelic transformation
-* Recursive visual structures
-* Texture accumulation
-* Light and atmospheric effects
-* Pattern disruption
-* Abstract composition
-* Experimental motion
-
-The exact character of the system is intentionally allowed to evolve.
-
-Ether-Mosh is an ongoing laboratory, not a finished box of tricks.
-
----
-
-# DESIGNED FOR PLAY
-
-The interface is deliberately built around immediacy.
-
-Less configuration.
-
-More experimentation.
-
-Less technical ceremony.
-
-More:
-
-**touch → push → discover → save.**
-
-The experience is intended to feel equally at home on a desktop workstation, a phone, or somewhere in the middle of a loud room with music rattling the walls.
-
-Because visual experimentation shouldn't require a laboratory coat.
-
----
-
-# FROM STILL IMAGE TO MOVEMENT
-
-Ether-Mosh exists beyond static imagery.
-
-The broader vision explores the space between:
-
-**image → motion → reaction → atmosphere**
-
-That means visual experimentation can become something watched, performed, projected, sampled, printed, worn, remixed, or incorporated into larger creative works.
-
-The image is only the beginning.
-
----
-
-# THE AESTHETIC
-
-The visual language of Ether-Mosh intentionally lives somewhere between:
-
-**psychedelic maximalism**
-**digital decay**
-**neon futurism**
-**analog nostalgia**
-**underground club culture**
-**graphic experimentation**
-**beautiful nonsense**
-
-It should feel discovered rather than manufactured.
-
-A little dangerous.
-
-A little ridiculous.
-
-Occasionally elegant.
-
-Frequently excessive.
-
-Preferably unforgettable.
-
----
-
-# CREATIVE USE
-
-Ether-Mosh can become whatever the creator needs it to become.
-
-A visual sketchbook.
-
-A source of artwork.
-
-A motion-study tool.
-
-A texture generator.
-
-A projection surface.
-
-A design experiment.
-
-A psychedelic rabbit hole.
-
-A starting point for something that didn't exist five minutes earlier.
-
-There is no prescribed aesthetic destination.
-
-**The destination is the discovery.**
-
----
-
-# WHY ETHER-MOSH?
-
-Because the internet already has enough software that asks you to:
-
-**Choose a template.
-Choose a filter.
-Choose a preset.
-Export.**
-
-Ether-Mosh asks a different question:
-
-> **What happens if we stop trying to make the image behave?**
-
----
-
-# THE LARGER UNIVERSE
-
-Ether-Mosh is one experiment inside a much larger creative universe.
-
-### DYLES MAVIS
-
-The artist, designer, and creative identity behind the work.
-
-### AESTHETIC REBELLION
-
-The philosophy: challenge visual conformity and turn imperfection into expression.
-
-### MAXIMALIST MOTIFS
-
-The broader visual ecosystem: patterns, prints, compositions, experiments, and objects built around maximal visual language.
 
 ### ETHER-MOSH
+**Beauty through breakdown. Chaos with intent.**
+An Aesthetic Rebellion instrument, by Dyles Mavis.
 
-The interactive side of that universe.
-
-The place where still imagery starts moving.
-
-Where order starts slipping.
-
-Where the artwork gets permission to misbehave.
-
----
-
-# STATUS
-
-Ether-Mosh is an evolving experimental project.
-
-Expect experimentation.
-
-Expect revisions.
-
-Expect strange things.
-
-Some ideas will survive.
-
-Some will mutate.
-
-Some will be spectacularly terrible.
-
-That's part of the process.
-
----
-
-# A NOTE ON THE CODE
-
-This repository represents a living creative project.
-
-Implementation details, experimental techniques, internal methodologies, development decisions, and future directions are intentionally **not exhaustively documented here**.
-
-That's deliberate.
-
-The README describes the **creative territory**, not the entire machinery underneath it.
-
-Some things are better discovered through the work itself.
-
----
-
-# OWNERSHIP & CREATIVE DIRECTION
-
-**Ether-Mosh** is an original creative project within the Dyles Mavis / Aesthetic Rebellion / Maximalist Motifs ecosystem.
-
-The names, visual identity, concepts, artwork, creative direction, branding, and associated intellectual property should not be assumed to be released for unrestricted reproduction, commercial exploitation, or derivative products merely because portions of the project are publicly visible.
-
-Please review the applicable repository license and project documentation before using, redistributing, or incorporating any project materials.
-
----
-
-# THE MANIFESTO
-
-Make it beautiful.
-
-Then make it strange.
-
-Make it louder.
-
-Break the symmetry.
-
-Introduce the accident.
-
-Follow the artifact.
-
-Keep the mistake.
-
-Push the color.
-
-Ignore the rules that don't serve the work.
-
-And when the image finally stops looking like what it started as—
-
-**don't immediately fix it.**
-
-Maybe that's the point.
-
----
-
-## ETHER-MOSH
-
-### **Beauty Through Breakdown.**
-
-### **Chaos With Intent.**
-
-### **An Aesthetic Rebellion Instrument by Dyles Mavis.**
-
----
-
-**Dyles Mavis**
 *Aesthetic Rebellion · Maximalist Motifs · Experimental Visual Art*
-
 © 2026 Dyles Mavis. All rights reserved where applicable.
 
----
-
-### PROJECT
-
-**Live experience:**
-Ether-Mosh
-
-**Creative direction:**
-Dyles Mavis
-
-**Visual ecosystem:**
-Aesthetic Rebellion · Maximalist Motifs
-
-**Status:**
-Experimental / evolving
-
-**Repository:**
-This repository
-
----
-
-> **Nothing stays the same. That's the feature.**
+> Nothing stays the same. That's the feature.
