@@ -167,6 +167,34 @@ export function GlitchWordField({ exclude, words = FIELD_WORDS }: GlitchWordFiel
      */
     const claimed = (reserved: Rect[]): Rect[] => reserved.concat(liveRef.current.map(l => l.rect));
 
+    /**
+     * Word/fontSize → measured {w, h}, so repeat spawns of the same word at
+     * the same size skip the DOM write+read entirely.
+     *
+     * Measuring width means writing `textContent`/`fontSize` onto the hidden
+     * ruler and immediately reading `getBoundingClientRect()` — a genuine
+     * forced synchronous layout, up to twice per spawn, up to twice a beat,
+     * every 320ms, for as long as the field is mounted. The vocabulary is a
+     * fixed 14 words and fontSize is `base * one of 6 SCALES`, where `base`
+     * only changes on resize (which already tears down and restarts this
+     * effect's whole live set) — so the real key space is small and stable
+     * within a session, and a cache converges after the first handful of
+     * beats. Keying on the exact fontSize float means a post-resize `base`
+     * naturally misses instead of reading a stale, wrong-viewport width.
+     */
+    const measureCache = new Map<string, { w: number; h: number }>();
+    const measure = (word: string, fontSize: number): { w: number; h: number } => {
+      const key = `${word} ${fontSize}`;
+      const cached = measureCache.get(key);
+      if (cached) return cached;
+      meas.textContent = word;
+      meas.style.fontSize = `${fontSize}px`;
+      const r = meas.getBoundingClientRect();
+      const result = { w: r.width, h: r.height };
+      measureCache.set(key, result);
+      return result;
+    };
+
     /** Keep-out boxes relative to `host`, measured once per beat. */
     const measureReserved = (box: DOMRect): Rect[] => {
       const reserved: Rect[] = [];
@@ -203,26 +231,23 @@ export function GlitchWordField({ exclude, words = FIELD_WORDS }: GlitchWordFiel
       let fontSize = base * pickWeighted(SCALES).mul;
       const deg = pickWeighted(ANGLES).deg;
 
-      meas.textContent = word;
-      meas.style.fontSize = `${fontSize}px`;
-      let m = meas.getBoundingClientRect();
-      if (!m.width || !m.height) return null;
+      let m = measure(word, fontSize);
+      if (!m.w || !m.h) return null;
 
       // Shrink anything that cannot fit inside the margins. Without this the
       // long words simply never place at the big size classes, and the field
       // quietly loses half its vocabulary on narrow screens.
       const maxW = W - margin * 2;
       const maxH = H - margin * 2;
-      if (m.width > maxW || m.height > maxH) {
-        fontSize *= Math.min(maxW / m.width, maxH / m.height) * 0.98;
-        meas.style.fontSize = `${fontSize}px`;
-        m = meas.getBoundingClientRect();
+      if (m.w > maxW || m.h > maxH) {
+        fontSize *= Math.min(maxW / m.w, maxH / m.h) * 0.98;
+        m = measure(word, fontSize);
       }
 
       const spot = placeWord({
         W, H,
-        w: m.width,
-        h: m.height,
+        w: m.w,
+        h: m.h,
         deg,
         margin,
         blocked: claimed(reserved),
