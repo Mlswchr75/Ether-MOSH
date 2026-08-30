@@ -153,7 +153,11 @@ export function StickerCapture() {
           lastLockTimeRef.current = now;
         }
       }
-      const lockedBox = lockedBoxRef.current;
+      const lockedBox = lockedBoxRef.current ?? freshBox;
+      if (!lockedBox) {
+        raf = requestAnimationFrame(draw);
+        return;
+      }
       // The frame itself is content-shaped now — size the preview canvas
       // from the LOCKED box's own aspect (computed after analysis, not
       // assumed from the source's landscape aspect beforehand) so a tall,
