@@ -98,33 +98,39 @@ export type SourceStats = {
   clipLow: number;
   /** Fraction of pixels blown to white. */
   clipHigh: number;
+  /** Luminance centre of gravity, 0..1. */
+  balanceX?: number;
+  balanceY?: number;
+  /** How strongly visual energy gathers near the centre rather than edges. */
+  centerWeight?: number;
 };
 
 export const NEUTRAL_STATS: SourceStats = {
   brightness: 0.5, contrast: 0.4, saturation: 0.4,
   density: 0.4, warmth: 0.5, hueSpread: 0.4,
-  clipLow: 0, clipHigh: 0,
+  clipLow: 0, clipHigh: 0, balanceX: 0.5, balanceY: 0.5, centerWeight: 0.5,
 };
 
 /** Reused sampling surface — analysis runs on every mosh, so don't reallocate. */
 let sampleCanvas: HTMLCanvasElement | null = null;
 let sampleCtx: CanvasRenderingContext2D | null = null;
-const SAMPLE_W = 64;
-const SAMPLE_H = 36;
+const SAMPLE_W = 128;
+const SAMPLE_H = 72;
 
 /**
- * Measure the live source. Deliberately tiny (64×36 ≈ 2.3k pixels) so it can
- * run synchronously on every mosh without touching the render loop.
+ * Measure the entire live source. Browser downsampling integrates the full
+ * frame into representative pixels, so no region is skipped while analysis
+ * remains safely outside the render loop.
  *
  * Works for both <video> and <img>, which matters because MOSH is
  * camera-first — the existing palette worker only ever ran on still images, so
  * the live path had no analysis at all.
  */
-export function analyzeSource(el: HTMLVideoElement | HTMLImageElement | null): SourceStats {
+export function analyzeSource(el: HTMLVideoElement | HTMLImageElement | HTMLCanvasElement | null): SourceStats {
   if (!el || typeof document === "undefined") return { ...NEUTRAL_STATS };
   try {
-    const w = (el as HTMLVideoElement).videoWidth || (el as HTMLImageElement).naturalWidth || 0;
-    const h = (el as HTMLVideoElement).videoHeight || (el as HTMLImageElement).naturalHeight || 0;
+    const w = (el as HTMLVideoElement).videoWidth || (el as HTMLImageElement).naturalWidth || (el as HTMLCanvasElement).width || 0;
+    const h = (el as HTMLVideoElement).videoHeight || (el as HTMLImageElement).naturalHeight || (el as HTMLCanvasElement).height || 0;
     if (!w || !h) return { ...NEUTRAL_STATS };
 
     if (!sampleCanvas) {
@@ -151,6 +157,7 @@ export function statsFromPixels(data: Uint8ClampedArray | number[], w: number, h
 
   const lum = new Float32Array(n);
   let lSum = 0, lSq = 0, satSum = 0, warmSum = 0, clipLow = 0, clipHigh = 0;
+  let energySum = 0, energyX = 0, energyY = 0, centerEnergy = 0;
   const hueBins = new Array(12).fill(0);
 
   for (let i = 0; i < n; i++) {
@@ -165,6 +172,12 @@ export function statsFromPixels(data: Uint8ClampedArray | number[], w: number, h
     const chroma = mx - mn;
     satSum += mx <= 0 ? 0 : chroma / mx;
     warmSum += (r - b) * 0.5 + 0.5;
+    const x = (i % w) / Math.max(1, w - 1);
+    const y = Math.floor(i / w) / Math.max(1, h - 1);
+    const energy = 0.08 + l + chroma * 0.8;
+    energySum += energy; energyX += energy * x; energyY += energy * y;
+    const dx = x - 0.5, dy = y - 0.5;
+    centerEnergy += energy * Math.max(0, 1 - Math.sqrt(dx * dx + dy * dy) / 0.707);
 
     // Only colourful pixels get a vote on hue spread; grey pixels have no hue.
     if (chroma > 0.12) {
@@ -204,6 +217,9 @@ export function statsFromPixels(data: Uint8ClampedArray | number[], w: number, h
     hueSpread: occupied / 12,
     clipLow: clipLow / n,
     clipHigh: clipHigh / n,
+    balanceX: energyX / Math.max(0.0001, energySum),
+    balanceY: energyY / Math.max(0.0001, energySum),
+    centerWeight: centerEnergy / Math.max(0.0001, energySum),
   };
 }
 
@@ -693,6 +709,7 @@ export function chooseLook(
    *  multiplying a negative score by a small penalty makes it *less*
    *  negative, the opposite of suppression. */
   penalty?: ReadonlyMap<string, number>,
+  previousLookId?: string | null,
 ): Look {
   const stale = new Set(avoid);
   const scored = LOOKS.map(look => {
@@ -702,6 +719,7 @@ export function chooseLook(
       if (typeof v === "number") score += v * (weight as number);
     }
     score -= (1 - (penalty?.get(look.id) ?? 1)) * LOOK_PENALTY_STRENGTH;
+    if (previousLookId) score += lookTransitionScore(previousLookId, look.id, brief);
     return { look, score };
   });
 
@@ -712,6 +730,24 @@ export function chooseLook(
   // Sample from the top third so the fit is honoured without being rigid.
   const width = Math.max(2, Math.ceil(usable.length / 3));
   return usable[Math.floor(rand() * Math.min(width, usable.length))].look;
+}
+
+/** Judge the relationship between consecutive looks: shared vocabulary gives
+ * continuity, a controlled energy arc and a new structural idea give surprise. */
+export function lookTransitionScore(previousId: string, nextId: string, brief: FrameBrief): number {
+  if (previousId === nextId) return -2.2;
+  const previous = LOOKS_BY_ID[previousId];
+  const next = LOOKS_BY_ID[nextId];
+  if (!previous || !next) return 0;
+  const prevIds = new Set(Object.values(previous.picks).flat());
+  const nextIds = new Set(Object.values(next.picks).flat());
+  const shared = [...prevIds].filter(id => nextIds.has(id)).length;
+  const continuity = Math.min(0.42, shared * 0.12);
+  const driveArc = Math.abs(previous.drive - next.drive);
+  const arc = driveArc >= 0.12 && driveArc <= 0.42 ? 0.28 : driveArc > 0.62 ? -0.22 : 0;
+  const novelty = (next.picks.form ?? []).some(id => !(previous.picks.form ?? []).includes(id)) ? 0.18 : 0;
+  const restraint = brief.needsRestraint > 0.55 && next.drive > previous.drive ? -0.45 : 0;
+  return continuity + arc + novelty + restraint;
 }
 
 /* ────────────────────────────────────────────────────────────────────────
@@ -1141,6 +1177,7 @@ export function compose(
      *  effect id, say). */
     lookPenalty?: ReadonlyMap<string, number>;
     effectPenalty?: ReadonlyMap<string, number>;
+    previousLookId?: string | null;
     look?: Look;
     /**
      * 0..1. How willing the director is to break its own grammar.
@@ -1173,7 +1210,7 @@ export function compose(
     wildness?: number;
   } = {},
 ): Composition {
-  const look = opts.look ?? chooseLook(brief, rand, opts.avoidLooks ?? [], opts.lookPenalty);
+  const look = opts.look ?? chooseLook(brief, rand, opts.avoidLooks ?? [], opts.lookPenalty, opts.previousLookId);
   const roleCount = Math.max(1, Math.min(MAX_ROLES, opts.roleCount ?? 4));
   const wildness = Math.max(0, Math.min(1, opts.wildness ?? 0.35));
   // A wild roll is more willing to break the grammar — but only where the

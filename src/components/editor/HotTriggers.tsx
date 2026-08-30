@@ -143,7 +143,7 @@ const TRIGGER_LABELS: Record<string, string> = {
   "sticker-tools": "Sticker tools",
   "sticker-vault": "Sticker Vault",
   "theme-track": "Theme track", favorites: "Favorites", fullscreen: "Fullscreen",
-  "forge-palette": "Forge palette and settings",
+  "forge-palette": "Forge settings — colour is directed automatically",
   "motif-maestro": "Motif Maestro controls",
   "xr-menu": "VR / immersive menu override",
   "switch-camera": "Switch camera", support: "Support MOSH",

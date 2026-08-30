@@ -4,7 +4,6 @@ import { toast } from "sonner";
 import { useStore } from "@/store/useStore";
 import { MoshRenderer, type RenderLayer } from "@/engine/Renderer";
 import { paintForgeSource, createForgeRuntime, disposeForgeRuntime } from "@/engine/forgeSource";
-import { FORGE_PALETTES } from "@/engine/forgePalettes";
 import { seamScore } from "@/engine/tileSafety";
 import { healToSeamless, renderSizeFor, DEFAULT_HEAL_BAND } from "@/engine/seamlessHeal";
 import { downloadBlob } from "@/engine/export";
@@ -20,7 +19,7 @@ import { validateDecodedDimensions, validateImageUpload } from "@/lib/mediaFileS
 const EXPORT_SIZES = [2048, 4096, 5000, 8000] as const;
 
 /**
- * Forge-only controls — palette, base photo, seamless tiling, density, seed,
+ * Forge-only controls — base photo, seamless tiling, density, seed,
  * and print export. Everything else forge needs (mic, record, GIF, journey,
  * the effect stack itself) is already the rest of the editor; this panel is
  * only the handful of settings unique to generating the pattern in the first
@@ -29,7 +28,6 @@ const EXPORT_SIZES = [2048, 4096, 5000, 8000] as const;
 export function ForgePanel({ embedded = false }: { embedded?: boolean }) {
   const paywall = usePaywall();
   const forge = useStore(s => s.forge);
-  const setForgePaletteIdx = useStore(s => s.setForgePaletteIdx);
   const setForgeIntensity = useStore(s => s.setForgeIntensity);
   const setForgeSeamless = useStore(s => s.setForgeSeamless);
   const setForgeBaseImage = useStore(s => s.setForgeBaseImage);
@@ -193,27 +191,6 @@ export function ForgePanel({ embedded = false }: { embedded?: boolean }) {
 
   return (
     <div className={`${embedded ? "relative" : "ui-chrome absolute left-3 top-14 z-20 safe-top safe-left safe-bottom"} pointer-events-auto flex max-h-[calc(100dvh-6rem)] w-44 flex-col gap-4 overflow-y-auto rounded-sm border border-[hsl(var(--border-default))] bg-black/70 p-3 backdrop-blur-md`}>
-      {/* Palette */}
-      <div>
-        <p className="mb-2 font-mono text-[8px] uppercase tracking-[0.35em] text-foreground/40">palette</p>
-        <div className="flex flex-wrap gap-1.5">
-          {FORGE_PALETTES.map((p, i) => (
-            <button
-              key={p.name}
-              type="button"
-              title={p.name}
-              onClick={() => setForgePaletteIdx(i)}
-              data-active={i === forge.paletteIdx || undefined}
-              className="flex gap-0.5 rounded-sm border border-transparent p-1 transition data-[active]:border-[hsl(var(--accent))]"
-            >
-              {p.colors.map(c => (
-                <span key={c} className="h-2.5 w-2.5 rounded-full" style={{ background: c }} />
-              ))}
-            </button>
-          ))}
-        </div>
-      </div>
-
       {/* Base image */}
       <div>
         <p className="mb-2 font-mono text-[8px] uppercase tracking-[0.35em] text-foreground/40">base</p>

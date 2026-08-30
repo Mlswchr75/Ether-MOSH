@@ -1619,10 +1619,10 @@ export default function Editor() {
           try { (navigator as any).vibrate?.(10); } catch {}
           const state = useStore.getState();
           if (dx < 0) {
-            if (state.future.length) state.redo();
+            if (state.future.length) crossfadeLayers(() => useStore.getState().redo(), MOSH_FADE_MS);
             else crossfadeLayers(() => useStore.getState().mosh(), MOSH_FADE_MS);
           } else if (state.past.length) {
-            state.undo();
+            crossfadeLayers(() => useStore.getState().undo(), MOSH_FADE_MS);
           }
         } else if (count === 2 && elapsed <= 420 && maxTravel <= 20) {
           try { (navigator as any).vibrate?.(10); } catch {}

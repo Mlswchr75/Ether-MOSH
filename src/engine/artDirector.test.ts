@@ -11,6 +11,7 @@ import {
   composeRoleLayer,
   craftOf,
   gpuCostOf,
+  lookTransitionScore,
   opacityForRole,
   pickForRole,
   poolForRole,
@@ -78,6 +79,22 @@ describe("content analysis", () => {
     const warm = statsFromPixels(solid(8, 8, 220, 120, 40), 8, 8);
     const cool = statsFromPixels(solid(8, 8, 40, 120, 220), 8, 8);
     expect(warm.warmth).toBeGreaterThan(cool.warmth);
+  });
+
+  it("locates visual energy instead of treating the frame as spatially flat", () => {
+    const px = solid(16, 8, 0, 0, 0);
+    for (let y = 0; y < 8; y++) for (let x = 0; x < 4; x++) {
+      const i = (y * 16 + x) * 4; px[i] = 255; px[i + 1] = 220; px[i + 2] = 60;
+    }
+    expect(statsFromPixels(px, 16, 8).balanceX).toBeLessThan(0.4);
+  });
+});
+
+describe("sequence judgement", () => {
+  it("rejects exact repetition and rewards a related but novel continuation", () => {
+    const brief = briefFrom(NEUTRAL_STATS);
+    expect(lookTransitionScore("chromeNoir", "chromeNoir", brief)).toBeLessThan(-2);
+    expect(lookTransitionScore("chromeNoir", "livingCrystal", brief)).toBeGreaterThan(-0.5);
   });
 });
 

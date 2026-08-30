@@ -12,7 +12,30 @@ export const FORGE_PALETTES: ForgePalette[] = [
   { name: "drift",   colors: ["#00BFFF", "#7700FF", "#000A1A"] },
   { name: "void",    colors: ["#8800FF", "#00FF88", "#040008"] },
   { name: "heat",    colors: ["#FF6B00", "#FF0033", "#100400"] },
+  { name: "ochre",   colors: ["#E6A817", "#6F3B18", "#140D08"] },
+  { name: "moss",    colors: ["#A8C256", "#315C3A", "#07120B"] },
+  { name: "oxide",   colors: ["#D85B38", "#6D8C83", "#160B0A"] },
+  { name: "mono",    colors: ["#F2EEE6", "#77736D", "#090909"] },
 ];
+
+type PaletteBrief = { needsColor: number; needsLift: number; needsCompression: number; warmth: number; saturation: number };
+
+/** Automatic palette judgement shared by regular Mosh, Journey and Forge. */
+export function chooseArtDirectedPalette(brief: PaletteBrief, rand: () => number = Math.random, currentIdx = -1): number {
+  const scored = FORGE_PALETTES.map((palette, index) => {
+    const hsls = palette.colors.map(hexToHsl);
+    const saturation = hsls.reduce((sum, hsl) => sum + hsl[1], 0) / hsls.length;
+    const light = hsls.reduce((sum, hsl) => sum + hsl[2], 0) / hsls.length;
+    const warm = hsls.filter(([h]) => h < 75 || h > 330).length / hsls.length;
+    let score = saturation * brief.needsColor * 1.2;
+    score += light * brief.needsLift * 0.7 + (1 - light) * brief.needsCompression * 0.55;
+    score += brief.warmth > 0.57 ? (1 - warm) * 0.8 : brief.warmth < 0.43 ? warm * 0.8 : 0;
+    if (brief.saturation > 0.7) score += (1 - saturation) * 0.7;
+    if (index === currentIdx) score -= 1.8;
+    return { index, score: score + rand() * 0.22 };
+  }).sort((a, b) => b.score - a.score);
+  return scored[Math.floor(rand() * Math.min(3, scored.length))]?.index ?? 0;
+}
 
 function hexToHsl(hex: string): [number, number, number] {
   const n = parseInt(hex.replace("#", ""), 16);

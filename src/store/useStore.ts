@@ -16,6 +16,7 @@ import {
   poolForRole,
   rollWildness,
   type FrameBrief,
+  type Composition,
   type Look,
   type Role,
 } from "@/engine/artDirector";
@@ -34,7 +35,7 @@ import { exportSetlist, importSetlist, setlistToJson, SETLIST_SLOTS } from "@/en
 import type { AudioMap, Favorite, ForgeState, Intensity, IsolationMode, Layer, Modulator, PaletteProfile, SourceMode, StickerEntry } from "./types";
 import { composeForgeStack, pickForgeGenerator, rollKaleidoscope } from "@/engine/forgeCompose";
 import { DRIFT_FIELD } from "@/engine/forgeGenerators/driftField";
-import { FORGE_PALETTES } from "@/engine/forgePalettes";
+import { FORGE_PALETTES, chooseArtDirectedPalette } from "@/engine/forgePalettes";
 import { facingOfTrack, type CameraFacing } from "@/lib/cameraFacing";
 import { DEFAULT_TILE_UNIFORMS, type TileMode, type TileUniforms } from "@/engine/tile";
 import { extractPalette } from "@/engine/imagePalette";
@@ -63,7 +64,7 @@ function generateFavoriteName(layers: Layer[]): string {
   return names.length > 2 ? `${shown} +${names.length - 2}` : shown;
 }
 
-const HISTORY_LIMIT = 20;
+export const HISTORY_LIMIT = 12;
 /** Recency-memory windows feeding recencyPenalty (see compose.ts) — the
  *  same shape and the same numbers Journey mode's own memory uses (
  *  recentStructural/recentAccent in journeyDirector.ts), so a repeat is
@@ -118,6 +119,11 @@ const WILD_FLOOR: Record<Intensity, number> = {
   nuclear: 0.42,
   interdimensional: 0.62,
 };
+
+function briefDistance(a: FrameBrief, b: FrameBrief): number {
+  const keys: Array<keyof FrameBrief> = ["brightness", "contrast", "saturation", "density", "warmth", "hueSpread"];
+  return keys.reduce((sum, key) => sum + Math.abs((a[key] as number) - (b[key] as number)), 0) / keys.length;
+}
 
 /**
  * One shared settings object for every export path in the app — screenshot,
@@ -257,6 +263,8 @@ type State = {
   currentLook: { id: string; name: string; blurb: string } | null;
   /** Latest content analysis, for the UI to show what the director saw. */
   currentBrief: FrameBrief | null;
+  /** One fully judged stack waiting behind the visible one. */
+  plannedMosh: { seed: string; intensity: Intensity; brief: FrameBrief; composition: Composition } | null;
   /** Last semantic-role roll — drives the transient on-canvas readout. */
   lastRoleRoll: RoleRoll | null;
   /** The semantic role targeted by the next clean canvas tap. */
@@ -556,6 +564,7 @@ export const useStore = create<State & Actions>((set, get) => ({
   recentLooks: [],
   currentLook: null,
   currentBrief: null,
+  plannedMosh: null,
   lastRoleRoll: null,
   sourceMode: "upload" as SourceMode,
   forge: {
@@ -597,6 +606,7 @@ export const useStore = create<State & Actions>((set, get) => ({
       videoElement: null, videoStream: null,
       cameraFacing: null,
       paletteProfile: null,
+      plannedMosh: null,
       sourceMode: "upload",
       ...(wasForge ? { layers: preForge ?? [], preForgeLayers: null } : {}),
     });
@@ -662,6 +672,7 @@ export const useStore = create<State & Actions>((set, get) => ({
       videoStream: stream,
       sourceName: name ?? "live camera",
       paletteProfile: null,
+      plannedMosh: null,
       cameraFacing: facing,
       sourceMode: "camera",
       ...(wasForge ? { layers: preForge ?? [], preForgeLayers: null } : {}),
@@ -675,7 +686,7 @@ export const useStore = create<State & Actions>((set, get) => ({
       try { s.videoElement.parentNode?.removeChild(s.videoElement); } catch {}
     }
     // Facing belongs to the stream that just stopped.
-    set({ videoElement: null, videoStream: null, cameraFacing: null });
+    set({ videoElement: null, videoStream: null, cameraFacing: null, plannedMosh: null });
   },
   clearImage: () => {
     try { document.documentElement.style.removeProperty("--synth-accent"); } catch {}
@@ -687,7 +698,7 @@ export const useStore = create<State & Actions>((set, get) => ({
     }
     set({
       imageUrl: null, imageElement: null, videoElement: null, videoStream: null,
-      cameraFacing: null, sourceName: null, layers: [], past: [], future: [], paletteProfile: null,
+      cameraFacing: null, sourceName: null, layers: [], past: [], future: [], paletteProfile: null, plannedMosh: null,
       ...resetRoleSelection([]),
     });
   },
@@ -789,15 +800,14 @@ export const useStore = create<State & Actions>((set, get) => ({
 
   mosh: (intensity) => set(s => {
     const inten = intensity ?? s.intensity;
-    const seed = generateSeed();
+    const brief = briefFrom(analyzeSource(s.videoElement ?? s.imageElement ?? s.glCanvas));
+    const prepared = s.plannedMosh?.intensity === inten && briefDistance(s.plannedMosh.brief, brief) < 0.16
+      ? s.plannedMosh : null;
+    const seed = prepared?.seed ?? generateSeed();
     const rand = rngFromSeed(seed);
 
-    // Look at the actual frame first. This is the whole point: the stack is
-    // built for THIS content, not drawn from a hat.
-    const brief = briefFrom(analyzeSource(s.videoElement ?? s.imageElement));
-
     const locked = s.layers.filter(l => l.locked);
-    const composition = compose(brief, rand, {
+    const composition = prepared?.composition ?? compose(brief, rand, {
       roleCount: ROLE_COUNT[inten],
       chaos: CHAOS[inten],
       wildness: rollWildness(rand, WILD_FLOOR[inten]),
@@ -807,6 +817,7 @@ export const useStore = create<State & Actions>((set, get) => ({
       // gap that made the two shuffle noticeably differently.
       lookPenalty: recencyPenalty(s.recentLooks, []),
       effectPenalty: recencyPenalty(s.recentFormEffects, s.recentOtherEffects),
+      previousLookId: s.currentLook?.id,
       // A locked layer's effect id is a real hard constraint, not a
       // preference — the director must never reach for it since it's
       // already pinned in a fixed slot.
@@ -833,6 +844,23 @@ export const useStore = create<State & Actions>((set, get) => ({
     const otherIds = composition.layers.filter(l => l.role !== "form").map(l => l.effectId);
     const layers = [...locked, ...fresh];
     const selection = resetRoleSelection(layers);
+    const paletteIdx = chooseArtDirectedPalette(brief, rand, s.forge.paletteIdx);
+    const nextSeed = generateSeed();
+    const nextRand = rngFromSeed(nextSeed);
+    const nextForm = [...formIds, ...s.recentFormEffects].slice(0, RECENT_FORM_MEMORY);
+    const nextOther = [...otherIds, ...s.recentOtherEffects].slice(0, RECENT_OTHER_MEMORY);
+    const nextLooks = [composition.look.id, ...s.recentLooks].slice(0, LOOK_MEMORY);
+    const plannedMosh = {
+      seed: nextSeed, intensity: inten, brief,
+      composition: compose(brief, nextRand, {
+        roleCount: ROLE_COUNT[inten], chaos: CHAOS[inten],
+        wildness: rollWildness(nextRand, WILD_FLOOR[inten]),
+        lookPenalty: recencyPenalty(nextLooks, []),
+        effectPenalty: recencyPenalty(nextForm, nextOther),
+        previousLookId: composition.look.id,
+        avoidEffects: locked.map(l => l.effectId),
+      }),
+    };
     return {
       ...s,
       past: pushPast(s), future: [],
@@ -849,6 +877,8 @@ export const useStore = create<State & Actions>((set, get) => ({
         blurb: composition.look.blurb,
       },
       currentBrief: brief,
+      forge: { ...s.forge, paletteIdx },
+      plannedMosh,
       lastRoleRoll: null,
       ...selection,
     };
@@ -870,7 +900,7 @@ export const useStore = create<State & Actions>((set, get) => ({
     if (!poolForRole(role).some(effectId => !excluded.includes(effectId))) return null;
 
     const rand = rngFromSeed(generateSeed());
-    const brief = s.currentBrief ?? briefFrom(analyzeSource(s.videoElement ?? s.imageElement));
+    const brief = s.currentBrief ?? briefFrom(analyzeSource(s.videoElement ?? s.imageElement ?? s.glCanvas));
     const look: Look = (s.currentLook && LOOKS_LOOKUP[s.currentLook.id])
       ?? chooseLook(brief, rand, [], recencyPenalty(s.recentLooks, []));
     const affinity = skewedAffinity(rand);
@@ -927,7 +957,7 @@ export const useStore = create<State & Actions>((set, get) => ({
     const s = get();
     if (groupLayersByRole(s.layers)[role].length) return null;
     const rand = rngFromSeed(generateSeed());
-    const brief = s.currentBrief ?? briefFrom(analyzeSource(s.videoElement ?? s.imageElement));
+    const brief = s.currentBrief ?? briefFrom(analyzeSource(s.videoElement ?? s.imageElement ?? s.glCanvas));
     const look: Look = (s.currentLook && LOOKS_LOOKUP[s.currentLook.id])
       ?? chooseLook(brief, rand, [], recencyPenalty(s.recentLooks, []));
     const affinity = skewedAffinity(rand);
@@ -1232,10 +1262,18 @@ export const useStore = create<State & Actions>((set, get) => ({
   // every layer) is exactly what flattened composed stacks back into mud.
   moshDirected: (directed) => set(s => {
     const seed = generateSeed();
+    const rand = rngFromSeed(seed);
+    const brief = briefFrom(analyzeSource(s.videoElement ?? s.imageElement ?? s.glCanvas));
     const locked = s.layers.filter(l => l.locked);
     const fresh = buildDirectedLayers(directed);
     const layers = [...locked, ...fresh];
-    return { ...s, past: pushPast(s), future: [], layers, seed, ...resetRoleSelection(layers) };
+    return {
+      ...s, past: pushPast(s), future: [], layers, seed,
+      currentBrief: brief,
+      forge: { ...s.forge, paletteIdx: chooseArtDirectedPalette(brief, rand, s.forge.paletteIdx) },
+      plannedMosh: null,
+      ...resetRoleSelection(layers),
+    };
   }),
   // Bare `set({ layers })` — no undo push, no seed regen, no role-selection
   // reset. Exists for the Journey crossfade driver (Editor.tsx), which needs
@@ -1410,12 +1448,13 @@ export const useStore = create<State & Actions>((set, get) => ({
 
   randomiseForge: () => {
     const s = get();
+    const brief = briefFrom(analyzeSource(s.videoElement ?? s.imageElement ?? s.glCanvas));
     const pickedGeneratorId = pickForgeGenerator(Math.random);
     const generatorChanged = pickedGeneratorId !== s.forge.activeGeneratorId;
     const nextForge: ForgeState = {
       ...s.forge,
       seed: Math.floor(Math.random() * 0xFFFFFF),
-      paletteIdx: Math.floor(Math.random() * FORGE_PALETTES.length),
+      paletteIdx: chooseArtDirectedPalette(brief, Math.random, s.forge.paletteIdx),
       activeGeneratorId: pickedGeneratorId,
       kaleidoscopeFolds: rollKaleidoscope(Math.random),
       // Only start a crossfade when the generator actually changed — a
