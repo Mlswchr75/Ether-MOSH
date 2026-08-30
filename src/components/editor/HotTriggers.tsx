@@ -84,6 +84,10 @@ export function radialFlickThreshold(pointerType: string) {
   return pointerType === "mouse" ? 34 : pointerType === "pen" ? 38 : MOBILE_WHEEL_FLICK_PX;
 }
 
+export function radialGestureShouldActivate(maxTravel: number, pointerType: string) {
+  return maxTravel >= radialFlickThreshold(pointerType);
+}
+
 export function radialHoldJitterTolerance(pointerType: string) {
   return pointerType === "touch" ? 20 : pointerType === "pen" ? 12 : 8;
 }
@@ -788,6 +792,7 @@ function MobileRadialWheel({
   const openRef = useRef(false);
   const gestureRef = useRef({
     pointerId: -1, x: 0, y: 0, lastX: 0, lastY: 0,
+    originX: 0, originY: 0, maxTravel: 0,
     startedAt: 0, armed: false, fired: false, cancelled: false, pointerType: "mouse",
   });
   const armTimerRef = useRef<number | null>(null);
@@ -890,6 +895,7 @@ function MobileRadialWheel({
       gestureRef.current = {
         pointerId: event.pointerId, x: event.clientX, y: event.clientY,
         lastX: event.clientX, lastY: event.clientY, startedAt: performance.now(),
+        originX: event.clientX, originY: event.clientY, maxTravel: 0,
         armed: false, fired: false, cancelled: false, pointerType: event.pointerType || "mouse",
       };
       armTimerRef.current = window.setTimeout(() => {
@@ -906,7 +912,7 @@ function MobileRadialWheel({
         suppressClickRef.current = true;
         setPhase("open");
         cacheWheelRect();
-        selectFromFlick(gesture.lastX - gesture.x, gesture.lastY - gesture.y, gesture.pointerType);
+        select(null);
         try { navigator.vibrate?.(12); } catch {}
       }, RADIAL_WHEEL_HOLD_MS);
     };
@@ -917,6 +923,7 @@ function MobileRadialWheel({
       const sample = samples[samples.length - 1] ?? event;
       gesture.lastX = sample.clientX;
       gesture.lastY = sample.clientY;
+      gesture.maxTravel = Math.max(gesture.maxTravel, Math.hypot(sample.clientX - gesture.originX, sample.clientY - gesture.originY));
       const dx = sample.clientX - gesture.x;
       const dy = sample.clientY - gesture.y;
       const distance = Math.hypot(dx, dy);
@@ -929,16 +936,23 @@ function MobileRadialWheel({
         }
         return;
       }
-      selectFromFlick(dx, dy, gesture.pointerType);
+      if (radialGestureShouldActivate(gesture.maxTravel, gesture.pointerType)) selectFromFlick(dx, dy, gesture.pointerType);
     };
     const onEnd = (event: PointerEvent) => {
       if (event.pointerId !== gestureRef.current.pointerId) return;
       clearTimers();
       let keepOpen = false;
       if (gestureRef.current.fired) {
-        selectFromFlick(event.clientX - gestureRef.current.x, event.clientY - gestureRef.current.y, gestureRef.current.pointerType);
-        if (highlightRef.current) activateRef.current(highlightRef.current);
-        else keepOpen = true;
+        const gesture = gestureRef.current;
+        gesture.maxTravel = Math.max(gesture.maxTravel, Math.hypot(event.clientX - gesture.originX, event.clientY - gesture.originY));
+        if (radialGestureShouldActivate(gesture.maxTravel, gesture.pointerType)) {
+          selectFromFlick(event.clientX - gesture.x, event.clientY - gesture.y, gesture.pointerType);
+          if (highlightRef.current) activateRef.current(highlightRef.current);
+          else keepOpen = true;
+        } else {
+          select(null);
+          keepOpen = true;
+        }
       }
       if (!keepOpen) { setPhase("idle"); select(null); }
       gestureRef.current.pointerId = -1;
@@ -1132,7 +1146,7 @@ function DesktopRadialWheel({
   const idsRef = useRef(ids);
   const layoutRef = useRef(layout);
   const highlightedRef = useRef<string | null>(null);
-  const gestureRef = useRef({ pointerId: -1, x: 0, y: 0, lastX: 0, lastY: 0, startedAt: 0, fired: false, armed: false, cancelled: false, pointerType: "mouse" });
+  const gestureRef = useRef({ pointerId: -1, x: 0, y: 0, lastX: 0, lastY: 0, originX: 0, originY: 0, maxTravel: 0, startedAt: 0, fired: false, armed: false, cancelled: false, pointerType: "mouse" });
   const editDragRef = useRef<{ pointerId: number; id: string } | null>(null);
   idsRef.current = ids;
   layoutRef.current = layout;
@@ -1198,7 +1212,7 @@ function DesktopRadialWheel({
       if (event.pointerType === "touch" || event.button !== 0 || ignored(event.target) || gestureRef.current.pointerId !== -1) return;
       if (!isCentralRadialHoldPoint(event.clientX, event.clientY, window.innerWidth, window.innerHeight)) return;
       cancelTimers();
-      gestureRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, lastX: event.clientX, lastY: event.clientY, startedAt: performance.now(), fired: false, armed: false, cancelled: false, pointerType: event.pointerType || "mouse" };
+      gestureRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, lastX: event.clientX, lastY: event.clientY, originX: event.clientX, originY: event.clientY, maxTravel: 0, startedAt: performance.now(), fired: false, armed: false, cancelled: false, pointerType: event.pointerType || "mouse" };
       armTimer = window.setTimeout(() => {
         if (gestureRef.current.pointerId !== event.pointerId || gestureRef.current.cancelled) return;
         gestureRef.current.armed = true;
@@ -1211,7 +1225,7 @@ function DesktopRadialWheel({
         setCenter(nextCenter);
         setEditing(false);
         setPhase("open");
-        selectFromPointer(gestureRef.current.lastX, gestureRef.current.lastY, gestureRef.current.pointerType);
+        select(null);
       }, RADIAL_WHEEL_HOLD_MS);
     };
     const onMove = (event: PointerEvent) => {
@@ -1221,6 +1235,7 @@ function DesktopRadialWheel({
       const sample = samples[samples.length - 1] ?? event;
       gesture.lastX = sample.clientX;
       gesture.lastY = sample.clientY;
+      gesture.maxTravel = Math.max(gesture.maxTravel, Math.hypot(sample.clientX - gesture.originX, sample.clientY - gesture.originY));
       const distance = Math.hypot(sample.clientX - gesture.x, sample.clientY - gesture.y);
       if (!gesture.fired) {
         if (!gesture.armed && performance.now() - gesture.startedAt < RADIAL_WHEEL_ARM_MS && distance > radialHoldJitterTolerance(gesture.pointerType)) {
@@ -1230,16 +1245,23 @@ function DesktopRadialWheel({
         }
         return;
       }
-      selectFromPointer(sample.clientX, sample.clientY, gesture.pointerType);
+      if (radialGestureShouldActivate(gesture.maxTravel, gesture.pointerType)) selectFromPointer(sample.clientX, sample.clientY, gesture.pointerType);
     };
     const onEnd = (event: PointerEvent) => {
       if (event.pointerId !== gestureRef.current.pointerId) return;
       cancelTimers();
       let keepOpen = false;
       if (gestureRef.current.fired) {
-        selectFromPointer(event.clientX, event.clientY, gestureRef.current.pointerType);
-        if (highlightedRef.current) activate(highlightedRef.current);
-        else keepOpen = true;
+        const gesture = gestureRef.current;
+        gesture.maxTravel = Math.max(gesture.maxTravel, Math.hypot(event.clientX - gesture.originX, event.clientY - gesture.originY));
+        if (radialGestureShouldActivate(gesture.maxTravel, gesture.pointerType)) {
+          selectFromPointer(event.clientX, event.clientY, gesture.pointerType);
+          if (highlightedRef.current) activate(highlightedRef.current);
+          else keepOpen = true;
+        } else {
+          select(null);
+          keepOpen = true;
+        }
       }
       if (!keepOpen) setPhase("idle");
       gestureRef.current.pointerId = -1;

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   normalizeRadialDegrees,
   radialFlickThreshold,
+  radialGestureShouldActivate,
   radialHoldJitterTolerance,
   radialIndexForAngle,
   radialTriggerIndex,
@@ -55,5 +56,12 @@ describe("mobile radial trigger selection", () => {
     expect(isCentralRadialHoldPoint(500, 590, 1000, 800)).toBe(true);
     expect(isCentralRadialHoldPoint(500, 610, 1000, 800)).toBe(false);
     expect(isCentralRadialHoldPoint(20, 20, 1000, 800)).toBe(false);
+  });
+
+  it("keeps a stationary hold open but activates an intentional drag", () => {
+    expect(radialGestureShouldActivate(0, "touch")).toBe(false);
+    expect(radialGestureShouldActivate(20, "touch")).toBe(false);
+    expect(radialGestureShouldActivate(70, "touch")).toBe(true);
+    expect(radialGestureShouldActivate(40, "mouse")).toBe(true);
   });
 });
