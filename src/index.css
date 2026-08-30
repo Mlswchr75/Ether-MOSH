@@ -680,6 +680,21 @@
       :is(.mobile-radial-layer, .desktop-radial-layer)[data-phase="armed"] .mobile-radial-wheel { animation: none; opacity: .4; scale: 1; }
     }
 
+    /* Settings overlay's supporter nudge — the one deliberately loud element
+       on that whole surface. A slow glow/scale breathe, not a jitter: it has
+       to read as "notice this" without feeling like an ad or a nag. */
+    .settings-supporter-cta {
+      animation: settings-supporter-breathe 2600ms ease-in-out infinite;
+    }
+    .settings-supporter-cta:hover { animation-play-state: paused; }
+    @keyframes settings-supporter-breathe {
+      0%, 100% { box-shadow: 0 0 0 hsl(var(--accent) / 0); scale: 1; }
+      50% { box-shadow: 0 0 34px hsl(var(--accent) / .45); scale: 1.012; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .settings-supporter-cta { animation: none; }
+    }
+
   .desktop-radial-wheel { --radial-size: min(78vw, 78dvh, 560px); }
   @media (pointer: fine) and (min-width: 901px) {
     .mobile-radial-layer { display: none !important; }
