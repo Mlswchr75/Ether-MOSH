@@ -276,17 +276,23 @@ export function analyzeOrganicFocus(source: HTMLCanvasElement, previous?: Organi
   }
   const jaggedness = clamp01(Math.sqrt(blurDiffSq / n) * 3.4);
 
-  // Temporal field blend — jagged content trusts its fresh read almost
-  // entirely (a hard edge should snap to a new true position, not lag);
-  // smooth content leans on its history so the shape doesn't flicker
-  // pixel to pixel between two nearly-identical reads. Each cell also
-  // leans on its own blurred neighborhood rather than the raw single-texel
-  // value, so isolated sensor noise can't drive the cut on its own.
+  // Temporal field blend. `previous` being undefined is the deliberate
+  // "just changed" signal — the caller clears its ref the instant the mosh
+  // stack itself changes (a fresh seed from mosh()/reroll/preset-load, not
+  // an audio-reactive param wiggle within the same stack), so a genuine
+  // stack change snaps here immediately with weight 0, no lag. Whenever a
+  // previous read DOES exist, the stack is the same one as last frame —
+  // audio-reactive motion still moves the shape, but gently: a high, mostly
+  // jaggedness-INsensitive weight, unlike the old formula that let jagged
+  // content (which a spiral or swirl very much is) collapse toward trusting
+  // almost pure fresh noise every read, reading as constant jitter. Each
+  // cell also leans on its own blurred neighborhood rather than the raw
+  // single-texel value, so isolated sensor noise can't drive the cut alone.
   //
   // This is the RAW energy field — still per-pixel edge/chroma signal, not
   // yet thresholded or closed. Kept only for temporal continuity and for
   // driving the threshold below; renderOrganicStickerFrame never sees it.
-  const temporalWeight = previous ? clamp01(.62 - jaggedness * .48) : 0;
+  const temporalWeight = previous ? clamp01(.93 - jaggedness * .12) : 0;
   const energyField = new Float32Array(n);
   for (let idx = 0; idx < n; idx++) {
     const fresh = raw[idx] * .3 + blurred[idx] * .7;
@@ -304,18 +310,29 @@ export function analyzeOrganicFocus(source: HTMLCanvasElement, previous?: Organi
   // the fill/bridge machinery to survive at all.
   const threshold = Math.max(.06, mean + stddev * .35);
 
-  // Fill the thresholded field before it goes anywhere near a bounding box
-  // or a render. A flat-colored interior has little edge/chroma energy of
-  // its own — that's exactly the kind of content a pure per-pixel energy
-  // cut chops into missing chunks, even though it's plainly part of the
-  // subject, and it can be arbitrarily large (a whole sphere's body, not
-  // just a few noisy cells), so a fixed-radius close can't be trusted to
-  // reach it. Filling every background region that never touches the frame
-  // border — i.e. is topologically enclosed by hot content — handles that
-  // regardless of size, while two genuinely separate pieces of content
-  // (each with background that DOES reach the border) stay disconnected.
+  // Center leniency — the source is drawn "cover"-fit (see sourceFillMaterial
+  // in Renderer.ts), so whatever the content's own focal mass is, it's
+  // almost always somewhere near the middle of the frame. Rather than add
+  // energy outright (which could bulldoze straight through a genuine
+  // background gap sitting near the middle — two separate pieces of content
+  // either side of the true center, say), this LOWERS THE BAR a weak-but-real
+  // reading has to clear the closer it is to center: content with only
+  // modest signal there (a spiral's faint core, a soft convergence point)
+  // clears it easily, while true background — raw energy already at or near
+  // zero — still clears no positive bar no matter how far the bar drops.
+  // The leniency fades out well before the frame edge, so the outer cut
+  // stays governed entirely by the content's own real structure: an edge
+  // that's curved there stays curved, one that's straight stays straight.
+  const fieldCx = (size - 1) / 2, fieldCy = (size - 1) / 2;
+  const centerRadius = size * .42;
   const hot = new Uint8Array(n);
-  for (let idx = 0; idx < n; idx++) hot[idx] = energyField[idx] >= threshold ? 1 : 0;
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    const idx = y * size + x;
+    const cdx = x - fieldCx, cdy = y - fieldCy;
+    const centerDist = Math.sqrt(cdx * cdx + cdy * cdy) / centerRadius;
+    const leniency = Math.pow(Math.max(0, 1 - centerDist), 1.6) * .55;
+    hot[idx] = energyField[idx] >= threshold * (1 - leniency) ? 1 : 0;
+  }
   // A soft gradient rim (or FX dithering that happens to thin out at a few
   // points) can leave pinhole gaps in an otherwise-real boundary — a small
   // bridge before the enclosed-hole flood fill keeps those gaps from
@@ -355,11 +372,14 @@ export function analyzeOrganicFocus(source: HTMLCanvasElement, previous?: Organi
   if (boxRight - boxLeft < .08) { const c = (boxLeft + boxRight) / 2; boxLeft = clamp01(c - .04); boxRight = clamp01(c + .04); }
   if (boxBottom - boxTop < .08) { const c = (boxTop + boxBottom) / 2; boxTop = clamp01(c - .04); boxBottom = clamp01(c + .04); }
 
-  // Temporally blend the box itself the same way the field does — jagged
-  // or fast-moving content is allowed to resize/reposition the frame
-  // quickly; calm content keeps the frame steady so the crop doesn't drift
-  // for no reason.
-  const boxWeight = previous ? clamp01(.72 - jaggedness * .5) : 0;
+  // Temporally blend the box itself the same way the field does above:
+  // `previous` undefined (the caller's deliberate signal that the mosh
+  // stack itself just changed) snaps the frame to the new content
+  // immediately; otherwise the box stays high-weighted and mostly
+  // jaggedness-insensitive, so a busy, edge-rich stack (spirals, swirls)
+  // resizes/repositions gradually while the audio moves it, rather than
+  // jittering frame to frame the way a steep jaggedness-driven weight did.
+  const boxWeight = previous ? clamp01(.9 - jaggedness * .12) : 0;
   const finalLeft = previous ? lerp(boxLeft, previous.left, boxWeight) : boxLeft;
   const finalRight = previous ? lerp(boxRight, previous.right, boxWeight) : boxRight;
   const finalTop = previous ? lerp(boxTop, previous.top, boxWeight) : boxTop;
