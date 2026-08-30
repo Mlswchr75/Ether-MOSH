@@ -40,6 +40,12 @@ export function StickerCapture() {
   const glCanvas             = useStore(s => s.glCanvas);
   const video                = useStore(s => s.videoElement);
   const sourceMode           = useStore(s => s.sourceMode);
+  // Only changes on a genuine mosh-stack reshuffle (mosh()/reroll-seed/
+  // favorite/preset-load) — never on an audio-reactive param wiggle within
+  // the same stack. Used purely to reset the organic mask's own temporal
+  // history below, so the sticker frame snaps to the new stack immediately
+  // instead of lagging in behind it the way heavy history-smoothing would.
+  const moshSeed              = useStore(s => s.seed);
   const gallery              = useStore(s => s.stickerGallery);
   const addSticker           = useStore(s => s.addStickerToGallery);
   const removeSticker        = useStore(s => s.removeStickerFromGallery);
@@ -86,6 +92,14 @@ export function StickerCapture() {
   useEffect(() => {
     if (transparentActive && sourceMode !== 'upload') { setTransparentActive(false); alphaBoxRef.current = undefined; }
   }, [sourceMode, transparentActive]);
+  // The organic mask's temporal smoothing (see analyzeOrganicFocus) leans
+  // heavily on its own history now, on purpose — that's what keeps the
+  // sticker frame's shape gliding smoothly instead of jittering while the
+  // same mosh stack keeps running. But that same smoothing would make it
+  // LAG behind a genuine stack change, so drop the history the instant one
+  // actually happens: analyzeOrganicFocus treats an undefined `previous` as
+  // its "just changed" signal and snaps to the new stack's shape immediately.
+  useEffect(() => { focusRef.current = undefined; }, [moshSeed]);
 
   useEffect(() => {
     if (!stickerMode || !lottieMode) return;
