@@ -1648,28 +1648,27 @@ export default function Editor() {
     };
   }, [toggleSmartFreeze]);
 
-  // Pro Mode, desktop: holding bare Shift (no other key, no modifiers)
-  // shows the menu instantly; releasing it hides it instantly. A true hold,
+  // Desktop: holding bare Shift summons the centered Hot Trigger wheel
+  // instantly; releasing dismisses it. In Pro Mode the chrome follows too. A true hold,
   // not a toggle-with-timer, so it's as fast to flash and dismiss as
   // physically possible. Forces the UI back to hidden on blur/visibility
   // change too, so alt-tabbing away mid-hold can never strand it open.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (!useStore.getState().proModeEnabled) return;
       if (e.key !== "Shift" || e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
-      setHideUI(false);
+      if (useStore.getState().proModeEnabled) setHideUI(false);
+      window.dispatchEvent(new Event("mosh:open-hot-triggers"));
     };
     const onKeyUp = (e: KeyboardEvent) => {
-      if (!useStore.getState().proModeEnabled) return;
       if (e.key !== "Shift") return;
-      if (chromePinned) return; // pin overrides the release-to-hide gesture
-      setHideUI(true);
+      window.dispatchEvent(new Event("mosh:close-hot-triggers"));
+      if (!chromePinned && useStore.getState().proModeEnabled) setHideUI(true);
     };
     const forceHidden = () => {
-      if (chromePinned) return;
-      if (useStore.getState().proModeEnabled) setHideUI(true);
+      window.dispatchEvent(new Event("mosh:close-hot-triggers"));
+      if (!chromePinned && useStore.getState().proModeEnabled) setHideUI(true);
     };
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);

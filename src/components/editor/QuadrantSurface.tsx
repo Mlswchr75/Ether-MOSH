@@ -96,7 +96,6 @@ export function QuadrantSurface({ onRoll, onTogglePerf, onTune = () => {} }: Pro
   const showBeforeAfter = useStore(s => s.showBeforeAfter);
   const isolationMode = useStore(s => s.isolationMode);
   const stickerMode = useStore(s => s.stickerMode);
-  const moshNext = useStore(s => s.moshNext);
 
   const wrapRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<Drag | null>(null);
@@ -279,39 +278,16 @@ export function QuadrantSurface({ onRoll, onTogglePerf, onTune = () => {} }: Pro
     // long enough to belong to the menu-rack hold is not a tap.
     if (d.moved || performance.now() - d.startedAt >= TAP_MS) return;
 
-    // A fresh source has zero layers, which fails the exact same
-    // every-role-has-nothing-unlocked check as a deliberately all-locked
-    // stack — moshNext() can't tell "nothing exists yet" from "everything is
-    // pinned" apart. Without this, the very first tap on a blank canvas
-    // (before anyone has pressed the Mosh button) claimed roles were
-    // "locked", which isn't true and isn't discoverable. Seed the stack with
-    // a full mosh instead — that's what an empty canvas actually needs.
-    if (useStore.getState().layers.length === 0) {
-      crossfadeLayers(() => useStore.getState().mosh(), MOSH_FADE_MS);
-      return;
-    }
-
-    const roll = moshNext();
-    if (!roll) {
-      // Every role is locked — say so rather than looking broken.
-      showReadout({
-        effectName: "",
-        xLabel: "", xValue: 0, yLabel: "", yValue: 0,
-        message: "all roles locked",
-        at: performance.now(),
-      });
-      return;
-    }
-
+    // A clean single tap is the same full-stack Art Director action as Space.
+    // Locked layers remain pinned because mosh() already honours them.
+    crossfadeLayers(() => useStore.getState().mosh(), MOSH_FADE_MS);
     showReadout({
-      role: roll.role,
-      effectName: roll.effectName,
-      xLabel: "", xValue: 0, yLabel: "", yValue: 0,
-      relation: roll.relation,
+      effectName: "", xLabel: "", xValue: 0, yLabel: "", yValue: 0,
+      message: "new composition",
       look: useStore.getState().currentLook?.name,
       at: performance.now(),
     });
-    onRoll?.(roll.role);
+    onRoll?.(useStore.getState().roleCursor);
   };
 
   const onPointerCancel = (e: React.PointerEvent) => {

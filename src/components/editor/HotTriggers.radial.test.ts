@@ -5,6 +5,7 @@ import {
   radialHoldJitterTolerance,
   radialIndexForAngle,
   radialTriggerIndex,
+  isCentralRadialHoldPoint,
   RADIAL_WHEEL_ARM_MS,
   RADIAL_WHEEL_HOLD_MS,
 } from "./HotTriggers";
@@ -47,5 +48,12 @@ describe("mobile radial trigger selection", () => {
     expect(radialFlickThreshold("pen")).toBeLessThan(radialFlickThreshold("touch"));
     expect(radialHoldJitterTolerance("mouse")).toBeLessThan(radialHoldJitterTolerance("pen"));
     expect(radialHoldJitterTolerance("pen")).toBeLessThan(radialHoldJitterTolerance("touch"));
+  });
+
+  it("only summons from the central circle", () => {
+    expect(isCentralRadialHoldPoint(500, 400, 1000, 800)).toBe(true);
+    expect(isCentralRadialHoldPoint(500, 590, 1000, 800)).toBe(true);
+    expect(isCentralRadialHoldPoint(500, 610, 1000, 800)).toBe(false);
+    expect(isCentralRadialHoldPoint(20, 20, 1000, 800)).toBe(false);
   });
 });

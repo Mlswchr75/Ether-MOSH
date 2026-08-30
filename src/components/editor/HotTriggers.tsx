@@ -88,6 +88,13 @@ export function radialHoldJitterTolerance(pointerType: string) {
   return pointerType === "touch" ? 20 : pointerType === "pen" ? 12 : 8;
 }
 
+/** Hold-to-open is intentionally confined to the middle: a circle whose
+ * diameter is half the shorter viewport edge, always under 25% of its area. */
+export function isCentralRadialHoldPoint(x: number, y: number, width: number, height: number) {
+  const radius = Math.min(width, height) * 0.25;
+  return Math.hypot(x - width / 2, y - height / 2) <= radius;
+}
+
 export function normalizeRadialDegrees(value: number) {
   return ((value % 360) + 360) % 360;
 }
@@ -114,20 +121,15 @@ export function radialTriggerIndex(angle: number, distance: number, total: numbe
 export const AUTO_MOSH_TIMINGS = [3, 15, 30, 60, 300, 600] as const;
 const DEFAULT_AUTO_MOSH_SEC = 15;
 
-/** Every trigger the rail can show, in the order a first-time visitor would
- *  most plausibly want to meet them: escape hatches and undo first, the two
- *  actions that actually make the image move (Mosh / Auto-Mosh) grouped with
- *  what tames them (Clear FX, Journey), then how it reacts to sound, then
- *  capture/export, then the deeper creative tools, then account-adjacent and
- *  situational stuff last. Not load-bearing for anything but the *default*
- *  order — "customize layout" lets anyone override it per-browser. */
+/** Performance-first: make/change/restore, direct the live response, capture,
+ * deepen the artwork, then source/system/navigation utilities. */
 const DEFAULT_ORDER = [
-  "home", "source-upload", "source-camera", "source-forge", "source-motif", "account", "undo", "redo",
-  "mosh", "auto-mosh", "clear-fx", "journey",
-  "audio", "sensitivity",
-  "freeze", "capture", "gif", "share", "export-settings",
-  "mosh-sticker", "sticker-mode", "sticker-capture", "sticker-tools", "sticker-vault", "isolation", "theme-track",
-  "forge-palette", "motif-maestro", "favorites", "fullscreen", "pro-mode", "xr-menu", "switch-camera", "support",
+  "mosh", "undo", "redo", "journey", "auto-mosh", "clear-fx",
+  "audio", "sensitivity", "theme-track", "freeze",
+  "capture", "gif", "share", "export-settings", "favorites",
+  "isolation", "mosh-sticker", "sticker-mode", "sticker-capture", "sticker-tools", "sticker-vault",
+  "source-camera", "switch-camera", "source-upload", "source-forge", "forge-palette", "source-motif", "motif-maestro",
+  "fullscreen", "pro-mode", "xr-menu", "account", "support", "home",
 ] as const;
 
 const TRIGGER_LABELS: Record<string, string> = {
@@ -149,7 +151,7 @@ const TRIGGER_LABELS: Record<string, string> = {
   "switch-camera": "Switch camera", support: "Support MOSH",
 };
 
-const ORDER_KEY = "cathedral_hot_trigger_order_v1";
+const ORDER_KEY = "cathedral_hot_trigger_order_v2";
 
 function loadOrder(): string[] {
   try {
@@ -824,6 +826,11 @@ function MobileRadialWheel({
     if (highlightRef.current) slotRefs.current.get(highlightRef.current)?.removeAttribute("data-highlighted");
     highlightRef.current = id;
     if (id) slotRefs.current.get(id)?.setAttribute("data-highlighted", "true");
+    if (id) {
+      const rect = slotRefs.current.get(id)?.getBoundingClientRect();
+      if (rect) cursorFx.preview((rect.left + rect.width / 2) / Math.max(1, window.innerWidth), (rect.top + rect.height / 2) / Math.max(1, window.innerHeight));
+      try { navigator.vibrate?.(3); } catch {}
+    }
     const label = labelRef.current;
     if (label) {
       label.textContent = id ? (TRIGGER_LABELS[id] ?? id) : "MOSH";
@@ -878,6 +885,7 @@ function MobileRadialWheel({
       eventTarget instanceof Element && !!eventTarget.closest("button, a, input, textarea, select, [role='slider'], [data-no-longpress], .mobile-radial-wheel");
     const onDown = (event: PointerEvent) => {
       if ((event.pointerType === "mouse" && event.button !== 0) || ignored(event.target) || gestureRef.current.pointerId !== -1) return;
+      if (!isCentralRadialHoldPoint(event.clientX, event.clientY, window.innerWidth, window.innerHeight)) return;
       clearTimers();
       gestureRef.current = {
         pointerId: event.pointerId, x: event.clientX, y: event.clientY,
@@ -893,6 +901,8 @@ function MobileRadialWheel({
         const gesture = gestureRef.current;
         if (gesture.pointerId !== event.pointerId || gesture.cancelled) return;
         gesture.fired = true;
+        gesture.x = window.innerWidth / 2;
+        gesture.y = window.innerHeight / 2;
         suppressClickRef.current = true;
         setPhase("open");
         cacheWheelRect();
@@ -924,16 +934,13 @@ function MobileRadialWheel({
     const onEnd = (event: PointerEvent) => {
       if (event.pointerId !== gestureRef.current.pointerId) return;
       clearTimers();
+      let keepOpen = false;
       if (gestureRef.current.fired) {
         selectFromFlick(event.clientX - gestureRef.current.x, event.clientY - gestureRef.current.y, gestureRef.current.pointerType);
         if (highlightRef.current) activateRef.current(highlightRef.current);
+        else keepOpen = true;
       }
-      // Always return to idle here — previously this only happened when the
-      // gesture never fired, so a successful hold-flick-release (or a hold
-      // that opened the wheel without landing on a segment) left the wheel
-      // open with its full-screen backdrop still absorbing pointer events.
-      setPhase("idle");
-      select(null);
+      if (!keepOpen) { setPhase("idle"); select(null); }
       gestureRef.current.pointerId = -1;
     };
     const onCancel = (event: PointerEvent) => {
@@ -1072,12 +1079,14 @@ function MobileRadialWheel({
                   ref={(node) => { if (node) slotRefs.current.set(id, node); else slotRefs.current.delete(id); }}
                   role="menuitem"
                   data-radial-id={id}
+                  data-radial-variant={index % 8}
                   data-radial-action
                   className="mobile-radial-wheel__slot"
                   style={{
                     ["--slot-angle" as string]: `${angle}deg`,
                     ["--slot-counter-angle" as string]: `${-angle}deg`,
                     ["--slot-radius" as string]: `${radius / 100}`,
+                    ["--slot-delay" as string]: `${-(index % 9) * 137}ms`,
                   }}
                   onClick={() => onSelect(id)}
                   onPointerDown={(event) => event.stopPropagation()}
@@ -1129,8 +1138,15 @@ function DesktopRadialWheel({
   layoutRef.current = layout;
 
   const select = (id: string | null) => {
+    if (highlightedRef.current === id) return;
     highlightedRef.current = id;
     setHighlighted(id);
+    if (id) {
+      const slot = wheelRef.current?.querySelector<HTMLElement>(`[data-radial-id="${CSS.escape(id)}"]`);
+      const rect = slot?.getBoundingClientRect();
+      if (rect) cursorFx.preview((rect.left + rect.width / 2) / Math.max(1, window.innerWidth), (rect.top + rect.height / 2) / Math.max(1, window.innerHeight));
+      try { navigator.vibrate?.(3); } catch {}
+    }
   };
   const activate = useCallback((id: string) => {
     onSelect(id);
@@ -1180,6 +1196,7 @@ function DesktopRadialWheel({
       eventTarget instanceof Element && !!eventTarget.closest("button, a, input, textarea, select, [role='slider'], [data-no-longpress], .desktop-radial-wheel");
     const onDown = (event: PointerEvent) => {
       if (event.pointerType === "touch" || event.button !== 0 || ignored(event.target) || gestureRef.current.pointerId !== -1) return;
+      if (!isCentralRadialHoldPoint(event.clientX, event.clientY, window.innerWidth, window.innerHeight)) return;
       cancelTimers();
       gestureRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, lastX: event.clientX, lastY: event.clientY, startedAt: performance.now(), fired: false, armed: false, cancelled: false, pointerType: event.pointerType || "mouse" };
       armTimer = window.setTimeout(() => {
@@ -1189,12 +1206,7 @@ function DesktopRadialWheel({
       }, RADIAL_WHEEL_ARM_MS);
       openTimer = window.setTimeout(() => {
         if (gestureRef.current.pointerId !== event.pointerId || gestureRef.current.cancelled) return;
-        const size = Math.min(window.innerWidth * 0.78, window.innerHeight * 0.78, 560);
-        const radius = size / 2 + 12;
-        const nextCenter = {
-          x: Math.max(radius, Math.min(window.innerWidth - radius, event.clientX)),
-          y: Math.max(radius, Math.min(window.innerHeight - radius, event.clientY)),
-        };
+        const nextCenter = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
         gestureRef.current = { ...gestureRef.current, x: nextCenter.x, y: nextCenter.y, fired: true };
         setCenter(nextCenter);
         setEditing(false);
@@ -1223,14 +1235,13 @@ function DesktopRadialWheel({
     const onEnd = (event: PointerEvent) => {
       if (event.pointerId !== gestureRef.current.pointerId) return;
       cancelTimers();
+      let keepOpen = false;
       if (gestureRef.current.fired) {
         selectFromPointer(event.clientX, event.clientY, gestureRef.current.pointerType);
         if (highlightedRef.current) activate(highlightedRef.current);
+        else keepOpen = true;
       }
-      // Always return to idle — previously a hold that opened the wheel but
-      // never landed on a segment (fired with no highlight) hit neither
-      // branch below and left the wheel stuck open.
-      setPhase("idle");
+      if (!keepOpen) setPhase("idle");
       gestureRef.current.pointerId = -1;
       select(null);
     };
@@ -1250,7 +1261,7 @@ function DesktopRadialWheel({
   }, [visualizerRef, activate]);
 
   useEffect(() => {
-    const open = () => setPhase("open");
+    const open = () => { setCenter({ x: window.innerWidth / 2, y: window.innerHeight / 2 }); setPhase("open"); };
     const close = () => { setPhase("idle"); setEditing(false); select(null); };
     const key = (event: KeyboardEvent) => { if (event.key === "Escape") close(); };
     window.addEventListener("mosh:open-hot-triggers", open);
@@ -1285,11 +1296,15 @@ function DesktopRadialWheel({
                 key={id}
                 role="menuitem"
                 data-radial-id={id}
+                data-radial-variant={index % 8}
                 data-radial-action
                 data-highlighted={highlighted === id || undefined}
                 data-editing={editing || undefined}
                 className="mobile-radial-wheel__slot"
-                style={{ transform: `translate(-50%, -50%) translate(calc(var(--radial-size) * ${point.x}), calc(var(--radial-size) * ${point.y}))` }}
+                style={{
+                  transform: `translate(-50%, -50%) translate(calc(var(--radial-size) * ${point.x}), calc(var(--radial-size) * ${point.y}))`,
+                  ["--slot-delay" as string]: `${-(index % 9) * 137}ms`,
+                }}
                 onClickCapture={(event) => { if (editing) { event.preventDefault(); event.stopPropagation(); } }}
                 onClick={() => onSelect(id)}
                 onPointerDown={(event) => event.stopPropagation()}

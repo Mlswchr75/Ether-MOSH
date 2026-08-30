@@ -19,6 +19,7 @@ import { toast } from "sonner";
 import { vrMode } from "@/engine/vrMode";
 import { VrButton } from "./VrButton";
 import { cursorFx } from "@/engine/cursorFx";
+import { crossfadeLayers, MOSH_FADE_MS } from "@/engine/layerCrossfade";
 
 /** Matches JourneyDirector's default sampleMs — the cadence its AudioFeatures
  *  computation was designed for, not an arbitrary choice. */
@@ -732,16 +733,17 @@ export function GlCanvas() {
       <canvas
         ref={canvasRef}
         data-mosh-canvas
-        className={`relative z-10 block h-full w-full ${sourceMode === "forge" ? "cursor-pointer" : ""}`}
+        className={`relative z-10 block h-full w-full ${["forge", "motif"].includes(sourceMode) ? "cursor-pointer" : ""}`}
         style={{ imageRendering: "auto", objectFit: "cover" }}
-        // Forge has no image or camera feed to tap-to-reroll a role on (that's
-        // QuadrantSurface's job in the other two modes, and it isn't mounted
-        // here) — a plain click is the whole interaction, same as it was on
-        // the standalone /forge page. Binding it to the canvas itself, not the
+        // Generated modes do not mount QuadrantSurface. Bind the same full
+        // Art Director shuffle used by Space directly to their canvas. Binding
+        // it to the canvas itself, not the
         // container, means it only fires when the click actually lands on the
         // visible pixels — any overlay drawn above it (HotTriggers etc.) is a
         // separate element that receives the click first.
-        onClick={sourceMode === "forge" ? () => randomiseForge() : undefined}
+        onClick={["forge", "motif"].includes(sourceMode)
+          ? () => crossfadeLayers(() => useStore.getState().mosh(), MOSH_FADE_MS)
+          : undefined}
       />
 
       <IsolationOverlay />
