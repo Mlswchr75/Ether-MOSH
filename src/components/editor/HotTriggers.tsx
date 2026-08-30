@@ -191,7 +191,7 @@ function HotBtn({
   label: string;
   active?: boolean;
   delay: number;
-  onClick: () => void;
+  onClick: (e: React.MouseEvent<HTMLButtonElement>) => void;
   children: ReactNode;
   tint?: string;
   disabled?: boolean;

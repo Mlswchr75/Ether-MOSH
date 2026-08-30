@@ -32,6 +32,9 @@ Do not add `/auth/callback` from either application to Google as an OAuth redire
 - Map aliases to Stripe Price IDs on the server.
 - Accept only origins listed in `PAYMENTS_ALLOWED_ORIGINS` (production default: `https://ether-mosh.online`).
 - Create a Stripe Checkout Session in the requested environment.
+- Keep `payment_method_types` omitted so Stripe Dynamic Payment Methods can rank every eligible method.
+- Enable Adaptive Pricing so eligible buyers can pay in local currency and use currency-specific wallets such as Samsung Pay.
+- Use one client-generated checkout-attempt UUID as the idempotency basis for session retries.
 
 `payments-webhook` must:
 
@@ -42,6 +45,10 @@ Do not add `/auth/callback` from either application to Google as an OAuth redire
 
 ## 4. Stripe live configuration
 
+- Register `ether-mosh.online` as a live payment-method domain.
+- Enable Apple Pay, Google Pay, Cash App Pay, Link, cards, and every eligible local method in the live Dynamic Payment Methods configuration.
+- Keep Adaptive Pricing enabled. Samsung Pay appears only for eligible South Korean buyers when Checkout presents KRW.
+- PayPal through Stripe is available only to Stripe accounts in supported European countries; a US account requires a separate PayPal integration.
 - Keep one live webhook endpoint targeting `payments-webhook?env=live` and one test endpoint targeting `payments-webhook?env=sandbox`.
 - Disable webhook endpoints targeting retired Lovable backends after a successful end-to-end test.
 - Keep test and live webhook secrets separate.

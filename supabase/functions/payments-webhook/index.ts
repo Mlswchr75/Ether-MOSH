@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { type StripeEnv, createStripeClient, verifyWebhook } from "../_shared/stripe.ts";
+import { entitlementProductForAlias } from "../_shared/payment-policy.ts";
 
 let _supabase: ReturnType<typeof createClient<any>> | null = null;
 function getSupabase() {
@@ -14,10 +15,7 @@ function getSupabase() {
 
 // Human-readable price id (lookup_key) -> entitlement product id
 function productFromPriceId(priceId: string | null | undefined): string | null {
-  if (!priceId) return null;
-  if (priceId.startsWith("mosh_supporter")) return "mosh_supporter";
-  if (priceId.startsWith("mosh_tip")) return "mosh_tip";
-  return priceId;
+  return entitlementProductForAlias(priceId);
 }
 
 async function resolvePriceLookupKeys(env: StripeEnv, sessionId: string): Promise<string[]> {
@@ -38,15 +36,10 @@ async function grantEntitlements(session: any, env: StripeEnv) {
     return;
   }
 
-  let lookupKeys: string[] = [];
-  try {
-    lookupKeys = await resolvePriceLookupKeys(env, session.id);
-  } catch (e) {
-    console.error("failed to list line items:", e);
-  }
-  if (lookupKeys.length === 0 && session?.metadata?.priceId) {
-    lookupKeys = [session.metadata.priceId];
-  }
+  const metadataProduct = productFromPriceId(session?.metadata?.priceId);
+  const lookupKeys: string[] = metadataProduct
+    ? [session.metadata.priceId]
+    : await resolvePriceLookupKeys(env, session.id);
 
   const rows = lookupKeys
     .map((key) => productFromPriceId(key))
@@ -68,23 +61,18 @@ async function grantEntitlements(session: any, env: StripeEnv) {
   const { error } = await getSupabase()
     .from("entitlements")
     .upsert(rows, { onConflict: "transaction_id,product_id" });
-  if (error) console.error("entitlements upsert failed:", error);
+  if (error) throw new Error(`Entitlements upsert failed: ${error.message}`);
 }
 
 // Refund / chargeback -> revoke immediately.
 async function revokeByPaymentIntent(paymentIntentId: string, env: StripeEnv, reason: string) {
   if (!paymentIntentId) return;
-  let sessionIds: string[] = [];
-  try {
-    const stripe = createStripeClient(env);
-    const sessions = await stripe.checkout.sessions.list({
-      payment_intent: paymentIntentId,
-      limit: 10,
-    });
-    sessionIds = sessions.data.map((s: any) => s.id);
-  } catch (e) {
-    console.error("failed to resolve sessions for payment intent:", e);
-  }
+  const stripe = createStripeClient(env);
+  const sessions = await stripe.checkout.sessions.list({
+    payment_intent: paymentIntentId,
+    limit: 10,
+  });
+  const sessionIds = sessions.data.map((s: any) => s.id);
   if (sessionIds.length === 0) return;
 
   const { error, count } = await getSupabase()
@@ -93,8 +81,7 @@ async function revokeByPaymentIntent(paymentIntentId: string, env: StripeEnv, re
     .in("transaction_id", sessionIds)
     .eq("environment", env);
   if (error) {
-    console.error("entitlements revoke failed:", error);
-    return;
+    throw new Error(`Entitlements revoke failed: ${error.message}`);
   }
   console.log(`Revoked ${count ?? 0} entitlement row(s) (${reason})`);
 }
