@@ -301,14 +301,17 @@ export function analyzeOrganicFocus(source: HTMLCanvasElement, previous?: Organi
 
   // Adaptive threshold — data-driven every single analysis, never a fixed
   // constant, so a low-contrast frame and a blown-out one both get a real
-  // cut instead of one guessing wrong for the other. Pulled in from an
-  // earlier .55 multiple of spread: with the enclosed-hole fill and
-  // background-distance term now doing real work, the threshold's own job
-  // is narrower — separate real signal from noise, not carve the shape —
-  // so a more permissive cut here means less genuinely-real-but-modest
-  // content (a soft rim's far side, a low-contrast interior) has to lean on
-  // the fill/bridge machinery to survive at all.
-  const threshold = Math.max(.06, mean + stddev * .35);
+  // cut instead of one guessing wrong for the other. Originally .55; pulled
+  // in once to .35 once the enclosed-hole fill and background-distance term
+  // started doing real work, but .35 turned out too permissive on its
+  // own — enough of the frame (including near-edge, low-contrast texture)
+  // crossed it that the box routinely swelled toward the full source frame,
+  // reading as a flat rectangle with barely any organic edge left to cut.
+  // .45 splits the difference: still far more forgiving than the original
+  // for genuinely-real-but-modest content (center leniency below and the
+  // fill/bridge machinery cover the rest), without inviting the frame's own
+  // low-level edge texture to count as "content" on its own.
+  const threshold = Math.max(.06, mean + stddev * .45);
 
   // Center leniency — the source is drawn "cover"-fit (see sourceFillMaterial
   // in Renderer.ts), so whatever the content's own focal mass is, it's

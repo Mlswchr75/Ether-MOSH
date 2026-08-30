@@ -79,6 +79,16 @@ export function StickerCapture() {
   const previewRef   = useRef<HTMLCanvasElement | null>(null);
   const focusRef     = useRef<OrganicFocus | undefined>(undefined);
   const alphaBoxRef  = useRef<ContentBox | undefined>(undefined);
+  // The crop window the live preview actually renders through — committed
+  // once per mosh stack (or per genuinely large content shift within one),
+  // then held fixed. `focusRef` above keeps re-analyzing every 8th frame so
+  // the mask's own alpha stays alive and audio-reactive, but bouncing THAT
+  // fresh box straight into the crop every time is what was making the
+  // preview's whole frame jump between different regions of the source
+  // every few seconds — this decouples "what shape is inside the frame"
+  // (kept live) from "where the frame itself is" (locked).
+  const lockedBoxRef = useRef<ContentBox | undefined>(undefined);
+  const lastLockTimeRef = useRef(0);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [phase, _setPhase] = useState<Phase>('idle');
 
@@ -99,7 +109,7 @@ export function StickerCapture() {
   // LAG behind a genuine stack change, so drop the history the instant one
   // actually happens: analyzeOrganicFocus treats an undefined `previous` as
   // its "just changed" signal and snaps to the new stack's shape immediately.
-  useEffect(() => { focusRef.current = undefined; }, [moshSeed]);
+  useEffect(() => { focusRef.current = undefined; lockedBoxRef.current = undefined; }, [moshSeed]);
 
   useEffect(() => {
     if (!stickerMode || !lottieMode) return;
@@ -125,13 +135,38 @@ export function StickerCapture() {
       if (!focusRef.current || frame++ % 8 === 0) focusRef.current = analyzeOrganicFocus(source, focusRef.current);
       const focus = focusRef.current;
       if (!focus) return;
+      // Commit the crop window once, then hold it — relock only when the
+      // content has drifted FAR from the locked box (a real compositional
+      // change, not audio-reactive jitter within the same stack) and only
+      // after a minimum dwell time, so a borderline reading right at the
+      // threshold can't flip-flop the lock back and forth every few frames.
+      const freshBox: ContentBox = { left: focus.left, right: focus.right, top: focus.top, bottom: focus.bottom };
+      const locked = lockedBoxRef.current;
+      if (!locked) {
+        lockedBoxRef.current = freshBox;
+        lastLockTimeRef.current = now;
+      } else {
+        const drift = Math.abs(freshBox.left - locked.left) + Math.abs(freshBox.right - locked.right)
+          + Math.abs(freshBox.top - locked.top) + Math.abs(freshBox.bottom - locked.bottom);
+        if (drift > 0.35 && now - lastLockTimeRef.current > 2200) {
+          lockedBoxRef.current = freshBox;
+          lastLockTimeRef.current = now;
+        }
+      }
+      const lockedBox = lockedBoxRef.current;
       // The frame itself is content-shaped now — size the preview canvas
-      // from the focus's own bounding box aspect (computed after analysis,
-      // not assumed from the source's landscape aspect beforehand) so a
-      // tall, thin or asymmetric shape actually previews as tall and thin.
-      const { width, height } = contentFrameSize(focus, maxDimension);
+      // from the LOCKED box's own aspect (computed after analysis, not
+      // assumed from the source's landscape aspect beforehand) so a tall,
+      // thin or asymmetric shape actually previews as tall and thin, and
+      // stays that size until the lock itself moves.
+      const { width, height } = contentFrameSize(lockedBox, maxDimension);
       if (preview.width !== width || preview.height !== height) { preview.width = width; preview.height = height; }
-      drawLottieStickerPreview(ctx, renderOrganicStickerFrame(source, focus, width, height, now / 1000), lottieBackground, now / 1000);
+      // The mask's alpha still tracks the freshest analysis (kept alive,
+      // audio-reactive) — only the crop window (left/right/top/bottom) is
+      // pinned to the lock, exactly the "committed box + live field" split
+      // exportLottieSticker's own capture loop already relies on below.
+      const renderFocus: OrganicFocus = { ...focus, ...lockedBox };
+      drawLottieStickerPreview(ctx, renderOrganicStickerFrame(source, renderFocus, width, height, now / 1000), lottieBackground, now / 1000);
     };
     raf = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(raf);
