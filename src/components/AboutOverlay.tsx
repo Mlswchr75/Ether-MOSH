@@ -24,7 +24,7 @@ export const AboutTrigger = ({ hidden = false }: AboutTriggerProps) => {
     <>
       <button
         type="button"
-        aria-label="About MOSH"
+        aria-label="About Ether-MOSH"
         onClick={(e) => { e.stopPropagation(); setOpen(true); }}
         className="pointer-events-auto absolute bottom-6 right-5 z-20 flex h-9 w-9 items-center justify-center rounded-full border border-border/70 font-mono text-sm text-foreground/60 transition hover:border-accent hover:text-accent"
       >
@@ -35,7 +35,7 @@ export const AboutTrigger = ({ hidden = false }: AboutTriggerProps) => {
         <div
           role="dialog"
           aria-modal="true"
-          aria-label="About MOSH"
+          aria-label="About Ether-MOSH"
           onClick={(e) => { e.stopPropagation(); setOpen(false); }}
           className="fixed inset-0 z-50 flex cursor-default items-center justify-center bg-background/90 p-6 backdrop-blur-sm"
         >
@@ -43,7 +43,7 @@ export const AboutTrigger = ({ hidden = false }: AboutTriggerProps) => {
             onClick={(e) => e.stopPropagation()}
             className="max-w-lg border border-border bg-card p-8 text-left shadow-[0_0_80px_hsl(var(--primary)/0.15)]"
           >
-            <h2 className="mosh-text font-sans text-3xl font-bold tracking-tight" data-text="MOSH">MOSH</h2>
+            <h2 className="mosh-text font-sans text-3xl font-bold tracking-tight" data-text="Ether-MOSH">Ether-MOSH</h2>
             <p className="mt-4 font-mono text-xs leading-relaxed text-foreground/75">
               A real-time, audio-reactive visual instrument. Load an image — or go
               live with your camera — then stack GPU glitch effects, modulate them
