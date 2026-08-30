@@ -42,7 +42,6 @@ describe("QuadrantSurface", () => {
       currentLook: null,
       currentBrief: null,
       lastRoleRoll: null,
-      recentEffects: [],
       recentLooks: [],
       showBeforeAfter: false,
       isolationMode: "off",

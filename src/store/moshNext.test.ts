@@ -6,7 +6,7 @@ describe("moshNext", () => {
   beforeEach(() => {
     useStore.setState({
       layers: [], selectedLayerId: null, past: [], future: [],
-      currentLook: null, currentBrief: null, recentEffects: [], recentLooks: [],
+      currentLook: null, currentBrief: null, recentLooks: [],
       selectedRole: null,
       selectedRoleLayers: {}, roleCursor: "grade",
     });
