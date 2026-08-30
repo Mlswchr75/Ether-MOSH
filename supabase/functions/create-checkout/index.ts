@@ -4,9 +4,15 @@ import { type StripeEnv, createStripeClient } from "../_shared/stripe.ts";
 import {
   parseAllowedOrigins,
   requireAllowedOrigin,
+  requireCheckoutAttemptId,
   requireCheckoutProductAlias,
   requireSafeReturnUrl,
+  requireSingleCheckoutQuantity,
 } from "../_shared/payment-policy.ts";
+import {
+  buildCheckoutSessionBase,
+  checkoutIdempotencyKey,
+} from "../_shared/checkout-session.ts";
 
 const allowedOrigins = parseAllowedOrigins(Deno.env.get("PAYMENTS_ALLOWED_ORIGINS"));
 
@@ -19,7 +25,7 @@ function corsHeaders(origin?: string) {
 }
 
 // Resolve the caller from their JWT. Never trust a client-supplied userId.
-async function getCaller(req: Request): Promise<{ id: string; email?: string } | null> {
+async function getCaller(req: Request): Promise<{ id: string; email?: string; token: string } | null> {
   const authHeader = req.headers.get("Authorization") ?? "";
   const token = authHeader.replace(/^Bearer\s+/i, "").trim();
   if (!token) return null;
@@ -30,7 +36,28 @@ async function getCaller(req: Request): Promise<{ id: string; email?: string } |
   );
   const { data, error } = await supabase.auth.getUser(token);
   if (error || !data.user) return null;
-  return { id: data.user.id, email: data.user.email ?? undefined };
+  return { id: data.user.id, email: data.user.email ?? undefined, token };
+}
+
+async function hasSupporterEntitlement(
+  token: string,
+  userId: string,
+  environment: StripeEnv,
+): Promise<boolean> {
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_ANON_KEY")!,
+    { global: { headers: { Authorization: `Bearer ${token}` } } },
+  );
+  const { data, error } = await supabase
+    .from("entitlements")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("product_id", "mosh_supporter")
+    .eq("environment", environment)
+    .limit(1);
+  if (error) throw new Error("Unable to verify existing access");
+  return (data?.length ?? 0) > 0;
 }
 
 async function resolveOrCreateCustomer(
@@ -51,12 +78,16 @@ async function resolveOrCreateCustomer(
     const existing = await stripe.customers.list({ email: options.email, limit: 1 });
     if (existing.data.length) {
       const customer = existing.data[0];
-      if (options.userId && customer.metadata?.userId !== options.userId) {
-        await stripe.customers.update(customer.id, {
-          metadata: { ...customer.metadata, userId: options.userId },
-        });
+      if (!customer.metadata?.userId || customer.metadata.userId === options.userId) {
+        if (options.userId && customer.metadata?.userId !== options.userId) {
+          await stripe.customers.update(customer.id, {
+            metadata: { ...customer.metadata, userId: options.userId },
+          });
+        }
+        return customer.id;
       }
-      return customer.id;
+      // Never reassign a customer already bound to another app account. A
+      // fresh customer is safer than exposing that customer's saved methods.
     }
   }
   const created = await stripe.customers.create({
@@ -67,17 +98,20 @@ async function resolveOrCreateCustomer(
 }
 
 async function createCheckoutSession(options: {
-  priceId: string;
-  quantity?: number;
+  productAlias: ReturnType<typeof requireCheckoutProductAlias>;
+  checkoutAttemptId: string;
   customerEmail?: string;
-  userId?: string;
+  userId: string;
   returnUrl: string;
   environment: StripeEnv;
 }) {
-  if (!/^[a-zA-Z0-9_-]+$/.test(options.priceId)) throw new Error("Invalid priceId");
   const stripe = createStripeClient(options.environment);
 
-  const prices = await stripe.prices.list({ lookup_keys: [options.priceId] });
+  const prices = await stripe.prices.list({
+    lookup_keys: [options.productAlias],
+    active: true,
+    limit: 1,
+  });
   if (!prices.data.length) throw new Error("Price not found");
   const stripePrice = prices.data[0];
   const isRecurring = stripePrice.type === "recurring";
@@ -98,20 +132,15 @@ async function createCheckoutSession(options: {
     productDescription = product.name;
   }
 
-  const base = {
-    line_items: [{ price: stripePrice.id, quantity: options.quantity || 1 }],
-    mode: isRecurring ? "subscription" : "payment",
-    ui_mode: "embedded_page",
-    return_url: options.returnUrl,
-    ...(customerId && { customer: customerId }),
-    ...(!isRecurring && { payment_intent_data: { description: productDescription } }),
-    ...(options.userId && {
-      metadata: { userId: options.userId, priceId: options.priceId },
-      ...(isRecurring && {
-        subscription_data: { metadata: { userId: options.userId } },
-      }),
-    }),
-  } as unknown as Stripe.Checkout.SessionCreateParams;
+  const base = buildCheckoutSessionBase({
+    stripePriceId: stripePrice.id,
+    productAlias: options.productAlias,
+    isRecurring,
+    customerId,
+    userId: options.userId,
+    returnUrl: options.returnUrl,
+    productDescription,
+  }) as unknown as Stripe.Checkout.SessionCreateParams;
 
   // Digital goods: let Stripe handle tax compliance, fraud, disputes and
   // transaction support end-to-end. Falls back to tax calculation only if
@@ -120,14 +149,18 @@ async function createCheckoutSession(options: {
     const session = await stripe.checkout.sessions.create({
       ...base,
       managed_payments: { enabled: true },
-    } as Stripe.Checkout.SessionCreateParams);
+    } as Stripe.Checkout.SessionCreateParams, {
+      idempotencyKey: checkoutIdempotencyKey({ ...options, strategy: "managed" }),
+    });
     return session.client_secret;
   } catch (e) {
     console.warn("managed payments unavailable, falling back to tax calculation:", e);
     const session = await stripe.checkout.sessions.create({
       ...base,
       automatic_tax: { enabled: true },
-    } as Stripe.Checkout.SessionCreateParams);
+    } as Stripe.Checkout.SessionCreateParams, {
+      idempotencyKey: checkoutIdempotencyKey({ ...options, strategy: "standard" }),
+    });
     return session.client_secret;
   }
 }
@@ -157,10 +190,21 @@ Deno.serve(async (req) => {
   try {
     const body = await req.json();
     const productAlias = requireCheckoutProductAlias(body.productAlias ?? body.priceId);
+    const checkoutAttemptId = requireCheckoutAttemptId(body.checkoutAttemptId);
+    requireSingleCheckoutQuantity(body.quantity);
     const environment: StripeEnv = body.environment === "live" ? "live" : "sandbox";
+    if (
+      productAlias === "mosh_supporter_once" &&
+      await hasSupporterEntitlement(caller.token, caller.id, environment)
+    ) {
+      return new Response(JSON.stringify({ error: "Supporter access is already unlocked" }), {
+        status: 409,
+        headers: { ...responseHeaders, "Content-Type": "application/json" },
+      });
+    }
     const clientSecret = await createCheckoutSession({
-      priceId: productAlias,
-      quantity: body.quantity,
+      productAlias,
+      checkoutAttemptId,
       // Identity comes from the verified JWT only — client values are ignored.
       customerEmail: caller.email,
       userId: caller.id,

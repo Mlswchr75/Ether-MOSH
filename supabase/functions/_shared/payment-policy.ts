@@ -7,6 +7,8 @@ export const CHECKOUT_PRODUCT_ALIASES = [
 
 export type CheckoutProductAlias = (typeof CHECKOUT_PRODUCT_ALIASES)[number];
 
+export type EntitlementProduct = "mosh_supporter" | "mosh_tip";
+
 const checkoutProducts = new Set<string>(CHECKOUT_PRODUCT_ALIASES);
 
 export function requireCheckoutProductAlias(value: unknown): CheckoutProductAlias {
@@ -14,6 +16,30 @@ export function requireCheckoutProductAlias(value: unknown): CheckoutProductAlia
     throw new Error("Unknown checkout product");
   }
   return value as CheckoutProductAlias;
+}
+
+export function entitlementProductForAlias(value: unknown): EntitlementProduct | null {
+  if (value === "mosh_supporter_once") return "mosh_supporter";
+  if (value === "mosh_tip_1" || value === "mosh_tip_5" || value === "mosh_tip_25") {
+    return "mosh_tip";
+  }
+  return null;
+}
+
+const checkoutAttemptPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function requireCheckoutAttemptId(value: unknown): string {
+  if (typeof value !== "string" || !checkoutAttemptPattern.test(value)) {
+    throw new Error("Invalid checkout attempt");
+  }
+  return value;
+}
+
+export function requireSingleCheckoutQuantity(value: unknown): 1 {
+  if (value !== undefined && value !== 1) {
+    throw new Error("Checkout quantity must be one");
+  }
+  return 1;
 }
 
 export function parseAllowedOrigins(configured: string | undefined): Set<string> {
