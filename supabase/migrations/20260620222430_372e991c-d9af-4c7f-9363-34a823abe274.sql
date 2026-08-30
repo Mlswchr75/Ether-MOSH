@@ -1,0 +1,1 @@
+DROP TABLE IF EXISTS public.subscriptions CASCADE; DROP TABLE IF EXISTS public.transactions CASCADE; DROP FUNCTION IF EXISTS public.has_active_subscription(uuid, text) CASCADE;
