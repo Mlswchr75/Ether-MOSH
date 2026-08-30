@@ -13,7 +13,6 @@ import { paintForgeSource, createForgeRuntime, disposeForgeRuntime, type ForgeRu
 import { AudioWindow, SILENT_FEATURES, type AudioFeatures, type JourneyMic } from "@/engine/journeyCore";
 import { FrequencyStrip, BeatBorder } from "./AudioFeedback";
 import { startAnalyzer, stopAnalyzer, getAudioData } from "@/engine/audioAnalyzer";
-import { IsolationOverlay } from "./IsolationOverlay";
 import { StickerCapture } from "./StickerCapture";
 import { toast } from "sonner";
 import { vrMode } from "@/engine/vrMode";
@@ -746,7 +745,6 @@ export function GlCanvas() {
           : undefined}
       />
 
-      <IsolationOverlay />
       <StickerCapture />
       <VrButton getRenderer={() => rendererRef.current} getFrame={() => vrFrameRef.current} />
 

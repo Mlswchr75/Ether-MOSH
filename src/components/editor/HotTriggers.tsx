@@ -1,15 +1,13 @@
-import { Mic, MicOff, Circle, Square, Sparkles, Scissors, Snowflake, Camera, Shuffle, Star, Play, Pencil, Trash2, X, Film, Lock, Share2, Compass, Maximize2, Minimize2, Gem, Home, SwitchCamera, Crosshair, Eraser, Link2, Upload, Music, Music2, Shuffle as ShuffleIcon, Undo2, Redo2, Gauge, ChevronDown, MonitorSpeaker, Heart, GripVertical, RotateCcw, EyeOff, HelpCircle, SkipBack, SkipForward, Palette, Flame, UserCircle, Library, Download, Glasses } from "lucide-react";
+import { Mic, MicOff, Circle, Square, Sparkles, Scissors, Snowflake, Camera, Shuffle, Star, Play, Pencil, Trash2, X, Film, Lock, Share2, Compass, Maximize2, Minimize2, Gem, Home, SwitchCamera, Eraser, Link2, Upload, Music, Music2, Shuffle as ShuffleIcon, Undo2, Redo2, Gauge, ChevronDown, MonitorSpeaker, Heart, GripVertical, RotateCcw, EyeOff, HelpCircle, SkipBack, SkipForward, Palette, Flame, UserCircle, Download, Glasses } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { useStore } from "@/store/useStore";
 import { trackPlayer, DEFAULT_TRACK_TITLE, SHOWCASE_TRACKS } from "@/engine/trackPlayer";
 import { runTrackAction } from "@/engine/trackActions";
 import { requestCameraStream, type CameraFacing } from "@/hooks/useCamera";
-import { IsolationPanel } from "./IsolationPanel";
 import { ForgePanel } from "./ForgePanel";
 import { MotifMaestroPanel } from "./MotifMaestroPanel";
 import { ExportSettingsPanel } from "./ExportSettingsPanel";
-import { MoshStickerTrigger } from "./MoshStickerTrigger";
 import { shareUrl } from "@/lib/share";
 import { toggleSystemAudio } from "@/engine/systemAudio";
 import { AudioInputControls } from "./AudioInputControls";
@@ -131,7 +129,7 @@ const DEFAULT_ORDER = [
   "mosh", "undo", "redo", "journey", "auto-mosh", "clear-fx",
   "audio", "sensitivity", "theme-track", "freeze",
   "capture", "gif", "share", "export-settings", "favorites",
-  "isolation", "mosh-sticker", "sticker-mode", "sticker-capture", "sticker-tools", "sticker-vault",
+  "sticker-mode",
   "source-camera", "switch-camera", "source-upload", "source-forge", "forge-palette", "source-motif", "motif-maestro",
   "fullscreen", "pro-mode", "xr-menu", "account", "support", "home",
 ] as const;
@@ -144,10 +142,7 @@ const TRIGGER_LABELS: Record<string, string> = {
   "pro-mode": "Pro Mode — hide all UI",
   freeze: "Freeze", capture: "Capture — tap for a still, hold to record", gif: "GIF loop", share: "Share",
   "export-settings": "Export settings — format, quality, and DPI for every export",
-  "mosh-sticker": "Mosh sticker", "sticker-mode": "Sticker capture", isolation: "AI isolation",
-  "sticker-capture": "Capture sticker",
-  "sticker-tools": "Sticker tools",
-  "sticker-vault": "Sticker Vault",
+  "sticker-mode": "Sticker Studio",
   "theme-track": "Theme track", favorites: "Favorites", fullscreen: "Fullscreen",
   "forge-palette": "Forge settings — colour is directed automatically",
   "motif-maestro": "Motif Maestro controls",
@@ -1102,7 +1097,7 @@ function MobileRadialWheel({
                     ["--slot-radius" as string]: `${radius / 100}`,
                     ["--slot-delay" as string]: `${-(index % 9) * 137}ms`,
                   }}
-                  onClick={() => onSelect(id)}
+                  onClick={() => { onSelect(id); dismiss(); }}
                   onPointerDown={(event) => event.stopPropagation()}
                   onPointerEnter={() => select(id)}
                   onFocus={() => select(id)}
@@ -1328,7 +1323,12 @@ function DesktopRadialWheel({
                   ["--slot-delay" as string]: `${-(index % 9) * 137}ms`,
                 }}
                 onClickCapture={(event) => { if (editing) { event.preventDefault(); event.stopPropagation(); } }}
-                onClick={() => onSelect(id)}
+                onClick={() => {
+                  if (editing) return;
+                  onSelect(id);
+                  setPhase("idle");
+                  setHighlighted(null);
+                }}
                 onPointerDown={(event) => event.stopPropagation()}
                 onPointerEnter={() => select(id)}
                 onFocus={() => select(id)}
@@ -1481,14 +1481,12 @@ export function HotTriggers({
   const clearVideoSource = useStore(s => s.clearVideoSource);
   const [flipBusy, setFlipBusy] = useState(false);
 
-  const isolationMode = useStore(s => s.isolationMode);
   const stickerMode = useStore(s => s.stickerMode);
   const setStickerMode = useStore(s => s.setStickerMode);
   const proModeEnabled = useStore(s => s.proModeEnabled);
   const setProModeEnabled = useStore(s => s.setProModeEnabled);
   const helpModeEnabled = useStore(s => s.helpModeEnabled);
   const setHelpModeEnabled = useStore(s => s.setHelpModeEnabled);
-  const [isoOpen, setIsoOpen] = useState(false);
   const [forgePanelOpen, setForgePanelOpen] = useState(false);
   const [motifPanelOpen, setMotifPanelOpen] = useState(false);
   const [exportSettingsOpen, setExportSettingsOpen] = useState(false);
@@ -1509,16 +1507,6 @@ export function HotTriggers({
       { description: next === "auto" ? "Shown automatically on Quest/Oculus only." : next === "on" ? "Immersive controls will be offered when this browser supports WebXR." : "Immersive controls stay hidden on this device." }
     );
   };
-
-  useEffect(() => {
-    if (!isoOpen) return;
-    const onDown = (e: PointerEvent) => {
-      if ((e.target as HTMLElement | null)?.closest("[data-iso-panel]")) return;
-      setIsoOpen(false);
-    };
-    window.addEventListener("pointerdown", onDown, true);
-    return () => window.removeEventListener("pointerdown", onDown, true);
-  }, [isoOpen]);
 
   useEffect(() => {
     if (!forgePanelOpen) return;
@@ -1944,12 +1932,11 @@ export function HotTriggers({
         )}
       </div>
     ),
-    "mosh-sticker": <MoshStickerTrigger key="mosh-sticker" delay={0} />,
     "sticker-mode": (
       <HotBtn
         key="sticker-mode"
         delay={0}
-        label="Sticker capture mode"
+        label="Sticker Studio — isolate, cut, animate, import and open the Vault"
         active={stickerMode}
         onClick={() => setStickerMode(!stickerMode)}
         tint="96 55% 62%"
@@ -1997,37 +1984,6 @@ export function HotTriggers({
       >
         {helpModeEnabled ? <HelpCircle className="h-4 w-4" strokeWidth={1.5} /> : <EyeOff className="h-4 w-4" strokeWidth={1.5} />}
       </HotBtn>
-    ),
-    isolation: (
-      <div key="isolation" className="relative" data-iso-panel>
-        <HotBtn delay={0} label="Isolation mode" active={isolationMode !== 'off'} onClick={() => setIsoOpen(v => !v)} tint="174 65% 55%">
-          <Crosshair className="h-4 w-4" strokeWidth={1.5} />
-        </HotBtn>
-        {isolationMode !== 'off' && (
-          <span className="pointer-events-none absolute inset-0 rounded-md ring-1 ring-[hsl(var(--accent))]/60 animate-pulse" />
-        )}
-        {isoOpen && (
-          <div className="absolute right-full mr-2 top-0 z-40">
-            <IsolationPanel onClose={() => setIsoOpen(false)} />
-          </div>
-        )}
-      </div>
-    ),
-    // StickerCapture owns the actual capture logic, but renders its compact
-    // control into this rail slot when the mode is on (rather than floating a
-    // second, oversized button over export feedback near the bottom-right).
-    "sticker-capture": stickerMode && <div key="sticker-capture" id="mosh-sticker-capture-slot" />,
-    "sticker-tools": (
-      <HotBtn key="sticker-tools" delay={0} label="Open sticker tools" onClick={() => window.dispatchEvent(new Event("mosh:toggle-sticker-tools"))} tint="286 78% 68%">
-        <Sparkles className="h-4 w-4" strokeWidth={1.5} />
-      </HotBtn>
-    ),
-    "sticker-vault": (
-      <div key="sticker-vault" data-sticker-vault-trigger>
-        <HotBtn delay={0} label="Open Sticker Vault" onClick={() => window.dispatchEvent(new Event("mosh:toggle-sticker-vault"))} tint="186 82% 64%">
-          <Library className="h-4 w-4" strokeWidth={1.5} />
-        </HotBtn>
-      </div>
     ),
     "theme-track": <TrackTrigger key="theme-track" delay={0} showNudge={showTrackNudge} onNudgeDismiss={onTrackNudgeDismiss} />,
     "forge-palette": sourceMode === "forge" && (

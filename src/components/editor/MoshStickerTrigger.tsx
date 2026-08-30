@@ -13,7 +13,7 @@ import { TrimScrubber } from "./TrimScrubber";
 
 type Mode = "closed" | "menu" | "recording";
 
-export function MoshStickerTrigger({ delay }: { delay: number }) {
+export function MoshStickerTrigger({ delay, variant = "trigger" }: { delay: number; variant?: "trigger" | "panel" }) {
   const enabled = useMoshStickerStore(s => s.enabled);
   const setEnabled = useMoshStickerStore(s => s.setEnabled);
   const stickers = useMoshStickerStore(s => s.stickers);
@@ -115,7 +115,7 @@ export function MoshStickerTrigger({ delay }: { delay: number }) {
   };
 
   return (
-    <div ref={wrapRef} className="relative" data-shuffle-picker>
+    <div ref={wrapRef} className={variant === "panel" ? "relative flex-1" : "relative"} data-shuffle-picker>
       <button
         type="button"
         aria-label="Add mosh sticker — upload or capture a short clip"
@@ -125,12 +125,14 @@ export function MoshStickerTrigger({ delay }: { delay: number }) {
         title="Add mosh sticker — a short looping clip you can place, resize, rotate and mosh"
         data-active={open || undefined}
         data-no-longpress
-        className="hot-trigger"
+        className={variant === "panel"
+          ? "flex w-full items-center justify-center gap-1.5 rounded-full border border-white/15 bg-white/[0.04] px-3 py-2 font-mono text-[8px] uppercase tracking-[0.12em] text-white/65 transition hover:border-white/30 hover:text-white"
+          : "hot-trigger"}
         style={{ animationDelay: `${delay}ms` }}
         onClick={() => setMode(m => (m === "closed" ? "menu" : "closed"))}
       >
-        <span className="hot-trigger__glitch" aria-hidden><Sticker className="h-4 w-4" strokeWidth={1.5} /></span>
-        <span className="hot-trigger__ico"><Sticker className="h-4 w-4" strokeWidth={1.5} /></span>
+        {variant === "trigger" && <span className="hot-trigger__glitch" aria-hidden><Sticker className="h-4 w-4" strokeWidth={1.5} /></span>}
+        <span className={variant === "trigger" ? "hot-trigger__ico" : "flex items-center gap-1.5"}><Sticker className="h-4 w-4" strokeWidth={1.5} />{variant === "panel" && "Video / GIF clip"}</span>
         {stickers.length > 0 && (
           <span className="absolute -bottom-1 -right-1 rounded-sm bg-[hsl(var(--accent))] px-1 font-mono text-[8px] leading-[10px] text-black">
             {stickers.length}
@@ -155,7 +157,7 @@ export function MoshStickerTrigger({ delay }: { delay: number }) {
 
       {mode === "menu" && (
         <div
-          className="panel-in-3d absolute right-full top-0 z-50 mr-2 w-48 rounded-sm border border-[hsl(var(--border-default))] bg-black/85 p-2 backdrop-blur-md"
+          className={`panel-in-3d absolute z-[80] w-48 rounded-sm border border-[hsl(var(--border-default))] bg-black/95 p-2 backdrop-blur-md ${variant === "panel" ? "right-0 top-full mt-2" : "right-full top-0 mr-2"}`}
           role="menu"
           aria-label="Add mosh sticker"
           onPointerDown={(e) => e.stopPropagation()}
@@ -190,7 +192,7 @@ export function MoshStickerTrigger({ delay }: { delay: number }) {
 
       {mode === "recording" && (
         <div
-          className="panel-in-3d absolute right-full top-0 z-50 mr-2 w-56 rounded-sm border border-[hsl(var(--border-default))] bg-black/85 p-2 backdrop-blur-md"
+          className={`panel-in-3d absolute z-[80] w-56 rounded-sm border border-[hsl(var(--border-default))] bg-black/95 p-2 backdrop-blur-md ${variant === "panel" ? "right-0 top-full mt-2" : "right-full top-0 mr-2"}`}
           onPointerDown={(e) => e.stopPropagation()}
         >
           <video ref={videoPreviewRef} autoPlay muted playsInline className="w-full rounded-sm bg-black" />
@@ -226,7 +228,7 @@ export function MoshStickerTrigger({ delay }: { delay: number }) {
 
       {pendingTrim && (
         <div
-          className="absolute right-full top-0 z-50 mr-2"
+          className={variant === "panel" ? "absolute right-0 top-full z-[80] mt-2" : "absolute right-full top-0 z-50 mr-2"}
           onPointerDown={(e) => e.stopPropagation()}
         >
           <TrimScrubber

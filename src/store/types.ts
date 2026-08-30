@@ -2,7 +2,9 @@ import type { BlendMode } from "@/engine/blend";
 import type { Role } from "@/engine/artDirector";
 export type { PaletteProfile, BiomeId } from "@/engine/imagePalette";
 
-export type IsolationMode = 'off' | 'auto' | 'tap';
+/** Sticker Studio cut strategy. `off` preserves the source's existing alpha,
+ * while the other modes synthesize a content-aware cut from opaque renders. */
+export type IsolationMode = 'off' | 'auto' | 'layers' | 'tap';
 
 export type StickerEntry = {
   id: string;

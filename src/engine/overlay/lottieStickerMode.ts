@@ -78,6 +78,8 @@ export type OrganicFocus = {
   phase: number;
 };
 
+export type OrganicIsolationMode = "auto" | "layers" | "tap";
+
 const emptyFocus = (): OrganicFocus => ({
   left: .12, right: .88, top: .12, bottom: .88,
   field: new Float32Array(FIELD_SIZE * FIELD_SIZE).fill(.5),
@@ -403,6 +405,108 @@ export function analyzeOrganicFocus(source: HTMLCanvasElement, previous?: Organi
     jaggedness, flowX, flowY,
     phase: (previous?.phase ?? 0) + .31,
   };
+}
+
+type OrganicComponent = {
+  indices: number[];
+  area: number;
+  energy: number;
+  cx: number;
+  cy: number;
+  score: number;
+};
+
+/** Split a render-ready organic field into independently meaningful visual
+ * elements. This is the model-free half of Sticker Studio's layer awareness:
+ * disconnected foreground regions remain independently selectable instead of
+ * being flattened into one rectangular crop. */
+function organicComponents(focus: OrganicFocus): OrganicComponent[] {
+  const size = FIELD_SIZE;
+  const visited = new Uint8Array(size * size);
+  const components: OrganicComponent[] = [];
+  const minArea = Math.max(8, Math.round(size * size * .003));
+
+  for (let start = 0; start < visited.length; start++) {
+    if (visited[start] || focus.field[start] < .42) continue;
+    const stack = [start];
+    visited[start] = 1;
+    const indices: number[] = [];
+    let sx = 0, sy = 0, energy = 0;
+    while (stack.length) {
+      const index = stack.pop() as number;
+      indices.push(index);
+      const x = index % size, y = (index / size) | 0;
+      sx += x; sy += y; energy += focus.field[index];
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        if (!dx && !dy) continue;
+        const xx = x + dx, yy = y + dy;
+        if (xx < 0 || xx >= size || yy < 0 || yy >= size) continue;
+        const next = yy * size + xx;
+        if (!visited[next] && focus.field[next] >= .42) { visited[next] = 1; stack.push(next); }
+      }
+    }
+    if (indices.length < minArea) continue;
+    const cx = sx / indices.length / size, cy = sy / indices.length / size;
+    const center = 1 - Math.min(1, Math.hypot(cx - .5, cy - .5) / .71);
+    const area = indices.length / (size * size);
+    const meanEnergy = energy / indices.length;
+    const usefulArea = Math.min(1, area / .18) * (1 - Math.max(0, area - .72) / .28);
+    components.push({
+      indices,
+      area,
+      energy: meanEnergy,
+      cx,
+      cy,
+      score: meanEnergy * .48 + usefulArea * .34 + center * .18,
+    });
+  }
+  return components.sort((a, b) => b.score - a.score);
+}
+
+function focusFromOrganicComponents(base: OrganicFocus, chosen: OrganicComponent[]): OrganicFocus {
+  if (!chosen.length) return base;
+  const selected = new Float32Array(FIELD_SIZE * FIELD_SIZE);
+  for (const component of chosen) {
+    for (const index of component.indices) selected[index] = Math.max(selected[index], base.field[index]);
+  }
+  const softened = boxBlurFloat(selected, FIELD_SIZE, 1);
+  let left = FIELD_SIZE, right = -1, top = FIELD_SIZE, bottom = -1;
+  for (let y = 0; y < FIELD_SIZE; y++) for (let x = 0; x < FIELD_SIZE; x++) {
+    if (softened[y * FIELD_SIZE + x] < .2) continue;
+    left = Math.min(left, x); right = Math.max(right, x);
+    top = Math.min(top, y); bottom = Math.max(bottom, y);
+  }
+  if (right < left || bottom < top) return base;
+  const pad = 2;
+  return {
+    ...base,
+    left: clamp01((left - pad) / FIELD_SIZE),
+    right: clamp01((right + pad + 1) / FIELD_SIZE),
+    top: clamp01((top - pad) / FIELD_SIZE),
+    bottom: clamp01((bottom + pad + 1) / FIELD_SIZE),
+    field: softened,
+    threshold: .42,
+  };
+}
+
+/** Choose one focal element, a small ensemble of related elements, or the
+ * element nearest the user's tap. When the source reads as one continuous
+ * subject the original focus is returned unchanged. */
+export function isolateOrganicFocus(
+  base: OrganicFocus,
+  mode: OrganicIsolationMode,
+  point?: { x: number; y: number } | null,
+): OrganicFocus {
+  const components = organicComponents(base);
+  if (components.length <= 1) return base;
+  if (mode === "layers") return focusFromOrganicComponents(base, components.slice(0, 3));
+  if (mode === "tap" && point) {
+    const nearest = [...components].sort((a, b) =>
+      Math.hypot(a.cx - point.x, a.cy - point.y) - Math.hypot(b.cx - point.x, b.cy - point.y)
+    )[0];
+    return focusFromOrganicComponents(base, nearest ? [nearest] : components.slice(0, 1));
+  }
+  return focusFromOrganicComponents(base, components.slice(0, 1));
 }
 
 /** The common shape both the synthesized organic focus and a genuine-alpha

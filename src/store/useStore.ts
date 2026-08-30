@@ -239,10 +239,8 @@ type State = {
   paletteProfile: PaletteProfile | null;
   /** Saved effect presets. */
   favorites: Favorite[];
-  /** Isolation overlay mode. */
+  /** Sticker Studio content-aware cut strategy. */
   isolationMode: IsolationMode;
-  isolationFeather: number;
-  isolationInvert: boolean;
   /** Sticker capture mode. */
   stickerMode: boolean;
   stickerGallery: StickerEntry[];
@@ -386,8 +384,6 @@ type Actions = {
   removeStickerFromGallery: (id: string) => void;
   setStickerMode: (b: boolean) => void;
   setIsolationMode: (m: IsolationMode) => void;
-  setIsolationFeather: (n: number) => void;
-  setIsolationInvert: (b: boolean) => void;
 
   /** Switch which source feeds the renderer. Camera's own getUserMedia call
    *  stays with the caller (needs to run inside a user gesture) — this only
@@ -550,9 +546,7 @@ export const useStore = create<State & Actions>((set, get) => ({
   tileUniforms: { ...DEFAULT_TILE_UNIFORMS },
   paletteProfile: null,
   favorites: loadFavoritesFromStorage(),
-  isolationMode: "off" as IsolationMode,
-  isolationFeather: 4,
-  isolationInvert: false,
+  isolationMode: "auto" as IsolationMode,
   stickerMode: false,
   stickerGallery: [],
   cameraFacing: null,
@@ -1406,8 +1400,6 @@ export const useStore = create<State & Actions>((set, get) => ({
   removeStickerFromGallery: (id) => set(s => ({ stickerGallery: s.stickerGallery.filter(x => x.id !== id) })),
   setStickerMode: (b) => set({ stickerMode: b }),
   setIsolationMode: (m) => set({ isolationMode: m }),
-  setIsolationFeather: (n) => set({ isolationFeather: n }),
-  setIsolationInvert: (b) => set({ isolationInvert: b }),
 
   setSourceMode: (mode) => {
     const s = get();

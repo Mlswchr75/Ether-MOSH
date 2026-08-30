@@ -3,6 +3,7 @@ import {
   analyzeOrganicFocus,
   buildEncodedFrameSequenceLottie,
   contentFrameSize,
+  isolateOrganicFocus,
   renderOrganicStickerFrame,
   FIELD_SIZE,
   type OrganicFocus,
@@ -242,6 +243,23 @@ describe("Lottie Sticker content-aware mask", () => {
     expect(alphaAt(17, 47)).toBeGreaterThan(150); // inside the left square
     expect(alphaAt(77, 47)).toBeGreaterThan(150); // inside the right square
     expect(alphaAt(48, 47)).toBe(0); // the gap between them
+  });
+
+  it("can isolate one disconnected element by tap or retain a ranked layer ensemble", () => {
+    const field = new Float32Array(FIELD_SIZE * FIELD_SIZE);
+    const left = fieldWithRect(1, 0, { x0: 8, y0: 35, x1: 30, y1: 62 });
+    const right = fieldWithRect(.9, 0, { x0: 66, y0: 38, x1: 88, y1: 60 });
+    for (let i = 0; i < field.length; i++) field[i] = Math.max(left[i], right[i]);
+    const base = baseFocus(field);
+
+    const tapped = isolateOrganicFocus(base, "tap", { x: .82, y: .5 });
+    const layered = isolateOrganicFocus(base, "layers");
+    const sample = (focus: OrganicFocus, x: number, y: number) => focus.field[y * FIELD_SIZE + x];
+
+    expect(sample(tapped, 77, 48)).toBeGreaterThan(.5);
+    expect(sample(tapped, 18, 48)).toBeLessThan(.1);
+    expect(sample(layered, 77, 48)).toBeGreaterThan(.5);
+    expect(sample(layered, 18, 48)).toBeGreaterThan(.5);
   });
 
   it("fills a large, flat-colored interior instead of carving a hole in it — the sphere-body case", () => {
