@@ -107,7 +107,6 @@ export function GlCanvas() {
   const videoElement = useStore(s => s.videoElement);
   const sourceMode = useStore(s => s.sourceMode);
   const forgeSeamless = useStore(s => s.forge.seamless);
-  const randomiseForge = useStore(s => s.randomiseForge);
   const cameraFacing = useStore(s => s.cameraFacing);
   const showBeforeAfter = useStore(s => s.showBeforeAfter);
   const beforeAfterSplit = useStore(s => s.beforeAfterSplit);
@@ -686,16 +685,8 @@ export function GlCanvas() {
       <canvas
         ref={canvasRef}
         data-mosh-canvas
-        className={`relative z-10 block h-full w-full ${sourceMode === "forge" ? "cursor-pointer" : ""}`}
+        className="relative z-10 block h-full w-full"
         style={{ imageRendering: "auto", objectFit: "cover" }}
-        // Forge has no image or camera feed to tap-to-reroll a role on (that's
-        // QuadrantSurface's job in the other two modes, and it isn't mounted
-        // here) — a plain click is the whole interaction, same as it was on
-        // the standalone /forge page. Binding it to the canvas itself, not the
-        // container, means it only fires when the click actually lands on the
-        // visible pixels — any overlay drawn above it (HotTriggers etc.) is a
-        // separate element that receives the click first.
-        onClick={sourceMode === "forge" ? () => randomiseForge() : undefined}
       />
 
       <IsolationOverlay />

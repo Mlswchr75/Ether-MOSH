@@ -1801,11 +1801,12 @@ export default function Editor() {
         {freezeFrame && <FrozenFrame frame={freezeFrame} />}
         {!hasSource && !isOverlay && <StartCameraOverlay />}
         <SystemAudioHud visible={systemAudioEnabled && !isOverlay} />
-        {hasSource && !isForge && !isOverlay && (
+        {hasSource && !isOverlay && (
           <QuadrantSurface onTogglePerf={togglePerf} onTune={focusTune} />
         )}
-        {/* Forge has no photo to assign roles on — GlCanvas binds a plain
-            click-to-shuffle directly to its own canvas instead. */}
+        {/* QuadrantSurface owns the tap in Forge too (it re-rolls the forge
+            pattern there instead of the FX stack) — this is just the label
+            telling you that's the interaction. */}
         {isForge && !isOverlay && <ForgeTapHint />}
         {/* Always visible, never idle-faded — unlike HotTriggers' effect
             triggers, this is how you get OUT of whichever mode you're in,
