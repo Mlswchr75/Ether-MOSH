@@ -137,7 +137,7 @@ export const HomeInfoCarousel = ({ onReturnToInstrument }: HomeInfoCarouselProps
         </div>}
 
         {active === 4 && <div className="home-info-skills">
-          <div><p className="home-info-kicker">Skills / areas of interest</p><h2>Signal,<br/><span>noise & nerve.</span></h2></div>
+          <div><p className="home-info-kicker">Skills / areas of interest</p><h2>Disturb<br/><span>the force.</span></h2></div>
           <div className="home-info-keywords">{liveVisualKeywords.map((keyword, index) => <span key={keyword}><i>{String(index + 1).padStart(2, "0")}</i>{keyword}</span>)}</div>
         </div>}
 

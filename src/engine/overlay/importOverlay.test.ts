@@ -31,6 +31,10 @@ describe("classifyOverlayFile", () => {
     expect(() => classifyOverlayFile(fake("movie.mp4", "video/mp4"))).toThrowError(OverlayImportError);
     expect(() => classifyOverlayFile(fake("movie.mp4", "video/mp4"))).toThrow(/PNG, WebP, GIF, SVG, Lottie JSON, or \.lottie/);
   });
+
+  it("does not treat an arbitrary ZIP archive as dotLottie", () => {
+    expect(() => classifyOverlayFile(fake("archive.zip", "application/zip"))).toThrow(/must use the \.lottie format/i);
+  });
 });
 
 describe("detectRasterAnimation", () => {

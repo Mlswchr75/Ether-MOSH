@@ -1,6 +1,7 @@
 {
   "name": "vite_react_shadcn_ts",
   "private": true,
+  "license": "UNLICENSED",
   "version": "0.0.0",
   "type": "module",
   "scripts": {
@@ -12,6 +13,9 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
+    "security:artifacts": "node scripts/check-production-security.mjs",
+    "security:signatures": "npm audit signatures",
+    "security:check": "npm audit --audit-level=high && npm run typecheck && npm run build && npm run security:artifacts",
     "audit:effects": "tsx scripts/effect-audit.ts"
   },
   "dependencies": {

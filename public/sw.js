@@ -1,4 +1,4 @@
-const CACHE = "ether-mosh-shell-v1";
+const CACHE = "ether-mosh-shell-v2";
 const SHELL = [
   "/",
   "/edit",
@@ -26,12 +26,27 @@ self.addEventListener("activate", (event) => {
 
 function isCacheable(request) {
   if (request.method !== "GET") return false;
+  if (request.headers.has("authorization")) return false;
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return false;
-  if (url.pathname.startsWith("/auth")) return false;
-  if (url.pathname.startsWith("/.netlify/")) return false;
-  if (url.pathname.startsWith("/api/")) return false;
-  return true;
+  if (request.mode === "navigate") {
+    // Cache only the public app shells, never account/auth/checkout routes or
+    // URLs carrying query parameters such as OAuth codes and handoff tokens.
+    return !url.search && (url.pathname === "/" || url.pathname === "/edit");
+  }
+  // Limit runtime caching to immutable build assets and explicitly public PWA
+  // files. Future same-origin APIs/JSON endpoints must opt in instead of being
+  // cached accidentally.
+  return url.pathname.startsWith("/assets/")
+    || url.pathname.startsWith("/icons/")
+    || url.pathname === "/favicon.ico"
+    || url.pathname === "/manifest.webmanifest";
+}
+
+function mayStore(response) {
+  if (!response.ok || response.type !== "basic") return false;
+  const cacheControl = response.headers.get("cache-control") || "";
+  return !/\b(?:no-store|private)\b/i.test(cacheControl);
 }
 
 self.addEventListener("fetch", (event) => {
@@ -42,7 +57,7 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          if (response.ok) {
+          if (mayStore(response)) {
             const clone = response.clone();
             caches.open(CACHE).then((cache) => cache.put(request, clone));
           }
@@ -59,7 +74,7 @@ self.addEventListener("fetch", (event) => {
   event.respondWith(
     caches.match(request).then((cached) => {
       const network = fetch(request).then((response) => {
-        if (response.ok && response.type === "basic") {
+        if (mayStore(response)) {
           const clone = response.clone();
           caches.open(CACHE).then((cache) => cache.put(request, clone));
         }

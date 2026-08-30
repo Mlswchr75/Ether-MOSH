@@ -13,11 +13,10 @@ export default defineConfig(({ mode }) => ({
     },
   },
   build: {
-    // "hidden" still writes full .map files into dist/, which Netlify then
-    // serves publicly — anyone who finds the filename (visible right in the
-    // chunk name shown in devtools) gets fully unminified source, GLSL
-    // included. No error-tracking tool in this repo consumes these maps, so
-    // there's no upside to generating them at all.
+    // A "hidden" source map is still emitted as a deployable .map file; it
+    // merely omits the sourceMappingURL comment, and Netlify serves dist/
+    // publicly regardless. MOSH ships proprietary shader and composition
+    // code, so production artifacts must not contain maps.
     sourcemap: false,
   },
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),

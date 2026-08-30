@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { useStore } from "@/store/useStore";
 import { TILE_MODE_LABELS, type TileMode } from "@/engine/tile";
 import { exportCanvas, downloadBlob, remasterCanvas } from "@/engine/export";
+import { blobWithDpi } from "@/engine/pngDpi";
 import { captureBestFrame } from "@/engine/bestFrame";
+import { notifyExportStarted } from "./ExportRegisteredToast";
 import { Download } from "lucide-react";
 import { toast } from "sonner";
 
@@ -20,6 +22,7 @@ export function SeamlessPanel() {
     const c = document.querySelector("canvas") as HTMLCanvasElement | null;
     if (!c) return;
     try {
+      notifyExportStarted("seamless-tile");
       setExporting(0.01);
       const best = await captureBestFrame(c, {
         durationMs: 3600,
@@ -30,8 +33,10 @@ export function SeamlessPanel() {
       });
       setExporting(0);
       const remastered = await remasterCanvas(best, 2);
-      const blob = await exportCanvas(remastered, { format: "png", scale: 1, aspect: null });
-      downloadBlob(blob, `mosh-${Date.now()}_tileable.png`);
+      const encoded = await exportCanvas(remastered, { format: "png", scale: 1, aspect: null });
+      const dpi = useStore.getState().exportSettings.printDpi;
+      const blob = await blobWithDpi(encoded, dpi);
+      downloadBlob(blob, `mosh-${Date.now()}_tileable_${dpi}dpi.png`);
       toast.success("Tile saved");
     } catch {
       toast.error("Export failed");

@@ -19,6 +19,7 @@ import {
   type Look,
   type Role,
 } from "@/engine/artDirector";
+import { recencyPenalty } from "@/engine/compose";
 import { generateSeed, rngFromSeed } from "@/engine/seed";
 import { presetToUrl, type PresetPayload } from "@/engine/presetUrl";
 import {
@@ -63,10 +64,17 @@ function generateFavoriteName(layers: Layer[]): string {
 }
 
 const HISTORY_LIMIT = 20;
-/** How many recently-used effects a full mosh avoids reaching for. */
-const MOSH_MEMORY = 8;
-/** How many recent art directions to rotate past before reusing one. */
-const LOOK_MEMORY = 4;
+/** Recency-memory windows feeding recencyPenalty (see compose.ts) — the
+ *  same shape and the same numbers Journey mode's own memory uses (
+ *  recentStructural/recentAccent in journeyDirector.ts), so a repeat is
+ *  suppressed on the same curve everywhere in the app rather than one mode
+ *  hard-excluding on a fixed window and another softly decaying. `form` is
+ *  the load-bearing role here (Journey's "structural" equivalent) and gets
+ *  the tighter, more steeply-decaying memory; everything else shares the
+ *  flatter one. */
+const RECENT_FORM_MEMORY = 5;
+const RECENT_OTHER_MEMORY = 10;
+const LOOK_MEMORY = 5;
 
 /**
  * How many parts of the composition each intensity fills.
@@ -111,6 +119,56 @@ const WILD_FLOOR: Record<Intensity, number> = {
   interdimensional: 0.62,
 };
 
+/**
+ * One shared settings object for every export path in the app — screenshot,
+ * share, GIF, video recording, print-ready stills, Forge/Motif/Seamless tile
+ * export. Centralizing these (rather than each export function hardcoding
+ * its own constants) is what makes a single "export settings" panel able to
+ * actually change behavior everywhere at once, instead of just displaying
+ * numbers nothing reads.
+ */
+export type ExportSettings = {
+  /** GIF capture: frames/sec, longest-edge cap in px, default tap duration. */
+  gifFps: number;
+  gifMaxWidth: number;
+  gifDefaultSeconds: number;
+  /** Video recording: MediaRecorder mimeType preference order and target fps.
+   *  "mp4" doesn't force MP4 — browsers that can't encode it still fall back
+   *  — it just tries H.264 first for wider compatibility (editing apps, iOS
+   *  share targets) instead of WebM's better-quality-per-bit default. */
+  videoFormat: "webm" | "mp4";
+  videoFps: number;
+  /** Stamped into every print-grade raster export (print-ready stills, Forge
+   *  tile export, Motif tile export, Seamless tile export) — doesn't touch
+   *  pixels, just the file's density metadata a print shop reads. */
+  printDpi: 150 | 300 | 600;
+  /** Share-sheet JPG quality, 0..1. */
+  shareQuality: number;
+};
+
+const EXPORT_SETTINGS_KEY = "cathedral_export_settings_v1";
+
+const DEFAULT_EXPORT_SETTINGS: ExportSettings = {
+  gifFps: 12,
+  gifMaxWidth: 480,
+  gifDefaultSeconds: 7,
+  videoFormat: "webm",
+  videoFps: 30,
+  printDpi: 300,
+  shareQuality: 0.9,
+};
+
+function loadExportSettings(): ExportSettings {
+  if (typeof localStorage === "undefined") return DEFAULT_EXPORT_SETTINGS;
+  try {
+    const raw = localStorage.getItem(EXPORT_SETTINGS_KEY);
+    if (!raw) return DEFAULT_EXPORT_SETTINGS;
+    return { ...DEFAULT_EXPORT_SETTINGS, ...JSON.parse(raw) };
+  } catch {
+    return DEFAULT_EXPORT_SETTINGS;
+  }
+}
+
 type State = {
   imageUrl: string | null;
   imageElement: HTMLImageElement | null;
@@ -143,6 +201,8 @@ type State = {
    *  audio-mapped modulator strength across every mode. 1 = no-op (the exact
    *  behavior before this field existed). */
   sensitivity: number;
+  /** Shared config for every export path — see ExportSettings' own doc. */
+  exportSettings: ExportSettings;
   isPerformanceMode: boolean;
   showMetersInPerformance: boolean;
   /** Hides all chrome by default; the only way back in is the deliberate
@@ -182,8 +242,14 @@ type State = {
   stickerGallery: StickerEntry[];
   /** Which camera is active ('user' = front, 'environment' = rear). */
   cameraFacing: CameraFacing | null;
-  /** Recently-used effect ids across full moshes (anti-repetition). */
-  recentEffects: string[];
+  /** Recently-used *form-role* effect ids — the load-bearing pick, so this
+   *  is the tighter-windowed, more steeply-decaying half of recencyPenalty's
+   *  input (see compose.ts). Anti-repetition, softly: see mosh()/rerollRole/
+   *  addRole for how this feeds the director rather than hard-excluding. */
+  recentFormEffects: string[];
+  /** Recently-used effect ids from every other role — the flatter-penalty
+   *  half of the same memory. */
+  recentOtherEffects: string[];
   /** Recently-used look ids. Rotating the art direction — not just the
    *  effects — is what keeps consecutive moshes from reading the same. */
   recentLooks: string[];
@@ -266,6 +332,7 @@ type Actions = {
   setTrackMeta: (title: string, artist: string) => void;
   setMicSensitivity: (v: number) => void;
   setSensitivity: (v: number) => void;
+  setExportSettings: (patch: Partial<ExportSettings>) => void;
   setPerformanceMode: (b: boolean) => void;
   togglePerformanceMode: () => void;
   setShowMetersInPerformance: (b: boolean) => void;
@@ -457,6 +524,7 @@ export const useStore = create<State & Actions>((set, get) => ({
   trackArtist: trackPlayer.artist,
   micSensitivity: 1,
   sensitivity: 1,
+  exportSettings: loadExportSettings(),
   isPerformanceMode: false,
   showMetersInPerformance: typeof localStorage !== "undefined" && localStorage.getItem("cathedral_meters_in_perf") === "1",
   proModeEnabled: typeof localStorage !== "undefined" && localStorage.getItem("cathedral_pro_mode") === "1",
@@ -483,7 +551,8 @@ export const useStore = create<State & Actions>((set, get) => ({
   roleCursor: "grade",
   selectedRole: null,
   selectedRoleLayers: {},
-  recentEffects: [],
+  recentFormEffects: [],
+  recentOtherEffects: [],
   recentLooks: [],
   currentLook: null,
   currentBrief: null,
@@ -732,8 +801,16 @@ export const useStore = create<State & Actions>((set, get) => ({
       roleCount: ROLE_COUNT[inten],
       chaos: CHAOS[inten],
       wildness: rollWildness(rand, WILD_FLOOR[inten]),
-      avoidLooks: s.recentLooks,
-      avoidEffects: [...s.recentEffects, ...locked.map(l => l.effectId)],
+      // Soft, decaying suppression instead of a hard exclude — the same
+      // memory Journey mode uses (see recencyPenalty in compose.ts) rather
+      // than regular moshing's old fixed-window hard-avoid, which is the
+      // gap that made the two shuffle noticeably differently.
+      lookPenalty: recencyPenalty(s.recentLooks, []),
+      effectPenalty: recencyPenalty(s.recentFormEffects, s.recentOtherEffects),
+      // A locked layer's effect id is a real hard constraint, not a
+      // preference — the director must never reach for it since it's
+      // already pinned in a fixed slot.
+      avoidEffects: locked.map(l => l.effectId),
     });
 
     const fresh: Layer[] = composition.layers.map(cl => {
@@ -752,7 +829,8 @@ export const useStore = create<State & Actions>((set, get) => ({
       };
     });
 
-    const usedIds = composition.layers.map(l => l.effectId);
+    const formIds = composition.layers.filter(l => l.role === "form").map(l => l.effectId);
+    const otherIds = composition.layers.filter(l => l.role !== "form").map(l => l.effectId);
     const layers = [...locked, ...fresh];
     const selection = resetRoleSelection(layers);
     return {
@@ -760,8 +838,11 @@ export const useStore = create<State & Actions>((set, get) => ({
       past: pushPast(s), future: [],
       layers,
       seed,
-      recentEffects: [...s.recentEffects, ...usedIds].slice(-MOSH_MEMORY),
-      recentLooks: [...s.recentLooks, composition.look.id].slice(-LOOK_MEMORY),
+      // Most-recent-first, same ordering recencyPenalty expects (see its
+      // own doc: index 0 gets the strongest suppression, decaying outward).
+      recentFormEffects: [...formIds, ...s.recentFormEffects].slice(0, RECENT_FORM_MEMORY),
+      recentOtherEffects: [...otherIds, ...s.recentOtherEffects].slice(0, RECENT_OTHER_MEMORY),
+      recentLooks: [composition.look.id, ...s.recentLooks].slice(0, LOOK_MEMORY),
       currentLook: {
         id: composition.look.id,
         name: composition.look.name,
@@ -791,7 +872,7 @@ export const useStore = create<State & Actions>((set, get) => ({
     const rand = rngFromSeed(generateSeed());
     const brief = s.currentBrief ?? briefFrom(analyzeSource(s.videoElement ?? s.imageElement));
     const look: Look = (s.currentLook && LOOKS_LOOKUP[s.currentLook.id])
-      ?? chooseLook(brief, rand, s.recentLooks);
+      ?? chooseLook(brief, rand, [], recencyPenalty(s.recentLooks, []));
     const affinity = skewedAffinity(rand);
     const wildness = rollWildness(rand, WILD_FLOOR[s.intensity]);
     const composed = composeRoleLayer(role, look, brief, rand, {
@@ -799,6 +880,7 @@ export const useStore = create<State & Actions>((set, get) => ({
       affinityTarget: affinity,
       wildness,
       existingRegion: target.region ?? null,
+      penalty: recencyPenalty(s.recentFormEffects, s.recentOtherEffects),
     });
     if (!composed) return null;
     const def = EFFECTS_BY_ID[composed.effectId];
@@ -831,7 +913,9 @@ export const useStore = create<State & Actions>((set, get) => ({
       selectedRole: role,
       selectedRoleLayers: { ...s.selectedRoleLayers, [role]: target.id },
       roleCursor: nextRole,
-      recentEffects: [...s.recentEffects, composed.effectId].slice(-MOSH_MEMORY),
+      ...(role === "form"
+        ? { recentFormEffects: [composed.effectId, ...s.recentFormEffects].slice(0, RECENT_FORM_MEMORY) }
+        : { recentOtherEffects: [composed.effectId, ...s.recentOtherEffects].slice(0, RECENT_OTHER_MEMORY) }),
       currentBrief: brief,
       currentLook: { id: look.id, name: look.name, blurb: look.blurb },
       lastRoleRoll: record,
@@ -845,13 +929,14 @@ export const useStore = create<State & Actions>((set, get) => ({
     const rand = rngFromSeed(generateSeed());
     const brief = s.currentBrief ?? briefFrom(analyzeSource(s.videoElement ?? s.imageElement));
     const look: Look = (s.currentLook && LOOKS_LOOKUP[s.currentLook.id])
-      ?? chooseLook(brief, rand, s.recentLooks);
+      ?? chooseLook(brief, rand, [], recencyPenalty(s.recentLooks, []));
     const affinity = skewedAffinity(rand);
     const composed = composeRoleLayer(role, look, brief, rand, {
       exclude: s.layers.map(layer => layer.effectId),
       affinityTarget: affinity,
       wildness: rollWildness(rand, WILD_FLOOR[s.intensity]),
       existingRegion: null,
+      penalty: recencyPenalty(s.recentFormEffects, s.recentOtherEffects),
     });
     if (!composed) return null;
     const def = EFFECTS_BY_ID[composed.effectId];
@@ -884,7 +969,9 @@ export const useStore = create<State & Actions>((set, get) => ({
       selectedLayerId: layer.id, selectedRole: role,
       selectedRoleLayers: { ...s.selectedRoleLayers, [role]: layer.id },
       roleCursor: nextAvailableRole(layers, role) ?? role,
-      recentEffects: [...s.recentEffects, layer.effectId].slice(-MOSH_MEMORY),
+      ...(role === "form"
+        ? { recentFormEffects: [layer.effectId, ...s.recentFormEffects].slice(0, RECENT_FORM_MEMORY) }
+        : { recentOtherEffects: [layer.effectId, ...s.recentOtherEffects].slice(0, RECENT_OTHER_MEMORY) }),
       currentBrief: brief,
       currentLook: { id: look.id, name: look.name, blurb: look.blurb },
       lastRoleRoll: record,
@@ -965,6 +1052,11 @@ export const useStore = create<State & Actions>((set, get) => ({
   setTrackMeta: (title, artist) => set({ trackTitle: title, trackArtist: artist }),
   setMicSensitivity: (v) => set({ micSensitivity: v }),
   setSensitivity: (v) => set({ sensitivity: v }),
+  setExportSettings: (patch) => set(s => {
+    const next = { ...s.exportSettings, ...patch };
+    try { localStorage.setItem(EXPORT_SETTINGS_KEY, JSON.stringify(next)); } catch {}
+    return { exportSettings: next };
+  }),
   setPerformanceMode: (b) => set({ isPerformanceMode: b }),
   togglePerformanceMode: () => set(s => ({ isPerformanceMode: !s.isPerformanceMode })),
   setShowMetersInPerformance: (b) => {

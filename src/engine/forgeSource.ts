@@ -210,8 +210,24 @@ function renderGeneratorInto(
 
   const entry = GENERATORS_BY_ID[generatorId];
   const generator = entry && isCanvas2DGenerator(entry) ? entry : DRIFT_FIELD;
-  const state = stateFor(runtime, generator, seed);
-  generator.render({ ctx: target, w, h, t, seed, palette, intensity, audio }, state);
+  try {
+    const state = stateFor(runtime, generator, seed);
+    generator.render({ ctx: target, w, h, t, seed, palette, intensity, audio }, state);
+  } catch (error) {
+    // A single experimental generator must never be allowed to kill the live
+    // Forge render loop. Drop its cached simulation state and fall back to the
+    // battle-tested Drift Field for this frame.
+    runtime.states.delete(`${generator.id}:${seed}`);
+    console.error(`[forge] generator "${generator.id}" failed; using Drift Field`, error);
+    if (generator.id !== DRIFT_FIELD.id) {
+      const fallbackState = stateFor(runtime, DRIFT_FIELD, seed);
+      DRIFT_FIELD.render({ ctx: target, w, h, t, seed, palette, intensity, audio }, fallbackState);
+    } else {
+      target.clearRect(0, 0, w, h);
+      target.fillStyle = palette[0] ?? "#000000";
+      target.fillRect(0, 0, w, h);
+    }
+  }
 }
 
 export type ForgeSourceOpts = ForgeState;

@@ -2,6 +2,7 @@ import { defineTool, type ToolContext } from "@lovable.dev/mcp-js";
 import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
 import { randomUUID } from "node:crypto";
+import { presetParamsSchema, safeMcpError } from "../security";
 
 function supabaseForUser(ctx: ToolContext) {
   return createClient(
@@ -34,8 +35,7 @@ export default defineTool({
       .min(1)
       .max(64)
       .describe("Free-text tag for where this preset came from, e.g. 'ether-mosh' or 'motion-weaver'."),
-    params: z
-      .record(z.string(), z.unknown())
+    params: presetParamsSchema
       .describe("Arbitrary JSON params for the preset (effect stack, forge macros, recipe id, seed, etc.)."),
   },
   annotations: { readOnlyHint: false, idempotentHint: false, openWorldHint: false },
@@ -46,7 +46,7 @@ export default defineTool({
     const supabase = supabaseForUser(ctx);
     const { data: userData, error: userError } = await supabase.auth.getUser();
     if (userError || !userData?.user) {
-      return { content: [{ type: "text", text: `Error resolving user: ${userError?.message ?? "unknown"}` }], isError: true };
+      return safeMcpError("resolve-user", userError ?? new Error("Missing authenticated user"));
     }
     const row = {
       id: randomUUID(),
@@ -60,7 +60,7 @@ export default defineTool({
       .insert(row)
       .select("id, name, source_type, params, created_at")
       .single();
-    if (error) return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
+    if (error) return safeMcpError("save-preset", error);
     return {
       content: [{ type: "text", text: JSON.stringify(data, null, 2) }],
       structuredContent: { preset: data },

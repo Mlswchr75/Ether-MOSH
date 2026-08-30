@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "react-router-dom";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Helmet } from "react-helmet-async";
 import { ChevronsUp, Flame, Upload, Video } from "lucide-react";
 import { toast } from "sonner";
@@ -10,7 +10,6 @@ import { haptic } from "@/hooks/useHaptics";
 import { defaultFacing, requestCameraStream } from "@/hooks/useCamera";
 import { useAuth } from "@/hooks/useAuth";
 import { LazyMoshingBackdrop } from "@/components/home/LazyMoshingBackdrop";
-import { LazyDemoReelPanel } from "@/components/home/LazyDemoReelPanel";
 import { AboutTrigger } from "@/components/AboutOverlay";
 import { BioFlicker } from "@/components/home/BioFlicker";
 import { RebellionNudge } from "@/components/home/RebellionNudge";
@@ -18,7 +17,10 @@ import { QuadrantDecor } from "@/components/home/QuadrantDecor";
 import { GlitchWordField, KEEP_OUT } from "@/components/home/GlitchWordField";
 import { HeroWord, HERO_ANCHOR } from "@/components/home/HeroWord";
 import { HomeInfoCarousel } from "@/components/home/HomeInfoCarousel";
-import { titleAmbience } from "@/engine/titleAmbience";
+
+const DemoReelPanel = lazy(() =>
+  import("@/components/home/DemoReelPanel").then(m => ({ default: m.DemoReelPanel })),
+);
 
 const EASE_SNAP = [0.22, 1, 0.36, 1] as const;
 
@@ -31,7 +33,9 @@ const Index = () => {
   const setVideoSource = useStore(s => s.setVideoSource);
   const fileRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLElement>(null);
+  const demoGateRef = useRef<HTMLDivElement>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [demoReady, setDemoReady] = useState(false);
 
   // Whatever the hero is currently shouting. The word field takes it so the
   // same word is never on screen twice.
@@ -43,9 +47,49 @@ const Index = () => {
   // place: procedural sci-fi/mechanical stingers on a loose schedule, purely
   // atmospheric, gone the moment they leave the title screen.
   useEffect(() => {
-    titleAmbience.start();
-    return () => titleAmbience.stop();
+    let active = true;
+    let ambience: { start: (activateImmediately?: boolean) => void; stop: () => void } | null = null;
+    function engage(): void {
+      removeListeners();
+      void import("@/engine/titleAmbience").then((module) => {
+        if (!active) return;
+        ambience = module.titleAmbience;
+        ambience.start(true);
+      });
+    }
+    function removeListeners(): void {
+      window.removeEventListener("pointerdown", engage);
+      window.removeEventListener("keydown", engage);
+      window.removeEventListener("touchstart", engage);
+    }
+    window.addEventListener("pointerdown", engage, { passive: true, once: true });
+    window.addEventListener("keydown", engage, { once: true });
+    window.addEventListener("touchstart", engage, { passive: true, once: true });
+    return () => {
+      active = false;
+      removeListeners();
+      ambience?.stop();
+    };
   }, []);
+
+  // Keep the catalogue/demo engine out of the initial route. It mounts just
+  // before the third panel enters view, so the reel is ready when requested
+  // without competing with the hero's first paint and interaction.
+  useEffect(() => {
+    const root = scrollRef.current;
+    const gate = demoGateRef.current;
+    if (!root || !gate || demoReady) return;
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting) return;
+        setDemoReady(true);
+        io.disconnect();
+      },
+      { root, rootMargin: "0px 0px -10%", threshold: 0.01 },
+    );
+    io.observe(gate);
+    return () => io.disconnect();
+  }, [demoReady]);
 
   // The title is the middle story: public work above, demo reel below. Set
   // the initial position before paint so first-time visitors still land on
@@ -401,7 +445,13 @@ const Index = () => {
       </div>
       </section>
 
-      <LazyDemoReelPanel onSelect={loadFromUrl} />
+      <div ref={demoGateRef} className="h-screen w-screen shrink-0 snap-start bg-background">
+        {demoReady && (
+          <Suspense fallback={<div className="h-screen w-screen bg-background" />}>
+            <DemoReelPanel onSelect={loadFromUrl} />
+          </Suspense>
+        )}
+      </div>
     </main>
   );
 };

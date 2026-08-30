@@ -215,9 +215,18 @@ export class MoshRenderer {
         void main(){
           vec2 uv = (vUv - 0.5) * uCover + 0.5;
           uv.x = mix(uv.x, 1.0 - uv.x, uMirror);
-          vec3 c = texture2D(uTex, sadj(uv)).rgb;
+          vec4 texel = texture2D(uTex, sadj(uv));
+          vec3 c = texel.rgb;
+          // This pass is the very first stop for the source texture — every
+          // effect downstream reads from what it writes. Hardcoding alpha to
+          // 1.0 here was flattening a transparent upload's real alpha to
+          // fully opaque before a single FX shader ever got to see it, no
+          // matter how carefully each of those 108 shaders was later fixed
+          // to carry .a through. The tone-mapping below only ever touches
+          // RGB, so the source's own alpha just rides along untouched.
+          float srcAlpha = texel.a;
 
-          if (uHdr <= 0.001) { gl_FragColor = vec4(c, 1.0); return; }
+          if (uHdr <= 0.001) { gl_FragColor = vec4(c, srcAlpha); return; }
 
           // 7px, not 14. The neighbourhood doubles as the "local average" the
           // shadow lift blends toward, and at 14px that average is a heavy blur
@@ -305,7 +314,7 @@ export class MoshRenderer {
           // term stays, since a lift genuinely does steal saturation there.
           outC = mix(vec3(outLum), outC, 1.0 + uHdr * (0.10 + darkness * 0.45));
 
-          gl_FragColor = vec4(clamp(outC, 0.0, 1.0), 1.0);
+          gl_FragColor = vec4(clamp(outC, 0.0, 1.0), srcAlpha);
         }
       `,
       uniforms: {

@@ -674,8 +674,27 @@ export function GlCanvas() {
     vrFrameRef.current = renderOnce;
 
     const tick = () => {
-      if (!vrMode.active) renderOnce();
+      // Schedule the next frame FIRST. A single generator/shader exception must
+      // never be able to kill Forge's animation clock and strand the user on
+      // the first rendered stack.
       raf = requestAnimationFrame(tick);
+      if (vrMode.active) return;
+      try {
+        renderOnce();
+      } catch (error) {
+        console.error("[forge/render] frame failed; continuing render loop", error);
+        // If a Forge generator/runtime is the culprit, discard only its
+        // mutable runtime. The next frame recreates it cleanly while the main
+        // renderer, source mode and controls stay alive.
+        if (sourceModeRef.current === "forge" || sourceModeRef.current === "motif") {
+          if (forgeRuntimeRef.current) disposeForgeRuntime(forgeRuntimeRef.current);
+          forgeRuntimeRef.current = null;
+          // Escape a poisoned in-flight generator transition as well. Re-roll
+          // to a fresh, known-valid source instead of retrying the same broken
+          // frame forever.
+          useStore.getState().randomiseForge();
+        }
+      }
     };
 
     raf = requestAnimationFrame(tick);

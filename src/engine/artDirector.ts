@@ -674,7 +674,26 @@ export const LOOKS_BY_ID: Record<string, Look> = Object.fromEntries(LOOKS.map(l 
  * just the effects, is what stops consecutive rolls from feeling like the
  * same idea twice.
  */
-export function chooseLook(brief: FrameBrief, rand: () => number, avoid: string[] = []): Look {
+/** How hard a fully-suppressed look gets pushed down the ranking — tuned
+ *  against `suits` weights, which run roughly -1..1 per axis, so this is
+ *  comparable to losing a couple of the axes a look actually fits. */
+const LOOK_PENALTY_STRENGTH = 1.4;
+
+export function chooseLook(
+  brief: FrameBrief,
+  rand: () => number,
+  avoid: string[] = [],
+  /** Soft, decaying recency suppression (0..1 per look id — see
+   *  recencyPenalty in compose.ts) — the same memory Journey mode's own
+   *  look-equivalent choice uses. `avoid` still hard-excludes on top of
+   *  this for anything that must never come back (e.g. every look is
+   *  filtered to nothing, a caller with no memory to soften); most callers
+   *  should prefer this over `avoid` going forward. Applied as a
+   *  subtraction, not a multiplier — `suits` weights can be negative, and
+   *  multiplying a negative score by a small penalty makes it *less*
+   *  negative, the opposite of suppression. */
+  penalty?: ReadonlyMap<string, number>,
+): Look {
   const stale = new Set(avoid);
   const scored = LOOKS.map(look => {
     let score = 0;
@@ -682,6 +701,7 @@ export function chooseLook(brief: FrameBrief, rand: () => number, avoid: string[
       const v = brief[key as keyof FrameBrief];
       if (typeof v === "number") score += v * (weight as number);
     }
+    score -= (1 - (penalty?.get(look.id) ?? 1)) * LOOK_PENALTY_STRENGTH;
     return { look, score };
   });
 
@@ -761,6 +781,12 @@ const COST_BUDGET = 1.5;
  */
 const GPU_BUDGET = 16;
 
+/** How hard a fully-suppressed effect gets pushed down the ranking — tuned
+ *  against the score terms above, which mostly run ±0.5..1.5 with -6 for a
+ *  genuine hard constraint (blows the GPU budget), so this reads as a real
+ *  but survivable deduction rather than the -6 tier. */
+const EFFECT_PENALTY_STRENGTH = 1.8;
+
 /** Measured GPU cost of an effect; unmeasured effects are cheap (~1x). */
 export function gpuCostOf(id: string): number {
   return CRAFT[id]?.gpu ?? 1;
@@ -793,6 +819,12 @@ export function pickForRole(
     /** 0..1. Raises the ceiling on drama, grit and colour replacement, and
      *  widens how deep into the ranking a pick may reach. */
     wildness?: number;
+    /** Soft, decaying recency suppression (0..1 per effect id — see
+     *  recencyPenalty in compose.ts), the same memory Journey mode's own
+     *  effect ranking uses. Unlike `exclude` (a hard rule: never repeat a
+     *  role already filled in *this* stack), this is a preference a strong
+     *  enough score can still overcome. */
+    penalty?: ReadonlyMap<string, number>;
   } = {},
 ): string {
   const exclude = new Set(opts.exclude ?? []);
@@ -800,6 +832,7 @@ export function pickForRole(
   const gpuLeft = opts.gpuLeft ?? GPU_BUDGET;
   const affinity = opts.affinityTarget ?? 1;
   const wildness = Math.max(0, Math.min(1, opts.wildness ?? 0.35));
+  const penalty = opts.penalty;
 
   const onLook = (look.picks[role] ?? []).filter(id => CRAFT[id] && !exclude.has(id));
   const wider = (opts.anyRole ? Object.keys(CRAFT) : poolForRole(role)).filter(id => !exclude.has(id));
@@ -884,6 +917,13 @@ export function pickForRole(
     const gpu = c.gpu ?? 1;
     if (gpu > gpuLeft) score -= 6;
     score -= (gpu - 1) * 0.06;
+
+    // Soft recency suppression — applied as a subtraction, not a multiplier,
+    // because this score is genuinely signed (the GPU/budget/replaces terms
+    // above can all push it negative); multiplying a negative score by a
+    // small penalty would make it *less* negative, the opposite of what a
+    // penalty is for.
+    score -= (1 - (penalty?.get(id) ?? 1)) * EFFECT_PENALTY_STRENGTH;
 
     return { id, score: score + rand() * 0.5 };
   });
@@ -1052,12 +1092,15 @@ export function composeRoleLayer(
     affinityTarget?: number;
     wildness: number;
     existingRegion?: LayerRegion | null;
+    /** Soft recency suppression — see pickForRole's own doc. */
+    penalty?: ReadonlyMap<string, number>;
   },
 ): ComposedLayer | null {
   const effectId = pickForRole(role, look, brief, rand, {
     exclude: options.exclude,
     affinityTarget: options.affinityTarget,
     wildness: options.wildness,
+    penalty: options.penalty,
   });
   if (!EFFECTS_BY_ID[effectId]) return null;
 
@@ -1088,6 +1131,16 @@ export function compose(
     roleCount?: number;
     avoidLooks?: string[];
     avoidEffects?: string[];
+    /** Soft, decaying recency suppression — the same memory Journey mode
+     *  uses (see recencyPenalty in compose.ts). Prefer this over
+     *  avoidLooks/avoidEffects: those hard-exclude anything used in the
+     *  last few taps until it ages out of a fixed window, which is a
+     *  noticeably more mechanical "shuffle" than a repeat that's merely
+     *  unlikely for a while. Both can be given together — avoid still wins
+     *  for anything that must never come back at all (a locked layer's own
+     *  effect id, say). */
+    lookPenalty?: ReadonlyMap<string, number>;
+    effectPenalty?: ReadonlyMap<string, number>;
     look?: Look;
     /**
      * 0..1. How willing the director is to break its own grammar.
@@ -1120,7 +1173,7 @@ export function compose(
     wildness?: number;
   } = {},
 ): Composition {
-  const look = opts.look ?? chooseLook(brief, rand, opts.avoidLooks ?? []);
+  const look = opts.look ?? chooseLook(brief, rand, opts.avoidLooks ?? [], opts.lookPenalty);
   const roleCount = Math.max(1, Math.min(MAX_ROLES, opts.roleCount ?? 4));
   const wildness = Math.max(0, Math.min(1, opts.wildness ?? 0.35));
   // A wild roll is more willing to break the grammar — but only where the
@@ -1176,6 +1229,7 @@ export function compose(
       gpuLeft: Math.max(1, gpu - reserve),
       anyRole: breakRule,
       wildness,
+      penalty: opts.effectPenalty,
     });
     used.add(id);
     budget -= CRAFT[id]?.cost ?? 0.3;
