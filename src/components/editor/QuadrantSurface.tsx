@@ -83,20 +83,17 @@ type Readout = {
 };
 
 type Props = {
-  /** Fires after a tap re-rolls a semantic role. */
-  onRoll?: (role: Role) => void;
   /** Two-finger pinch — kept here so a single surface owns every canvas gesture. */
   onTogglePerf?: () => void;
   /** Opens the existing Tune panel for the chosen effect layer. */
   onTune?: (layerId: string) => void;
 };
 
-export function QuadrantSurface({ onRoll, onTogglePerf, onTune = () => {} }: Props) {
+export function QuadrantSurface({ onTogglePerf, onTune = () => {} }: Props) {
   const kaossOn = useKaossStore(s => s.instrumentEnabled);
   const showBeforeAfter = useStore(s => s.showBeforeAfter);
   const isolationMode = useStore(s => s.isolationMode);
   const stickerMode = useStore(s => s.stickerMode);
-  const moshNext = useStore(s => s.moshNext);
 
   const wrapRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<Drag | null>(null);
@@ -279,39 +276,10 @@ export function QuadrantSurface({ onRoll, onTogglePerf, onTune = () => {} }: Pro
     // long enough to belong to the menu-rack hold is not a tap.
     if (d.moved || performance.now() - d.startedAt >= TAP_MS) return;
 
-    // A fresh source has zero layers, which fails the exact same
-    // every-role-has-nothing-unlocked check as a deliberately all-locked
-    // stack — moshNext() can't tell "nothing exists yet" from "everything is
-    // pinned" apart. Without this, the very first tap on a blank canvas
-    // (before anyone has pressed the Mosh button) claimed roles were
-    // "locked", which isn't true and isn't discoverable. Seed the stack with
-    // a full mosh instead — that's what an empty canvas actually needs.
-    if (useStore.getState().layers.length === 0) {
-      crossfadeLayers(() => useStore.getState().mosh(), MOSH_FADE_MS);
-      return;
-    }
-
-    const roll = moshNext();
-    if (!roll) {
-      // Every role is locked — say so rather than looking broken.
-      showReadout({
-        effectName: "",
-        xLabel: "", xValue: 0, yLabel: "", yValue: 0,
-        message: "all roles locked",
-        at: performance.now(),
-      });
-      return;
-    }
-
-    showReadout({
-      role: roll.role,
-      effectName: roll.effectName,
-      xLabel: "", xValue: 0, yLabel: "", yValue: 0,
-      relation: roll.relation,
-      look: useStore.getState().currentLook?.name,
-      at: performance.now(),
-    });
-    onRoll?.(roll.role);
+    // A plain tap re-rolls the whole stack, same as the Mosh button, Shift+M,
+    // and desktop double-click — one consistent "moshs the fx stack" gesture
+    // everywhere instead of a partial single-role reroll only tap owned.
+    crossfadeLayers(() => useStore.getState().mosh(), MOSH_FADE_MS);
   };
 
   const onPointerCancel = (e: React.PointerEvent) => {

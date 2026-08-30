@@ -1442,41 +1442,80 @@ export default function Editor() {
     return () => window.removeEventListener("aegis:toggle-ui", onToggleUI);
   }, []);
 
-  // Three-finger tap on the visualizer is the touch counterpart to C. It is
-  // intentionally scoped to the canvas and ignores UI controls so it cannot
-  // steal ordinary multi-touch interactions from the editor chrome.
+  // Three-finger tap on the visualizer is the touch counterpart to Shift+G
+  // (3-second GIF). Intentionally scoped to the canvas and ignores UI
+  // controls so it cannot steal ordinary multi-touch interactions from the
+  // editor chrome. A genuine tap only — down plus a quick, near-still
+  // release — so a deliberate three-finger hold or drag can't misfire a
+  // capture the way firing on touchdown alone would.
   useEffect(() => {
     const el = canvasContainerRef.current;
     if (!el) return;
-    const activeTouches = new Set<number>();
-    let fired = false;
+    type Point = { x: number; y: number };
+    const points = new Map<number, Point>();
+    let start: Point[] = [];
+    let startedAt = 0;
+    let maxTravel = 0;
+    let invalid = false;
+    let handled = false;
     const isCanvasTap = (target: EventTarget | null) =>
       !(target instanceof HTMLElement) || !target.closest("button, a, input, textarea, [role='slider'], [data-no-longpress]");
     const onDown = (e: PointerEvent) => {
       if (e.pointerType !== "touch" || !isCanvasTap(e.target)) return;
-      activeTouches.add(e.pointerId);
-      if (activeTouches.size !== 3 || fired) return;
-      fired = true;
-      e.preventDefault();
-      try { (navigator as any).vibrate?.(10); } catch {}
-      takeScreenshot();
+      points.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (points.size === 3) {
+        start = [...points.values()].map(p => ({ ...p }));
+        startedAt = performance.now();
+        maxTravel = 0;
+        invalid = false;
+        handled = false;
+      } else if (points.size > 3) {
+        // A fourth finger means this was never a clean three-finger tap.
+        invalid = true;
+      }
+    };
+    const onMove = (e: PointerEvent) => {
+      const p = points.get(e.pointerId);
+      if (!p) return;
+      p.x = e.clientX;
+      p.y = e.clientY;
+      if (!start.length || start.length !== points.size) return;
+      const now = [...points.values()];
+      for (let i = 0; i < now.length; i++) {
+        maxTravel = Math.max(maxTravel, Math.hypot(now[i].x - start[i].x, now[i].y - start[i].y));
+      }
     };
     const onEnd = (e: PointerEvent) => {
-      activeTouches.delete(e.pointerId);
-      if (activeTouches.size === 0) fired = false;
+      if (!points.has(e.pointerId)) return;
+      if (!handled && !invalid && points.size === 3 && start.length === 3) {
+        const elapsed = performance.now() - startedAt;
+        if (elapsed <= 420 && maxTravel <= 20) {
+          handled = true;
+          try { (navigator as any).vibrate?.(10); } catch {}
+          captureGif(3);
+        }
+      }
+      points.delete(e.pointerId);
+      if (points.size === 0) {
+        start = [];
+        invalid = false;
+        handled = false;
+      }
     };
-    el.addEventListener("pointerdown", onDown, { passive: false });
+    el.addEventListener("pointerdown", onDown, { passive: true });
+    window.addEventListener("pointermove", onMove, { passive: true });
     window.addEventListener("pointerup", onEnd, { passive: true });
     window.addEventListener("pointercancel", onEnd, { passive: true });
     return () => {
       el.removeEventListener("pointerdown", onDown);
+      window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onEnd);
       window.removeEventListener("pointercancel", onEnd);
     };
-  }, [takeScreenshot]);
+  }, [captureGif]);
 
   // Touch-first performance navigation. One-finger horizontal swipes walk the
-  // undo/redo timeline; two-finger tap still toggles Smart Freeze. At the
+  // undo/redo timeline; two-finger tap takes a screenshot. At the
   // newest point, swiping forward creates a fresh Mosh instead of going dead.
   useEffect(() => {
     const el = canvasContainerRef.current;
@@ -1501,7 +1540,7 @@ export default function Editor() {
         invalid = false;
         handled = false;
       } else if (points.size > 2) {
-        // Three fingers belong to screenshot capture, never to this gesture.
+        // Three fingers belong to the GIF-capture gesture, never to this one.
         invalid = true;
       }
     };
@@ -1540,7 +1579,7 @@ export default function Editor() {
           }
         } else if (count === 2 && elapsed <= 420 && maxTravel <= 20) {
           try { (navigator as any).vibrate?.(10); } catch {}
-          toggleSmartFreeze();
+          takeScreenshot();
         }
       }
       points.delete(e.pointerId);
@@ -1560,7 +1599,7 @@ export default function Editor() {
       window.removeEventListener("pointerup", onEnd);
       window.removeEventListener("pointercancel", onEnd);
     };
-  }, [toggleSmartFreeze]);
+  }, [takeScreenshot]);
 
   // Pro Mode, desktop: holding bare Shift (no other key, no modifiers)
   // shows the menu instantly; releasing it hides it instantly. A true hold,

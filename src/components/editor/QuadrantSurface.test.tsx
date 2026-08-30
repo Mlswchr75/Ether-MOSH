@@ -2,12 +2,23 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { QuadrantSurface } from "./QuadrantSurface";
 import { useStore } from "@/store/useStore";
+import { cancelLayerCrossfade } from "@/engine/layerCrossfade";
 
 /**
- * The store tests cover the rotation itself; these cover the wiring, which is
- * the part that compiles cleanly and still does nothing. The interaction
- * contract is that position never decides what a tap does — the same tap in the
- * same spot has to keep advancing the rotation.
+ * The store tests cover mosh() itself; these cover the wiring, which is the
+ * part that compiles cleanly and still does nothing. The interaction contract
+ * is that a plain tap always moshes the whole stack — same as the Mosh
+ * button, Shift+M, and desktop double-click — regardless of where on the
+ * surface it lands.
+ *
+ * Layer identity churns on every mosh (compose() mints fresh layer ids), and
+ * the crossfade this triggers synchronously overwrites `layers` with a
+ * transitional blend the instant `commit()` returns (see
+ * layerCrossfade.ts's `tick()`), so a same-tick assertion can't read the
+ * settled post-mosh stack out of `layers`. `past.length` (mosh's undo push)
+ * and `lastRoleRoll` (which mosh always resets to null, unlike the old
+ * per-role reroll) are set directly by `commit()` and never touched by the
+ * crossfade's `setLayersRaw`, so they're what these tests read instead.
  */
 
 /** jsdom has no layout, so give the surface a real box to measure against. */
@@ -30,6 +41,11 @@ function tap(el: Element, x: number, y: number) {
 
 describe("QuadrantSurface", () => {
   beforeEach(() => {
+    // A tap now always goes through crossfadeLayers, whose in-flight fade is
+    // tracked in a module-level rAF handle — without cancelling it here, a
+    // fade left running past the end of one test can tick (and mutate
+    // `layers`) during a later, unrelated test.
+    cancelLayerCrossfade();
     window.localStorage.clear();
     stubBox();
     // setPointerCapture doesn't exist in jsdom; the component guards it, but
@@ -53,35 +69,38 @@ describe("QuadrantSurface", () => {
 
   // This project does not enable testing-library's global auto-cleanup, so
   // without this every render stacks up and the queries go ambiguous.
-  afterEach(cleanup);
+  afterEach(() => {
+    cancelLayerCrossfade();
+    cleanup();
+  });
 
   it("mounts a surface that owns the canvas gestures", () => {
     render(<QuadrantSurface />);
     expect(screen.getByLabelText(/Visual instrument/i)).toBeTruthy();
   });
 
-  it("re-rolls a voice on a tap, wherever the tap lands", () => {
+  it("moshes the whole stack on a tap, wherever the tap lands", () => {
     render(<QuadrantSurface />);
     const el = screen.getByLabelText(/Visual instrument/i);
 
-    const before = useStore.getState().layers.map(l => l.effectId);
-    tap(el, 40, 700); // bottom-left — under the old model this was a fixed voice
-    const after = useStore.getState().layers.map(l => l.effectId);
+    const pastBefore = useStore.getState().past.length;
+    tap(el, 40, 700); // bottom-left — position never decides what a tap does
 
-    expect(after.filter((id, i) => id !== before[i])).toHaveLength(1);
+    expect(useStore.getState().past.length).toBe(pastBefore + 1);
+    // mosh() always clears lastRoleRoll — the old per-role reroll left it set.
+    expect(useStore.getState().lastRoleRoll).toBeNull();
   });
 
-  it("advances the rotation even when every tap lands on the same spot", () => {
+  it("moshes again on every tap, even when every tap lands on the same spot", () => {
     render(<QuadrantSurface />);
     const el = screen.getByLabelText(/Visual instrument/i);
 
-    const hit: string[] = [];
-    for (let i = 0; i < 3; i++) {
-      tap(el, 200, 400); // dead centre, every time
-      hit.push(useStore.getState().lastRoleRoll!.role);
-    }
-    // This is the whole design: the finger never moves, the voice still changes.
-    expect(new Set(hit).size).toBe(3);
+    const pastBefore = useStore.getState().past.length;
+    for (let i = 0; i < 3; i++) tap(el, 200, 400); // dead centre, every time
+
+    // Each tap is a full, independent mosh — the finger never moves, the
+    // stack still rerolls every time instead of only the first.
+    expect(useStore.getState().past.length).toBe(pastBefore + 3);
   });
 
   it("skips a locked voice so a kept look survives repeated tapping", () => {
@@ -96,14 +115,21 @@ describe("QuadrantSurface", () => {
     expect(useStore.getState().layers[0].effectId).toBe(kept.effectId);
   });
 
-  it("reads out plain all roles locked feedback when no role can roll", () => {
+  it("still moshes in fresh layers on top when every existing layer is locked", () => {
     render(<QuadrantSurface />);
     const el = screen.getByLabelText(/Visual instrument/i);
-    for (const layer of useStore.getState().layers) useStore.getState().toggleLocked(layer.id);
+    const lockedIds = useStore.getState().layers.map(l => l.id);
+    for (const id of lockedIds) useStore.getState().toggleLocked(id);
 
+    const pastBefore = useStore.getState().past.length;
     tap(el, 200, 400);
 
-    expect(document.querySelector("[data-role-readout]")?.textContent).toContain("all roles locked");
+    // A full mosh, unlike the old per-role reroll, never refuses to roll —
+    // it composes a fresh set of layers on top of whatever is locked.
+    expect(useStore.getState().past.length).toBe(pastBefore + 1);
+    for (const id of lockedIds) {
+      expect(useStore.getState().layers.some(l => l.id === id && l.locked)).toBe(true);
+    }
   });
 
   it("sweeps parameters on a drag instead of re-rolling", () => {
