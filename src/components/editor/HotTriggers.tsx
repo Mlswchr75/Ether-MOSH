@@ -1,4 +1,4 @@
-import { Mic, MicOff, Circle, Square, Sparkles, Scissors, Snowflake, Camera, Shuffle, Star, Play, Pencil, Trash2, X, Film, Lock, Share2, Compass, Maximize2, Minimize2, Gem, Home, SwitchCamera, Eraser, Link2, Upload, Music, Music2, Shuffle as ShuffleIcon, Undo2, Redo2, Gauge, ChevronDown, MonitorSpeaker, Heart, GripVertical, RotateCcw, EyeOff, HelpCircle, SkipBack, SkipForward, Palette, Flame, UserCircle, Download, Glasses } from "lucide-react";
+import { Mic, MicOff, Circle, Square, Sparkles, Scissors, Snowflake, Camera, Shuffle, Star, Play, Pencil, Trash2, X, Film, Lock, Share2, Compass, Maximize2, Minimize2, SwitchCamera, Eraser, Link2, Upload, Music, Music2, Shuffle as ShuffleIcon, Undo2, Redo2, ChevronDown, MonitorSpeaker, Heart, GripVertical, RotateCcw, SkipBack, SkipForward, Palette, Glasses } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { useStore } from "@/store/useStore";
@@ -7,7 +7,6 @@ import { runTrackAction } from "@/engine/trackActions";
 import { requestCameraStream, type CameraFacing } from "@/hooks/useCamera";
 import { ForgePanel } from "./ForgePanel";
 import { MotifMaestroPanel } from "./MotifMaestroPanel";
-import { ExportSettingsPanel } from "./ExportSettingsPanel";
 import { shareUrl } from "@/lib/share";
 import { toggleSystemAudio } from "@/engine/systemAudio";
 import { AudioInputControls } from "./AudioInputControls";
@@ -22,6 +21,8 @@ import {
   XR_UI_OVERRIDE_KEY,
   type XrUiOverride,
 } from "@/engine/xrCapabilities";
+import { MoshVortexIcon, LiveFeedIcon, UploadBeamIcon, ForgeFlameIcon, MotifMandalaIcon, HomeBeaconIcon, AccountCrystalIcon } from "./HotTriggerIcons";
+import { AccountSettingsOverlay } from "./AccountSettingsOverlay";
 
 /** Viewport-normalized UV for a client point — used for the one-shot "digital
  *  chaos" burst a hold-branch fires at. An approximation (viewport, not the
@@ -124,30 +125,32 @@ export const AUTO_MOSH_TIMINGS = [3, 15, 30, 60, 300, 600] as const;
 const DEFAULT_AUTO_MOSH_SEC = 15;
 
 /** Performance-first: make/change/restore, direct the live response, capture,
- * deepen the artwork, then source/system/navigation utilities. */
+ * deepen the artwork, then source/system/navigation utilities.
+ * pro-mode, sensitivity, export-settings and support used to live here too —
+ * all four now live inside the "account" trigger's settings overlay instead
+ * (see AccountSettingsOverlay.tsx), so none of them need a ring slot of
+ * their own any more. */
 const DEFAULT_ORDER = [
   "mosh", "undo", "redo", "journey", "auto-mosh", "clear-fx",
-  "audio", "sensitivity", "theme-track", "freeze",
-  "capture", "gif", "share", "export-settings", "favorites",
+  "audio", "theme-track", "freeze",
+  "capture", "gif", "share", "favorites",
   "sticker-mode",
   "source-camera", "switch-camera", "source-upload", "source-forge", "forge-palette", "source-motif", "motif-maestro",
-  "fullscreen", "pro-mode", "xr-menu", "account", "support", "home",
+  "fullscreen", "xr-menu", "account", "home",
 ] as const;
 
 const TRIGGER_LABELS: Record<string, string> = {
   home: "Back to start", undo: "Undo", redo: "Redo",
-  "source-upload": "Upload source", "source-camera": "Live camera", "source-forge": "Forge source", "source-motif": "Motif Maestro", account: "Account",
+  "source-upload": "Upload source", "source-camera": "Live camera", "source-forge": "Forge source", "source-motif": "Motif Maestro", account: "Settings",
   mosh: "Mosh", "auto-mosh": "Auto-Mosh", "clear-fx": "Clear FX", journey: "Journey",
-  audio: "Audio (mic / device / beat sync)", sensitivity: "Sensitivity",
-  "pro-mode": "Pro Mode — hide all UI",
+  audio: "Audio (mic / device / beat sync)",
   freeze: "Freeze", capture: "Capture — tap for a still, hold to record", gif: "GIF loop", share: "Share",
-  "export-settings": "Export settings — format, quality, and DPI for every export",
   "sticker-mode": "Sticker Studio",
   "theme-track": "Theme track", favorites: "Favorites", fullscreen: "Fullscreen",
   "forge-palette": "Forge settings — colour is directed automatically",
   "motif-maestro": "Motif Maestro controls",
   "xr-menu": "VR / immersive menu override",
-  "switch-camera": "Switch camera", support: "Support MOSH",
+  "switch-camera": "Switch camera",
 };
 
 const ORDER_KEY = "cathedral_hot_trigger_order_v2";
@@ -533,9 +536,13 @@ function AudioTrigger({ delay, onMicFlash }: { delay: number; onMicFlash?: (on: 
         label={micEnabled ? "Mic on" : systemAudioEnabled ? "Device audio on" : "Listen mode"}
         active={listening || beatEnabled}
         tint="var(--signal-good)"
-        onClick={() => {
+        onClick={(e) => {
           if (micEnabled) { setMicEnabled(false); onMicFlash?.(false); return; }
           if (systemAudioEnabled) { setSystemAudioEnabled(false); onMicFlash?.(false); return; }
+          // Opening the source/beat-sync popover, not firing a one-shot
+          // action — must not bubble into the ring-item wrapper's
+          // dismiss-on-click, or the popover would never get to show.
+          e.stopPropagation();
           setOpen(v => !v);
         }}
       >
@@ -544,7 +551,7 @@ function AudioTrigger({ delay, onMicFlash }: { delay: number; onMicFlash?: (on: 
       <button
         type="button"
         onPointerDown={(e) => e.stopPropagation()}
-        onClick={() => setOpen(o => !o)}
+        onClick={(e) => { e.stopPropagation(); setOpen(o => !o); }}
         aria-label="Audio options — source and beat sync"
         aria-expanded={open || undefined}
         aria-haspopup="menu"
@@ -612,74 +619,6 @@ function AudioTrigger({ delay, onMicFlash }: { delay: number; onMicFlash?: (on: 
             >
               <Heart className="h-2.5 w-2.5" strokeWidth={1.5} /> tap
             </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/**
- * Global reactivity multiplier — a single slider that scales mic/device
- * sensitivity AND audio-mapped modulator strength together, in every mode
- * (see GlCanvas.tsx). Defaults to 1×, a genuine no-op: nothing about the
- * current look changes until this is actually touched.
- */
-function SensitivityTrigger({ delay }: { delay: number }) {
-  const sensitivity = useStore(s => s.sensitivity);
-  const setSensitivity = useStore(s => s.setSensitivity);
-  const [open, setOpen] = useState(false);
-  const wrapRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const close = (e: PointerEvent) => {
-      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
-    };
-    window.addEventListener("pointerdown", close, true);
-    return () => window.removeEventListener("pointerdown", close, true);
-  }, [open]);
-
-  return (
-    <div ref={wrapRef} className="relative">
-      <HotBtn
-        delay={delay}
-        label={`Sensitivity · ${sensitivity.toFixed(2)}×`}
-        active={sensitivity !== 1}
-        tint="150 70% 62%"
-        onClick={() => setOpen(v => !v)}
-      >
-        <Gauge className="h-4 w-4" strokeWidth={1.5} />
-      </HotBtn>
-      {open && (
-        <div
-          className="panel-in-3d absolute right-full top-0 z-50 mr-2 w-52 rounded-md border border-white/10 bg-black/85 p-2.5 backdrop-blur-md"
-          onPointerDown={(e) => e.stopPropagation()}
-        >
-          <div className="mb-1.5 flex items-center justify-between font-mono text-[9px] uppercase tracking-[0.2em] text-[hsl(var(--accent))]">
-            <span>sensitivity</span>
-            <span>{sensitivity.toFixed(2)}×</span>
-          </div>
-          <input
-            type="range" min={0.2} max={2.5} step={0.05} value={sensitivity}
-            onChange={(e) => setSensitivity(+e.target.value)}
-            aria-label="Global sensitivity"
-            className="slider-hair w-full"
-          />
-          <div className="mt-1.5 flex items-center justify-between">
-            <p className="max-w-[75%] font-mono text-[9px] leading-tight text-white/45">
-              Scales how hard everything reacts — mic/device audio and any
-              beat/audio-mapped effect, in every mode. 1× changes nothing.
-            </p>
-            {sensitivity !== 1 && (
-              <button
-                type="button"
-                onClick={() => setSensitivity(1)}
-                className="shrink-0 font-mono text-[9px] uppercase tracking-[0.1em] text-white/50 hover:text-[hsl(var(--accent))]"
-              >
-                reset
-              </button>
-            )}
           </div>
         </div>
       )}
@@ -771,13 +710,17 @@ function CustomizeTrigger({
 }
 
 function MobileRadialWheel({
-  ids, registry, visualizerRef, isRecording, onSelect,
+  ids, registry, visualizerRef, isRecording, onSelect, onMosh,
 }: {
   ids: string[];
   registry: Record<string, ReactNode>;
   visualizerRef?: RefObject<HTMLElement>;
   isRecording: boolean;
   onSelect: (id: string) => void;
+  /** Hold-and-release without steering to any ring item, or a direct tap
+   *  on the center hub — both mosh to the next FX stack, same as a plain
+   *  click/spacebar always has. */
+  onMosh: () => void;
 }) {
   const layerRef = useRef<HTMLDivElement>(null);
   const wheelRef = useRef<HTMLDivElement>(null);
@@ -1108,9 +1051,10 @@ function MobileRadialWheel({
             })}
             <button
               type="button"
+              data-mosh-input
               className="mobile-radial-wheel__hub"
-              onClick={dismiss}
-              aria-label="Close radial controls"
+              onClick={() => { onMosh(); dismiss(); }}
+              aria-label="Mosh to the next FX stack"
             >
               <span ref={labelRef} className="mobile-radial-wheel__label">MOSH</span>
               <small>{isRecording ? "REC" : "steer · tap · flick"}</small>
@@ -1121,13 +1065,17 @@ function MobileRadialWheel({
 }
 
 function DesktopRadialWheel({
-  ids, registry, visualizerRef, isRecording, onSelect,
+  ids, registry, visualizerRef, isRecording, onSelect, onMosh,
 }: {
   ids: string[];
   registry: Record<string, ReactNode>;
   visualizerRef?: RefObject<HTMLElement>;
   isRecording: boolean;
   onSelect: (id: string) => void;
+  /** Hold-and-release without steering to any ring item, or a direct click
+   *  on the center hub — both mosh to the next FX stack, same as a plain
+   *  click/spacebar always has. */
+  onMosh: () => void;
 }) {
   const [phase, setPhase] = useState<"idle" | "armed" | "open">("idle");
   const [editing, setEditing] = useState(false);
@@ -1138,18 +1086,34 @@ function DesktopRadialWheel({
   });
   const wheelRef = useRef<HTMLDivElement>(null);
   const layerRef = useRef<HTMLDivElement>(null);
+  const labelRef = useRef<HTMLSpanElement>(null);
+  const labelSwapRef = useRef(false);
   const idsRef = useRef(ids);
   const layoutRef = useRef(layout);
   const highlightedRef = useRef<string | null>(null);
+  const editingRef = useRef(editing);
   const gestureRef = useRef({ pointerId: -1, x: 0, y: 0, lastX: 0, lastY: 0, originX: 0, originY: 0, maxTravel: 0, startedAt: 0, fired: false, armed: false, cancelled: false, pointerType: "mouse" });
   const editDragRef = useRef<{ pointerId: number; id: string } | null>(null);
   idsRef.current = ids;
   layoutRef.current = layout;
+  editingRef.current = editing;
 
+  // Same "glitch a fresh name in" swap the mobile wheel's hub already did —
+  // brought over here so hovering/steering across ring items reads
+  // identically on both. `dataset.swap` alternates a/b purely to force the
+  // CSS animation to re-trigger on every change, even repeats.
+  const updateLabel = (text: string) => {
+    const label = labelRef.current;
+    if (!label) return;
+    label.textContent = text;
+    labelSwapRef.current = !labelSwapRef.current;
+    label.dataset.swap = labelSwapRef.current ? "a" : "b";
+  };
   const select = (id: string | null) => {
     if (highlightedRef.current === id) return;
     highlightedRef.current = id;
     setHighlighted(id);
+    updateLabel(editingRef.current ? "DONE" : (id ? (TRIGGER_LABELS[id] ?? id) : "MOSH"));
     if (id) {
       const slot = wheelRef.current?.querySelector<HTMLElement>(`[data-radial-id="${CSS.escape(id)}"]`);
       const rect = slot?.getBoundingClientRect();
@@ -1366,8 +1330,33 @@ function DesktopRadialWheel({
             );
           })}
           <div className="mobile-radial-wheel__hub">
-            <button type="button" onClick={() => setEditing(value => !value)} aria-pressed={editing}>
-              <span className="mobile-radial-wheel__label">{editing ? "DONE" : (highlighted ? (TRIGGER_LABELS[highlighted] ?? highlighted) : "MOSH")}</span>
+            <button
+              type="button"
+              data-mosh-input
+              onClick={() => {
+                // While customizing layout, the hub is still the "DONE"
+                // toggle it always was — mosh only takes over once editing
+                // is off, so a mid-drag click can't fire an unrelated mosh.
+                if (editing) {
+                  setEditing(false);
+                  updateLabel(highlightedRef.current ? (TRIGGER_LABELS[highlightedRef.current] ?? highlightedRef.current) : "MOSH");
+                  return;
+                }
+                onMosh();
+                setPhase("idle");
+              }}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                setEditing(value => {
+                  const next = !value;
+                  updateLabel(next ? "DONE" : (highlightedRef.current ? (TRIGGER_LABELS[highlightedRef.current] ?? highlightedRef.current) : "MOSH"));
+                  return next;
+                });
+              }}
+              aria-pressed={editing}
+              aria-label={editing ? "Done customizing layout" : "Mosh to the next FX stack — right-click to customize layout"}
+            >
+              <span ref={labelRef} className="mobile-radial-wheel__label">MOSH</span>
               <small>{editing ? "drag every icon" : (isRecording ? "REC" : "hold · steer · release")}</small>
             </button>
             {editing && <button type="button" className="radial-layout-reset" onClick={() => saveLayout({})}>reset</button>}
@@ -1388,6 +1377,10 @@ export function HotTriggers({
   onClearFx, hasFx, onSaveFavorite, showTrackNudge, onTrackNudgeDismiss,
 }: Props) {
   const mosh = useStore(s => s.mosh);
+  // Shared by the ring's own "mosh" slot AND both radial wheels' center
+  // hub — releasing a hold without steering to any ring item now mosh'es
+  // to the next FX stack directly, the same as this button always has.
+  const triggerMosh = useCallback(() => crossfadeLayers(mosh, MOSH_FADE_MS), [mosh]);
   const undo = useStore(s => s.undo);
   const redo = useStore(s => s.redo);
   const canUndo = useStore(s => s.past.length > 0);
@@ -1409,8 +1402,6 @@ export function HotTriggers({
   const renameFavorite = useStore(s => s.renameFavorite);
   const heldRef = useRef(false);
   const holdTimerRef = useRef<number | null>(null);
-  const proHeldRef = useRef(false);
-  const proHoldTimerRef = useRef<number | null>(null);
   const captureHeldRef = useRef(false);
   const captureHoldTimerRef = useRef<number | null>(null);
   const favHeldRef = useRef(false);
@@ -1483,16 +1474,18 @@ export function HotTriggers({
 
   const stickerMode = useStore(s => s.stickerMode);
   const setStickerMode = useStore(s => s.setStickerMode);
-  const proModeEnabled = useStore(s => s.proModeEnabled);
-  const setProModeEnabled = useStore(s => s.setProModeEnabled);
-  const helpModeEnabled = useStore(s => s.helpModeEnabled);
-  const setHelpModeEnabled = useStore(s => s.setHelpModeEnabled);
   const [forgePanelOpen, setForgePanelOpen] = useState(false);
   const [motifPanelOpen, setMotifPanelOpen] = useState(false);
-  const [exportSettingsOpen, setExportSettingsOpen] = useState(false);
   const [xrUiOverride, setXrUiOverride] = useState<XrUiOverride>(() =>
     typeof window === "undefined" ? "auto" : readXrUiOverride(window.localStorage)
   );
+  // The consolidated settings overlay — opened from the "account" trigger,
+  // or (landing on its Export tab specifically) from the "export started"
+  // toast any export path anywhere in the app can fire. Pro Mode, Help
+  // Mode, sensitivity and export settings all moved inside it; see
+  // AccountSettingsOverlay.tsx.
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsInitialTab, setSettingsInitialTab] = useState<"general" | "export">("general");
 
   const cycleXrUiOverride = () => {
     const next: XrUiOverride = xrUiOverride === "auto" ? "on" : xrUiOverride === "on" ? "off" : "auto";
@@ -1528,22 +1521,13 @@ export function HotTriggers({
     return () => window.removeEventListener("pointerdown", onDown, true);
   }, [motifPanelOpen]);
 
-  useEffect(() => {
-    if (!exportSettingsOpen) return;
-    const onDown = (e: PointerEvent) => {
-      if ((e.target as HTMLElement | null)?.closest("[data-export-settings-panel]")) return;
-      setExportSettingsOpen(false);
-    };
-    window.addEventListener("pointerdown", onDown, true);
-    return () => window.removeEventListener("pointerdown", onDown, true);
-  }, [exportSettingsOpen]);
-
   // Reachable from outside this component too — the "export started" toast
-  // (fired by any export path, anywhere in the app) opens this same panel
-  // when tapped, via the same plain-window-event pattern useIdleFade's
-  // markUiActive() uses to cross that same module boundary.
+  // (fired by any export path, anywhere in the app) opens the settings
+  // overlay straight to its Export tab when tapped, via the same
+  // plain-window-event pattern useIdleFade's markUiActive() uses to cross
+  // that same module boundary.
   useEffect(() => {
-    const open = () => setExportSettingsOpen(true);
+    const open = () => { setSettingsInitialTab("export"); setSettingsOpen(true); };
     window.addEventListener("mosh:open-export-settings", open);
     return () => window.removeEventListener("mosh:open-export-settings", open);
   }, []);
@@ -1706,32 +1690,46 @@ export function HotTriggers({
   const registry: Record<string, ReactNode> = {
     home: onHome && (
       <HotBtn key="home" delay={0} label="Back to start" onClick={onHome} tint="220 12% 80%">
-        <Home className="h-4 w-4" strokeWidth={1.5} />
+        <HomeBeaconIcon className="h-4 w-4" />
       </HotBtn>
     ),
     "source-upload": (
       <HotBtn key="source-upload" delay={0} label="Upload source — hold for photo deck" active={sourceMode === "upload"} onClick={onUploadTap} onPointerDown={startUploadHold} onPointerUp={endUploadHold} onPointerCancel={endUploadHold} tint="326 90% 65%">
-        <Upload className="h-4 w-4" strokeWidth={1.5} />
+        <UploadBeamIcon className="h-4 w-4" />
       </HotBtn>
     ),
     "source-camera": (
       <HotBtn key="source-camera" delay={0} label="Live camera" active={sourceMode === "camera"} onClick={() => window.dispatchEvent(new CustomEvent("mosh:switch-mode", { detail: "camera" }))} tint="190 90% 62%">
-        <Camera className="h-4 w-4" strokeWidth={1.5} />
+        <LiveFeedIcon className="h-4 w-4" />
       </HotBtn>
     ),
     "source-forge": (
       <HotBtn key="source-forge" delay={0} label="Forge source" active={sourceMode === "forge"} onClick={() => window.dispatchEvent(new CustomEvent("mosh:switch-mode", { detail: "forge" }))} tint="24 94% 62%">
-        <Flame className="h-4 w-4" strokeWidth={1.5} />
+        <ForgeFlameIcon className="h-4 w-4" />
       </HotBtn>
     ),
     "source-motif": (
       <HotBtn key="source-motif" delay={0} label="Motif Maestro" active={sourceMode === "motif"} onClick={() => window.dispatchEvent(new CustomEvent("mosh:switch-mode", { detail: "motif" }))} tint="270 92% 72%">
-        <Sparkles className="h-4 w-4" strokeWidth={1.5} />
+        <MotifMandalaIcon className="h-4 w-4" />
       </HotBtn>
     ),
+    // Opens the consolidated settings overlay now, instead of navigating
+    // straight to the full account page — that page is still one click away
+    // inside the overlay itself ("My Account"), for what genuinely needs its
+    // own page (sign-in, subscription). See AccountSettingsOverlay.tsx.
     account: onAccount && (
-      <HotBtn key="account" delay={0} label="Account" onClick={onAccount} tint="266 70% 75%">
-        <UserCircle className="h-4 w-4" strokeWidth={1.5} />
+      <HotBtn
+        key="account"
+        delay={0}
+        label="Settings"
+        // Always lands on General from here — only the export-started toast's
+        // cross-module event should jump straight to the Export tab. Without
+        // resetting this, opening Settings normally after that event fired
+        // once would keep landing back on Export.
+        onClick={() => { setSettingsInitialTab("general"); setSettingsOpen(true); }}
+        tint="266 70% 75%"
+      >
+        <AccountCrystalIcon className="h-4 w-4" />
       </HotBtn>
     ),
     undo: (
@@ -1746,8 +1744,8 @@ export function HotTriggers({
     ),
     mosh: (
       <span key="mosh" data-mosh-input className="contents">
-        <HotBtn delay={0} label="Mosh" onClick={() => crossfadeLayers(mosh, MOSH_FADE_MS)} tint="12 90% 58%">
-          <Sparkles className="h-4 w-4" strokeWidth={1.5} />
+        <HotBtn delay={0} label="Mosh" onClick={triggerMosh} tint="12 90% 58%">
+          <MoshVortexIcon className="h-4 w-4" />
         </HotBtn>
       </span>
     ),
@@ -1864,7 +1862,6 @@ export function HotTriggers({
         <AudioTrigger delay={0} onMicFlash={onMicFlash} />
       </div>
     ),
-    sensitivity: <SensitivityTrigger key="sensitivity" delay={0} />,
     freeze: (
       <HotBtn key="freeze" delay={0} label="Freeze" onClick={onFreeze} tint="200 80% 76%">
         <Snowflake className="h-4 w-4" strokeWidth={1.5} />
@@ -1913,25 +1910,6 @@ export function HotTriggers({
         <Share2 className="h-4 w-4" strokeWidth={1.5} />
       </HotBtn>
     ),
-    "export-settings": (
-      <div key="export-settings" className="relative" data-export-settings-panel>
-        <HotBtn
-          delay={0}
-          label={exportSettingsOpen ? "Close export settings" : "Export settings — format, quality, and DPI for every export"}
-          active={exportSettingsOpen}
-          onClick={() => setExportSettingsOpen(open => !open)}
-          tint="42 90% 62%"
-        >
-          <Download className="h-4 w-4" strokeWidth={1.5} />
-        </HotBtn>
-        {exportSettingsOpen && createPortal(
-          <div className="fixed right-3 top-14 z-[95] safe-top safe-right" data-export-settings-panel>
-            <ExportSettingsPanel onClose={() => setExportSettingsOpen(false)} />
-          </div>,
-          document.body,
-        )}
-      </div>
-    ),
     "sticker-mode": (
       <HotBtn
         key="sticker-mode"
@@ -1959,32 +1937,6 @@ export function HotTriggers({
         </span>
       </HotBtn>
     ),
-    "pro-mode": (
-      <HotBtn
-        key="pro-mode"
-        delay={0}
-        label={helpModeEnabled ? "Pro Mode (hold: Help Mode is ON)" : "Pro Mode — hide all UI (hold for Help Mode)"}
-        active={proModeEnabled || helpModeEnabled}
-        onClick={() => { if (proHeldRef.current) return; setProModeEnabled(!proModeEnabled); }}
-        onPointerDown={(e) => {
-          proHeldRef.current = false;
-          if (proHoldTimerRef.current) window.clearTimeout(proHoldTimerRef.current);
-          const { clientX, clientY } = e;
-          proHoldTimerRef.current = window.setTimeout(() => {
-            proHeldRef.current = true;
-            setHelpModeEnabled(!helpModeEnabled);
-            const uv = clientToViewportUv(clientX, clientY);
-            cursorFx.chaos(uv.x, uv.y);
-            try { (navigator as any).vibrate?.(10); } catch {}
-          }, 420);
-        }}
-        onPointerUp={() => { if (proHoldTimerRef.current) { window.clearTimeout(proHoldTimerRef.current); proHoldTimerRef.current = null; } }}
-        onPointerCancel={() => { if (proHoldTimerRef.current) { window.clearTimeout(proHoldTimerRef.current); proHoldTimerRef.current = null; } }}
-        tint={helpModeEnabled ? "200 90% 65%" : "0 0% 70%"}
-      >
-        {helpModeEnabled ? <HelpCircle className="h-4 w-4" strokeWidth={1.5} /> : <EyeOff className="h-4 w-4" strokeWidth={1.5} />}
-      </HotBtn>
-    ),
     "theme-track": <TrackTrigger key="theme-track" delay={0} showNudge={showTrackNudge} onNudgeDismiss={onTrackNudgeDismiss} />,
     "forge-palette": sourceMode === "forge" && (
       <div key="forge-palette" className="relative" data-forge-panel>
@@ -1992,7 +1944,9 @@ export function HotTriggers({
           delay={0}
           label={forgePanelOpen ? "Close Forge palette and settings" : "Open Forge palette and settings"}
           active={forgePanelOpen}
-          onClick={() => setForgePanelOpen(open => !open)}
+          // Opens/closes a portal-rendered panel, not a one-shot action —
+          // must not bubble into the ring-item wrapper's dismiss-on-click.
+          onClick={(e) => { e.stopPropagation(); setForgePanelOpen(open => !open); }}
           tint="318 82% 68%"
         >
           <Palette className="h-4 w-4" strokeWidth={1.5} />
@@ -2011,7 +1965,9 @@ export function HotTriggers({
           delay={0}
           label={motifPanelOpen ? "Close Motif Maestro controls" : "Open Motif Maestro controls"}
           active={motifPanelOpen}
-          onClick={() => setMotifPanelOpen(open => !open)}
+          // Same reasoning as forge-palette above — must not bubble into
+          // the ring-item wrapper's dismiss-on-click.
+          onClick={(e) => { e.stopPropagation(); setMotifPanelOpen(open => !open); }}
           tint="270 92% 72%"
         >
           <Sparkles className="h-4 w-4" strokeWidth={1.5} />
@@ -2035,7 +1991,9 @@ export function HotTriggers({
           data-no-longpress
           className="hot-trigger"
           style={{ ["--ht-tint" as string]: "var(--signal-warn)" }}
-          onClick={onFavTap}
+          // A tap opens the favorites popover, not a one-shot action — must
+          // not bubble into the ring-item wrapper's dismiss-on-click.
+          onClick={(e) => { e.stopPropagation(); onFavTap(); }}
           onPointerDown={startFavHold}
           onPointerUp={endFavHold}
           onPointerLeave={endFavHold}
@@ -2192,15 +2150,18 @@ export function HotTriggers({
         <SwitchCamera className="h-4 w-4" strokeWidth={1.5} />
       </HotBtn>
     ),
-    support: onSupport && (
-      <HotBtn key="support" delay={0} label="Support MOSH" onClick={onSupport} tint="280 70% 72%">
-        <Gem className="h-4 w-4" strokeWidth={1.5} />
-      </HotBtn>
-    ),
+    // Was its own wheel trigger ("Support MOSH") — now the loud, animated
+    // nudge inside the settings overlay instead. onSupport is passed
+    // straight through to AccountSettingsOverlay below.
   };
 
   const availableIds = order.filter(id => !!registry[id]);
   const present = new Set(availableIds);
+  // The two radial wheels never show "mosh" as a ring slot — their center
+  // hub IS the mosh button now (see triggerMosh above). Still present in
+  // `availableIds`/`registry` for the legacy flat rail and the hidden XR
+  // registry, neither of which has a "center".
+  const wheelIds = availableIds.filter(id => id !== "mosh");
   const [scrollStart, setScrollStart] = useState(0);
   const wheelCarryRef = useRef(0);
   const dragIdRef = useRef<string | null>(null);
@@ -2242,15 +2203,34 @@ export function HotTriggers({
     return () => rail.removeEventListener("wheel", onWheel);
   }, [showLegacyLaunchpad]);
 
+  // Same reasoning as MicNudgeToast: this overlay is itself the way out of
+  // Pro Mode (and everything else buried behind it), so it can't be nested
+  // inside the branch that Pro Mode hides — toggling Pro Mode ON from
+  // inside these settings would otherwise yank the settings overlay out
+  // from under the user mid-click, along with the very toggle they just
+  // used. Rendered the same way regardless of `hidden`.
+  const settingsOverlay = onAccount && (
+    <AccountSettingsOverlay
+      open={settingsOpen}
+      onClose={() => setSettingsOpen(false)}
+      onMyAccount={onAccount}
+      onSupport={onSupport}
+      initialTab={settingsInitialTab}
+    />
+  );
+
   // Performance/immersive mode hides the DOM chrome, but Quest still needs the
   // live action registry. Keep one non-rendered copy mounted so the WebXR
   // wheel invokes these exact handlers instead of drifting into a second set
   // of trigger implementations.
   if (hidden) {
     return (
-      <div hidden aria-hidden data-xr-hot-trigger-registry>
-        {availableIds.map(id => <div key={id} data-trigger-id={id}>{registry[id]}</div>)}
-      </div>
+      <>
+        <div hidden aria-hidden data-xr-hot-trigger-registry>
+          {availableIds.map(id => <div key={id} data-trigger-id={id}>{registry[id]}</div>)}
+        </div>
+        {settingsOverlay}
+      </>
     );
   }
 
@@ -2258,21 +2238,24 @@ export function HotTriggers({
     <>
     {isTouchScreen ? (
       <MobileRadialWheel
-        ids={availableIds}
+        ids={wheelIds}
         registry={registry}
         visualizerRef={visualizerRef}
         isRecording={isRecording}
         onSelect={setSelectedTriggerId}
+        onMosh={triggerMosh}
       />
     ) : (
       <DesktopRadialWheel
-        ids={availableIds}
+        ids={wheelIds}
         registry={registry}
         visualizerRef={visualizerRef}
         isRecording={isRecording}
         onSelect={setSelectedTriggerId}
+        onMosh={triggerMosh}
       />
     )}
+    {settingsOverlay}
     {showLegacyLaunchpad && (
     /* Vertically centered so the dock occupies the right edge evenly across
        desktop, tablet and phone aspect ratios. */
@@ -2389,7 +2372,12 @@ function GifButton({
       <button
         type="button"
         onPointerDown={(e) => e.stopPropagation()}
-        onClick={() => { if (!gifBusy) setOpen(o => !o); }}
+        // The wheel's own ring-item wrapper now dismisses the whole wheel on
+        // any click within it (so one-shot triggers close after picking) —
+        // this button opens a length submenu instead of firing an action
+        // directly, so its click must not bubble into that dismissal or the
+        // submenu would never get a chance to show.
+        onClick={(e) => { e.stopPropagation(); if (!gifBusy) setOpen(o => !o); }}
         aria-label={gifBusy ? "Capturing GIF loop…" : "Capture seamless GIF loop"}
         aria-pressed={gifBusy || undefined}
         aria-expanded={open || undefined}

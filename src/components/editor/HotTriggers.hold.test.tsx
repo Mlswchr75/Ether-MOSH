@@ -64,7 +64,10 @@ describe("radial hot-trigger holds", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Open radial controls" }));
-    fireEvent.click(document.querySelector<HTMLButtonElement>(".desktop-radial-wheel .mobile-radial-wheel__hub > button")!);
+    // The hub's plain click is mosh now (it's the center Mosh button) — edit
+    // mode moved to a right-click on the hub specifically, so a mosh press
+    // and "let me rearrange the wheel" can't collide on the same gesture.
+    fireEvent.contextMenu(document.querySelector<HTMLButtonElement>(".desktop-radial-wheel .mobile-radial-wheel__hub > button")!);
 
     expect(screen.getByRole("button", { name: "Move Capture — tap for a still, hold to record" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Capture — tap for a still, hold to record" })).toBeTruthy();
