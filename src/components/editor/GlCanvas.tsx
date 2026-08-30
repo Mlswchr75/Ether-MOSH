@@ -115,6 +115,9 @@ export function GlCanvas() {
   const micEnabled = useStore(s => s.micEnabled);
   const systemAudioEnabled = useStore(s => s.systemAudioEnabled);
   const micSensitivity = useStore(s => s.micSensitivity);
+  const audioInputDeviceId = useStore(s => s.audioInputDeviceId);
+  const audioInputDeviceLabel = useStore(s => s.audioInputDeviceLabel);
+  const audioInputChannel = useStore(s => s.audioInputChannel);
   const lastAppliedBpmAtRef = useRef(0);
   const audioSmoothRef = useRef<Map<string, number>>(new Map());
   const isPerformanceMode = useStore(s => s.isPerformanceMode);
@@ -216,7 +219,7 @@ export function GlCanvas() {
   // repeat sampling.
   useEffect(() => {
     if (!rendererRef.current) return;
-    rendererRef.current.setTileableSampling(sourceMode === "forge" ? forgeSeamless : false);
+    rendererRef.current.setTileableSampling(sourceMode === "forge" || sourceMode === "motif" ? forgeSeamless : false);
     if (videoElement) {
       proceduralRef.current?.stop();
       let cancelled = false;
@@ -252,7 +255,7 @@ export function GlCanvas() {
     if (imageElement) {
       proceduralRef.current?.stop();
       rendererRef.current.setSourceImage(imageElement);
-    } else if (sourceMode === "forge") {
+    } else if (sourceMode === "forge" || sourceMode === "motif") {
       proceduralRef.current?.stop();
       if (!forgeCanvasRef.current) {
         const c = document.createElement("canvas");
@@ -325,6 +328,7 @@ export function GlCanvas() {
   // hot trigger (1 = no-op, matches behavior before that control existed).
   const sensitivity = useStore(s => s.sensitivity);
   useEffect(() => { micRef.current.sensitivity = micSensitivity * sensitivity; }, [micSensitivity, sensitivity]);
+  useEffect(() => { micRef.current.setInputChannel(audioInputChannel); }, [audioInputChannel]);
 
   // Lightweight singleton analyzer mirrored off the system-audio stream.
   useEffect(() => {
@@ -365,16 +369,38 @@ export function GlCanvas() {
         return;
       }
     }
-    mic.start(wantSource, presetStream).then(() => {
+    const currentAudioInputChannel = useStore.getState().audioInputChannel;
+    mic.start(wantSource, presetStream, {
+      input: {
+        deviceId: audioInputDeviceId,
+        label: audioInputDeviceLabel,
+        channel: currentAudioInputChannel,
+      },
+      onInputEnded: () => {
+        if (!useStore.getState().micEnabled) return;
+        useStore.getState().setMicEnabled(false);
+        toast.error("Audio input disconnected — reconnect it, then choose it again");
+      },
+    }).then((result) => {
+      if (wantSource === "mic") window.dispatchEvent(new Event("mosh:audio-input-ready"));
+      if (wantSource === "mic" && !result.requestedDeviceFound) {
+        toast.error("Saved audio interface wasn't available — using the default input");
+      }
       toast.success(wantSource === "system"
         ? "Routing device audio — every layer reacts"
-        : "Listening — every layer is now sound-reactive");
+        : `Listening to ${result.label} — every layer is sound-reactive`);
     }).catch((err) => {
+      if (err?.name === "AbortError") return;
       console.error("[audio] capture failed:", err);
       const isSystem = wantSource === "system";
-      const msg = (err && err.name) === "NotAllowedError"
+      const errorName = err?.name;
+      const msg = errorName === "NotAllowedError"
         ? `${isSystem ? "Screen share" : "Microphone"} permission denied`
-        : (err?.message || (isSystem ? "Couldn't capture system audio" : "Microphone unavailable"));
+        : !isSystem && (errorName === "NotReadableError" || errorName === "TrackStartError")
+          ? "Audio interface is busy — close other audio apps or enable shared/multi-client mode"
+          : !isSystem && (errorName === "NotFoundError" || errorName === "DevicesNotFoundError")
+            ? "Audio input disconnected or unavailable"
+            : (err?.message || (isSystem ? "Couldn't capture system audio" : "Microphone unavailable"));
       if (isSystem) {
         useStore.getState().setSystemAudioEnabled(false);
         toast.error(`${msg} — falling back to microphone`);
@@ -391,7 +417,7 @@ export function GlCanvas() {
     // getUserMedia/getDisplayMedia stream and its AudioContext running
     // indefinitely (the browser's recording indicator stays lit).
     return () => { mic.stop(); };
-  }, [micEnabled, systemAudioEnabled]);
+  }, [micEnabled, systemAudioEnabled, audioInputDeviceId, audioInputDeviceLabel]);
 
   // Auto-resume the AudioContext if iOS suspends it, and — the important
   // direction — fully release the mic/device-audio capture when the tab is
@@ -545,7 +571,7 @@ export function GlCanvas() {
 
       // Forge mode paints its own source every frame — nothing to read a
       // camera or image element for, the "photo" is generated on the spot.
-      if (sourceModeRef.current === "forge" && forgeCanvasRef.current && forgeCtxRef.current) {
+      if ((sourceModeRef.current === "forge" || sourceModeRef.current === "motif") && forgeCanvasRef.current && forgeCtxRef.current) {
         const fc = forgeCanvasRef.current;
         if (!forgeRuntimeRef.current) forgeRuntimeRef.current = createForgeRuntime();
         if (now - forgeAudioFeaturesAtRef.current >= FORGE_AUDIO_FEATURES_INTERVAL_MS) {
@@ -553,7 +579,8 @@ export function GlCanvas() {
           forgeAudioFeaturesAtRef.current = now;
         }
         const forgeAudioFeatures = forgeAudioFeaturesRef.current;
-        paintForgeSource(forgeCtxRef.current, fc.width, fc.height, t, forgeRef.current, {
+        const sourceTime = sourceModeRef.current === "motif" ? (forgeRef.current.seed % 100000) / 997 : t;
+        paintForgeSource(forgeCtxRef.current, fc.width, fc.height, sourceTime, forgeRef.current, {
           treble: sources.treble ?? 0,
           beat: sources.beat ?? 0,
           bpm: forgeAudioFeatures.bpm,
@@ -627,7 +654,7 @@ export function GlCanvas() {
       // ACES filmic tonemap + local-contrast lift the pipeline already
       // does for everything else. A floor here only changes tone-mapping
       // intensity, not what Forge draws.
-      if (sourceModeRef.current === "forge") moshScore = Math.max(moshScore, 0.55);
+      if (sourceModeRef.current === "forge" || sourceModeRef.current === "motif") moshScore = Math.max(moshScore, 0.55);
       rendererRef.current?.setHdrIntensity(moshScore);
       rendererRef.current?.setHdr(moshScore);
       // Re-applied per frame rather than once at setup: the renderer is
@@ -646,8 +673,27 @@ export function GlCanvas() {
     vrFrameRef.current = renderOnce;
 
     const tick = () => {
-      if (!vrMode.active) renderOnce();
+      // Schedule the next frame FIRST. A single generator/shader exception must
+      // never be able to kill Forge's animation clock and strand the user on
+      // the first rendered stack.
       raf = requestAnimationFrame(tick);
+      if (vrMode.active) return;
+      try {
+        renderOnce();
+      } catch (error) {
+        console.error("[forge/render] frame failed; continuing render loop", error);
+        // If a Forge generator/runtime is the culprit, discard only its
+        // mutable runtime. The next frame recreates it cleanly while the main
+        // renderer, source mode and controls stay alive.
+        if (sourceModeRef.current === "forge" || sourceModeRef.current === "motif") {
+          if (forgeRuntimeRef.current) disposeForgeRuntime(forgeRuntimeRef.current);
+          forgeRuntimeRef.current = null;
+          // Escape a poisoned in-flight generator transition as well. Re-roll
+          // to a fresh, known-valid source instead of retrying the same broken
+          // frame forever.
+          useStore.getState().randomiseForge();
+        }
+      }
     };
 
     raf = requestAnimationFrame(tick);

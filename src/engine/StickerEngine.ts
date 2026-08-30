@@ -7,6 +7,31 @@ export interface StickerScore {
   complexity: number;  // 0–1 (mosh activity / edge density)
 }
 
+/** Give a rectangular saliency crop an enclosed, softly irregular silhouette.
+ * The transparent inset is intentional: fallback stickers must never inherit
+ * a flat side or corner from the source frame. */
+export function applyOrganicAlphaMask(imageData: ImageData): ImageData {
+  const { width, height, data } = imageData;
+  const out = new Uint8ClampedArray(data);
+  const featherStart = 0.82;
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+    const i = (y * width + x) * 4;
+    if (!out[i + 3]) continue;
+    const nx = ((x + 0.5) / width) * 2 - 1;
+    const ny = ((y + 0.5) / height) * 2 - 1;
+    const angle = Math.atan2(ny, nx);
+    const ripple = 1 + Math.sin(angle * 3 + 0.7) * 0.055 + Math.sin(angle * 5 - 0.35) * 0.035;
+    const rx = 0.84 * ripple;
+    const ry = 0.84 * (1 + Math.sin(angle * 4 + 1.2) * 0.045);
+    const power = 2.35;
+    const radius = Math.pow(Math.pow(Math.abs(nx) / rx, power) + Math.pow(Math.abs(ny) / ry, power), 1 / power);
+    const t = Math.max(0, Math.min(1, (1 - radius) / (1 - featherStart)));
+    const alpha = t * t * (3 - 2 * t);
+    out[i + 3] = Math.round(out[i + 3] * alpha);
+  }
+  return new ImageData(out, width, height);
+}
+
 function coverFitMaskAlpha(
   mask: Float32Array, maskW: number, maskH: number,
   canvasX: number, canvasY: number, canvasW: number, canvasH: number
@@ -139,6 +164,57 @@ class StickerEngine {
       out[di] = data[si]; out[di+1] = data[si+1]; out[di+2] = data[si+2]; out[di+3] = data[si+3];
     }
     return new ImageData(out, nw, nh);
+  }
+
+  /** Cheap, deterministic fallback for frames where the on-device model finds
+   * no clean object. It searches a downsampled frame for the strongest mix of
+   * local contrast, colour and detail, then returns a comfortably padded crop.
+   * The small analysis grid keeps this fast on mobile and off the render loop. */
+  cropSalientRegion(canvas: HTMLCanvasElement): ImageData | null {
+    const pixels = this.readGLPixels(canvas);
+    if (!pixels || canvas.width < 2 || canvas.height < 2) return null;
+    const { width, height } = canvas;
+    const gridW = Math.min(64, width), gridH = Math.min(64, height);
+    const energy = new Float32Array(gridW * gridH);
+    const sample = (gx: number, gy: number) => {
+      const x = Math.min(width - 1, Math.floor((gx + 0.5) * width / gridW));
+      const y = Math.min(height - 1, Math.floor((gy + 0.5) * height / gridH));
+      const i = (y * width + x) * 4;
+      return [pixels[i], pixels[i + 1], pixels[i + 2]] as const;
+    };
+    for (let y = 0; y < gridH; y++) for (let x = 0; x < gridW; x++) {
+      const c = sample(x, y), rx = sample(Math.min(gridW - 1, x + 1), y), by = sample(x, Math.min(gridH - 1, y + 1));
+      const edge = (Math.abs(c[0]-rx[0]) + Math.abs(c[1]-rx[1]) + Math.abs(c[2]-rx[2]) + Math.abs(c[0]-by[0]) + Math.abs(c[1]-by[1]) + Math.abs(c[2]-by[2])) / 1530;
+      const max = Math.max(...c), min = Math.min(...c);
+      energy[y * gridW + x] = edge * 0.78 + ((max - min) / 255) * 0.22;
+    }
+    let best = { score: -1, x: 0, y: 0, w: gridW, h: gridH };
+    for (const scale of [0.34, 0.46, 0.6]) for (const aspect of [0.72, 1, 1.4]) {
+      const rw = Math.max(8, Math.min(gridW, Math.round(gridW * scale * Math.sqrt(aspect))));
+      const rh = Math.max(8, Math.min(gridH, Math.round(gridH * scale / Math.sqrt(aspect))));
+      const stepX = Math.max(1, Math.floor(rw / 4)), stepY = Math.max(1, Math.floor(rh / 4));
+      for (let y = 0; y <= gridH - rh; y += stepY) for (let x = 0; x <= gridW - rw; x += stepX) {
+        let sum = 0;
+        for (let yy = y; yy < y + rh; yy++) for (let xx = x; xx < x + rw; xx++) sum += energy[yy * gridW + xx];
+        const cx = (x + rw / 2) / gridW - 0.5, cy = (y + rh / 2) / gridH - 0.5;
+        const score = sum / (rw * rh) * (0.9 + 0.1 * Math.exp(-(cx*cx + cy*cy) / 0.28));
+        if (score > best.score) best = { score, x, y, w: rw, h: rh };
+      }
+    }
+    // Nearly flat frames have no meaningful salient region; preserve the full
+    // composition instead of manufacturing an arbitrary crop.
+    if (best.score < 0.012) return null;
+    const padX = Math.round(best.w * 0.1), padY = Math.round(best.h * 0.1);
+    const x0 = Math.max(0, Math.floor((best.x - padX) * width / gridW));
+    const y0 = Math.max(0, Math.floor((best.y - padY) * height / gridH));
+    const x1 = Math.min(width, Math.ceil((best.x + best.w + padX) * width / gridW));
+    const y1 = Math.min(height, Math.ceil((best.y + best.h + padY) * height / gridH));
+    const out = new Uint8ClampedArray((x1 - x0) * (y1 - y0) * 4);
+    for (let y = y0; y < y1; y++) {
+      const start = (y * width + x0) * 4;
+      out.set(pixels.subarray(start, start + (x1 - x0) * 4), (y - y0) * (x1 - x0) * 4);
+    }
+    return applyOrganicAlphaMask(new ImageData(out, x1 - x0, y1 - y0));
   }
 
   enhanceHDR(imageData: ImageData): ImageData {

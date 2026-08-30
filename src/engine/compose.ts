@@ -112,6 +112,32 @@ function complementaryRegions(
   };
 }
 
+/**
+ * A soft, decaying "don't repeat yourself" penalty — a score multiplier per
+ * id (0..1), not a hard exclude. The most-recently-used identity-defining
+ * pick is suppressed hard (0.12×) but never forbidden outright, decaying
+ * back toward full eligibility over the next several picks; everything else
+ * recently used gets a flatter, milder suppression.
+ *
+ * Originally Journey-only (composeFromMood's recency memory). A repeat used
+ * to read differently depending on which director chose it: Journey could
+ * still bring an idea back quickly if nothing else fit, while regular
+ * moshing (artDirector's compose()) hard-excluded anything used in the last
+ * few taps until it aged out of a fixed window — a real, noticeable
+ * difference in how "shuffled" each felt, for no reason tied to what each
+ * mode actually needs. Exported here, the one module both already depend
+ * on, so every director in the app applies the exact same curve.
+ */
+export function recencyPenalty(recentPrimary: readonly string[], recentOther: readonly string[]): Map<string, number> {
+  const penalty = new Map<string, number>();
+  recentPrimary.forEach((id, i) => {
+    const mult = Math.min(1, 0.12 + i * 0.18); // most recent: 0.12, decaying outward
+    if (!penalty.has(id) || mult < (penalty.get(id) as number)) penalty.set(id, mult);
+  });
+  for (const id of recentOther) if (!penalty.has(id)) penalty.set(id, 0.65);
+  return penalty;
+}
+
 export type ComposeInput = {
   /** Candidate ids, best-scoring first. */
   ranked: { id: string; score: number }[];

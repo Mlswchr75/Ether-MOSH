@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { getPaymentsEnvironmentSafe } from "@/lib/stripe";
 import { useAuth } from "./useAuth";
 import { resolveEntitlementQuery } from "@/lib/entitlements";
+import { createSupportReference } from "@/lib/supportReference";
 
 // Provider-neutral environment gate. Matches what the payments webhook writes.
 function getPaymentsEnvironment(): "live" | "sandbox" {
@@ -54,9 +55,11 @@ export function useEntitlements(): EntitlementsState {
       setIsSupporter(access.isSupporter);
       setHasTipped(access.hasTipped);
     } catch (cause) {
+      const reference = createSupportReference("access");
+      console.error(`[entitlements:${reference}] refresh failed`, cause);
       setIsSupporter(owner);
       setHasTipped(owner);
-      setError(cause instanceof Error ? cause.message : "Unable to load purchases");
+      setError(`Unable to refresh purchase status. Try again; if it continues, contact support with ${reference}.`);
     } finally {
       setLoading(false);
     }

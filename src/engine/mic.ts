@@ -1,3 +1,9 @@
+import {
+  requestMicrophoneStream,
+  type AudioInputChannel,
+  type AudioInputPreference,
+} from "@/engine/audioInput";
+
 /**
  * Microphone audio reactivity. Analyses the device mic and produces
  * a 0..1 envelope focused on bass / kick energy, with auto-gain so it
@@ -10,7 +16,11 @@ export class MicAnalyzer {
   private ctx: AudioContext | null = null;
   private stream: MediaStream | null = null;
   private analyser: AnalyserNode | null = null;
+  private sourceNode: MediaStreamAudioSourceNode | null = null;
+  private routingNodes: AudioNode[] = [];
   private freqData: Uint8Array | null = null;
+  private inputChannel: AudioInputChannel = "auto";
+  private startGeneration = 0;
   private envelope = 0;
   private peak = 0.05; // running max for auto-gain
   enabled = false;
@@ -80,61 +90,119 @@ export class MicAnalyzer {
     return !!(navigator.mediaDevices && (navigator.mediaDevices as any).getDisplayMedia && (window.AudioContext || (window as any).webkitAudioContext));
   }
 
-  async start(source: "mic" | "system" = "mic", presetStream?: MediaStream) {
-    if (this.stream) return;
+  async start(
+    source: "mic" | "system" = "mic",
+    presetStream?: MediaStream,
+    options: {
+      input?: Pick<AudioInputPreference, "deviceId" | "label" | "channel">;
+      onInputEnded?: () => void;
+    } = {},
+  ): Promise<{ requestedDeviceFound: boolean; recoveredByLabel: boolean; label: string }> {
+    if (this.stream) {
+      return {
+        requestedDeviceFound: true,
+        recoveredByLabel: false,
+        label: this.stream.getAudioTracks()[0]?.label || (source === "system" ? "Shared audio" : "Microphone"),
+      };
+    }
+    const generation = ++this.startGeneration;
     const AC = window.AudioContext || (window as any).webkitAudioContext;
-    this.ctx = new AC();
+    const ctx = new AC();
+    this.ctx = ctx;
     this.source = source;
+    let requestedDeviceFound = true;
+    let recoveredByLabel = false;
+    let stream: MediaStream;
     if (source === "system") {
       // getDisplayMedia MUST be invoked synchronously from a user gesture; the
       // caller passes the already-acquired stream in here.
       if (!presetStream) {
         throw new Error("System audio capture requires a stream from a user gesture");
       }
-      this.stream = presetStream;
-      const audioTracks = this.stream.getAudioTracks();
+      stream = presetStream;
+      const audioTracks = stream.getAudioTracks();
       if (audioTracks.length === 0) {
-        this.stream.getTracks().forEach(t => t.stop());
-        this.stream = null;
+        stream.getTracks().forEach(t => t.stop());
         throw new Error("No audio shared — pick a tab/window and tick 'Share audio'");
       }
       // Drop video tracks — we only need audio.
-      this.stream.getVideoTracks().forEach(t => t.stop());
+      stream.getVideoTracks().forEach(t => t.stop());
       // If user stops sharing from the browser bar, auto-disable.
       audioTracks[0].addEventListener("ended", () => {
         try { (window as any).__aegisSystemAudioEnded?.(); } catch {}
       });
     } else {
-      this.stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: false,
-          noiseSuppression: false,
-          autoGainControl: false,
-        },
-        video: false,
+      const result = await requestMicrophoneStream({
+        deviceId: options.input?.deviceId ?? null,
+        label: options.input?.label ?? null,
       });
+      stream = result.stream;
+      requestedDeviceFound = result.requestedDeviceFound;
+      recoveredByLabel = result.recoveredByLabel;
     }
-    // Race guard: stop() may have nulled ctx during the await above, or AC
-    // construction may have been blocked until a user gesture resumed it.
-    if (!this.ctx) {
-      const AC2 = window.AudioContext || (window as any).webkitAudioContext;
-      this.ctx = new AC2();
+    // A device change or quick toggle can supersede getUserMedia while its
+    // permission prompt is still resolving. Never let that stale stream seize
+    // the interface after the newer request has won.
+    if (generation !== this.startGeneration) {
+      stream.getTracks().forEach((track) => track.stop());
+      ctx.close().catch(() => {});
+      throw Object.assign(new Error("Audio start superseded"), { name: "AbortError" });
     }
-    if (!this.stream) {
-      throw new Error("Audio stream unavailable");
+    this.stream = stream;
+    this.inputChannel = options.input?.channel ?? "auto";
+    const audioTrack = stream.getAudioTracks()[0];
+    if (source === "mic" && audioTrack && options.onInputEnded) {
+      audioTrack.addEventListener("ended", () => {
+        if (generation === this.startGeneration) options.onInputEnded?.();
+      }, { once: true });
     }
-    const src = this.ctx.createMediaStreamSource(this.stream);
-    this.analyser = this.ctx.createAnalyser();
+    this.sourceNode = ctx.createMediaStreamSource(stream);
+    this.analyser = ctx.createAnalyser();
     this.analyser.fftSize = 1024;
     this.analyser.smoothingTimeConstant = 0.55;
-    src.connect(this.analyser);
+    this.connectInputChannel();
     this.freqData = new Uint8Array(new ArrayBuffer(this.analyser.frequencyBinCount));
     this.enabled = true;
     this.startedAt = performance.now();
     this.onsets = [];
     this.detectedBpm = 0;
     this.detectedBpmAt = 0;
-    if (this.ctx.state === "suspended") await this.ctx.resume();
+    if (ctx.state === "suspended") await ctx.resume();
+    return {
+      requestedDeviceFound,
+      recoveredByLabel,
+      label: audioTrack?.label || (source === "system" ? "Shared audio" : "Microphone"),
+    };
+  }
+
+  /** Change which side of a stereo interface drives the analyzer without
+   * reopening the hardware or interrupting a live performance. */
+  setInputChannel(channel: AudioInputChannel): void {
+    this.inputChannel = channel;
+    if (this.sourceNode && this.analyser) this.connectInputChannel();
+  }
+
+  private connectInputChannel(): void {
+    const source = this.sourceNode;
+    const analyser = this.analyser;
+    const ctx = this.ctx;
+    if (!source || !analyser || !ctx) return;
+    try { source.disconnect(); } catch {}
+    for (const node of this.routingNodes) {
+      try { node.disconnect(); } catch {}
+    }
+    this.routingNodes = [];
+    if (this.inputChannel === "auto") {
+      source.connect(analyser);
+      return;
+    }
+    // Two outputs are requested even for mono streams: Web Audio supplies
+    // silence on a missing second channel, which is the least surprising
+    // behavior when a user explicitly chooses Input 2.
+    const splitter = ctx.createChannelSplitter(2);
+    source.connect(splitter);
+    splitter.connect(analyser, this.inputChannel === "right" ? 1 : 0);
+    this.routingNodes = [splitter];
   }
 
   /** Resume the underlying AudioContext (after browser tab regains focus). */
@@ -148,6 +216,7 @@ export class MicAnalyzer {
   }
 
   stop() {
+    this.startGeneration++;
     this.enabled = false;
     this.envelope = 0;
     this.peak = 0.05;
@@ -157,6 +226,12 @@ export class MicAnalyzer {
     this.bassLevel = this.midLevel = this.trebleLevel = this.overallLevel = 0;
     this.bands.fill(0);
     this.beatPending = false;
+    if (this.sourceNode) {
+      try { this.sourceNode.disconnect(); } catch {}
+    }
+    for (const node of this.routingNodes) {
+      try { node.disconnect(); } catch {}
+    }
     if (this.stream) {
       this.stream.getTracks().forEach(t => t.stop());
       this.stream = null;
@@ -166,6 +241,8 @@ export class MicAnalyzer {
       this.ctx = null;
     }
     this.analyser = null;
+    this.sourceNode = null;
+    this.routingNodes = [];
     this.freqData = null;
   }
 

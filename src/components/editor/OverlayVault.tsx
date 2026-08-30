@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Download, Library, Search, Star, Tag, Trash2, WandSparkles, X } from "lucide-react";
+import { Download, Search, Star, Tag, Trash2, WandSparkles, X } from "lucide-react";
 import { toast } from "sonner";
 import {
   assetFromVaultRecord,
@@ -15,8 +15,9 @@ import { useOverlayStore } from "@/store/useOverlayStore";
 import { useStore } from "@/store/useStore";
 import { segmentationEngine } from "@/engine/SegmentationEngine";
 import { assetFromStickerSource, resolveStickerSource, withOptionalForgeIsolation } from "@/engine/overlay/stickerSource";
+import { notifyExportStarted } from "@/components/editor/ExportRegisteredToast";
 
-export function OverlayVault() {
+export function OverlayVault({ showCaptureButton = true }: { showCaptureButton?: boolean }) {
   const [open, setOpen] = useState(false);
   const [records, setRecords] = useState<OverlayVaultRecord[]>([]);
   const [busy, setBusy] = useState(false);
@@ -27,7 +28,7 @@ export function OverlayVault() {
   const addAsset = useOverlayStore(s => s.addAsset);
   const sourceMode = useStore(s => s.sourceMode);
   const glCanvas = useStore(s => s.glCanvas);
-  const forgeAvailable = sourceMode === "forge";
+  const renderAvailable = !!glCanvas;
 
   const refresh = useCallback(async () => {
     try { setRecords(await listOverlayVault()); }
@@ -39,6 +40,25 @@ export function OverlayVault() {
     window.addEventListener(OVERLAY_VAULT_CHANGED_EVENT, changed);
     return () => window.removeEventListener(OVERLAY_VAULT_CHANGED_EVENT, changed);
   }, [open, refresh]);
+  useEffect(() => {
+    const toggleVault = () => setOpen(value => !value);
+    window.addEventListener("mosh:toggle-sticker-vault", toggleVault);
+    return () => window.removeEventListener("mosh:toggle-sticker-vault", toggleVault);
+  }, []);
+  useEffect(() => {
+    if (!open) return;
+    const dismiss = (event: PointerEvent) => {
+      if ((event.target as HTMLElement | null)?.closest("[data-sticker-vault-panel], [data-sticker-vault-trigger]")) return;
+      setOpen(false);
+    };
+    const escape = (event: KeyboardEvent) => { if (event.key === "Escape") setOpen(false); };
+    window.addEventListener("pointerdown", dismiss, true);
+    window.addEventListener("keydown", escape);
+    return () => {
+      window.removeEventListener("pointerdown", dismiss, true);
+      window.removeEventListener("keydown", escape);
+    };
+  }, [open]);
 
   const visibleRecords = useMemo(() => filterVaultRecords(records, query, favoritesOnly), [records, query, favoritesOnly]);
   const previews = useMemo(() => {
@@ -48,30 +68,37 @@ export function OverlayVault() {
   }, [records]);
   useEffect(() => () => { for (const url of previews.values()) URL.revokeObjectURL(url); }, [previews]);
 
-  const saveSelected = async () => {
-    if ((!selected && !forgeAvailable) || busy) return;
+  const saveSelected = useCallback(async () => {
+    if ((!selected && !renderAvailable) || busy) return;
     setBusy(true);
     try {
       const liveCanvas = glCanvas ?? document.querySelector<HTMLCanvasElement>("canvas[data-mosh-canvas]");
       let resolved = resolveStickerSource({ selectedOverlay: selected, sourceMode, forgeCanvas: liveCanvas });
-      if (!resolved) throw new Error("The Forge render is not ready yet.");
+      if (!resolved) throw new Error("The current visual is not ready yet.");
       resolved = await withOptionalForgeIsolation(resolved, async canvas => {
         await segmentationEngine.loadTap();
         if (!segmentationEngine.isTapReady()) return [];
         const points = segmentationEngine.analyzeSaliency(canvas, 3);
         return segmentationEngine.segmentMultiPoint(canvas, points);
-      }, error => console.warn("[overlay-vault] subject isolation unavailable; saving complete Forge render", error));
+      }, error => console.warn("[overlay-vault] subject isolation unavailable; using salient crop", error));
+      await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
       const prepared = await assetFromStickerSource(resolved);
+      await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
       try { await saveOverlayAsset(prepared.asset, prepared.blob); }
       finally { prepared.revoke(); }
-      toast.success("Sticker forged into the Vault");
+      toast.success("Sticker saved to the Vault");
       await refresh();
-      setOpen(true);
     } catch (error) {
       console.error("[overlay-vault] save failed", error);
       toast.error(error instanceof Error ? `Couldn't save sticker: ${error.message}` : "Couldn't save that sticker to the Vault.");
     } finally { setBusy(false); }
-  };
+  }, [busy, glCanvas, refresh, renderAvailable, selected, sourceMode]);
+
+  useEffect(() => {
+    const makeSticker = () => { if (!busy) void saveSelected(); };
+    window.addEventListener("mosh:make-sticker", makeSticker);
+    return () => window.removeEventListener("mosh:make-sticker", makeSticker);
+  }, [busy, saveSelected]);
 
   const updateMeta = async (id: string, patch: { name?: string; favorite?: boolean; tags?: string[] }) => {
     try { await updateOverlayVaultMeta(id, patch); await refresh(); }
@@ -84,6 +111,7 @@ export function OverlayVault() {
   };
 
   const downloadRecord = (record: OverlayVaultRecord) => {
+    notifyExportStarted("sticker");
     const url = URL.createObjectURL(record.blob);
     const a = document.createElement("a");
     a.href = url;
@@ -95,11 +123,10 @@ export function OverlayVault() {
 
   return <>
     <div className="pointer-events-auto flex flex-wrap items-center gap-1">
-      <button type="button" disabled={(!selected && !forgeAvailable) || busy} onClick={() => void saveSelected()} className="flex items-center gap-1.5 rounded-full border border-cyan-300/20 bg-black/70 px-2.5 py-2 font-mono text-[8px] uppercase tracking-[0.12em] text-cyan-100 backdrop-blur-md transition hover:border-cyan-300/45 disabled:opacity-25" title={selected ? "Save the selected overlay as a reusable static sticker in the Vault" : forgeAvailable ? "Capture the current Forge render as a reusable static sticker in the Vault" : "Select an overlay or switch to Forge first"}><WandSparkles size={11} /> {busy ? "Saving…" : "Make Sticker"}</button>
-      <button type="button" onClick={() => setOpen(value => !value)} className={`flex items-center gap-1.5 rounded-full border bg-black/70 px-3 py-2 font-mono text-[9px] uppercase tracking-[0.16em] backdrop-blur-md transition ${open ? "border-cyan-300/40 text-cyan-200" : "border-white/15 text-white/70 hover:border-white/30 hover:text-white"}`} title="Sticker Vault"><Library size={12} /> Vault</button>
+      {showCaptureButton && <button type="button" disabled={(!selected && !renderAvailable) || busy} onClick={() => void saveSelected()} className="flex items-center gap-1.5 rounded-full border border-cyan-300/20 bg-black/70 px-2.5 py-2 font-mono text-[8px] uppercase tracking-[0.12em] text-cyan-100 backdrop-blur-md transition hover:border-cyan-300/45 disabled:opacity-25" title={selected ? "Save the selected overlay as a reusable static sticker (K)" : renderAvailable ? "Detect a subject or salient crop in the current visual (K)" : "Wait for a visual source"}><WandSparkles size={11} /> {busy ? "Saving…" : "Make Sticker · K"}</button>}
     </div>
 
-    {open && <div className="pointer-events-auto absolute bottom-12 left-1/2 z-[100] w-[min(94vw,38rem)] -translate-x-1/2 rounded-2xl border border-white/15 bg-black/90 p-3 shadow-2xl backdrop-blur-xl">
+    {open && <div data-sticker-vault-panel className="pointer-events-auto absolute bottom-12 left-1/2 z-[100] w-[min(94vw,38rem)] -translate-x-1/2 rounded-2xl border border-white/15 bg-black/90 p-3 shadow-2xl backdrop-blur-xl">
       <div className="mb-2 flex items-center justify-between gap-2">
         <div><p className="font-mono text-[9px] uppercase tracking-[0.2em] text-cyan-200">Sticker Vault</p><p className="mt-0.5 font-mono text-[7px] uppercase tracking-[0.12em] text-white/35">persistent reusable overlay library</p></div>
         <button type="button" onClick={() => setOpen(false)} className="rounded-full p-1.5 text-white/45 hover:bg-white/10 hover:text-white"><X size={12} /></button>

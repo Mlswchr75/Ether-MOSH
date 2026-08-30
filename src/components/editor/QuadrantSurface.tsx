@@ -2,18 +2,19 @@
  * QuadrantSurface — the canvas as a play surface, not a menu.
  *
  * A plain tap re-rolls everything — one full re-roll, same as the MOSH
- * button, Shift+M, and desktop double-click. Forge has no FX stack of its
- * own to mosh, so a tap there re-rolls the forge pattern instead
- * (generator, palette, seed) via randomiseForge() — forge's own equivalent
- * of a full re-roll. This surface owns every source mode with a canvas
- * (upload, camera, Forge), not just upload/camera, so tapping the
- * visualizer does the same thing wherever you are instead of depending on
- * which source is loaded. Binding the gesture here instead of leaving each
- * mode to wire its own canvas click also means an overlay drawn above the
- * canvas can never silently swallow the tap the way a canvas-only onClick
- * could.
+ * button, Shift+M, and desktop double-click. Forge and Motif have no FX
+ * stack of their own to mosh, so a tap there re-rolls the forge pattern
+ * instead (generator, palette, seed) via randomiseForge() — their shared
+ * equivalent of a full re-roll. This surface owns every source mode with a
+ * canvas (upload, camera, Forge, Motif), not just upload/camera, so tapping
+ * the visualizer does the same thing wherever you are instead of depending
+ * on which source is loaded. Binding the gesture here instead of leaving
+ * each mode to wire its own canvas click also means an overlay drawn above
+ * the canvas can never silently swallow the tap the way a canvas-only
+ * onClick could.
  *
- *   TAP anywhere  → mosh() (or randomiseForge() in Forge) — a full re-roll.
+ *   TAP anywhere  → mosh() (or randomiseForge() in Forge/Motif) — a full
+ *                   re-roll.
  *   DRAG anywhere → invisible XY pad over the selected layer. Horizontal
  *                   sweeps its primary param, vertical its secondary (up =
  *                   more). The values written are the same ones the Tune menu
@@ -280,11 +281,14 @@ export function QuadrantSurface({ onTogglePerf, onTune = () => {} }: Props) {
     // A plain tap re-rolls the whole stack, same as the Mosh button, Shift+M,
     // and desktop double-click — one consistent "moshs the fx stack" gesture
     // everywhere instead of a partial single-role reroll only tap owned.
-    // Forge has no FX stack to mosh; its own re-roll is randomiseForge(),
-    // which rerolls the generator/palette/seed the same way mosh() rerolls
-    // effect layers.
+    // Forge and Motif have no FX stack to mosh; their own re-roll is
+    // randomiseForge(), which rerolls the generator/palette/seed the same
+    // way mosh() rerolls effect layers (Motif shares Forge's whole
+    // generator pipeline — see randomiseForge()'s own ["forge","motif"]
+    // check in useStore.ts).
     const store = useStore.getState();
-    const roll = store.sourceMode === "forge" ? store.randomiseForge : store.mosh;
+    const isForgeLike = store.sourceMode === "forge" || store.sourceMode === "motif";
+    const roll = isForgeLike ? store.randomiseForge : store.mosh;
     crossfadeLayers(() => roll(), MOSH_FADE_MS);
   };
 

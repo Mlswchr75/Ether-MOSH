@@ -133,7 +133,7 @@ export function OverlayEntityView({ entity, selected, index, count }: Props) {
   const trackingValue: "off" | OverlayTrackingTarget = entity.tracking?.enabled ? entity.tracking.target : "off";
 
   return (
-    <div ref={rootRef} style={style} className={`group select-none ${selected ? "outline outline-1 outline-cyan-300/80" : ""}`} onPointerDown={begin} onPointerMove={move} onPointerUp={end} onPointerCancel={end} onDoubleClick={() => duplicateEntity(entity.id)}>
+    <div ref={rootRef} style={style} className={`group select-none pointer-events-auto ${selected ? "outline outline-1 outline-cyan-300/80" : ""}`} onPointerDown={begin} onPointerMove={move} onPointerUp={end} onPointerCancel={end} onDoubleClick={() => duplicateEntity(entity.id)}>
       <OverlaySwarm entity={entity} />
       <OverlayMedia entity={entity} />
 

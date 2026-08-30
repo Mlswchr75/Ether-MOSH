@@ -1,0 +1,35 @@
+name: Security gate
+
+on:
+  pull_request:
+  push:
+    branches: [Ether-MOSH]
+  schedule:
+    - cron: "23 10 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dependency-and-artifact-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm audit --audit-level=high
+      # Registry signature availability can fail independently of this code.
+      - run: npm audit signatures
+        continue-on-error: true
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm run security:artifacts

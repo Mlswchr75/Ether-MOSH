@@ -1,10 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import type { OverlayEntity } from "./types";
-import { resolveStickerSource, withOptionalForgeIsolation } from "./stickerSource";
+import { resolveStickerSource, selectUsableStickerMasks, withOptionalForgeIsolation } from "./stickerSource";
 
 const canvas = Object.assign(document.createElement("canvas"), { width: 512, height: 512 });
 const overlay = { asset: { id: "overlay-asset" } } as OverlayEntity;
-const subject = { data: new Float32Array([1]), width: 1, height: 1 };
+const subject = { data: new Float32Array([1, 1, 0, 0, 1, 1, 0, 0]), width: 4, height: 2 };
+const secondSubject = { data: new Float32Array([0, 0, 1, 1, 0, 0, 1, 1]), width: 4, height: 2 };
 
 describe("resolveStickerSource", () => {
   it("keeps a selected overlay as the highest-priority source", () => {
@@ -14,22 +15,27 @@ describe("resolveStickerSource", () => {
 
   it("uses isolated Forge subjects when no overlay is selected", () => {
     expect(resolveStickerSource({ selectedOverlay: null, sourceMode: "forge", forgeCanvas: canvas, isolatedSubjects: [subject] }))
-      .toEqual({ kind: "forge-subject", canvas, subjects: [subject] });
+      .toEqual({ kind: "render-subject", canvas, subjects: [subject], sourceMode: "forge" });
   });
 
   it("preserves multiple selected subjects for compositing", () => {
-    const subjects = [subject, { ...subject, data: new Float32Array([0.5]) }];
+    const subjects = [subject, secondSubject];
     expect(resolveStickerSource({ selectedOverlay: null, sourceMode: "forge", forgeCanvas: canvas, isolatedSubjects: subjects }))
-      .toMatchObject({ kind: "forge-subject", subjects });
+      .toMatchObject({ kind: "render-subject", subjects });
   });
 
   it("falls back to the complete Forge composition", () => {
     expect(resolveStickerSource({ selectedOverlay: null, sourceMode: "forge", forgeCanvas: canvas }))
-      .toEqual({ kind: "forge-render", canvas });
+      .toEqual({ kind: "render", canvas, sourceMode: "forge" });
   });
 
-  it("returns no source outside Forge when no overlay is selected", () => {
-    expect(resolveStickerSource({ selectedOverlay: null, sourceMode: "upload", forgeCanvas: canvas })).toBeNull();
+  it("uses the rendered output in upload, camera, and Motif Maestro modes", () => {
+    expect(resolveStickerSource({ selectedOverlay: null, sourceMode: "upload", forgeCanvas: canvas }))
+      .toEqual({ kind: "render", canvas, sourceMode: "upload" });
+    expect(resolveStickerSource({ selectedOverlay: null, sourceMode: "camera", forgeCanvas: canvas }))
+      .toEqual({ kind: "render", canvas, sourceMode: "camera" });
+    expect(resolveStickerSource({ selectedOverlay: null, sourceMode: "motif", forgeCanvas: canvas }))
+      .toEqual({ kind: "render", canvas, sourceMode: "motif" });
     expect(resolveStickerSource({ selectedOverlay: null, sourceMode: "forge", forgeCanvas: null })).toBeNull();
   });
 
@@ -38,21 +44,32 @@ describe("resolveStickerSource", () => {
       selectedOverlay: null,
       sourceMode: "forge",
       forgeCanvas: canvas,
-    })?.kind).toBe("forge-render");
+    })?.kind).toBe("render");
   });
 
   it("falls back to the complete Forge render when isolation fails", async () => {
     const source = resolveStickerSource({ selectedOverlay: null, sourceMode: "forge", forgeCanvas: canvas });
     const fallback = vi.fn();
     const resolved = await withOptionalForgeIsolation(source!, async () => { throw new Error("model unavailable"); }, fallback);
-    expect(resolved).toEqual({ kind: "forge-render", canvas });
+    expect(resolved).toEqual({ kind: "render", canvas, sourceMode: "forge" });
     expect(fallback).toHaveBeenCalledOnce();
   });
 
   it("keeps every detected subject for a multi-subject Forge sticker", async () => {
     const source = resolveStickerSource({ selectedOverlay: null, sourceMode: "forge", forgeCanvas: canvas });
-    const subjects = [subject, { ...subject, data: new Float32Array([0.25]) }];
+    const subjects = [subject, secondSubject];
     const resolved = await withOptionalForgeIsolation(source!, async () => subjects);
-    expect(resolved).toMatchObject({ kind: "forge-subject", subjects });
+    expect(resolved).toMatchObject({ kind: "render-subject", subjects });
+  });
+
+  it("rejects empty and full-frame masks", () => {
+    const empty = { data: new Float32Array(100), width: 10, height: 10 };
+    const full = { data: new Float32Array(100).fill(1), width: 10, height: 10 };
+    expect(selectUsableStickerMasks([empty, full])).toEqual([]);
+  });
+
+  it("deduplicates overlapping subject proposals", () => {
+    const duplicate = { ...subject, data: new Float32Array(subject.data) };
+    expect(selectUsableStickerMasks([subject, duplicate])).toHaveLength(1);
   });
 });

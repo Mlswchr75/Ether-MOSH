@@ -47,6 +47,7 @@ const SECTIONS: Section[] = [
       { keys: ["Alt", "G"], label: "GIF · 5s" },
       { keys: ["Shift", "G"], label: "GIF · 3s" },
       { keys: ["V"], label: "Share current frame" },
+      { keys: ["K"], label: "Make Sticker · any source mode" },
     ],
   },
   {

@@ -1,5 +1,6 @@
 import { toast } from "sonner";
 import { useStore } from "@/store/useStore";
+import { validateDecodedDimensions, validateImageUpload } from "@/lib/mediaFileSafety";
 
 const IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "image/svg+xml", "image/avif"]);
 
@@ -8,8 +9,9 @@ export function isImageFile(file: File): boolean {
 }
 
 export async function loadImageFile(file: File): Promise<boolean> {
-  if (!isImageFile(file)) {
-    toast.error("That file isn't an image");
+  const fileIssue = validateImageUpload(file);
+  if (!isImageFile(file) || fileIssue) {
+    toast.error(fileIssue ?? "That file isn't an image");
     return false;
   }
 
@@ -27,6 +29,8 @@ export async function loadImageFile(file: File): Promise<boolean> {
     if (img.decode) {
       await img.decode().catch(() => undefined);
     }
+    const dimensionIssue = validateDecodedDimensions(img.naturalWidth, img.naturalHeight);
+    if (dimensionIssue) throw new Error(dimensionIssue);
     useStore.getState().setImage(url, img);
     useStore.getState().setSourceName(file.name || "pasted image");
     return true;

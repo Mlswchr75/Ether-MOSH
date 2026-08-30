@@ -1,4 +1,4 @@
-import { Mic, MicOff, Circle, Square, Sparkles, Scissors, Snowflake, Camera, Shuffle, Star, Play, Pencil, Trash2, X, Film, Lock, Share2, Compass, Maximize2, Minimize2, Gem, Home, SwitchCamera, Crosshair, Eraser, Link2, Upload, Music, Music2, Shuffle as ShuffleIcon, Undo2, Redo2, Gauge, ChevronDown, MonitorSpeaker, Heart, GripVertical, RotateCcw, EyeOff, HelpCircle, SkipBack, SkipForward, Palette, Flame, UserCircle } from "lucide-react";
+import { Mic, MicOff, Circle, Square, Sparkles, Scissors, Snowflake, Camera, Shuffle, Star, Play, Pencil, Trash2, X, Film, Lock, Share2, Compass, Maximize2, Minimize2, Gem, Home, SwitchCamera, Crosshair, Eraser, Link2, Upload, Music, Music2, Shuffle as ShuffleIcon, Undo2, Redo2, Gauge, ChevronDown, MonitorSpeaker, Heart, GripVertical, RotateCcw, EyeOff, HelpCircle, SkipBack, SkipForward, Palette, Flame, UserCircle, Library, Download, Glasses } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { useStore } from "@/store/useStore";
@@ -7,13 +7,23 @@ import { runTrackAction } from "@/engine/trackActions";
 import { requestCameraStream, type CameraFacing } from "@/hooks/useCamera";
 import { IsolationPanel } from "./IsolationPanel";
 import { ForgePanel } from "./ForgePanel";
+import { MotifMaestroPanel } from "./MotifMaestroPanel";
+import { ExportSettingsPanel } from "./ExportSettingsPanel";
 import { MoshStickerTrigger } from "./MoshStickerTrigger";
 import { shareUrl } from "@/lib/share";
 import { toggleSystemAudio } from "@/engine/systemAudio";
+import { AudioInputControls } from "./AudioInputControls";
 import { crossfadeLayers, MOSH_FADE_MS } from "@/engine/layerCrossfade";
 import { cursorFx } from "@/engine/cursorFx";
 import { toast } from "sonner";
 import { clampRadialPoint, defaultRadialPoint, nearestRadialId, type RadialLayout } from "@/lib/radialLayout";
+import { validateAudioUpload } from "@/lib/mediaFileSafety";
+import {
+  readXrUiOverride,
+  XR_UI_OVERRIDE_EVENT,
+  XR_UI_OVERRIDE_KEY,
+  type XrUiOverride,
+} from "@/engine/xrCapabilities";
 
 /** Viewport-normalized UV for a client point — used for the one-shot "digital
  *  chaos" burst a hold-branch fires at. An approximation (viewport, not the
@@ -59,12 +69,6 @@ type Props = {
   /** Captures a thumbnail + shareable link, then saves. Falls back to the
    *  store's bare saveFavorite() (no thumb/link) if not provided. */
   onSaveFavorite?: () => void;
-  /** First real content this session and nothing's listening yet — nudge
-   *  toward turning the mic on, anchored to the audio trigger. */
-  showMicNudge?: boolean;
-  onMicNudgeYes?: () => void;
-  onMicNudgeNo?: () => void;
-  onMicNudgeExpire?: () => void;
   /** After a minute of silent play, invite the user to start a soundtrack. */
   showTrackNudge?: boolean;
   onTrackNudgeDismiss?: () => void;
@@ -118,25 +122,30 @@ const DEFAULT_AUTO_MOSH_SEC = 15;
  *  situational stuff last. Not load-bearing for anything but the *default*
  *  order — "customize layout" lets anyone override it per-browser. */
 const DEFAULT_ORDER = [
-  "home", "source-upload", "source-camera", "source-forge", "account", "undo", "redo",
+  "home", "source-upload", "source-camera", "source-forge", "source-motif", "account", "undo", "redo",
   "mosh", "auto-mosh", "clear-fx", "journey",
   "audio", "sensitivity",
-  "freeze", "capture", "gif", "share",
-  "mosh-sticker", "sticker-mode", "sticker-capture", "isolation", "theme-track",
-  "forge-palette", "favorites", "fullscreen", "pro-mode", "switch-camera", "support",
+  "freeze", "capture", "gif", "share", "export-settings",
+  "mosh-sticker", "sticker-mode", "sticker-capture", "sticker-tools", "sticker-vault", "isolation", "theme-track",
+  "forge-palette", "motif-maestro", "favorites", "fullscreen", "pro-mode", "xr-menu", "switch-camera", "support",
 ] as const;
 
 const TRIGGER_LABELS: Record<string, string> = {
   home: "Back to start", undo: "Undo", redo: "Redo",
-  "source-upload": "Upload source", "source-camera": "Live camera", "source-forge": "Forge source", account: "Account",
+  "source-upload": "Upload source", "source-camera": "Live camera", "source-forge": "Forge source", "source-motif": "Motif Maestro", account: "Account",
   mosh: "Mosh", "auto-mosh": "Auto-Mosh", "clear-fx": "Clear FX", journey: "Journey",
   audio: "Audio (mic / device / beat sync)", sensitivity: "Sensitivity",
   "pro-mode": "Pro Mode — hide all UI",
   freeze: "Freeze", capture: "Capture — tap for a still, hold to record", gif: "GIF loop", share: "Share",
+  "export-settings": "Export settings — format, quality, and DPI for every export",
   "mosh-sticker": "Mosh sticker", "sticker-mode": "Sticker capture", isolation: "AI isolation",
   "sticker-capture": "Capture sticker",
+  "sticker-tools": "Sticker tools",
+  "sticker-vault": "Sticker Vault",
   "theme-track": "Theme track", favorites: "Favorites", fullscreen: "Fullscreen",
   "forge-palette": "Forge palette and settings",
+  "motif-maestro": "Motif Maestro controls",
+  "xr-menu": "VR / immersive menu override",
   "switch-camera": "Switch camera", support: "Support MOSH",
 };
 
@@ -324,12 +333,12 @@ function TrackTrigger({ delay, showNudge, onNudgeDismiss }: { delay: number; sho
       <button
         type="button"
         onPointerDown={(e) => e.stopPropagation()}
-        onClick={() => setOpen(o => !o)}
+        onClick={(event) => { event.stopPropagation(); setOpen(o => !o); }}
         aria-label="Track options"
         aria-expanded={open || undefined}
         aria-haspopup="menu"
         data-no-longpress
-        className="absolute -bottom-1 -right-1 grid h-3.5 w-3.5 place-items-center rounded-full bg-black/70 text-[hsl(var(--text-secondary))] transition hover:text-[hsl(var(--accent))]"
+        className="pointer-events-auto absolute -bottom-1 -right-1 z-20 grid h-5 w-5 place-items-center rounded-full bg-black/80 text-[hsl(var(--text-secondary))] transition hover:text-[hsl(var(--accent))]"
         title="Track options"
       >
         <ShuffleIcon className="h-2 w-2" strokeWidth={2.5} />
@@ -449,6 +458,8 @@ function TrackTrigger({ delay, showNudge, onNudgeDismiss }: { delay: number; sho
               const f = e.target.files?.[0];
               e.target.value = "";
               if (!f) return;
+              const issue = validateAudioUpload(f);
+              if (issue) { toast.error(issue); return; }
               const url = URL.createObjectURL(f);
               const name = f.name.replace(/\.[^.]+$/, "");
               try {
@@ -465,60 +476,6 @@ function TrackTrigger({ delay, showNudge, onNudgeDismiss }: { delay: number; sho
           />
         </div>
       )}
-    </div>
-  );
-}
-
-/**
- * Nudges toward turning the mic on the first time there's actually something
- * on screen this session. Anchored as a sibling of the audio trigger (same
- * recipe HintPulse uses elsewhere: a `relative` wrapper, this drops in next
- * to it) rather than a portal, so it visually points straight at the button
- * it's asking about. Stays up to 60s, then glitches out via the same one-shot
- * bg-glitch-pulse used for ambient corruption elsewhere in the app.
- */
-function MicNudgeToast({ onYes, onNo, onExpire }: { onYes: () => void; onNo: () => void; onExpire: () => void }) {
-  const [leaving, setLeaving] = useState(false);
-
-  useEffect(() => {
-    const t = window.setTimeout(() => setLeaving(true), 60_000);
-    return () => window.clearTimeout(t);
-  }, []);
-
-  useEffect(() => {
-    if (!leaving) return;
-    const t = window.setTimeout(onExpire, 520);
-    return () => window.clearTimeout(t);
-  }, [leaving, onExpire]);
-
-  return (
-    <div
-      role="status"
-      className={`absolute right-full mr-2 top-0 z-50 w-56 rounded-md border border-[hsl(var(--accent))]/40 bg-black/90 p-2.5 backdrop-blur-md panel-in-3d ${leaving ? "bg-glitch-pulse" : ""}`}
-      style={leaving ? undefined : { animation: "panel-in 180ms ease-out both" }}
-    >
-      <div className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-[hsl(var(--accent))]">
-        <Mic className="h-3 w-3" strokeWidth={1.5} /> react to sound?
-      </div>
-      <p className="mt-1 text-[10px] leading-tight text-white/60">
-        Turn on the mic (or route a tab's audio) and the effects move with it.
-      </p>
-      <div className="mt-2 flex gap-1.5">
-        <button
-          type="button"
-          onClick={() => { onYes(); }}
-          className="flex-1 rounded-sm border border-[hsl(var(--accent))]/50 bg-[hsl(var(--accent))]/10 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-[hsl(var(--accent))] transition hover:bg-[hsl(var(--accent))]/20"
-        >
-          Yes
-        </button>
-        <button
-          type="button"
-          onClick={() => { onNo(); }}
-          className="flex-1 rounded-sm border border-white/15 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-white/60 transition hover:text-white"
-        >
-          Not now
-        </button>
-      </div>
     </div>
   );
 }
@@ -594,7 +551,7 @@ function AudioTrigger({ delay, onMicFlash }: { delay: number; onMicFlash?: (on: 
         className="absolute -bottom-1 -right-1 grid h-3.5 w-3.5 place-items-center rounded-full bg-black/70 text-[hsl(var(--text-secondary))] transition hover:text-[hsl(var(--accent))]"
         title="Audio options — source & beat sync"
       >
-        <ChevronDown className="h-2.5 w-2.5" strokeWidth={2.5} />
+        <ChevronDown className="h-3 w-3" strokeWidth={2.5} />
       </button>
 
       {open && (
@@ -604,6 +561,7 @@ function AudioTrigger({ delay, onMicFlash }: { delay: number; onMicFlash?: (on: 
           role="menu"
           aria-label="Audio options"
           onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
         >
           <div className="mb-1 font-mono text-[9px] uppercase tracking-[0.2em] text-[hsl(var(--accent))]">source</div>
           <button
@@ -622,6 +580,9 @@ function AudioTrigger({ delay, onMicFlash }: { delay: number; onMicFlash?: (on: 
           >
             <MonitorSpeaker className="h-3 w-3" strokeWidth={1.5} /> Device audio
           </button>
+
+          <div className="my-2 h-px bg-white/10" />
+          <AudioInputControls compact />
 
           <div className="my-2 h-px bg-white/10" />
 
@@ -914,7 +875,7 @@ function MobileRadialWheel({
     const target = visualizerRef?.current;
     if (!target) return;
     const ignored = (eventTarget: EventTarget | null) =>
-      eventTarget instanceof HTMLElement && !!eventTarget.closest("button, a, input, textarea, select, [role='slider'], [data-no-longpress], .mobile-radial-wheel");
+      eventTarget instanceof Element && !!eventTarget.closest("button, a, input, textarea, select, [role='slider'], [data-no-longpress], .mobile-radial-wheel");
     const onDown = (event: PointerEvent) => {
       if ((event.pointerType === "mouse" && event.button !== 0) || ignored(event.target) || gestureRef.current.pointerId !== -1) return;
       clearTimers();
@@ -1218,8 +1179,12 @@ function DesktopRadialWheel({
       armTimer = null;
       openTimer = null;
     };
+    // SVG icons are Elements but not HTMLElements. Treat clicks on the icon
+    // inside a nested button as control clicks too, otherwise the radial
+    // gesture listener starts underneath the button and closes the wheel on
+    // pointer-up before its popover can be used.
     const ignored = (eventTarget: EventTarget | null) =>
-      eventTarget instanceof HTMLElement && !!eventTarget.closest("button, a, input, textarea, select, [role='slider'], [data-no-longpress], .desktop-radial-wheel");
+      eventTarget instanceof Element && !!eventTarget.closest("button, a, input, textarea, select, [role='slider'], [data-no-longpress], .desktop-radial-wheel");
     const onDown = (event: PointerEvent) => {
       if (event.pointerType === "touch" || event.button !== 0 || ignored(event.target) || gestureRef.current.pointerId !== -1) return;
       cancelTimers();
@@ -1391,7 +1356,7 @@ export function HotTriggers({
   visualizerRef, hidden = false, showLegacyLaunchpad = false,
   isRecording, onToggleRecord, onScreenshot, onFreeze, onGif, onShare, onSupport, onAccount, gifBusy, gifProgress,
   onMicFlash, journeyOn, onToggleJourney, journeyLocked, journeyPreview, isFullscreen, onToggleFullscreen, onHome,
-  onClearFx, hasFx, onSaveFavorite, showMicNudge, onMicNudgeYes, onMicNudgeNo, onMicNudgeExpire, showTrackNudge, onTrackNudgeDismiss,
+  onClearFx, hasFx, onSaveFavorite, showTrackNudge, onTrackNudgeDismiss,
 }: Props) {
   const mosh = useStore(s => s.mosh);
   const undo = useStore(s => s.undo);
@@ -1496,6 +1461,25 @@ export function HotTriggers({
   const setHelpModeEnabled = useStore(s => s.setHelpModeEnabled);
   const [isoOpen, setIsoOpen] = useState(false);
   const [forgePanelOpen, setForgePanelOpen] = useState(false);
+  const [motifPanelOpen, setMotifPanelOpen] = useState(false);
+  const [exportSettingsOpen, setExportSettingsOpen] = useState(false);
+  const [xrUiOverride, setXrUiOverride] = useState<XrUiOverride>(() =>
+    typeof window === "undefined" ? "auto" : readXrUiOverride(window.localStorage)
+  );
+
+  const cycleXrUiOverride = () => {
+    const next: XrUiOverride = xrUiOverride === "auto" ? "on" : xrUiOverride === "on" ? "off" : "auto";
+    setXrUiOverride(next);
+    try {
+      if (next === "auto") window.localStorage.removeItem(XR_UI_OVERRIDE_KEY);
+      else window.localStorage.setItem(XR_UI_OVERRIDE_KEY, next);
+    } catch {}
+    window.dispatchEvent(new Event(XR_UI_OVERRIDE_EVENT));
+    toast.success(
+      next === "auto" ? "VR controls: automatic" : next === "on" ? "VR controls: forced on" : "VR controls: forced off",
+      { description: next === "auto" ? "Shown automatically on Quest/Oculus only." : next === "on" ? "Immersive controls will be offered when this browser supports WebXR." : "Immersive controls stay hidden on this device." }
+    );
+  };
 
   useEffect(() => {
     if (!isoOpen) return;
@@ -1516,6 +1500,36 @@ export function HotTriggers({
     window.addEventListener("pointerdown", onDown, true);
     return () => window.removeEventListener("pointerdown", onDown, true);
   }, [forgePanelOpen]);
+
+  useEffect(() => {
+    if (!motifPanelOpen) return;
+    const onDown = (e: PointerEvent) => {
+      if ((e.target as HTMLElement | null)?.closest("[data-motif-panel]")) return;
+      setMotifPanelOpen(false);
+    };
+    window.addEventListener("pointerdown", onDown, true);
+    return () => window.removeEventListener("pointerdown", onDown, true);
+  }, [motifPanelOpen]);
+
+  useEffect(() => {
+    if (!exportSettingsOpen) return;
+    const onDown = (e: PointerEvent) => {
+      if ((e.target as HTMLElement | null)?.closest("[data-export-settings-panel]")) return;
+      setExportSettingsOpen(false);
+    };
+    window.addEventListener("pointerdown", onDown, true);
+    return () => window.removeEventListener("pointerdown", onDown, true);
+  }, [exportSettingsOpen]);
+
+  // Reachable from outside this component too — the "export started" toast
+  // (fired by any export path, anywhere in the app) opens this same panel
+  // when tapped, via the same plain-window-event pattern useIdleFade's
+  // markUiActive() uses to cross that same module boundary.
+  useEffect(() => {
+    const open = () => setExportSettingsOpen(true);
+    window.addEventListener("mosh:open-export-settings", open);
+    return () => window.removeEventListener("mosh:open-export-settings", open);
+  }, []);
 
 
   const flipCamera = async () => {
@@ -1693,6 +1707,11 @@ export function HotTriggers({
         <Flame className="h-4 w-4" strokeWidth={1.5} />
       </HotBtn>
     ),
+    "source-motif": (
+      <HotBtn key="source-motif" delay={0} label="Motif Maestro" active={sourceMode === "motif"} onClick={() => window.dispatchEvent(new CustomEvent("mosh:switch-mode", { detail: "motif" }))} tint="270 92% 72%">
+        <Sparkles className="h-4 w-4" strokeWidth={1.5} />
+      </HotBtn>
+    ),
     account: onAccount && (
       <HotBtn key="account" delay={0} label="Account" onClick={onAccount} tint="266 70% 75%">
         <UserCircle className="h-4 w-4" strokeWidth={1.5} />
@@ -1825,14 +1844,6 @@ export function HotTriggers({
     ),
     audio: (
       <div key="audio" className="relative">
-        {/* Mic-nudge anchors here so it points straight at this button. */}
-        {showMicNudge && (
-          <MicNudgeToast
-            onYes={() => onMicNudgeYes?.()}
-            onNo={() => onMicNudgeNo?.()}
-            onExpire={() => onMicNudgeExpire?.()}
-          />
-        )}
         <AudioTrigger delay={0} onMicFlash={onMicFlash} />
       </div>
     ),
@@ -1885,6 +1896,25 @@ export function HotTriggers({
         <Share2 className="h-4 w-4" strokeWidth={1.5} />
       </HotBtn>
     ),
+    "export-settings": (
+      <div key="export-settings" className="relative" data-export-settings-panel>
+        <HotBtn
+          delay={0}
+          label={exportSettingsOpen ? "Close export settings" : "Export settings — format, quality, and DPI for every export"}
+          active={exportSettingsOpen}
+          onClick={() => setExportSettingsOpen(open => !open)}
+          tint="42 90% 62%"
+        >
+          <Download className="h-4 w-4" strokeWidth={1.5} />
+        </HotBtn>
+        {exportSettingsOpen && createPortal(
+          <div className="fixed right-3 top-14 z-[95] safe-top safe-right" data-export-settings-panel>
+            <ExportSettingsPanel onClose={() => setExportSettingsOpen(false)} />
+          </div>,
+          document.body,
+        )}
+      </div>
+    ),
     "mosh-sticker": <MoshStickerTrigger key="mosh-sticker" delay={0} />,
     "sticker-mode": (
       <HotBtn
@@ -1896,6 +1926,21 @@ export function HotTriggers({
         tint="96 55% 62%"
       >
         <Scissors className="h-4 w-4" strokeWidth={1.5} />
+      </HotBtn>
+    ),
+    "xr-menu": (
+      <HotBtn
+        key="xr-menu"
+        delay={0}
+        label={xrUiOverride === "auto" ? "VR controls: automatic (Quest/Oculus only)" : xrUiOverride === "on" ? "VR controls: forced on" : "VR controls: forced off"}
+        active={xrUiOverride === "on"}
+        onClick={cycleXrUiOverride}
+        tint="196 82% 68%"
+      >
+        <Glasses className="h-4 w-4" strokeWidth={1.5} />
+        <span className="pointer-events-none absolute -bottom-1 -right-1 rounded-sm bg-black/75 px-1 font-mono text-[7px] uppercase leading-[10px] text-white/70">
+          {xrUiOverride === "auto" ? "A" : xrUiOverride === "on" ? "ON" : "OFF"}
+        </span>
       </HotBtn>
     ),
     "pro-mode": (
@@ -1943,6 +1988,18 @@ export function HotTriggers({
     // control into this rail slot when the mode is on (rather than floating a
     // second, oversized button over export feedback near the bottom-right).
     "sticker-capture": stickerMode && <div key="sticker-capture" id="mosh-sticker-capture-slot" />,
+    "sticker-tools": (
+      <HotBtn key="sticker-tools" delay={0} label="Open sticker tools" onClick={() => window.dispatchEvent(new Event("mosh:toggle-sticker-tools"))} tint="286 78% 68%">
+        <Sparkles className="h-4 w-4" strokeWidth={1.5} />
+      </HotBtn>
+    ),
+    "sticker-vault": (
+      <div key="sticker-vault" data-sticker-vault-trigger>
+        <HotBtn delay={0} label="Open Sticker Vault" onClick={() => window.dispatchEvent(new Event("mosh:toggle-sticker-vault"))} tint="186 82% 64%">
+          <Library className="h-4 w-4" strokeWidth={1.5} />
+        </HotBtn>
+      </div>
+    ),
     "theme-track": <TrackTrigger key="theme-track" delay={0} showNudge={showTrackNudge} onNudgeDismiss={onTrackNudgeDismiss} />,
     "forge-palette": sourceMode === "forge" && (
       <div key="forge-palette" className="relative" data-forge-panel>
@@ -1958,6 +2015,25 @@ export function HotTriggers({
         {forgePanelOpen && createPortal(
           <div className="fixed left-3 top-14 z-50 safe-top safe-left" data-forge-panel>
             <ForgePanel embedded />
+          </div>,
+          document.body,
+        )}
+      </div>
+    ),
+    "motif-maestro": sourceMode === "motif" && (
+      <div key="motif-maestro" className="relative" data-motif-panel>
+        <HotBtn
+          delay={0}
+          label={motifPanelOpen ? "Close Motif Maestro controls" : "Open Motif Maestro controls"}
+          active={motifPanelOpen}
+          onClick={() => setMotifPanelOpen(open => !open)}
+          tint="270 92% 72%"
+        >
+          <Sparkles className="h-4 w-4" strokeWidth={1.5} />
+        </HotBtn>
+        {motifPanelOpen && createPortal(
+          <div className="fixed left-3 top-14 z-[90] safe-top safe-left" data-motif-panel>
+            <MotifMaestroPanel embedded />
           </div>,
           document.body,
         )}
@@ -2181,7 +2257,17 @@ export function HotTriggers({
     return () => rail.removeEventListener("wheel", onWheel);
   }, [showLegacyLaunchpad]);
 
-  if (hidden) return null;
+  // Performance/immersive mode hides the DOM chrome, but Quest still needs the
+  // live action registry. Keep one non-rendered copy mounted so the WebXR
+  // wheel invokes these exact handlers instead of drifting into a second set
+  // of trigger implementations.
+  if (hidden) {
+    return (
+      <div hidden aria-hidden data-xr-hot-trigger-registry>
+        {availableIds.map(id => <div key={id} data-trigger-id={id}>{registry[id]}</div>)}
+      </div>
+    );
+  }
 
   return (
     <>

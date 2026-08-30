@@ -4,6 +4,18 @@
   status = 301
   force = true
 
+# The production-branch alias Netlify auto-generates (<branch>--<site>.netlify.app)
+# is a second public hostname for the exact same live deploy, distinct from
+# ether-mosh.netlify.app above and not matched by that rule — confirmed live via
+# curl, it was serving the site directly instead of redirecting. Deploy-preview
+# and other branch-deploy subdomains are deliberately NOT covered by a wildcard
+# here; those need to stay independently viewable for testing.
+[[redirects]]
+  from = "https://ether-mosh--ether-mosh.netlify.app/*"
+  to = "https://ether-mosh.online/:splat"
+  status = 301
+  force = true
+
 [[redirects]]
   from = "/*"
   to = "/index.html"
@@ -36,6 +48,7 @@
       connect-src 'self' https://udtrjwredttzvdixtwla.supabase.co wss://udtrjwredttzvdixtwla.supabase.co https://api.stripe.com https://checkout.stripe.com https://link.com https://*.link.com https://cdn.jsdelivr.net https://storage.googleapis.com https://cdn.shopify.com;
       frame-src https://js.stripe.com https://*.js.stripe.com https://checkout.stripe.com https://hooks.stripe.com https://link.com https://*.link.com;
       worker-src 'self' blob:;
+      manifest-src 'self';
       object-src 'none';
       base-uri 'self';
       form-action 'self';
@@ -43,6 +56,7 @@
       upgrade-insecure-requests;
     '''
     X-Content-Type-Options = "nosniff"
+    X-Permitted-Cross-Domain-Policies = "none"
     Referrer-Policy = "strict-origin-when-cross-origin"
     Permissions-Policy = "camera=(self), microphone=(self), geolocation=(), usb=(), browsing-topics=()"
 
@@ -50,6 +64,18 @@
   for = "/manifest.webmanifest"
   [headers.values]
     Content-Type = "application/manifest+json; charset=utf-8"
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+    Service-Worker-Allowed = "/"
 
 # Forge Journey is the only intentionally embeddable app surface. Keep the
 # main product's frame-ancestors lock while allowing this isolated visual
@@ -65,6 +91,7 @@
       img-src 'self' data: blob:;
       connect-src 'self';
       worker-src 'self' blob:;
+      manifest-src 'none';
       object-src 'none';
       base-uri 'none';
       form-action 'none';

@@ -1,7 +1,7 @@
 import { Link, useNavigate } from "react-router-dom";
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Helmet } from "react-helmet-async";
-import { ArrowDown, ArrowUpRight, Flame, Upload, Video } from "lucide-react";
+import { ChevronsUp, Flame, Upload, Video } from "lucide-react";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
 import { useStore } from "@/store/useStore";
@@ -17,7 +17,7 @@ import { RebellionNudge } from "@/components/home/RebellionNudge";
 import { QuadrantDecor } from "@/components/home/QuadrantDecor";
 import { GlitchWordField, KEEP_OUT } from "@/components/home/GlitchWordField";
 import { HeroWord, HERO_ANCHOR } from "@/components/home/HeroWord";
-import { titleAmbience } from "@/engine/titleAmbience";
+import { HomeInfoCarousel } from "@/components/home/HomeInfoCarousel";
 
 const DemoReelPanel = lazy(() =>
   import("@/components/home/DemoReelPanel").then(m => ({ default: m.DemoReelPanel })),
@@ -34,7 +34,9 @@ const Index = () => {
   const setVideoSource = useStore(s => s.setVideoSource);
   const fileRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLElement>(null);
+  const demoGateRef = useRef<HTMLDivElement>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [demoReady, setDemoReady] = useState(false);
 
   // Whatever the hero is currently shouting. The word field takes it so the
   // same word is never on screen twice.
@@ -46,9 +48,49 @@ const Index = () => {
   // place: procedural sci-fi/mechanical stingers on a loose schedule, purely
   // atmospheric, gone the moment they leave the title screen.
   useEffect(() => {
-    titleAmbience.start();
-    return () => titleAmbience.stop();
+    let active = true;
+    let ambience: { start: (activateImmediately?: boolean) => void; stop: () => void } | null = null;
+    function engage(): void {
+      removeListeners();
+      void import("@/engine/titleAmbience").then((module) => {
+        if (!active) return;
+        ambience = module.titleAmbience;
+        ambience.start(true);
+      });
+    }
+    function removeListeners(): void {
+      window.removeEventListener("pointerdown", engage);
+      window.removeEventListener("keydown", engage);
+      window.removeEventListener("touchstart", engage);
+    }
+    window.addEventListener("pointerdown", engage, { passive: true, once: true });
+    window.addEventListener("keydown", engage, { once: true });
+    window.addEventListener("touchstart", engage, { passive: true, once: true });
+    return () => {
+      active = false;
+      removeListeners();
+      ambience?.stop();
+    };
   }, []);
+
+  // Keep the catalogue/demo engine out of the initial route. It mounts just
+  // before the third panel enters view, so the reel is ready when requested
+  // without competing with the hero's first paint and interaction.
+  useEffect(() => {
+    const root = scrollRef.current;
+    const gate = demoGateRef.current;
+    if (!root || !gate || demoReady) return;
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting) return;
+        setDemoReady(true);
+        io.disconnect();
+      },
+      { root, rootMargin: "0px 0px -10%", threshold: 0.01 },
+    );
+    io.observe(gate);
+    return () => io.disconnect();
+  }, [demoReady]);
 
   // The title is the middle story: public work above, demo reel below. Set
   // the initial position before paint so first-time visitors still land on
@@ -122,6 +164,7 @@ const Index = () => {
     const currentPanel = () => Math.max(0, Math.min(2, Math.round(el.scrollTop / Math.max(1, el.clientHeight))));
 
     const onWheel = (e: WheelEvent) => {
+      if ((e.target as HTMLElement).closest("[data-info-carousel]")) return;
       if (Math.abs(e.deltaX) <= Math.abs(e.deltaY) || Math.abs(e.deltaX) < 12) return;
       e.preventDefault();
       goTo(currentPanel() + (e.deltaX > 0 ? 1 : -1));
@@ -129,6 +172,7 @@ const Index = () => {
 
     let touch: { x: number; y: number } | null = null;
     const onTouchStart = (e: TouchEvent) => {
+      if ((e.target as HTMLElement).closest("[data-info-carousel]")) { touch = null; return; }
       const t = e.touches[0];
       touch = t ? { x: t.clientX, y: t.clientY } : null;
     };
@@ -182,36 +226,10 @@ const Index = () => {
       </Helmet>
       <h1 className="sr-only">MOSH — Real-time audio-reactive image and video glitch instrument</h1>
 
-      {/* Story above: native scrolling reveals this continuously, while the
-          full page remains one deliberate click away. */}
+      {/* Story above: one light, looping horizontal chapter rail. Vertical
+          movement remains native and returns to the instrument below. */}
       <section className="home-info-panel relative h-screen w-screen shrink-0 snap-start overflow-hidden border-b border-white/15">
-        <div className="home-info-grid" aria-hidden />
-        <div className="home-info-orbit" aria-hidden><i/><i/><i/></div>
-        <div className="relative z-10 flex h-full flex-col justify-between px-5 py-7 sm:px-[6vw] sm:py-[6vh]">
-          <div className="flex items-center justify-between font-mono text-[9px] uppercase tracking-[0.24em] text-foreground/50">
-            <span>MOSH / live visuals / Dyles Mavis</span>
-            <span>the story above the instrument</span>
-          </div>
-          <div className="max-w-[1200px]">
-            <p className="mb-5 font-mono text-[9px] uppercase tracking-[0.3em] text-accent">Live performance · tour content · generative systems</p>
-            <h2 className="max-w-[1100px] font-sans text-[clamp(48px,9vw,145px)] font-black uppercase leading-[0.8] tracking-[-0.075em]">
-              Leave the frame.<br/><span className="text-primary">Enter the signal.</span>
-            </h2>
-          </div>
-          <div className="flex flex-col gap-7 sm:flex-row sm:items-end sm:justify-between">
-            <p className="max-w-xl text-sm leading-relaxed text-foreground/65">
-              Meet the artist behind MOSH, explore live visual use cases, commissions, social channels, and the places where chaos becomes the medium.
-            </p>
-            <div className="flex items-center gap-6">
-              <Link to="/live-visuals" className="inline-flex items-center gap-2 border-b border-primary pb-2 font-mono text-[10px] uppercase tracking-[0.2em] text-primary transition hover:text-accent">
-                Enter live visuals <ArrowUpRight className="h-4 w-4"/>
-              </Link>
-              <button type="button" onClick={() => scrollRef.current?.scrollTo({ top: scrollRef.current.clientHeight, behavior: "smooth" })} className="inline-flex items-center gap-2 font-mono text-[9px] uppercase tracking-[0.2em] text-foreground/45 hover:text-foreground">
-                Instrument <ArrowDown className="h-4 w-4"/>
-              </button>
-            </div>
-          </div>
-        </div>
+        <HomeInfoCarousel onReturnToInstrument={() => scrollRef.current?.scrollTo({ top: scrollRef.current.clientHeight, behavior: "smooth" })} />
       </section>
 
       {/* Middle story: the instrument itself. Demo reel remains below. */}
@@ -373,11 +391,13 @@ const Index = () => {
           type="button"
           initial={{ opacity: 0, y: -8 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 1.35 }}
+          transition={{ duration: 0.55, delay: 0.9 }}
           onClick={(e) => { e.stopPropagation(); scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" }); }}
-          className="info-hint pointer-events-auto absolute left-1/2 top-[4.75rem] z-20 -translate-x-1/2 whitespace-nowrap font-mono text-[9px] uppercase tracking-[0.28em] text-foreground/45 transition-colors hover:text-accent"
+          aria-label="Scroll up to explore live visuals"
+          className="info-hint pointer-events-auto absolute left-1/2 top-[4.5rem] z-20 -translate-x-1/2"
         >
-          <span className="info-hint-arrow inline-block">↑</span> live visuals · about · bookings
+          <span className="info-hint-arrow" aria-hidden><ChevronsUp /></span>
+          <span className="info-hint-copy"><strong>Scroll up</strong><small>Explore live visuals</small></span>
         </motion.button>
 
         {/* Bottom credit */}
@@ -426,9 +446,13 @@ const Index = () => {
       </div>
       </section>
 
-      <Suspense fallback={<div className="h-screen w-screen shrink-0 snap-start bg-background" />}>
-        <DemoReelPanel onSelect={loadFromUrl} />
-      </Suspense>
+      <div ref={demoGateRef} className="h-screen w-screen shrink-0 snap-start bg-background">
+        {demoReady && (
+          <Suspense fallback={<div className="h-screen w-screen bg-background" />}>
+            <DemoReelPanel onSelect={loadFromUrl} />
+          </Suspense>
+        )}
+      </div>
     </main>
   );
 };

@@ -1,4 +1,5 @@
 import type { OverlayAsset, OverlayAssetKind } from "./types";
+import { validateDecodedDimensions, validateOverlaySize } from "@/lib/mediaFileSafety";
 
 const ACCEPTED_EXTENSIONS = new Set(["png", "webp", "gif", "svg", "json", "lottie"]);
 
@@ -12,6 +13,10 @@ export class OverlayImportError extends Error {
 export function classifyOverlayFile(file: Pick<File, "name" | "type">): OverlayAssetKind {
   const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
   const mime = file.type.toLowerCase();
+
+  if (mime === "application/zip" && ext !== "lottie") {
+    throw new OverlayImportError("ZIP uploads must use the .lottie format.");
+  }
 
   if (!ACCEPTED_EXTENSIONS.has(ext) && !isAcceptedMime(mime)) {
     throw new OverlayImportError("Unsupported sticker file. Use PNG, WebP, GIF, SVG, Lottie JSON, or .lottie.");
@@ -28,12 +33,18 @@ export function classifyOverlayFile(file: Pick<File, "name" | "type">): OverlayA
 
 export async function importOverlayFile(file: File): Promise<OverlayAsset> {
   const kind = classifyOverlayFile(file);
+  const sizeIssue = validateOverlaySize(file, kind === "lottie-json" ? "lottie-json" : kind === "dotlottie" ? "dotlottie" : "image");
+  if (sizeIssue) throw new OverlayImportError(sizeIssue);
 
   if (kind === "lottie-json") await validateLottieJson(file);
 
   const url = URL.createObjectURL(file);
   try {
     const size = isImageKind(kind) ? await readImageSize(url) : undefined;
+    if (size) {
+      const dimensionIssue = validateDecodedDimensions(size.width, size.height);
+      if (dimensionIssue) throw new OverlayImportError(dimensionIssue);
+    }
     const rasterAnimated = kind === "raster" ? await detectRasterAnimation(file) : false;
     return {
       id: crypto.randomUUID(),

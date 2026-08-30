@@ -74,8 +74,8 @@ export type Snapshot = {
   seed: string;
 };
 
-/** Which of the three ways to feed the renderer is currently active. */
-export type SourceMode = "upload" | "camera" | "forge";
+/** Which source/workspace currently feeds the renderer. */
+export type SourceMode = "upload" | "camera" | "forge" | "motif";
 
 /**
  * Pattern Forge's own state, folded into the main store so switching into and

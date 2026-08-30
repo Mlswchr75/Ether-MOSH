@@ -171,6 +171,15 @@ class TitleAmbience {
   private stopAt = 0;
   private lastIndex = -1;
   private gestureAttached = false;
+  private readonly activateFromGesture = () => {
+    if (!this.running) return;
+    this.ensureContext();
+    if (!this.ctx || !this.master) return;
+    this.detachGestureActivation();
+    this.ctx.resume().catch(() => {});
+    this.stopAt = performance.now() + ACTIVE_WINDOW_MS;
+    this.scheduleNext(2000 + Math.random() * 3000);
+  };
 
   private ensureContext() {
     if (this.ctx) return;
@@ -197,30 +206,34 @@ class TitleAmbience {
     this.master = master;
   }
 
-  private attachGestureResume() {
+  private attachGestureActivation() {
     if (this.gestureAttached) return;
     this.gestureAttached = true;
-    const resume = () => { this.ctx?.resume().catch(() => {}); };
-    window.addEventListener("pointerdown", resume, { passive: true });
-    window.addEventListener("keydown", resume);
-    window.addEventListener("touchstart", resume, { passive: true });
-    // Never removed — cheap no-op once the context is running, and start()
-    // may be called again after a later stop() (route back to the title
-    // screen), so a fresh gesture may still be needed.
+    window.addEventListener("pointerdown", this.activateFromGesture, { passive: true });
+    window.addEventListener("keydown", this.activateFromGesture);
+    window.addEventListener("touchstart", this.activateFromGesture, { passive: true });
   }
 
-  start() {
+  private detachGestureActivation() {
+    if (!this.gestureAttached) return;
+    this.gestureAttached = false;
+    window.removeEventListener("pointerdown", this.activateFromGesture);
+    window.removeEventListener("keydown", this.activateFromGesture);
+    window.removeEventListener("touchstart", this.activateFromGesture);
+  }
+
+  start(activateImmediately = false) {
     if (this.running) return;
-    this.ensureContext();
-    if (!this.ctx || !this.master) return;
-    this.attachGestureResume();
     this.running = true;
-    this.stopAt = performance.now() + ACTIVE_WINDOW_MS;
-    this.scheduleNext(2000 + Math.random() * 3000);
+    // Web Audio cannot play before a gesture anyway. Waiting here avoids
+    // building an audio graph during the landing page's critical paint.
+    if (activateImmediately) this.activateFromGesture();
+    else this.attachGestureActivation();
   }
 
   stop() {
     this.running = false;
+    this.detachGestureActivation();
     if (this.timer !== null) { window.clearTimeout(this.timer); this.timer = null; }
     if (this.ctx) { try { this.ctx.close(); } catch {} }
     this.ctx = null;

@@ -11,7 +11,18 @@ import { hexToRgb } from "../seamlessSource";
 import { rngFromSeed } from "../seed";
 
 type ShatterCell = { x: number; y: number; vx: number; vy: number };
-export type ShatterFieldState = { cells: ShatterCell[]; lastT: number | null };
+export type ShatterFieldState = {
+  cells: ShatterCell[];
+  lastT: number | null;
+  /** Bright emissive cracks over dim cells, instead of bright cells over
+   *  dark cracks — the inverse read, rolled per instance for variety. */
+  glow: boolean;
+  /** Elongated, angular shards instead of round-ish cells — an anisotropic
+   *  distance metric stretched along a random axis. */
+  directional: boolean;
+  stretchAngle: number;
+  stretchAmount: number;
+};
 
 function toroidalDelta(a: number, b: number): number {
   let d = Math.abs(a - b);
@@ -38,7 +49,13 @@ function createState(seed: string): ShatterFieldState {
       vy: (rand() - 0.5) * 0.03,
     });
   }
-  return { cells, lastT: null };
+  return {
+    cells, lastT: null,
+    glow: rand() < 0.4,
+    directional: rand() < 0.5,
+    stretchAngle: rand() * Math.PI,
+    stretchAmount: 1.6 + rand() * 1.8,
+  };
 }
 
 function render(gctx: ForgeGeneratorCtx, state: unknown) {
@@ -60,6 +77,10 @@ function render(gctx: ForgeGeneratorCtx, state: unknown) {
   // resolution — keeps cracks a clean thin line instead of stair-stepping.
   const aaBand = 1.5 / Math.max(w, h);
 
+  const cosA = Math.cos(s.stretchAngle);
+  const sinA = Math.sin(s.stretchAngle);
+  const stretch = s.stretchAmount;
+
   const img = ctx.createImageData(w, h);
   const d = img.data;
   for (let y = 0; y < h; y++) {
@@ -72,8 +93,18 @@ function render(gctx: ForgeGeneratorCtx, state: unknown) {
       let bestIdx = 0;
       for (let i = 0; i < s.cells.length; i++) {
         const cell = s.cells[i];
-        const dx = toroidalDelta(u, cell.x);
-        const dy = toroidalDelta(v, cell.y);
+        let dx = toroidalDelta(u, cell.x);
+        let dy = toroidalDelta(v, cell.y);
+        // Anisotropic metric: rotate into the stretch axis, elongate along
+        // it, rotate back. A plain Euclidean distance always gives
+        // round-ish cells no matter how the sites are scattered — this is
+        // what actually produces long angular shards instead.
+        if (s.directional) {
+          const rx = dx * cosA + dy * sinA;
+          const ry = -dx * sinA + dy * cosA;
+          dx = rx * stretch;
+          dy = ry;
+        }
         const dist = dx * dx + dy * dy;
         if (dist < best) {
           second = best;
@@ -91,17 +122,41 @@ function render(gctx: ForgeGeneratorCtx, state: unknown) {
       const cdy = toroidalDelta(v, cell.y);
       const distToCenter = Math.sqrt(cdx * cdx + cdy * cdy);
       const light = Math.max(0, 1 - distToCenter * 3.2);
-      const cellR = Math.min(255, col[0] * (0.55 + light * 0.6));
-      const cellG = Math.min(255, col[1] * (0.55 + light * 0.6));
-      const cellB = Math.min(255, col[2] * (0.55 + light * 0.6));
 
       // Smoothly blend into the crack color across a thin band instead of a
       // hard threshold — the same Voronoi boundary, just anti-aliased.
       const edgeDist = Math.sqrt(second) - Math.sqrt(best);
       const crackMix = 1 - smoothstep(crackWidth - aaBand, crackWidth + aaBand, edgeDist);
-      d[i4] = crackMix * 4 + (1 - crackMix) * cellR;
-      d[i4 + 1] = crackMix * 3 + (1 - crackMix) * cellG;
-      d[i4 + 2] = crackMix * 6 + (1 - crackMix) * cellB;
+
+      if (s.glow) {
+        // Inverted read: dim, moody cell fill — the crack is the light
+        // source here, not the cell. Bright emissive line color plus a
+        // wide additive halo bleeding well past the hard edge, so it
+        // reads as glow rather than just a second, blurrier line.
+        const cellR = col[0] * (0.10 + light * 0.22);
+        const cellG = col[1] * (0.10 + light * 0.22);
+        const cellB = col[2] * (0.10 + light * 0.22);
+        const line = colors[(bestIdx + 1) % 3];
+        const lineR = Math.min(255, line[0] * 2.1);
+        const lineG = Math.min(255, line[1] * 2.1);
+        const lineB = Math.min(255, line[2] * 2.1);
+        const haloWidth = crackWidth * 6;
+        const halo = Math.max(0, 1 - edgeDist / haloWidth);
+        const haloAmt = halo * halo * 0.55;
+        const baseR = crackMix * lineR + (1 - crackMix) * cellR;
+        const baseG = crackMix * lineG + (1 - crackMix) * cellG;
+        const baseB = crackMix * lineB + (1 - crackMix) * cellB;
+        d[i4] = Math.min(255, baseR + lineR * haloAmt);
+        d[i4 + 1] = Math.min(255, baseG + lineG * haloAmt);
+        d[i4 + 2] = Math.min(255, baseB + lineB * haloAmt);
+      } else {
+        const cellR = Math.min(255, col[0] * (0.55 + light * 0.6));
+        const cellG = Math.min(255, col[1] * (0.55 + light * 0.6));
+        const cellB = Math.min(255, col[2] * (0.55 + light * 0.6));
+        d[i4] = crackMix * 4 + (1 - crackMix) * cellR;
+        d[i4 + 1] = crackMix * 3 + (1 - crackMix) * cellG;
+        d[i4 + 2] = crackMix * 6 + (1 - crackMix) * cellB;
+      }
       d[i4 + 3] = 255;
     }
   }
