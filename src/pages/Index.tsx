@@ -41,20 +41,35 @@ const Index = () => {
   // same word is never on screen twice.
   const [heroWord, setHeroWord] = useState<string>(HERO_ANCHOR);
 
-  // The theme track no longer autoplays — it stays loaded as an optional
-  // default (the "play theme track" control in the editor still reaches it
-  // instantly) but nothing sounds until the visitor asks for it. In its
-  // place: procedural sci-fi/mechanical stingers on a loose schedule, purely
-  // atmospheric, gone the moment they leave the title screen.
+  // A random showcase track autoplays on the visitor's first tap/keypress —
+  // browsers block audio before a real gesture regardless, so "on visit" in
+  // practice means "on the first interaction with the page," same gesture
+  // requirement the old procedural-stinger ambience below it used to wait
+  // on. playRandomOnVisit (trackPlayer.ts) excludes whatever played last
+  // visit (tracked in localStorage) so a repeat visit reliably lands on
+  // something different, not just a coin flip that happens to differ.
   useEffect(() => {
     let active = true;
-    let ambience: { start: (activateImmediately?: boolean) => void; stop: () => void } | null = null;
     function engage(): void {
       removeListeners();
-      void import("@/engine/titleAmbience").then((module) => {
+      void import("@/engine/trackPlayer").then((module) => {
         if (!active) return;
-        ambience = module.titleAmbience;
-        ambience.start(true);
+        void module.trackPlayer.playRandomOnVisit().then(() => {
+          if (!active) return;
+          // playRandomOnVisit talks to the engine singleton directly, not
+          // through the store's own setTrackEnabled action — sync the flag
+          // by hand so the rest of the app (the mic/track mutual-exclusion
+          // logic, the editor's own audio-source UI) sees this as a real
+          // "a track is playing" state once the visitor gets there, not a
+          // song that's audibly running while every consumer still thinks
+          // trackEnabled is false.
+          useStore.setState({ trackEnabled: true, micEnabled: false, systemAudioEnabled: false });
+        }).catch(() => {
+          // Autoplay can still be refused by some browsers even after a
+          // gesture (e.g. a synthetic one some automation sends) — fail
+          // silent and leave the title screen exactly as it was, same as
+          // every other "did the browser allow this" audio guard here.
+        });
       });
     }
     function removeListeners(): void {
@@ -68,7 +83,6 @@ const Index = () => {
     return () => {
       active = false;
       removeListeners();
-      ambience?.stop();
     };
   }, []);
 

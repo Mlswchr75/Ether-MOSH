@@ -83,6 +83,24 @@ function assertSafeTrackUrl(url: string): string {
   return url;
 }
 
+/**
+ * Which showcase track this browser landed on last time, so a repeat visit
+ * doesn't open on the same song. Device-scoped (localStorage) rather than
+ * account-scoped — the entitlements/profiles schema has no spare column to
+ * carry this cross-device for a signed-in user, and adding one is more
+ * machinery than a "don't repeat the last song" preference is worth. Signed
+ * in on two different devices will each keep their own independent history.
+ */
+const LAST_VISIT_TRACK_KEY = "mosh-last-visit-track-id";
+
+function readLastVisitTrackId(): string | null {
+  try { return window.localStorage.getItem(LAST_VISIT_TRACK_KEY); } catch { return null; }
+}
+
+function writeLastVisitTrackId(id: string) {
+  try { window.localStorage.setItem(LAST_VISIT_TRACK_KEY, id); } catch {}
+}
+
 class TrackPlayer {
   private el: HTMLAudioElement | null = null;
   private ctx: AudioContext | null = null;
@@ -272,6 +290,31 @@ class TrackPlayer {
     let idx = i;
     while (idx === i) idx = Math.floor(Math.random() * SHOWCASE_TRACKS.length);
     const t = SHOWCASE_TRACKS[idx];
+    await this.setSource(t.url, t.title, t.artist);
+    await this.play();
+  }
+
+  /**
+   * Auto-play entry point for a fresh visit: picks a random showcase track,
+   * excluding whichever one this browser landed on last visit (see
+   * readLastVisitTrackId), and starts playing it. Always writes the newly
+   * chosen id back immediately — before playback even starts — so the
+   * "different every time" guarantee holds even if the tab closes before
+   * the track finishes loading.
+   *
+   * Distinct from shuffleShowcaseTrack: that one only avoids repeating
+   * whatever's *currently* playing in this same runtime (in-memory,
+   * resets every reload) — this one avoids repeating across visits
+   * entirely, via localStorage.
+   */
+  async playRandomOnVisit(): Promise<void> {
+    if (!SHOWCASE_TRACKS.length) return;
+    const lastId = readLastVisitTrackId();
+    const pool = SHOWCASE_TRACKS.length > 1
+      ? SHOWCASE_TRACKS.filter(t => t.id !== lastId)
+      : SHOWCASE_TRACKS;
+    const t = pool[Math.floor(Math.random() * pool.length)];
+    writeLastVisitTrackId(t.id);
     await this.setSource(t.url, t.title, t.artist);
     await this.play();
   }

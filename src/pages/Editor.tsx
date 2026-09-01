@@ -221,7 +221,6 @@ export default function Editor() {
   const [onboardingActive, setOnboardingActive] = useState(false);
   const [showMicHint, setShowMicHint] = useState(false);
   const [showMicNudge, setShowMicNudge] = useState(false);
-  const micNudgeShownRef = useRef(false);
   const [showTrackNudge, setShowTrackNudge] = useState(false);
   const trackNudgeShownRef = useRef(false);
   const [showPerfHint, setShowPerfHint] = useState(false);
@@ -656,16 +655,22 @@ export default function Editor() {
     return () => window.clearTimeout(id);
   }, [hasSource]);
 
-  // First real content this session, in whichever mode got there first
-  // (upload, camera, or forge) — nudge toward the mic once, if nothing's
-  // already listening. Session-scoped (a ref, not localStorage) so it can
-  // nudge again next visit, per-session rather than per-browser-forever.
+  // Nudge toward turning on real audio reactivity (mic or device-audio
+  // routing) — persistently, not once. A visitor who dismisses this the
+  // first time (or just misses it) is otherwise never reminded again for
+  // the rest of the session, and "react to sound" is easy to not notice is
+  // even possible until it's pointed out more than once. Keeps re-showing
+  // on an interval for as long as neither source is on; stops for good the
+  // moment one actually is (the effect re-runs on that dependency change
+  // and returns early, clearing whatever nudge timer was in flight).
   useEffect(() => {
-    if (!hasSource) return;
-    if (micNudgeShownRef.current) return;
-    if (micEnabled || systemAudioEnabled) return;
-    micNudgeShownRef.current = true;
-    setShowMicNudge(true);
+    if (!hasSource || micEnabled || systemAudioEnabled) return;
+    const NUDGE_INTERVAL_MS = 3 * 60 * 1000;
+    let timer = window.setTimeout(function fire() {
+      setShowMicNudge(true);
+      timer = window.setTimeout(fire, NUDGE_INTERVAL_MS);
+    }, 20_000);
+    return () => window.clearTimeout(timer);
   }, [hasSource, micEnabled, systemAudioEnabled]);
 
   // If someone has been looking at an active visual for a full minute with
