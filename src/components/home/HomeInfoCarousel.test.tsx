@@ -19,6 +19,7 @@ describe("HomeInfoCarousel", () => {
     for (let step = 0; step < 6; step += 1) fireEvent.click(next);
     expect(screen.getByText(/07 \/ 07 · News/i)).toBeTruthy();
     expect(screen.getByRole("link", { name: /Read News \+ Updates/i })).toBeTruthy();
+    expect(screen.getByRole("link", { name: /Browse the Effect Registry/i }).getAttribute("href")).toBe("/effects");
 
     fireEvent.click(next);
     expect(screen.getByText(/01 \/ 07 · Signal/i)).toBeTruthy();
@@ -34,5 +35,6 @@ describe("HomeInfoCarousel", () => {
     renderCarousel();
     fireEvent.keyDown(screen.getByRole("region", { name: "Ether-MOSH live visuals" }), { key: "ArrowRight" });
     expect(screen.getByText(/02 \/ 07 · About/i)).toBeTruthy();
+    expect(screen.getByRole("link", { name: /Explore all 108 effects/i }).getAttribute("href")).toBe("/effects");
   });
 });
