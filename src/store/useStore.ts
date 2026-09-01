@@ -606,7 +606,7 @@ export const useStore = create<State & Actions>((set, get) => ({
     paletteIdx: 0,
     seed: Math.floor(Math.random() * 0xFFFFFF),
     intensity: 0.6,
-    seamless: true,
+    seamless: false,
     stack: [],
     baseImage: null,
     baseName: null,
