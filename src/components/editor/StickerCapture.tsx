@@ -419,34 +419,38 @@ export function StickerCapture() {
           if (index < count - 1) await new Promise(resolve => setTimeout(resolve, 1000 / fps));
         }
       } else {
-        const preparedFocus = await prepareIsolationFocus();
-        // A single analysis can land on a mid-motion frame — reading twice
-        // before committing gives the frame that's about to be locked for
-        // this whole capture a fairer read of where the content actually
-        // sits.
-        let focus = preparedFocus ?? analyzeOrganicFocus(source, focusRef.current);
-        if (!preparedFocus) {
-          focus = analyzeOrganicFocus(source, focus);
-          if (isolationMode !== 'off') focus = isolateOrganicFocus(focus, isolationMode, tapPoint);
-        }
+        // Use exactly what the live preview has already been showing —
+        // no fresh analysis, no re-running prepareIsolationFocus's semantic
+        // segmentation pass. That earlier version re-derived the crop box
+        // AND called prepareIsolationFocus() fresh here, and the latter's
+        // whole job is to overwrite isolationFocusRef.current with a newly
+        // computed mask — which the live preview reads from on every frame.
+        // So the instant export started, it was silently mutating the very
+        // thing on screen out from under the user, even after the crop box
+        // itself got locked down. Reusing the refs the preview already
+        // populated is what actually makes "what you're looking at" equal
+        // "what gets captured."
+        let focus: OrganicFocus = isolationFocusRef.current ?? focusRef.current ?? analyzeOrganicFocus(source);
         // The output canvas's dimensions — and the source region it's
         // cropped from — are committed once here rather than re-derived
         // every frame: an animated Lottie/GIF needs a single fixed canvas
         // size across all its frames, so the *frame* (crop window + aspect)
         // has to stay put for the capture even though the *alpha shape*
-        // inside it keeps analyzing and evolving in real time below.
-        //
-        // Prefer the live preview's already-locked crop window over the
-        // fresh box `focus` just produced. The user has been looking at
-        // that locked framing for as long as it's been stable — re-deriving
-        // an independent box here instead was exactly what made the frame/
-        // shape visibly jump the instant capture started, even though
-        // nothing about the source had actually changed.
+        // inside it keeps analyzing and evolving in real time below. Reuses
+        // the live preview's already-locked crop window when one exists,
+        // same reasoning as above — falls back to focus's own bounds only
+        // when there isn't a lock yet (first capture of a session).
         const committedBox: ContentBox = lockedBoxRef.current
           ?? { left: focus.left, right: focus.right, top: focus.top, bottom: focus.bottom };
-        ({ width, height } = contentFrameSize(focus, maxDimension));
+        ({ width, height } = contentFrameSize(committedBox, maxDimension));
         for (let index = 0; index < count; index++) {
-          if (!preparedFocus && index % 3 === 0) {
+          // Keep the alpha/mask field alive during capture, same as the
+          // live preview's own every-8th-frame refresh (every 3rd here
+          // since capture already runs at a fixed, slower cadence) — this
+          // is what lets tendrils/edges keep moving during the loop instead
+          // of freezing the first frame's mask for the whole capture. The
+          // crop WINDOW (committedBox) never moves regardless.
+          if (index % 3 === 0) {
             focus = analyzeOrganicFocus(source, focus);
             if (isolationMode !== 'off') focus = isolateOrganicFocus(focus, isolationMode, tapPoint);
           }
@@ -486,7 +490,7 @@ export function StickerCapture() {
       setPhase('idle');
       window.setTimeout(() => setLottieProgress(0), 800);
     }
-  }, [includeGif, isolationMode, loopSeconds, outputLongEdge, prepareIsolationFocus, tapPoint, transparentActive]);
+  }, [includeGif, isolationMode, loopSeconds, outputLongEdge, tapPoint, transparentActive]);
 
   // Shift+K, handled globally in Editor.tsx (this component is always
   // mounted, same "always-listening" setup as "mosh:make-sticker" above) —
@@ -508,7 +512,19 @@ export function StickerCapture() {
   // of new shapes to propose.
   const rerollStickerShape = useCallback(() => {
     const source = glRef.current;
-    if (!source || phaseRef.current !== 'idle' || transparentActive || source.width < 2 || source.height < 2) return;
+    if (!source || phaseRef.current !== 'idle' || source.width < 2 || source.height < 2) return;
+    if (transparentActive) {
+      // Genuine-alpha path: there's no synthesized mask to regenerate, but
+      // the crop window around the actual alpha content is still worth a
+      // fresh read — every FX shader in the live pipeline reshapes that
+      // source's real transparency, so where its visible content currently
+      // sits can genuinely differ from wherever the box last settled.
+      // Called with no `previous` (unlike the live preview's own periodic
+      // read) so this is a cold read, not blended toward the old box.
+      alphaBoxRef.current = analyzeRealAlphaBounds(source);
+      doFlash();
+      return;
+    }
     const organic = analyzeOrganicFocus(source);
     const isolated = isolationMode === 'off' ? organic : isolateOrganicFocus(organic, isolationMode, tapPoint);
     // Both refs, not just one: the preview's own render loop prefers
