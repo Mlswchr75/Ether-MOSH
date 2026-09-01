@@ -462,6 +462,71 @@ export function craftOf(id: string): Craft | null {
   return CRAFT[id] ?? null;
 }
 
+/**
+ * Which of an effect's own params is its true "amount" — paramsForRole
+ * (below) drives that one from the brief/push and leaves the rest for
+ * character variation. Convention is params[0], which fits most of the
+ * collection fine. This table only holds the exceptions, verified against
+ * each effect's actual shader rather than guessed from the param name
+ * alone — a name that merely *differs* from "amount" (persistence, flow,
+ * punch...) but still means "more = stronger" doesn't need an entry here;
+ * only the ones where pushing params[0] toward its max is actually wrong —
+ * either the wrong direction (posterize's levels, bitCrush's bits: fewer
+ * is stronger) or not a magnitude at all (mirror's axis is a mode switch;
+ * kaleidoscope-style segment/band/cell counts are structure, not "amount").
+ *
+ * `key: null` opts an effect out of the amount concept entirely — every
+ * param falls back to character variation instead of one being forced
+ * into a role it doesn't fit.
+ */
+const STRENGTH_OVERRIDES: Record<string, { key: string | null; direction?: "down" }> = {
+  // "Levels" pushed toward its max is *fewer* discretization steps removed
+  // — the opposite of more posterization. Fewer levels is the stronger end.
+  posterize: { key: "levels", direction: "down" },
+  // Axis is a horizontal/vertical mode switch (see the shader: `uAxis < 0.5`
+  // picks which side folds) — there's no "more axis," so this opts out
+  // rather than quietly biasing which axis gets picked as push rises.
+  mirror: { key: null },
+  // Fewer bits is more crushed, same shape as posterize's levels.
+  bitCrush: { key: "bits", direction: "down" },
+  // depthEcho already has an explicit "strength" param (index 1) — using
+  // it directly beats guessing at "reach" (index 0).
+  depthEcho: { key: "strength" },
+  // zoom ranges -1..1 (zoom out vs. zoom in), not a 0..1 magnitude — "feed"
+  // (how much trail is fed back in) is the actual intensity knob.
+  infiniteZoom: { key: "feed" },
+  // speed/spin/zoom are all motion-character params — none of the three is
+  // "how much of this effect is applied," so this opts out entirely.
+  feedbackTunnel: { key: null },
+  // slices/spin/zoom: slice count is structure, spin/zoom are motion —
+  // same situation as feedbackTunnel, no clean amount among the three.
+  mandalaBloom: { key: null },
+  // Band *count* is structure, not intensity — timeSpread (how far the
+  // bands scatter through time) is the actual amount knob.
+  strataSlice: { key: "timeSpread" },
+  // Cell *count* is structure — spread (how far shards displace) is the
+  // amount knob, same reasoning as strataSlice.
+  timeShatter: { key: "spread" },
+  // Curvature is the tube's screen-warp shape, not effect intensity — mask
+  // (the phosphor shadow-mask stripe visibility) is what actually scales
+  // "how much CRT" is applied (see the shader's `mix(..., uMask * 0.55)`).
+  crtPhosphor: { key: "mask" },
+  // Threshold pushed toward its max means *fewer* edges clear the
+  // smoothstep gate — fewer glowing contours, not more (see the shader's
+  // `t = mix(0.06, 0.9, uThreshold)` then `smoothstep(t*0.45, t, e)`).
+  neonContour: { key: "threshold", direction: "down" },
+};
+
+/** The param key driving an effect's "amount," and which direction (up its
+ *  own range, or down) makes it stronger — params[0] unless overridden
+ *  above, `null` if this effect has no single knob that means "amount." */
+export function strengthParamFor(effectId: string): { key: string | null; direction: "up" | "down" } {
+  const override = STRENGTH_OVERRIDES[effectId];
+  if (override) return { key: override.key, direction: override.direction ?? "up" };
+  const first = EFFECTS_BY_ID[effectId]?.params[0];
+  return { key: first?.key ?? null, direction: "up" };
+}
+
 /** Every effect that can serve a role. */
 export function poolForRole(role: Role): string[] {
   return Object.keys(CRAFT).filter(id => CRAFT[id].role === role && EFFECTS_BY_ID[id]);
@@ -1036,13 +1101,24 @@ export function paramsForRole(
      resembling themselves. */
   push = clamp01(push * (0.78 + wildness * 0.42) + wildness * 0.32);
 
-  def.params.forEach((p, i) => {
+  // Which param is this effect's actual "amount," and which way up its
+  // range makes it stronger — params[0]/up unless strengthParamFor
+  // overrides it (see STRENGTH_OVERRIDES's own doc for why a handful of
+  // effects need that: a differently-named-but-still-"more=stronger" param
+  // is fine left as the default, only a wrong direction or a genuinely
+  // non-magnitude param needs an entry).
+  const strength = strengthParamFor(effectId);
+
+  def.params.forEach((p) => {
     const span = p.max - p.min;
-    // The first param is the effect's "amount" by convention — that's the one
-    // the brief should drive. Later params get character variation instead.
+    // The strength param is the one the brief/push should drive. Every
+    // other param — including all of them, if this effect has no strength
+    // param at all — gets character variation instead.
     let target: number;
-    if (i === 0) {
-      target = p.min + span * (0.2 + push * 0.8);
+    if (strength.key != null && p.key === strength.key) {
+      target = strength.direction === "down"
+        ? p.max - span * (0.2 + push * 0.8)
+        : p.min + span * (0.2 + push * 0.8);
     } else {
       // Secondary params are where an effect's character lives — the angle, the
       // cell size, the falloff. Ranging them across the full span is what makes
