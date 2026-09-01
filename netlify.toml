@@ -51,7 +51,7 @@
       font-src 'self' https://fonts.gstatic.com;
       img-src 'self' data: blob: https://cdn.shopify.com https://*.stripe.com https://*.link.com;
       media-src 'self' blob:;
-      connect-src 'self' https://udtrjwredttzvdixtwla.supabase.co wss://udtrjwredttzvdixtwla.supabase.co https://api.stripe.com https://checkout.stripe.com https://link.com https://*.link.com https://cdn.jsdelivr.net https://storage.googleapis.com https://cdn.shopify.com;
+      connect-src 'self' https://coyzusnfkvheplcdvctf.supabase.co wss://coyzusnfkvheplcdvctf.supabase.co https://api.stripe.com https://checkout.stripe.com https://link.com https://*.link.com https://cdn.jsdelivr.net https://storage.googleapis.com https://cdn.shopify.com;
       frame-src https://js.stripe.com https://*.js.stripe.com https://checkout.stripe.com https://hooks.stripe.com https://link.com https://*.link.com;
       worker-src 'self' blob:;
       manifest-src 'self';

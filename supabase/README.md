@@ -1,15 +1,23 @@
 # Supabase backend (version-controlled)
 
-This directory is the first version-controlled copy of the production database
+This directory is the version-controlled copy of the production database
 schema and payment edge functions for `ether-mosh.online` (Supabase project
-ref `udtrjwredttzvdixtwla`). The canonical repository is now the source of truth
-for this backend rather than a site-builder-managed copy.
+ref `coyzusnfkvheplcdvctf`, "Ether-MOSH Production"). The canonical repository
+is now the source of truth for this backend rather than a site-builder-managed
+copy.
+
+Migrated 2026-09-01 off the original project (`udtrjwredttzvdixtwla`, which
+belonged to a different Supabase account this repo's owner didn't control)
+onto a dedicated project under the owner's own Supabase org. Auth users,
+profiles, presets, and entitlements were carried over as of the migration
+date; anything written on the old project after that point does not exist
+here.
 
 ## `migrations/`
 
-These 20 files are a historical record of the schema **already applied** to the
+These files are a historical record of the schema **already applied** to the
 live project — not new changes to run against it. If you link the CLI to the
-live project (`supabase link --project-ref udtrjwredttzvdixtwla`), do **not**
+live project (`supabase link --project-ref coyzusnfkvheplcdvctf`), do **not**
 run `supabase db push` blind: the tables already exist, so a push will fail on
 "already exists" errors. Either `supabase db pull` first to reconcile the
 migration history table, or use `supabase migration repair --status applied

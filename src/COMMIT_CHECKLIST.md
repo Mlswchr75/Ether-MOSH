@@ -2,7 +2,7 @@
 
 ## 1. Supabase Auth URL configuration
 
-Project: `udtrjwredttzvdixtwla`
+Project: `coyzusnfkvheplcdvctf`
 
 - Site URL: `https://ether-mosh.online`
 - Redirect URL: `https://ether-mosh.online/auth/callback`
@@ -11,14 +11,14 @@ Project: `udtrjwredttzvdixtwla`
 
 The Google OAuth client keeps the Supabase callback URI:
 
-`https://udtrjwredttzvdixtwla.supabase.co/auth/v1/callback`
+`https://coyzusnfkvheplcdvctf.supabase.co/auth/v1/callback`
 
 Do not add `/auth/callback` from either application to Google as an OAuth redirect URI. Google returns to Supabase; Supabase returns to the application callback.
 
 ## 2. Netlify environment
 
-- `VITE_SUPABASE_URL=https://udtrjwredttzvdixtwla.supabase.co`
-- `VITE_SUPABASE_PUBLISHABLE_KEY` must be the public key for project `udtrjwredttzvdixtwla`.
+- `VITE_SUPABASE_URL=https://coyzusnfkvheplcdvctf.supabase.co`
+- `VITE_SUPABASE_PUBLISHABLE_KEY` must be the public key for project `coyzusnfkvheplcdvctf`.
 - `VITE_PAYMENTS_CLIENT_TOKEN` must be the Stripe live publishable key used by the shared checkout backend.
 - Do not configure `VITE_PAYMENTS_LIVE`; the application derives live versus sandbox from the publishable-key prefix.
 
