@@ -63,7 +63,7 @@ const About = () => (
       <LegalH2>Endeavors</LegalH2>
       <p className="mt-2">
         <strong>Ether-MOSH (Audio-Reactive Visual Instrument)</strong><br />
-        A real-time, GPU-accelerated instrument for live performance and creative exploration. 107 effects.
+        A real-time, GPU-accelerated instrument for live performance and creative exploration. 108 effects.
         Beat-synced chaos. Built in the browser. Free to use.
       </p>
       <p className="mt-4">

@@ -1772,7 +1772,7 @@ export default function Editor() {
         <meta name="description" content="Stack GPU effects, map audio to parameters, and perform live in the MOSH visual editor." />
         <link rel="canonical" href="https://ether-mosh.online/edit" />
         <meta property="og:title" content="MOSH Editor — Real-time visual instrument" />
-        <meta property="og:description" content="Stack 107 GPU effects, sync to audio, export stills and video." />
+        <meta property="og:description" content="Stack 108 GPU effects, sync to audio, export stills and video." />
         <meta property="og:url" content="https://ether-mosh.online/edit" />
       </Helmet>
       <h1 className="sr-only">MOSH Editor</h1>

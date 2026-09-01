@@ -64,4 +64,24 @@
     <loc>https://ether-mosh.online/live-visuals</loc>
     <priority>0.8</priority>
   </url>
+  <url>
+    <loc>https://ether-mosh.online/news</loc>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://ether-mosh.online/news/sort-your-pixels-before-they-sort-you</loc>
+    <lastmod>2026-08-31</lastmod>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://ether-mosh.online/news/halftone-is-not-a-phase-mom</loc>
+    <lastmod>2026-08-31</lastmod>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://ether-mosh.online/news/make-moire-before-moire-makes-you-sick</loc>
+    <lastmod>2026-08-31</lastmod>
+    <priority>0.7</priority>
+  </url>
 </urlset>

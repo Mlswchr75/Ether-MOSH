@@ -11,7 +11,7 @@ import { JourneyPortalInterlude } from "@/components/journey/PortalShapeGallery"
 const EASE = [0.22, 1, 0.36, 1] as const;
 
 const FEATURES_FREE = [
-  "107 GPU shader effects",
+  "108 GPU shader effects",
   "Live camera source (front / rear / webcam)",
   "Drag-and-drop or paste any image",
   "Forge source exploration + one five-minute Journey preview",

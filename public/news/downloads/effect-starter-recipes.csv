@@ -1,0 +1,4 @@
+effect,category,control_1,start_1,control_2,start_2,suggested_stack,best_for
+Pixel Sort,Data Corruption,Amount,0.30,Threshold,0.55,RGB Shift + Film Grain,"portraits; architecture; print; projection"
+Halftone,Color,Amount,0.45,Dot Size,0.25,Duotone + Photocopy,"posters; pattern; packaging; LED walls"
+Moire,Geometry,Amount,0.25,Pitch,0.35,Duotone + Bloom,"op art; projection; installation; education"

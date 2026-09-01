@@ -36,6 +36,12 @@
 # script load).
 # frame-src: Stripe embedded checkout, Stripe.js, 3-D Secure, and Link payment frames.
 [[headers]]
+  for = "/news/feed.xml"
+  [headers.values]
+    Content-Type = "application/rss+xml; charset=UTF-8"
+    Cache-Control = "public, max-age=900"
+
+[[headers]]
   for = "/*"
   [headers.values]
     Content-Security-Policy = '''

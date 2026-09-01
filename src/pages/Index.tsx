@@ -217,10 +217,10 @@ const Index = () => {
     >
       <Helmet>
         <title>Ether-MOSH — Audio-Reactive Visual Instrument</title>
-        <meta name="description" content="Ether-MOSH is a browser-based audio-reactive visual instrument. Drop an image or go live with your camera, stack 107 GPU glitch effects, sync them to your music, and export stills or video — all processed locally in your browser." />
+        <meta name="description" content="Ether-MOSH is a browser-based audio-reactive visual instrument. Drop an image or go live with your camera, stack 108 GPU glitch effects, sync them to your music, and export stills or video — all processed locally in your browser." />
         <link rel="canonical" href="https://ether-mosh.online/" />
         <meta property="og:title" content="Ether-MOSH — Audio-Reactive Visual Instrument" />
-        <meta property="og:description" content="Drop an image and warp it in real time. 107 GPU effects, beat-synced chaos, in your browser." />
+        <meta property="og:description" content="Drop an image and warp it in real time. 108 GPU effects, beat-synced chaos, in your browser." />
         <meta property="og:url" content="https://ether-mosh.online/" />
       </Helmet>
       <h1 className="sr-only">Ether-MOSH — Real-time audio-reactive image and video glitch instrument</h1>
@@ -336,7 +336,7 @@ const Index = () => {
                 transition={{ duration: 0.4, delay: 0, ease: EASE_SNAP }}
                 className="max-w-xl font-mono text-xs uppercase tracking-[0.25em] text-foreground/70"
               >
-                Ether-MOSH is a real-time, audio-reactive visual instrument. Load any image, stack 107 GPU effects, sync to your music, and export stills or video — all in your browser.
+                Ether-MOSH is a real-time, audio-reactive visual instrument. Load any image, stack 108 GPU effects, sync to your music, and export stills or video — all in your browser.
               </motion.p>
 
               <motion.div
@@ -368,6 +368,13 @@ const Index = () => {
             ether-mosh / v0.1
           </div>
           <div className="pointer-events-auto flex items-center gap-4">
+            <Link
+              to="/news"
+              onClick={(e) => e.stopPropagation()}
+              className="font-mono text-xs uppercase tracking-[0.2em] text-accent hover:text-primary transition"
+            >
+              news + updates →
+            </Link>
             <button
               onClick={(e) => { e.stopPropagation(); navigate(user ? "/account" : "/auth"); }}
               className="font-mono text-xs uppercase tracking-[0.2em] text-primary hover:text-accent transition"
@@ -409,6 +416,8 @@ const Index = () => {
         >
           <nav aria-label="Footer" className="flex flex-wrap items-center justify-center gap-4 font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/60">
             <Link to="/pricing" onClick={(e) => e.stopPropagation()} className="hover:text-accent transition">pricing</Link>
+            <span aria-hidden className="text-foreground/30">·</span>
+            <Link to="/news" onClick={(e) => e.stopPropagation()} className="hover:text-accent transition">news + updates</Link>
             <span aria-hidden className="text-foreground/30">·</span>
             <Link to="/refund" onClick={(e) => e.stopPropagation()} className="hover:text-accent transition">refunds</Link>
             <span aria-hidden className="text-foreground/30">·</span>
