@@ -1,4 +1,4 @@
-import { Mic, MicOff, Circle, Square, Sparkles, Scissors, Snowflake, Camera, Shuffle, Star, Play, Pencil, Trash2, X, Film, Lock, Share2, Compass, Maximize2, Minimize2, SwitchCamera, Eraser, Link2, Upload, Music, Music2, Shuffle as ShuffleIcon, Undo2, Redo2, ChevronDown, MonitorSpeaker, Heart, GripVertical, RotateCcw, SkipBack, SkipForward, Palette, Glasses } from "lucide-react";
+import { Mic, MicOff, Circle, Square, Sparkles, Scissors, Snowflake, Camera, Shuffle, Star, Play, Pencil, Trash2, X, Film, Lock, Share2, Compass, Maximize2, Minimize2, SwitchCamera, Eraser, Link2, Upload, Music, Music2, Shuffle as ShuffleIcon, Undo2, Redo2, ChevronDown, MonitorSpeaker, Heart, GripVertical, RotateCcw, SkipBack, SkipForward, Palette } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { useStore } from "@/store/useStore";
@@ -15,12 +15,6 @@ import { cursorFx } from "@/engine/cursorFx";
 import { toast } from "sonner";
 import { clampRadialPoint, defaultRadialPoint, nearestRadialId, type RadialLayout } from "@/lib/radialLayout";
 import { validateAudioUpload } from "@/lib/mediaFileSafety";
-import {
-  readXrUiOverride,
-  XR_UI_OVERRIDE_EVENT,
-  XR_UI_OVERRIDE_KEY,
-  type XrUiOverride,
-} from "@/engine/xrCapabilities";
 import { MoshVortexIcon, LiveFeedIcon, UploadBeamIcon, ForgeFlameIcon, MotifMandalaIcon, HomeBeaconIcon, AccountCrystalIcon } from "./HotTriggerIcons";
 import { AccountSettingsOverlay } from "./AccountSettingsOverlay";
 
@@ -126,17 +120,17 @@ const DEFAULT_AUTO_MOSH_SEC = 15;
 
 /** Performance-first: make/change/restore, direct the live response, capture,
  * deepen the artwork, then source/system/navigation utilities.
- * pro-mode, sensitivity, export-settings and support used to live here too —
- * all four now live inside the "account" trigger's settings overlay instead
- * (see AccountSettingsOverlay.tsx), so none of them need a ring slot of
- * their own any more. */
+ * pro-mode, sensitivity, export-settings, support, and the VR/immersive
+ * override used to live here too — all five now live inside the "account"
+ * trigger's settings overlay instead (see AccountSettingsOverlay.tsx), so
+ * none of them need a ring slot of their own any more. */
 const DEFAULT_ORDER = [
   "mosh", "undo", "redo", "journey", "auto-mosh", "clear-fx",
   "audio", "theme-track", "freeze",
   "capture", "gif", "share", "favorites",
   "sticker-mode",
   "source-camera", "switch-camera", "source-upload", "source-forge", "forge-palette", "source-motif", "motif-maestro",
-  "fullscreen", "xr-menu", "account", "home",
+  "fullscreen", "account", "home",
 ] as const;
 
 const TRIGGER_LABELS: Record<string, string> = {
@@ -149,7 +143,6 @@ const TRIGGER_LABELS: Record<string, string> = {
   "theme-track": "Theme track", favorites: "Favorites", fullscreen: "Fullscreen",
   "forge-palette": "Forge settings — colour is directed automatically",
   "motif-maestro": "Motif Maestro controls",
-  "xr-menu": "VR / immersive menu override",
   "switch-camera": "Switch camera",
 };
 
@@ -1476,30 +1469,13 @@ export function HotTriggers({
   const setStickerMode = useStore(s => s.setStickerMode);
   const [forgePanelOpen, setForgePanelOpen] = useState(false);
   const [motifPanelOpen, setMotifPanelOpen] = useState(false);
-  const [xrUiOverride, setXrUiOverride] = useState<XrUiOverride>(() =>
-    typeof window === "undefined" ? "auto" : readXrUiOverride(window.localStorage)
-  );
   // The consolidated settings overlay — opened from the "account" trigger,
   // or (landing on its Export tab specifically) from the "export started"
   // toast any export path anywhere in the app can fire. Pro Mode, Help
-  // Mode, sensitivity and export settings all moved inside it; see
-  // AccountSettingsOverlay.tsx.
+  // Mode, sensitivity, export settings, and the VR/immersive override all
+  // moved inside it; see AccountSettingsOverlay.tsx.
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState<"general" | "export">("general");
-
-  const cycleXrUiOverride = () => {
-    const next: XrUiOverride = xrUiOverride === "auto" ? "on" : xrUiOverride === "on" ? "off" : "auto";
-    setXrUiOverride(next);
-    try {
-      if (next === "auto") window.localStorage.removeItem(XR_UI_OVERRIDE_KEY);
-      else window.localStorage.setItem(XR_UI_OVERRIDE_KEY, next);
-    } catch {}
-    window.dispatchEvent(new Event(XR_UI_OVERRIDE_EVENT));
-    toast.success(
-      next === "auto" ? "VR controls: automatic" : next === "on" ? "VR controls: forced on" : "VR controls: forced off",
-      { description: next === "auto" ? "Shown automatically on Quest/Oculus only." : next === "on" ? "Immersive controls will be offered when this browser supports WebXR." : "Immersive controls stay hidden on this device." }
-    );
-  };
 
   useEffect(() => {
     if (!forgePanelOpen) return;
@@ -1920,21 +1896,6 @@ export function HotTriggers({
         tint="96 55% 62%"
       >
         <Scissors className="h-4 w-4" strokeWidth={1.5} />
-      </HotBtn>
-    ),
-    "xr-menu": (
-      <HotBtn
-        key="xr-menu"
-        delay={0}
-        label={xrUiOverride === "auto" ? "VR controls: automatic (Quest/Oculus only)" : xrUiOverride === "on" ? "VR controls: forced on" : "VR controls: forced off"}
-        active={xrUiOverride === "on"}
-        onClick={cycleXrUiOverride}
-        tint="196 82% 68%"
-      >
-        <Glasses className="h-4 w-4" strokeWidth={1.5} />
-        <span className="pointer-events-none absolute -bottom-1 -right-1 rounded-sm bg-black/75 px-1 font-mono text-[7px] uppercase leading-[10px] text-white/70">
-          {xrUiOverride === "auto" ? "A" : xrUiOverride === "on" ? "ON" : "OFF"}
-        </span>
       </HotBtn>
     ),
     "theme-track": <TrackTrigger key="theme-track" delay={0} showNudge={showTrackNudge} onNudgeDismiss={onTrackNudgeDismiss} />,

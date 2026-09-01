@@ -1,10 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { X, Sparkles, HelpCircle, EyeOff, Gauge } from "lucide-react";
+import { X, Sparkles, HelpCircle, EyeOff, Gauge, Glasses } from "lucide-react";
+import { toast } from "sonner";
 import { useStore } from "@/store/useStore";
 import { ExportSettingsPanel } from "./ExportSettingsPanel";
 import { AccountCrystalIcon } from "./HotTriggerIcons";
 import { cursorFx } from "@/engine/cursorFx";
+import {
+  readXrUiOverride,
+  XR_UI_OVERRIDE_EVENT,
+  XR_UI_OVERRIDE_KEY,
+  type XrUiOverride,
+} from "@/engine/xrCapabilities";
 
 /** Viewport-normalized UV for a client point — see the identical helper in
  *  HotTriggers.tsx for why this is an approximation, not a precise readout;
@@ -51,6 +58,29 @@ export function AccountSettingsOverlay({
   const setSensitivity = useStore(s => s.setSensitivity);
   const proHeldRef = useRef(false);
   const proHoldTimerRef = useRef<number | null>(null);
+  const [xrUiOverride, setXrUiOverride] = useState<XrUiOverride>(() =>
+    typeof window === "undefined" ? "auto" : readXrUiOverride(window.localStorage)
+  );
+
+  // VR/Quest immersive controls are their own hardware-gated component
+  // (VrButton.tsx, rendered directly in the canvas — it only ever shows on
+  // real Quest/Oculus browsers). This is just the override: force it on to
+  // preview immersive controls on a non-Quest browser, or off to hide them
+  // even there. VrButton listens for the same event/localStorage key, so
+  // flipping this here reaches it immediately without any prop plumbing.
+  const cycleXrUiOverride = () => {
+    const next: XrUiOverride = xrUiOverride === "auto" ? "on" : xrUiOverride === "on" ? "off" : "auto";
+    setXrUiOverride(next);
+    try {
+      if (next === "auto") window.localStorage.removeItem(XR_UI_OVERRIDE_KEY);
+      else window.localStorage.setItem(XR_UI_OVERRIDE_KEY, next);
+    } catch {}
+    window.dispatchEvent(new Event(XR_UI_OVERRIDE_EVENT));
+    toast.success(
+      next === "auto" ? "VR controls: automatic" : next === "on" ? "VR controls: forced on" : "VR controls: forced off",
+      { description: next === "auto" ? "Shown automatically on Quest/Oculus only." : next === "on" ? "Immersive controls will be offered when this browser supports WebXR." : "Immersive controls stay hidden on this device." }
+    );
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -160,6 +190,24 @@ export function AccountSettingsOverlay({
                   </span>
                   <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-white/40">
                     {helpModeEnabled ? "Help Mode on" : "hold for Help Mode"}
+                  </span>
+                </button>
+              </section>
+
+              <section className="flex flex-col gap-2">
+                <p className="font-mono text-[9px] uppercase tracking-[0.25em] text-white/40">VR / Immersive</p>
+                <button
+                  type="button"
+                  onClick={cycleXrUiOverride}
+                  data-active={xrUiOverride !== "auto" || undefined}
+                  className="flex w-full items-center justify-between rounded-md border border-white/10 bg-white/[0.03] p-3 text-left transition data-[active]:border-[hsl(var(--accent))]/50 data-[active]:bg-[hsl(var(--accent))]/10"
+                >
+                  <span className="flex items-center gap-2">
+                    <Glasses className="h-4 w-4 text-white/60" strokeWidth={1.5} />
+                    <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-white/80">VR controls (Quest / Oculus)</span>
+                  </span>
+                  <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-white/40">
+                    {xrUiOverride === "auto" ? "automatic" : xrUiOverride === "on" ? "forced on" : "forced off"}
                   </span>
                 </button>
               </section>
