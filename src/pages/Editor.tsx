@@ -1215,10 +1215,16 @@ export default function Editor() {
       // Sticker/Lottie controls contain checkboxes and selects. Space must
       // remain the universal MOSH action even immediately after one of those
       // controls was focused.
+      //
+      // Shift+Space is repurposed here specifically: rather than undo (its
+      // meaning everywhere else), it asks StickerCapture to throw away the
+      // sticker's current crop lock and propose a fresh framing/border/
+      // structural shape — repeatable indefinitely, since the point is
+      // shopping through candidates before committing to a capture.
       if (e.code === "Space" && useStore.getState().stickerMode) {
         e.preventDefault();
         if (e.repeat) return;
-        if (e.shiftKey) undo();
+        if (e.shiftKey) window.dispatchEvent(new CustomEvent("mosh:reroll-sticker-shape"));
         else crossfadeLayers(mosh, MOSH_FADE_MS);
         return;
       }

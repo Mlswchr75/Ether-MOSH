@@ -435,7 +435,15 @@ export function StickerCapture() {
         // size across all its frames, so the *frame* (crop window + aspect)
         // has to stay put for the capture even though the *alpha shape*
         // inside it keeps analyzing and evolving in real time below.
-        const committedBox = { left: focus.left, right: focus.right, top: focus.top, bottom: focus.bottom };
+        //
+        // Prefer the live preview's already-locked crop window over the
+        // fresh box `focus` just produced. The user has been looking at
+        // that locked framing for as long as it's been stable — re-deriving
+        // an independent box here instead was exactly what made the frame/
+        // shape visibly jump the instant capture started, even though
+        // nothing about the source had actually changed.
+        const committedBox: ContentBox = lockedBoxRef.current
+          ?? { left: focus.left, right: focus.right, top: focus.top, bottom: focus.bottom };
         ({ width, height } = contentFrameSize(focus, maxDimension));
         for (let index = 0; index < count; index++) {
           if (!preparedFocus && index % 3 === 0) {
@@ -489,6 +497,36 @@ export function StickerCapture() {
     window.addEventListener('mosh:capture-lottie-sticker', onShortcut);
     return () => window.removeEventListener('mosh:capture-lottie-sticker', onShortcut);
   }, [exportLottieSticker]);
+
+  // Shift+Space while in Sticker Mode, handled globally in Editor.tsx (same
+  // always-listening event-bridge pattern as the shortcuts above). Instead
+  // of moshing the FX stack, this throws out the live preview's current
+  // crop lock and re-reads the source fresh — a new proposed framing/
+  // border/structural shape for the sticker, with no history smoothing
+  // holding it back. Repeatable indefinitely: each press is an independent
+  // fresh read, not a walk through a fixed sequence, so it never "runs out"
+  // of new shapes to propose.
+  const rerollStickerShape = useCallback(() => {
+    const source = glRef.current;
+    if (!source || phaseRef.current !== 'idle' || transparentActive || source.width < 2 || source.height < 2) return;
+    const organic = analyzeOrganicFocus(source);
+    const isolated = isolationMode === 'off' ? organic : isolateOrganicFocus(organic, isolationMode, tapPoint);
+    // Both refs, not just one: the preview's own render loop prefers
+    // isolationFocusRef over focusRef whenever a semantic/tap isolation is
+    // active, so leaving isolationFocusRef pointed at a stale lock would
+    // make the reroll invisible under those isolation modes.
+    focusRef.current = isolated;
+    isolationFocusRef.current = isolated;
+    const freshBox: ContentBox = { left: isolated.left, right: isolated.right, top: isolated.top, bottom: isolated.bottom };
+    lockedBoxRef.current = freshBox;
+    lastLockTimeRef.current = performance.now();
+    doFlash();
+  }, [isolationMode, tapPoint, transparentActive]);
+
+  useEffect(() => {
+    window.addEventListener('mosh:reroll-sticker-shape', rerollStickerShape);
+    return () => window.removeEventListener('mosh:reroll-sticker-shape', rerollStickerShape);
+  }, [rerollStickerShape]);
 
   const onPointerDown = () => {
     isPointerDown.current = true;
