@@ -137,6 +137,10 @@ export class MoshRenderer {
       precision: "mediump",
     });
     this.renderer.setClearColor(0x000000, 0);
+    // Was implicitly relying on three.js's default; making it explicit so a
+    // future three.js version bump can't silently change the output encoding
+    // out from under every effect's color math.
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
 
     // 🔥 FIX: Set pixel unpack alignment to 1 byte so non-4-byte divisible video/image textures never break WebGL
     try {
@@ -344,14 +348,70 @@ export class MoshRenderer {
         uniform sampler2D uOverlayDepth;
         uniform float uOverlayGate;
         uniform float uOverlaySoft;
+        uniform float uVibrance;
 
         vec3 aces(vec3 x) {
           const float a = 2.51, b = 0.03, c = 2.43, d = 0.59, e = 0.14;
           return clamp((x*(a*x+b))/(x*(c*x+d)+e), 0.0, 1.0);
         }
 
+        // Vibrance, not flat saturation: pixels that are already vivid get
+        // little extra push (they'd just clip to a flat neon block), while
+        // muted/desaturated pixels get lifted the most. Keeps the wider
+        // color range from reading as "everything is neon."
+        vec3 vibrance(vec3 color, float amount) {
+          float luma = dot(color, vec3(0.299, 0.587, 0.114));
+          float maxc = max(color.r, max(color.g, color.b));
+          float minc = min(color.r, min(color.g, color.b));
+          float chroma = maxc - minc;
+          float boost = amount * (1.0 - chroma);
+          return mix(vec3(luma), color, 1.0 + boost);
+        }
+
+        // Everything upstream is fully aliased (antialias:false on the
+        // WebGLRenderer, and every effect quad is a raw full-screen pass) —
+        // this is the one shared place to buy edges back for every effect at
+        // once. Classic compact FXAA: a handful of extra taps, no extra pass.
+        vec3 fxaa(sampler2D tex, vec2 uv, vec2 res) {
+          vec2 px = 1.0 / res;
+          vec3 rgbNW = texture2D(tex, uv + vec2(-1.0, -1.0) * px).rgb;
+          vec3 rgbNE = texture2D(tex, uv + vec2( 1.0, -1.0) * px).rgb;
+          vec3 rgbSW = texture2D(tex, uv + vec2(-1.0,  1.0) * px).rgb;
+          vec3 rgbSE = texture2D(tex, uv + vec2( 1.0,  1.0) * px).rgb;
+          vec3 rgbM  = texture2D(tex, uv).rgb;
+
+          const vec3 luma = vec3(0.299, 0.587, 0.114);
+          float lumaNW = dot(rgbNW, luma);
+          float lumaNE = dot(rgbNE, luma);
+          float lumaSW = dot(rgbSW, luma);
+          float lumaSE = dot(rgbSE, luma);
+          float lumaM  = dot(rgbM,  luma);
+
+          float lumaMin = min(lumaM, min(min(lumaNW, lumaNE), min(lumaSW, lumaSE)));
+          float lumaMax = max(lumaM, max(max(lumaNW, lumaNE), max(lumaSW, lumaSE)));
+
+          vec2 dir;
+          dir.x = -((lumaNW + lumaNE) - (lumaSW + lumaSE));
+          dir.y =  ((lumaNW + lumaSW) - (lumaNE + lumaSE));
+
+          float dirReduce = max((lumaNW + lumaNE + lumaSW + lumaSE) * 0.03125, 1.0 / 128.0);
+          float rcpDirMin = 1.0 / (min(abs(dir.x), abs(dir.y)) + dirReduce);
+          dir = clamp(dir * rcpDirMin, -8.0, 8.0) * px;
+
+          vec3 rgbA = 0.5 * (
+            texture2D(tex, uv + dir * (1.0 / 3.0 - 0.5)).rgb +
+            texture2D(tex, uv + dir * (2.0 / 3.0 - 0.5)).rgb);
+          vec3 rgbB = rgbA * 0.5 + 0.25 * (
+            texture2D(tex, uv + dir * -0.5).rgb +
+            texture2D(tex, uv + dir *  0.5).rgb);
+
+          float lumaB = dot(rgbB, luma);
+          return (lumaB < lumaMin || lumaB > lumaMax) ? rgbA : rgbB;
+        }
+
         void main() {
           vec4 col = texture2D(uTex, vUv);
+          col.rgb = fxaa(uTex, vUv, uRes);
 
           // 4-tap cross blur for unsharp mask
           vec2 px = 1.5 / uRes;
@@ -372,6 +432,12 @@ export class MoshRenderer {
 
           // At uHdr=0: pure passthrough. Above 0.08: processing fully active.
           vec3 rgb = mix(col.rgb, result, smoothstep(0.0, 0.08, uHdr));
+
+          // Baseline vibrance lift — applied to every frame regardless of
+          // uHdr, since it's a default look rather than a mosh-intensity
+          // effect. Runs after tone mapping so it grades the final colors,
+          // not the pre-ACES intermediate.
+          rgb = vibrance(rgb, uVibrance);
 
           /* Overlay keying.
 
@@ -406,6 +472,7 @@ export class MoshRenderer {
         uOverlayDepth: { value: null },
         uOverlayGate: { value: 0.4 },
         uOverlaySoft: { value: 0.18 },
+        uVibrance: { value: 0.35 },
       },
       depthTest: false,
       depthWrite: false,
@@ -565,6 +632,15 @@ export class MoshRenderer {
     this.allocTargets(2, 2);
   }
 
+  private _halfFloatSupport: boolean | null = null;
+  private supportsHalfFloatTargets(): boolean {
+    if (this._halfFloatSupport === null) {
+      const ext = this.renderer.extensions;
+      this._halfFloatSupport = ext.has("EXT_color_buffer_float") || ext.has("EXT_color_buffer_half_float");
+    }
+    return this._halfFloatSupport;
+  }
+
   private allocTargets(w: number, h: number) {
     this.rtA?.dispose();
     this.rtB?.dispose();
@@ -588,8 +664,19 @@ export class MoshRenderer {
     this.rtA = new THREE.WebGLRenderTarget(w, h, opts);
     this.rtB = new THREE.WebGLRenderTarget(w, h, opts);
     this.rtC = new THREE.WebGLRenderTarget(w, h, opts);
-    this.rtHistA = new THREE.WebGLRenderTarget(w, h, opts);
-    this.rtHistB = new THREE.WebGLRenderTarget(w, h, opts);
+
+    // The feedback/history pair is what compounds banding: uFeedback reads
+    // last frame's output back in every frame, so any quantization here gets
+    // re-quantized over and over across a chained effect stack. Half-float
+    // just on these two (not the other ~12 targets) kills that without
+    // doubling memory/bandwidth for the whole pipeline. Falls back to 8-bit
+    // on hardware without a color-renderable float extension.
+    const histOpts: THREE.RenderTargetOptions = {
+      ...opts,
+      type: this.supportsHalfFloatTargets() ? THREE.HalfFloatType : THREE.UnsignedByteType,
+    };
+    this.rtHistA = new THREE.WebGLRenderTarget(w, h, histOpts);
+    this.rtHistB = new THREE.WebGLRenderTarget(w, h, histOpts);
 
     // Depth runs at quarter resolution. It is a soft blob mask that gets
     // diffused anyway, so full-res detail in it would be spent and then blurred
