@@ -31,4 +31,11 @@ function render(page: Page) {
 }
 
 await Promise.all(pages.map(async page => { const dir = path.join(dist, page.route.slice(1)); await mkdir(dir, {recursive:true}); await writeFile(path.join(dir,"index.html"), render(page)); }));
+const feed = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel>
+<title>Ether-MOSH News + Updates</title><link>${ORIGIN}/news</link><description>Satirical, sourced effect and mode education with practical production guides from Ether-MOSH.</description><language>en-us</language><atom:link href="${ORIGIN}/news/feed.xml" rel="self" type="application/rss+xml"/>
+${latestNewsArticles.map(a => `<item><title>${esc(a.title)}</title><link>${absolute(newsArticlePath(a))}</link><guid>${absolute(newsArticlePath(a))}</guid><pubDate>${new Date(a.publishedAt).toUTCString()}</pubDate><description>${esc(a.description)}</description></item>`).join("\n")}
+</channel></rss>`;
+await mkdir(path.join(dist, "news"), { recursive: true });
+await writeFile(path.join(dist, "news", "feed.xml"), feed);
 console.log(`Generated ${pages.length} crawlable news entry points.`);

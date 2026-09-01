@@ -2,3 +2,7 @@ effect,category,control_1,start_1,control_2,start_2,suggested_stack,best_for
 Pixel Sort,Data Corruption,Amount,0.30,Threshold,0.55,RGB Shift + Film Grain,"portraits; architecture; print; projection"
 Halftone,Color,Amount,0.45,Dot Size,0.25,Duotone + Photocopy,"posters; pattern; packaging; LED walls"
 Moire,Geometry,Amount,0.25,Pitch,0.35,Duotone + Bloom,"op art; projection; installation; education"
+Datamosh,Data Corruption,Amount,0.35,Block Size,0.025,RGB Shift + Film Grain,"music video; VJ loops; cover art; compression education"
+CRT,Atmosphere,Curvature,0.30,Shadow Mask,0.45,Bloom 0.25,"venue visuals; games; editorial; display education"
+Forge Mode,Source Mode,Intensity,0.55,Seamless,off,Bloom + Film Grain,"generative loops; print; textile; installation"
+Pattern / Motif Mode,Source Mode,Density,0.50,Variation,0.58,Mirror + Seamless,"fabric; wallpaper; packaging; identity systems"
