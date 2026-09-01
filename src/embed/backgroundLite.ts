@@ -63,6 +63,8 @@ function boot() {
     kaleidoscopeFolds: null,
     transitionFromGeneratorId: null,
     transitionStartedAt: null,
+    transitionFromSeed: null,
+    transitionFromPaletteIdx: null,
   };
 
   function resize() {
@@ -80,6 +82,10 @@ function boot() {
   function cycle() {
     forge.transitionFromGeneratorId = forge.activeGeneratorId;
     forge.transitionStartedAt = performance.now();
+    // Freeze the outgoing generator's actual seed/palette before the lines
+    // below overwrite them with the incoming generator's values.
+    forge.transitionFromSeed = forge.seed;
+    forge.transitionFromPaletteIdx = forge.paletteIdx;
     forge.activeGeneratorId = pickGenerator(forge.activeGeneratorId);
     forge.paletteIdx = Math.floor(Math.random() * FORGE_PALETTES.length);
     forge.seed = randomSeed();

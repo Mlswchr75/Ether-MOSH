@@ -576,6 +576,8 @@ export const useStore = create<State & Actions>((set, get) => ({
     kaleidoscopeFolds: null,
     transitionFromGeneratorId: null,
     transitionStartedAt: null,
+    transitionFromSeed: null,
+    transitionFromPaletteIdx: null,
   } as ForgeState,
   preForgeLayers: null,
 
@@ -1455,6 +1457,12 @@ export const useStore = create<State & Actions>((set, get) => ({
       // pixel-identical images.
       transitionFromGeneratorId: generatorChanged ? s.forge.activeGeneratorId : null,
       transitionStartedAt: generatorChanged ? performance.now() : null,
+      // Freeze the seed/palette the outgoing generator was actually drawn
+      // with — s.forge.seed/paletteIdx are about to become the *incoming*
+      // generator's values below, so paintForgeSource needs these to render
+      // the outgoing side as the frame that was actually on screen.
+      transitionFromSeed: generatorChanged ? s.forge.seed : null,
+      transitionFromPaletteIdx: generatorChanged ? s.forge.paletteIdx : null,
     };
     const stack = composeForgeLayers(nextForge);
     nextForge.stack = stack;

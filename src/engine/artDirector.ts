@@ -608,7 +608,7 @@ export const LOOKS: Look[] = [
     suits: { needsColor: 0.8, density: 0.3 }, drive: 0.88,
   },
   {
-    id: "liquidDream", name: "LIQUID DREAM", blurb: "A liquid dream state.",
+    id: "liquidMemory", name: "LIQUID MEMORY", blurb: "Flow that remembers where it's been.",
     picks: { grade: ["filmicTone", "oilSlick", "duotone"],
              form: ["flowTurbulence", "liquidWarp", "flowSmear"],
              accent: ["echoTrails", "bufferEcho", "trailDecay"],

@@ -115,4 +115,14 @@ export type ForgeState = {
   transitionFromGeneratorId: string | null;
   /** performance.now() timestamp the current transition began, or null when settled. */
   transitionStartedAt: number | null;
+  /**
+   * The seed/palette the outgoing generator was actually drawn with, frozen
+   * at the moment the transition started — `seed`/`paletteIdx` above are
+   * already the *incoming* generator's values by then, so without these the
+   * "outgoing" side of the crossfade renders the old generator with the new
+   * seed and colors instead of the frame the viewer was looking at. Set
+   * alongside transitionFromGeneratorId; cleared with it.
+   */
+  transitionFromSeed: number | null;
+  transitionFromPaletteIdx: number | null;
 };

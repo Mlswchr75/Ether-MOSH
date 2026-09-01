@@ -100,7 +100,11 @@ export function ForgePanel({ embedded = false }: { embedded?: boolean }) {
       // clock, not real elapsed time. Strip any in-flight transition so
       // every candidate paints the settled activeGeneratorId, never a blend
       // whose ratio depends on how long the export search happens to take.
-      const currentForge = { ...useStore.getState().forge, transitionFromGeneratorId: null, transitionStartedAt: null };
+      const currentForge = {
+        ...useStore.getState().forge,
+        transitionFromGeneratorId: null, transitionStartedAt: null,
+        transitionFromSeed: null, transitionFromPaletteIdx: null,
+      };
       const layers: RenderLayer[] = useStore.getState().layers.map(l => ({
         id: l.id,
         effectId: l.effectId,
