@@ -457,6 +457,7 @@ function composeForgeLayers(forge: ForgeState): Layer[] {
     locked: false,
     opacity: l.opacity,
     blend: l.blend,
+    region: l.region ?? null,
     params: l.params,
     mods: {},
   }));
