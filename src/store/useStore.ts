@@ -314,6 +314,14 @@ type Actions = {
   addRole: (role: Role) => RoleRoll | null;
 
   mosh: (intensity?: Intensity) => void;
+  /**
+   * The Forge/Motif equivalent of mosh() — one tap, one coordinated shuffle
+   * of everything Forge owns (generator, seed, palette, kaleidoscope) *and*
+   * the effect stack, instead of mosh()'s effect-only shuffle leaving the
+   * generator frozen (see forgeMosh's own doc comment for why that used to
+   * be the case).
+   */
+  forgeMosh: (intensity?: Intensity) => void;
   reset: () => void;
 
   /** Re-roll the next unlocked semantic role. */
@@ -875,6 +883,115 @@ export const useStore = create<State & Actions>((set, get) => ({
       currentBrief: brief,
       forge: { ...s.forge, paletteIdx },
       plannedMosh,
+      lastRoleRoll: null,
+      ...selection,
+    };
+  }),
+
+  /**
+   * mosh() only ever shuffled the effect stack — in Forge/Motif mode that
+   * left the generator, its seed, and the palette driving its actual pixels
+   * completely untouched, so consecutive taps looked like minor variations
+   * on the same underlying pattern rather than a real reroll (Forge review,
+   * Phase 2). This coordinates both halves as one shuffle: Forge's own
+   * generator/seed/kaleidoscope reroll (previously only randomiseForge()),
+   * plus an effect-stack reshuffle that shares its palette choice.
+   *
+   * Seamless mode is the one place this still defers to Forge's own
+   * composer (composeForgeLayers) for the effect stack: compose() — the
+   * general Art Director — has no concept of tile-safety (see
+   * tileSafety.ts / forgeCompose.ts's own seamless-pool filtering), so
+   * routing seamless mode's stack through it risks picking effects that
+   * don't tile. Giving the Art Director real tile-safety awareness is its
+   * own piece of work, not this one — the generator/seed/palette/
+   * kaleidoscope reroll below still applies in seamless mode either way.
+   */
+  forgeMosh: (intensity) => set(s => {
+    const inten = intensity ?? s.intensity;
+    const brief = briefFrom(analyzeSource(s.videoElement ?? s.imageElement ?? s.glCanvas));
+    const seed = generateSeed();
+    const rand = rngFromSeed(seed);
+    const locked = s.layers.filter(l => l.locked);
+
+    const composition = s.forge.seamless ? null : compose(brief, rand, {
+      roleCount: ROLE_COUNT[inten],
+      chaos: CHAOS[inten],
+      wildness: rollWildness(rand, WILD_FLOOR[inten]),
+      lookPenalty: recencyPenalty(s.recentLooks, []),
+      effectPenalty: recencyPenalty(s.recentFormEffects, s.recentOtherEffects),
+      previousLookId: s.currentLook?.id,
+      avoidEffects: locked.map(l => l.effectId),
+    });
+    // One palette choice shared by the effect stack's grade and the
+    // generator's own colors, rather than each half rolling its own and
+    // landing on two unrelated palettes.
+    const paletteIdx = chooseArtDirectedPalette(brief, rand, s.forge.paletteIdx);
+
+    const pickedGeneratorId = pickForgeGenerator(Math.random);
+    const generatorChanged = pickedGeneratorId !== s.forge.activeGeneratorId;
+    const nextForge: ForgeState = {
+      ...s.forge,
+      seed: Math.floor(Math.random() * 0xFFFFFF),
+      paletteIdx,
+      activeGeneratorId: pickedGeneratorId,
+      kaleidoscopeFolds: rollKaleidoscope(Math.random),
+      transitionFromGeneratorId: generatorChanged ? s.forge.activeGeneratorId : null,
+      transitionStartedAt: generatorChanged ? performance.now() : null,
+      transitionFromSeed: generatorChanged ? s.forge.seed : null,
+      transitionFromPaletteIdx: generatorChanged ? s.forge.paletteIdx : null,
+    };
+
+    if (!composition) {
+      // Seamless: same tile-safe composer randomiseForge() already used,
+      // just folded into this one coordinated action instead of a second
+      // separate tap target.
+      const stack = composeForgeLayers(nextForge);
+      nextForge.stack = stack;
+      return {
+        ...s,
+        past: pushPast(s), future: [],
+        forge: nextForge,
+        ...(["forge", "motif"].includes(s.sourceMode) ? { layers: stack } : {}),
+      };
+    }
+
+    const fresh: Layer[] = composition.layers.map(cl => {
+      const def = EFFECTS_BY_ID[cl.effectId];
+      return {
+        id: newId(),
+        effectId: cl.effectId,
+        role: cl.role,
+        hidden: false, locked: false,
+        blend: cl.blend,
+        opacity: cl.opacity,
+        region: cl.region ?? null,
+        params: cl.params,
+        mods: Object.fromEntries(def.params.map(p => [p.key, null])),
+        audioMaps: Object.fromEntries(def.params.map(p => [p.key, null])),
+      };
+    });
+    const formIds = composition.layers.filter(l => l.role === "form").map(l => l.effectId);
+    const otherIds = composition.layers.filter(l => l.role !== "form").map(l => l.effectId);
+    const layers = [...locked, ...fresh];
+    const selection = resetRoleSelection(layers);
+    nextForge.stack = fresh;
+
+    return {
+      ...s,
+      past: pushPast(s), future: [],
+      layers,
+      seed,
+      recentFormEffects: [...formIds, ...s.recentFormEffects].slice(0, RECENT_FORM_MEMORY),
+      recentOtherEffects: [...otherIds, ...s.recentOtherEffects].slice(0, RECENT_OTHER_MEMORY),
+      recentLooks: [composition.look.id, ...s.recentLooks].slice(0, LOOK_MEMORY),
+      currentLook: {
+        id: composition.look.id,
+        name: composition.look.name,
+        blurb: composition.look.blurb,
+      },
+      currentBrief: brief,
+      forge: nextForge,
+      plannedMosh: null,
       lastRoleRoll: null,
       ...selection,
     };

@@ -734,14 +734,18 @@ export function GlCanvas() {
         data-mosh-canvas
         className={`relative z-10 block h-full w-full ${["forge", "motif"].includes(sourceMode) ? "cursor-pointer" : ""}`}
         style={{ imageRendering: "auto", objectFit: "cover" }}
-        // Generated modes do not mount QuadrantSurface. Bind the same full
-        // Art Director shuffle used by Space directly to their canvas. Binding
-        // it to the canvas itself, not the
-        // container, means it only fires when the click actually lands on the
-        // visible pixels — any overlay drawn above it (HotTriggers etc.) is a
-        // separate element that receives the click first.
+        // Generated modes do not mount QuadrantSurface, so their canvas is
+        // the only tap target. forgeMosh() (not the plain Art Director
+        // mosh() every other mode's Space/tap uses) rerolls the generator,
+        // seed and palette together with the effect stack — mosh() alone
+        // left Forge's own pattern completely frozen across taps, only
+        // reshuffling the effects drawn on top of it. Binding it to the
+        // canvas itself, not the container, means it only fires when the
+        // click actually lands on the visible pixels — any overlay drawn
+        // above it (HotTriggers etc.) is a separate element that receives
+        // the click first.
         onClick={["forge", "motif"].includes(sourceMode)
-          ? () => crossfadeLayers(() => useStore.getState().mosh(), MOSH_FADE_MS)
+          ? () => crossfadeLayers(() => useStore.getState().forgeMosh(), MOSH_FADE_MS)
           : undefined}
       />
 
