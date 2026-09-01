@@ -135,6 +135,7 @@ export default function Editor() {
   const trackEnabled = useStore(s => s.trackEnabled);
   const isPerformanceMode = useStore(s => s.isPerformanceMode);
   const setPerformanceMode = useStore(s => s.setPerformanceMode);
+  const desktopPortraitMode = useStore(s => s.desktopPortraitMode);
   const proModeEnabled = useStore(s => s.proModeEnabled);
   const helpModeEnabled = useStore(s => s.helpModeEnabled);
   const [helpCaption, setHelpCaption] = useState<{ text: string; x: number; y: number } | null>(null);
@@ -1827,7 +1828,14 @@ export default function Editor() {
           }
           if (e.shiftKey) { e.preventDefault(); crossfadeLayers(mosh, MOSH_FADE_MS); }
         }}
-        className={`relative bg-background select-none w-full h-[100dvh] shrink-0 no-touch-scroll ${isCameraLive ? "live-ring" : ""}`}
+        className={`relative bg-background select-none shrink-0 no-touch-scroll ${
+          desktopPortraitMode
+            // Height-driven 9:16 box instead of the usual full-width stage —
+            // min() so a browser window too narrow for a full-height 9:16
+            // box shrinks to fit its width instead of overflowing sideways.
+            ? "self-center w-auto aspect-[9/16] h-[min(100dvh,calc(100vw*16/9))]"
+            : "w-full h-[100dvh]"
+        } ${isCameraLive ? "live-ring" : ""}`}
       >
         <div data-tap-fade-target className="absolute inset-0 opacity-100">
           <Suspense

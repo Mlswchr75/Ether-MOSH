@@ -211,6 +211,13 @@ type State = {
   exportSettings: ExportSettings;
   isPerformanceMode: boolean;
   showMetersInPerformance: boolean;
+  /** Desktop-only: constrains the canvas stage to a tall (9:16) box instead
+   *  of filling the full landscape viewport width. Mobile never needs this —
+   *  rotating the device already gets a portrait frame — but a desktop
+   *  browser window has no equivalent, so wide "cover" framing was
+   *  routinely cropping the top/bottom off portrait-oriented sources.
+   *  Ignored on touch/coarse-pointer devices (see Editor.tsx). */
+  desktopPortraitMode: boolean;
   /** Hides all chrome by default; the only way back in is the deliberate
    *  hold+second-tap (touch) or hold-Shift (desktop) gesture — see
    *  Editor.tsx's pro-mode-gated input handlers. */
@@ -349,6 +356,8 @@ type Actions = {
   setExportSettings: (patch: Partial<ExportSettings>) => void;
   setPerformanceMode: (b: boolean) => void;
   togglePerformanceMode: () => void;
+  setDesktopPortraitMode: (b: boolean) => void;
+  toggleDesktopPortraitMode: () => void;
   setShowMetersInPerformance: (b: boolean) => void;
   setProModeEnabled: (b: boolean) => void;
   setHelpModeEnabled: (b: boolean) => void;
@@ -539,6 +548,7 @@ export const useStore = create<State & Actions>((set, get) => ({
   sensitivity: 1,
   exportSettings: loadExportSettings(),
   isPerformanceMode: false,
+  desktopPortraitMode: false,
   showMetersInPerformance: typeof localStorage !== "undefined" && localStorage.getItem("cathedral_meters_in_perf") === "1",
   proModeEnabled: typeof localStorage !== "undefined" && localStorage.getItem("cathedral_pro_mode") === "1",
   helpModeEnabled: false,
@@ -1203,6 +1213,8 @@ export const useStore = create<State & Actions>((set, get) => ({
   }),
   setPerformanceMode: (b) => set({ isPerformanceMode: b }),
   togglePerformanceMode: () => set(s => ({ isPerformanceMode: !s.isPerformanceMode })),
+  setDesktopPortraitMode: (b) => set({ desktopPortraitMode: b }),
+  toggleDesktopPortraitMode: () => set(s => ({ desktopPortraitMode: !s.desktopPortraitMode })),
   setShowMetersInPerformance: (b) => {
     try { localStorage.setItem("cathedral_meters_in_perf", b ? "1" : "0"); } catch {}
     set({ showMetersInPerformance: b });

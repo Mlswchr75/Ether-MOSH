@@ -1,4 +1,4 @@
-import { Mic, MicOff, Circle, Square, Sparkles, Scissors, Snowflake, Camera, Shuffle, Star, Play, Pencil, Trash2, X, Film, Lock, Share2, Compass, Maximize2, Minimize2, SwitchCamera, Eraser, Link2, Upload, Music, Music2, Shuffle as ShuffleIcon, Undo2, Redo2, ChevronDown, MonitorSpeaker, Heart, GripVertical, RotateCcw, SkipBack, SkipForward, Palette } from "lucide-react";
+import { Mic, MicOff, Circle, Square, Sparkles, Scissors, Snowflake, Camera, Shuffle, Star, Play, Pencil, Trash2, X, Film, Lock, Share2, Compass, Maximize2, Minimize2, SwitchCamera, Eraser, Link2, Upload, Music, Music2, Shuffle as ShuffleIcon, Undo2, Redo2, ChevronDown, MonitorSpeaker, Heart, GripVertical, RotateCcw, SkipBack, SkipForward, Palette, RectangleVertical, RectangleHorizontal } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { useStore } from "@/store/useStore";
@@ -130,7 +130,7 @@ const DEFAULT_ORDER = [
   "capture", "gif", "share", "favorites",
   "sticker-mode",
   "source-camera", "switch-camera", "source-upload", "source-forge", "forge-palette", "source-motif", "motif-maestro",
-  "fullscreen", "account", "home",
+  "fullscreen", "desktop-portrait", "account", "home",
 ] as const;
 
 const TRIGGER_LABELS: Record<string, string> = {
@@ -144,6 +144,7 @@ const TRIGGER_LABELS: Record<string, string> = {
   "forge-palette": "Forge settings — colour is directed automatically",
   "motif-maestro": "Motif Maestro controls",
   "switch-camera": "Switch camera",
+  "desktop-portrait": "Portrait view",
 };
 
 const ORDER_KEY = "cathedral_hot_trigger_order_v2";
@@ -1464,6 +1465,8 @@ export function HotTriggers({
   const setVideoSource = useStore(s => s.setVideoSource);
   const clearVideoSource = useStore(s => s.clearVideoSource);
   const [flipBusy, setFlipBusy] = useState(false);
+  const desktopPortraitMode = useStore(s => s.desktopPortraitMode);
+  const toggleDesktopPortraitMode = useStore(s => s.toggleDesktopPortraitMode);
 
   const stickerMode = useStore(s => s.stickerMode);
   const setStickerMode = useStore(s => s.setStickerMode);
@@ -2109,6 +2112,23 @@ export function HotTriggers({
     "switch-camera": isTouchScreen && videoStream && (
       <HotBtn key="switch-camera" delay={0} label="Switch camera" onClick={flipCamera} active={flipBusy} tint="212 80% 70%">
         <SwitchCamera className="h-4 w-4" strokeWidth={1.5} />
+      </HotBtn>
+    ),
+    // Desktop-only — a phone solves this by physically rotating, but a
+    // desktop browser window has no equivalent, so wide "cover" framing was
+    // routinely cropping the top/bottom off portrait-oriented sources.
+    "desktop-portrait": !isTouchScreen && (
+      <HotBtn
+        key="desktop-portrait"
+        delay={0}
+        label={desktopPortraitMode ? "Exit portrait view" : "Portrait view — for tall images"}
+        active={desktopPortraitMode}
+        onClick={toggleDesktopPortraitMode}
+        tint="46 90% 62%"
+      >
+        {desktopPortraitMode
+          ? <RectangleHorizontal className="h-4 w-4" strokeWidth={1.5} />
+          : <RectangleVertical className="h-4 w-4" strokeWidth={1.5} />}
       </HotBtn>
     ),
     // Was its own wheel trigger ("Support MOSH") — now the loud, animated
