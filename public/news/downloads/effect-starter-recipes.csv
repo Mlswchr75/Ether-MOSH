@@ -6,3 +6,4 @@ Datamosh,Data Corruption,Amount,0.35,Block Size,0.025,RGB Shift + Film Grain,"mu
 CRT,Atmosphere,Curvature,0.30,Shadow Mask,0.45,Bloom 0.25,"venue visuals; games; editorial; display education"
 Forge Mode,Source Mode,Intensity,0.55,Seamless,off,Bloom + Film Grain,"generative loops; print; textile; installation"
 Pattern / Motif Mode,Source Mode,Density,0.50,Variation,0.58,Mirror + Seamless,"fabric; wallpaper; packaging; identity systems"
+Kaleidoscope,Geometry,Segments,6,Spin,0.15,Duotone + Bloom,"patterns; motion graphics; projection; education"

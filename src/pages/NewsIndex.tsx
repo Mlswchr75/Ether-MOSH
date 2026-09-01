@@ -2,11 +2,11 @@ import { ArrowRight, Download } from "lucide-react";
 import { Helmet } from "react-helmet-async";
 import { Link } from "react-router-dom";
 import { NewsFooter, NewsHeader } from "@/components/news/NewsChrome";
-import { latestNewsArticles, NEWS_ARTICLES_BY_SLUG, newsArticlePath } from "@/content/news";
+import { latestNewsArticles, newsArticlePath } from "@/content/news";
 import "./news.css";
 
 const description = "Satirical but factual Ether-MOSH effect guides, glitch-art history, practical tutorials, downloadable field cards, and real production workflows for visual artists.";
-const featured = NEWS_ARTICLES_BY_SLUG.get("sort-your-pixels-before-they-sort-you") ?? latestNewsArticles[0];
+const featured = latestNewsArticles[0];
 const canonical = "https://ether-mosh.online/news";
 const formatArticleDate = (publishedAt: string) => new Intl.DateTimeFormat("en-US", {
   month: "short", day: "numeric", year: "numeric", timeZone: "America/Los_Angeles",
@@ -17,13 +17,13 @@ export default function NewsIndex() {
   return <main className="news-page">
     <Helmet>
       <title>News + Updates: Glitch Art Effect Guides | Ether-MOSH</title><meta name="description" content={description}/><meta name="keywords" content="glitch art tutorials, Ether-MOSH effects, VJ tutorials, projection mapping, digital art education"/><link rel="canonical" href={canonical}/><link rel="alternate" type="application/rss+xml" title="Ether-MOSH News + Updates" href={`${canonical}/feed.xml`}/>
-      <meta property="og:type" content="website"/><meta property="og:title" content="Bad Signal. Good Information. | Ether-MOSH"/><meta property="og:description" content={description}/><meta property="og:url" content={canonical}/><meta property="og:image" content="https://ether-mosh.online/news/pixel-sort-bureaucracy.jpg"/>
-      <meta name="twitter:card" content="summary_large_image"/><meta name="twitter:title" content="Bad Signal. Good Information. | Ether-MOSH"/><meta name="twitter:description" content={description}/><meta name="twitter:image" content="https://ether-mosh.online/news/pixel-sort-bureaucracy.jpg"/><script type="application/ld+json">{JSON.stringify(jsonLd)}</script>
+      <meta property="og:type" content="website"/><meta property="og:title" content="Bad Signal. Good Information. | Ether-MOSH"/><meta property="og:description" content={description}/><meta property="og:url" content={canonical}/><meta property="og:image" content={`https://ether-mosh.online${featured.image}`}/>
+      <meta name="twitter:card" content="summary_large_image"/><meta name="twitter:title" content="Bad Signal. Good Information. | Ether-MOSH"/><meta name="twitter:description" content={description}/><meta name="twitter:image" content={`https://ether-mosh.online${featured.image}`}/><script type="application/ld+json">{JSON.stringify(jsonLd)}</script>
     </Helmet>
     <NewsHeader/>
     <section className="news-index-hero">
       <div><p className="news-kicker">News + updates / signal recovered</p><h1>Bad Signal.<br/><em>Good Information.</em></h1><p>Effect education, production recipes, fake scandals, real sources, and downloadable field notes.</p><Link to="/edit" className="news-button">Start moshing <ArrowRight/></Link></div>
-      <Link to={newsArticlePath(featured)} className="news-hero-art"><img src={featured.image} alt={featured.imageAlt} width="1672" height="941"/><span>Issue 001 · Read the field report</span></Link>
+      <Link to={newsArticlePath(featured)} className="news-hero-art"><img src={featured.image} alt={featured.imageAlt} width="1672" height="941"/><span>Latest dispatch · Read the field report</span></Link>
     </section>
     <section className="news-feature">
       <Link to={newsArticlePath(featured)}><img src={featured.image} alt="" width="1672" height="941" loading="lazy"/></Link>

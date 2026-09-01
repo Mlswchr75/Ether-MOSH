@@ -18,17 +18,20 @@ function renderArticle(slug: string) {
 }
 
 describe("NewsArticle", () => {
-  it("uses the clean FAQ heading and keeps the disclosure quietly at the bottom", () => {
+  it("uses the clean FAQ heading and discloses satire before the fictional dispatch", () => {
     const { container } = renderArticle("sort-your-pixels-before-they-sort-you");
 
     expect(screen.getByRole("heading", { name: "Questions, answered." })).toBeTruthy();
     expect(screen.queryByText(/SEO-flavored fog/i)).toBeNull();
 
-    const sources = screen.getByRole("heading", { name: "Sources + further learning" }).closest("section");
+    const answer = container.querySelector(".news-answer");
     const disclosure = container.querySelector(".news-disclosure");
-    expect(sources).toBeTruthy();
+    const copy = container.querySelector(".news-copy");
+    expect(answer).toBeTruthy();
     expect(disclosure).toBeTruthy();
-    expect(sources!.compareDocumentPosition(disclosure!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(copy).toBeTruthy();
+    expect(answer!.compareDocumentPosition(disclosure!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(disclosure!.compareDocumentPosition(copy!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("renders mode reports without requiring an effect registry entry", () => {
@@ -39,10 +42,24 @@ describe("NewsArticle", () => {
     expect(screen.getByText("3 core controls")).toBeTruthy();
   });
 
-  it("publishes seven unique reports including two effects and two modes in the new set", () => {
-    expect(NEWS_ARTICLES).toHaveLength(7);
-    expect(new Set(NEWS_ARTICLES.map(article => article.slug)).size).toBe(7);
+  it("publishes eight unique reports including Kaleidoscope and two modes", () => {
+    expect(NEWS_ARTICLES).toHaveLength(8);
+    expect(new Set(NEWS_ARTICLES.map(article => article.slug)).size).toBe(8);
+    expect(NEWS_ARTICLES.find(article => article.effectId === "kaleidoscope")?.steps).toHaveLength(5);
     expect(NEWS_ARTICLES.filter(article => article.subjectKind === "mode").map(article => article.effectName))
       .toEqual(["Forge Mode", "Pattern / Motif Mode"]);
+  });
+
+  it("renders the Kaleidoscope controls, related effects, download, and live product link", () => {
+    renderArticle("turn-the-kaleidoscope-effect-until-it-confesses");
+
+    expect(screen.getByRole("heading", { name: "Turn the Kaleidoscope Effect Until the Room Confesses" })).toBeTruthy();
+    expect(screen.getByText("Segments")).toBeTruthy();
+    expect(screen.getByText("Spin")).toBeTruthy();
+    expect(screen.getByRole("navigation", { name: "Related effects" }).querySelectorAll("a")).toHaveLength(4);
+    expect(screen.getByRole("link", { name: /View the thing we interrupted science for/i }).getAttribute("href"))
+      .toBe("https://aestheticrebellion.store/products/radial-kaleidoscope-aloha-shirt");
+    expect(screen.getByRole("link", { name: "Download .md" }).getAttribute("href"))
+      .toBe("/news/downloads/kaleidoscope-field-card.md");
   });
 });
