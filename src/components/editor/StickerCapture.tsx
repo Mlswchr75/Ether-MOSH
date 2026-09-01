@@ -375,6 +375,12 @@ export function StickerCapture() {
     setPhase('encoding'); setLottieProgress(0);
     notifyExportStarted('sticker');
     const toastId = toast.loading(transparentActive ? 'Capturing transparent-source loop…' : 'Capturing transparent Lottie loop…', { duration: 30_000 });
+    // Held for the whole capture (frames + encoding), not just the frame
+    // loop below — mosh/forgeMosh/etc. all no-op while this is true (see
+    // captureLocked's own doc in useStore.ts), so nothing can change the FX
+    // stack out from under a capture already in progress, regardless of
+    // what triggers it: a stray click, Auto-Mosh's timer, anything.
+    useStore.getState().setCaptureLocked(true);
     try {
       // The canvas can be mid-resize for a moment right after switching
       // source modes — reachable more easily now that Shift+K can jump
@@ -468,6 +474,7 @@ export function StickerCapture() {
       console.error('[lottie-sticker] export failed', error);
       toast.error(error instanceof Error ? `Lottie export failed: ${error.message}` : 'Lottie export failed', { id: toastId });
     } finally {
+      useStore.getState().setCaptureLocked(false);
       setPhase('idle');
       window.setTimeout(() => setLottieProgress(0), 800);
     }
@@ -673,7 +680,18 @@ export function StickerCapture() {
           <label className="flex items-center justify-between font-mono text-[7px] uppercase tracking-[0.1em] text-white/45">Loop<select value={loopSeconds} onChange={event => setLoopSeconds(Number(event.target.value))} className="rounded border border-white/15 bg-black px-2 py-1 text-violet-100"><option value={1.5}>1.5 sec</option><option value={2}>2 sec</option><option value={3}>3 sec</option></select></label>
           <label className="flex items-center justify-between font-mono text-[7px] uppercase tracking-[0.1em] text-white/45">Master size<select value={outputLongEdge} onChange={event => setOutputLongEdge(Number(event.target.value) as 720 | 1080)} className="rounded border border-white/15 bg-black px-2 py-1 text-violet-100"><option value={720}>HD · 720px</option><option value={1080}>Master · 1080px</option></select></label>
           <label className="flex items-center justify-between font-mono text-[7px] uppercase tracking-[0.1em] text-white/45"><span>Also export transparent GIF</span><input type="checkbox" checked={includeGif} onChange={event => setIncludeGif(event.target.checked)} className="accent-violet-400" /></label>
-          <button type="button" disabled={phase === 'encoding'} onClick={() => void exportLottieSticker()} className="flex w-full items-center justify-center gap-1.5 rounded-full border border-violet-300/35 bg-violet-400/10 px-3 py-2 font-mono text-[8px] uppercase tracking-[0.14em] text-violet-100 disabled:opacity-40">{phase === 'encoding' ? <LoaderCircle size={11} className="animate-spin" /> : <Film size={11} />} {phase === 'encoding' ? `Capturing ${Math.round(lottieProgress * 100)}%` : 'Export Transparent Lottie'}</button>
+          <button
+            type="button"
+            disabled={phase === 'encoding'}
+            // Belt-and-suspenders against this click reaching anything
+            // beneath the panel (the canvas's own onClick moshes in Forge/
+            // Motif mode) — captureLocked already makes a stray mosh
+            // harmless to the capture itself, but there's no reason this
+            // tap should ever reach past the button it landed on either.
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); void exportLottieSticker(); }}
+            className="flex w-full items-center justify-center gap-1.5 rounded-full border border-violet-300/35 bg-violet-400/10 px-3 py-2 font-mono text-[8px] uppercase tracking-[0.14em] text-violet-100 disabled:opacity-40"
+          >{phase === 'encoding' ? <LoaderCircle size={11} className="animate-spin" /> : <Film size={11} />} {phase === 'encoding' ? `Capturing ${Math.round(lottieProgress * 100)}%` : 'Export Transparent Lottie'}</button>
           <p className="font-mono text-[6px] uppercase leading-relaxed tracking-[0.08em] text-white/25">
             {transparentActive
               ? "Living background is preview-only. Export preserves the source's real transparency straight through — every FX shape it."

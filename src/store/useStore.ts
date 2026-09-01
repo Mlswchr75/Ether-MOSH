@@ -218,6 +218,26 @@ type State = {
    *  routinely cropping the top/bottom off portrait-oriented sources.
    *  Ignored on touch/coarse-pointer devices (see Editor.tsx). */
   desktopPortraitMode: boolean;
+  /**
+   * Set for the duration of a Lottie Sticker capture (StickerCapture.tsx's
+   * exportLottieSticker) — every action that can change the mosh FX stack
+   * (mosh, forgeMosh, moshNext, rerollRole, loadSlot, applyFavorite,
+   * reseedForge — including Auto-Mosh's own timer, which calls mosh()
+   * through the same path) no-ops while this is true, instead of checking
+   * sticker-specific state itself. A capture spans several real seconds
+   * across multiple frames; without this, any of those firing mid-capture
+   * — a stray click, Auto-Mosh's timer, anything — would change what the
+   * canvas is actually rendering partway through, so later frames in the
+   * same sticker/GIF would show a different FX stack (and, for the
+   * organic-mask path, a genuinely different shape) than earlier ones.
+   * "Regardless of whatever other settings are enabled" only holds with
+   * one central gate every stack-changing action shares, rather than each
+   * capture-adjacent feature remembering to check sticker state on its
+   * own. The one deliberate exception is randomiseForge() — see its own
+   * doc for why: it doubles as the render loop's error-recovery fallback,
+   * which needs to work regardless of capture state.
+   */
+  captureLocked: boolean;
   /** Hides all chrome by default; the only way back in is the deliberate
    *  hold+second-tap (touch) or hold-Shift (desktop) gesture — see
    *  Editor.tsx's pro-mode-gated input handlers. */
@@ -358,6 +378,7 @@ type Actions = {
   togglePerformanceMode: () => void;
   setDesktopPortraitMode: (b: boolean) => void;
   toggleDesktopPortraitMode: () => void;
+  setCaptureLocked: (b: boolean) => void;
   setShowMetersInPerformance: (b: boolean) => void;
   setProModeEnabled: (b: boolean) => void;
   setHelpModeEnabled: (b: boolean) => void;
@@ -549,6 +570,7 @@ export const useStore = create<State & Actions>((set, get) => ({
   exportSettings: loadExportSettings(),
   isPerformanceMode: false,
   desktopPortraitMode: false,
+  captureLocked: false,
   showMetersInPerformance: typeof localStorage !== "undefined" && localStorage.getItem("cathedral_meters_in_perf") === "1",
   proModeEnabled: typeof localStorage !== "undefined" && localStorage.getItem("cathedral_pro_mode") === "1",
   helpModeEnabled: false,
@@ -814,6 +836,7 @@ export const useStore = create<State & Actions>((set, get) => ({
   }),
 
   mosh: (intensity) => set(s => {
+    if (s.captureLocked) return s;
     const inten = intensity ?? s.intensity;
     const brief = briefFrom(analyzeSource(s.videoElement ?? s.imageElement ?? s.glCanvas));
     const prepared = s.plannedMosh?.intensity === inten && briefDistance(s.plannedMosh.brief, brief) < 0.16
@@ -918,6 +941,7 @@ export const useStore = create<State & Actions>((set, get) => ({
    * kaleidoscope reroll below still applies in seamless mode either way.
    */
   forgeMosh: (intensity) => set(s => {
+    if (s.captureLocked) return s;
     const inten = intensity ?? s.intensity;
     const brief = briefFrom(analyzeSource(s.videoElement ?? s.imageElement ?? s.glCanvas));
     const seed = generateSeed();
@@ -1010,6 +1034,7 @@ export const useStore = create<State & Actions>((set, get) => ({
 
   rerollRole: (requestedRole, requestedLayerId) => {
     const s = get();
+    if (s.captureLocked) return null;
     const role = requestedRole ?? s.selectedRole ?? s.roleCursor;
     const group = groupLayersByRole(s.layers)[role];
     const rememberedId = s.selectedRoleLayers[role];
@@ -1215,6 +1240,7 @@ export const useStore = create<State & Actions>((set, get) => ({
   togglePerformanceMode: () => set(s => ({ isPerformanceMode: !s.isPerformanceMode })),
   setDesktopPortraitMode: (b) => set({ desktopPortraitMode: b }),
   toggleDesktopPortraitMode: () => set(s => ({ desktopPortraitMode: !s.desktopPortraitMode })),
+  setCaptureLocked: (b) => set({ captureLocked: b }),
   setShowMetersInPerformance: (b) => {
     try { localStorage.setItem("cathedral_meters_in_perf", b ? "1" : "0"); } catch {}
     set({ showMetersInPerformance: b });
@@ -1254,6 +1280,7 @@ export const useStore = create<State & Actions>((set, get) => ({
   }),
   loadSlot: (i) => {
     const s = get();
+    if (s.captureLocked) return false;
     const slot = s.slots[i];
     if (!slot) return false;
     const cloned = normalizeLayerRoles(slot).map(l => ({ ...l, id: newId(), params: { ...l.params }, mods: { ...l.mods }, audioMaps: { ...(l.audioMaps ?? {}) } }));
@@ -1313,6 +1340,7 @@ export const useStore = create<State & Actions>((set, get) => ({
 
   applyFavorite: (id) => {
     const s = get();
+    if (s.captureLocked) return false;
     const fav = s.favorites.find(f => f.id === id);
     if (!fav) return false;
     const cloned = normalizeLayerRoles(fav.layers).map(l => ({ ...l, id: newId(), params: { ...l.params }, mods: { ...l.mods }, audioMaps: { ...(l.audioMaps ?? {}) } }));
@@ -1570,6 +1598,16 @@ export const useStore = create<State & Actions>((set, get) => ({
     set({ sourceMode: mode });
   },
 
+  // Deliberately NOT gated by captureLocked, unlike every other
+  // stack-changing action here: this is also GlCanvas's own error-recovery
+  // fallback when a Forge generator's render throws mid-frame ("escape a
+  // poisoned in-flight generator transition"). Blocking that during a
+  // capture would leave a genuinely broken render stuck broken for the
+  // whole capture with no way to self-correct — worse than the rare
+  // generator-swap this reseed causes when it fires as recovery. Its two
+  // other call sites (SourceModeToggle, ForgeRedirect) only fire when
+  // forge.stack is still empty, so they can't reach here mid-capture
+  // either way — a capture in progress already has a real stack.
   randomiseForge: () => {
     const s = get();
     const brief = briefFrom(analyzeSource(s.videoElement ?? s.imageElement ?? s.glCanvas));
@@ -1613,7 +1651,7 @@ export const useStore = create<State & Actions>((set, get) => ({
   setForgeMosaic: (enabled) => set(s => ({ forge: { ...s.forge, mosaicEnabled: enabled } })),
   setForgeMosaicDensity: (v) => set(s => ({ forge: { ...s.forge, mosaicDensity: Math.max(0, Math.min(1, v)) } })),
   setForgeOverlay: (v) => set(s => ({ forge: { ...s.forge, overlay: v } })),
-  reseedForge: () => set(s => ({ forge: { ...s.forge, seed: Math.floor(Math.random() * 0xFFFFFF) } })),
+  reseedForge: () => set(s => s.captureLocked ? s : { forge: { ...s.forge, seed: Math.floor(Math.random() * 0xFFFFFF) } }),
 }));
 
 function mapLayer(layers: Layer[], id: string, fn: (l: Layer) => Layer): Layer[] {
