@@ -42,12 +42,37 @@ describe("NewsArticle", () => {
     expect(screen.getByText("3 core controls")).toBeTruthy();
   });
 
-  it("publishes eight unique reports including Kaleidoscope and two modes", () => {
-    expect(NEWS_ARTICLES).toHaveLength(8);
-    expect(new Set(NEWS_ARTICLES.map(article => article.slug)).size).toBe(8);
+  it("publishes eleven unique reports including four September effects and two modes", () => {
+    expect(NEWS_ARTICLES).toHaveLength(11);
+    expect(new Set(NEWS_ARTICLES.map(article => article.slug)).size).toBe(11);
     expect(NEWS_ARTICLES.find(article => article.effectId === "kaleidoscope")?.steps).toHaveLength(5);
+    expect(NEWS_ARTICLES.filter(article => ["posterize", "duotone", "asciiCollapse"].includes(article.effectId ?? "")))
+      .toHaveLength(3);
     expect(NEWS_ARTICLES.filter(article => article.subjectKind === "mode").map(article => article.effectName))
       .toEqual(["Forge Mode", "Pattern / Motif Mode"]);
+  });
+
+  it("keeps the three new reports answer-first and release-complete", () => {
+    const batch = NEWS_ARTICLES.filter(article => ["posterize", "duotone", "asciiCollapse"].includes(article.effectId ?? ""));
+    for (const article of batch) {
+      const answerWords = article.tldr.trim().split(/\s+/).length;
+      expect(answerWords, `${article.slug} direct answer`).toBeGreaterThanOrEqual(40);
+      expect(answerWords, `${article.slug} direct answer`).toBeLessThanOrEqual(70);
+      expect(article.steps, `${article.slug} steps`).toHaveLength(5);
+      expect(article.uses.length, `${article.slug} uses`).toBeGreaterThanOrEqual(4);
+      expect(article.faqs, `${article.slug} FAQs`).toHaveLength(4);
+      expect(article.keywords.length, `${article.slug} keywords`).toBeGreaterThanOrEqual(5);
+      expect(article.keywords.length, `${article.slug} keywords`).toBeLessThanOrEqual(8);
+    }
+  });
+
+  it("renders the three new effect controls and distinguishes ASCII-inspired pixels from text", () => {
+    renderArticle("make-ascii-collapse-admit-it-is-not-actually-text");
+
+    expect(screen.getByRole("heading", { name: "Make ASCII Collapse Admit It Is Not Actually Text" })).toBeTruthy();
+    expect(screen.getByText("Amount")).toBeTruthy();
+    expect(screen.getByText("Cell")).toBeTruthy();
+    expect(screen.getAllByText(/emits no character codes/i).length).toBeGreaterThanOrEqual(1);
   });
 
   it("renders the Kaleidoscope controls, related effects, download, and live product link", () => {
