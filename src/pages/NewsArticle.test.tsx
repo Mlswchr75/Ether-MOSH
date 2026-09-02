@@ -42,12 +42,12 @@ describe("NewsArticle", () => {
     expect(screen.getByText("3 core controls")).toBeTruthy();
   });
 
-  it("publishes eleven unique reports including four September effects and two modes", () => {
-    expect(NEWS_ARTICLES).toHaveLength(11);
-    expect(new Set(NEWS_ARTICLES.map(article => article.slug)).size).toBe(11);
+  it("publishes twelve unique reports including five September effects and two modes", () => {
+    expect(NEWS_ARTICLES).toHaveLength(12);
+    expect(new Set(NEWS_ARTICLES.map(article => article.slug)).size).toBe(12);
     expect(NEWS_ARTICLES.find(article => article.effectId === "kaleidoscope")?.steps).toHaveLength(5);
-    expect(NEWS_ARTICLES.filter(article => ["posterize", "duotone", "asciiCollapse"].includes(article.effectId ?? "")))
-      .toHaveLength(3);
+    expect(NEWS_ARTICLES.filter(article => ["kaleidoscope", "posterize", "duotone", "asciiCollapse", "solarize"].includes(article.effectId ?? "")))
+      .toHaveLength(5);
     expect(NEWS_ARTICLES.filter(article => article.subjectKind === "mode").map(article => article.effectName))
       .toEqual(["Forge Mode", "Pattern / Motif Mode"]);
   });
@@ -74,8 +74,8 @@ describe("NewsArticle", () => {
     expect(container.querySelectorAll(".news-look-examples article")).toHaveLength(2);
   });
 
-  it("keeps the three new reports answer-first and release-complete", () => {
-    const batch = NEWS_ARTICLES.filter(article => ["posterize", "duotone", "asciiCollapse"].includes(article.effectId ?? ""));
+  it("keeps the four recent reports answer-first and release-complete", () => {
+    const batch = NEWS_ARTICLES.filter(article => ["posterize", "duotone", "asciiCollapse", "solarize"].includes(article.effectId ?? ""));
     for (const article of batch) {
       const answerWords = article.tldr.trim().split(/\s+/).length;
       expect(answerWords, `${article.slug} direct answer`).toBeGreaterThanOrEqual(40);
@@ -108,5 +108,18 @@ describe("NewsArticle", () => {
       .toBe("https://aestheticrebellion.store/products/radial-kaleidoscope-aloha-shirt");
     expect(screen.getByRole("link", { name: "Download .md" }).getAttribute("href"))
       .toBe("/news/downloads/kaleidoscope-field-card.md");
+  });
+
+  it("renders Solarize controls, technical distinction, download, and live product link", () => {
+    renderArticle("make-the-solarize-effect-expose-itself");
+
+    expect(screen.getByRole("heading", { name: "Make the Solarize Effect Expose Itself" })).toBeTruthy();
+    expect(screen.getByText("Amount")).toBeTruthy();
+    expect(screen.getByText("Pivot")).toBeTruthy();
+    expect(screen.getAllByText(/per-channel threshold shader/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByRole("link", { name: /View the thing we interrupted science for/i }).getAttribute("href"))
+      .toBe("https://aestheticrebellion.store/products/boundless-bleeds-uv-arm-sleeves");
+    expect(screen.getByRole("link", { name: "Download .md" }).getAttribute("href"))
+      .toBe("/news/downloads/solarize-field-card.md");
   });
 });

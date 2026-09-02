@@ -151,7 +151,7 @@ export const HomeInfoCarousel = ({ onReturnToInstrument }: HomeInfoCarouselProps
 
         {active === 6 && <div className="home-info-editorial home-info-editorial--news">
           <div><p className="home-info-kicker">News + updates / effect school</p><h2>Bad signal.<br/><span>Good information.</span></h2></div>
-          <div className="home-info-prose"><strong>Real effect history, practical recipes, fake scandals, downloadable field cards, and exactly enough adult language to keep the documentation awake.</strong><p>Start with Pixel Sort, Halftone, and Moire—three sourced guides covering how each effect works, where it came from, how to find it in MOSH, and how to drag it out into print, patterns, projection, animation, education, and installations.</p><div className="home-info-link-row"><Link to="/news">Read News + Updates <ArrowUpRight/></Link><Link to="/effects">Browse the Effect Registry <ArrowUpRight/></Link></div></div>
+          <div className="home-info-prose"><strong>Real effect history, practical recipes, fake scandals, downloadable field cards, and exactly enough adult language to keep the documentation awake.</strong><p>Browse the growing field-report library for sourced effect history, exact MOSH settings, and practical routes into print, patterns, projection, animation, education, and installations.</p><div className="home-info-link-row"><Link to="/news">Read News + Updates <ArrowUpRight/></Link><Link to="/effects">Browse the Effect Registry <ArrowUpRight/></Link></div></div>
         </div>}
       </div>
 

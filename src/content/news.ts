@@ -753,6 +753,77 @@ export const NEWS_ARTICLES: NewsArticle[] = [
       { question: "Can I use ASCII Collapse on typography?", answer: "You can use it decoratively, but keep meaningful words as real text or provide an equivalent caption because the effected result is only pixels." },
     ],
   },
+  {
+    slug: "make-the-solarize-effect-expose-itself",
+    subjectKind: "effect",
+    effectId: "solarize",
+    effectName: "Solarize",
+    category: "Darkroom Misconduct",
+    title: "Make the Solarize Effect Expose Itself",
+    dek: "A bright region crossed the Pivot, reversed its testimony, and left the darkroom insisting this was absolutely how color channels have always behaved.",
+    description: "Learn how the Solarize effect selectively inverts RGB channels and how to set Ether-MOSH Amount and Pivot for print, motion, projection, patterns, and education.",
+    publishedAt: "2026-09-02T12:23:00-07:00",
+    readMinutes: 6,
+    image: "/news/solarize-darkroom-incident.jpg",
+    imageAlt: "A fictional darkroom Solarize effect incident with two masked technicians beside a large portrait whose black-and-white tones are partially reversed",
+    imageCaption: "The fictional tone-reversal unit has secured the trays. The highlights have retained separate counsel.",
+    keywords: ["Solarize effect", "Ether-MOSH Solarize", "photo solarization", "Sabattier effect", "digital darkroom effect", "VJ color effects", "solarized photography"],
+    tldr: "Ether-MOSH's Solarize effect selectively inverts each RGB channel when that channel rises above Pivot, then blends the result with Amount. Pivot decides which channel values flip; Amount decides how forcefully the altered color replaces the source. It is a fast digital echo of photographic solarization, not a chemical Sabattier process, and it lives under Color.",
+    satireDisclosure: "The tone-reversal unit, technicians, hearing, and disobedient highlights are fictional. The photographic history, Lee Miller and Man Ray attribution, Ether-MOSH controls and shader behavior, accessibility guidance, and production advice are factual and sourced.",
+    dispatch: [
+      "At 12:23, fictional Deputy Curator Hal Negative raised Pivot to 0.52. Every bright channel in the evidence portrait immediately reversed its story while the shadows sat perfectly still, looking smug and underexposed.",
+      "The fictional Darkroom Standards Board blamed sunlight, chemistry, and a technician named Gary. None were present. This was a GPU shader with two controls, but the board had already ordered tiny badges and refused to cancel the hearing.",
+    ],
+    explanation: [
+      "Photographic terminology is messier than the myth. Getty's Art & Architecture Thesaurus distinguishes the Sabattier effect—partial positive/negative reversal caused by strong light during development—from true solarization caused by extreme overexposure at capture. In everyday art history, the darkroom result is still commonly called solarization or pseudo-solarization.",
+      "MoMA describes darkroom solarization as a second flash of light interrupting development, producing a hybrid positive-and-negative image with exaggerated high-contrast borders and sometimes a metallic appearance. The Metropolitan Museum of Art credits Lee Miller's accidental rediscovery of the phenomenon, which she shared with Man Ray; they refined it together, and Man Ray named their treatment ‘solarization.’",
+      "Ether-MOSH does not simulate emulsion, developer, or the bright boundary line chemically. Its Solarize shader compares red, green, and blue separately with Pivot, inverts only the channel values above that point, then blends the result with Amount. Because the renderer currently gives Amount a 2× gain, the visible slider reaches a complete blend around 0.50; higher values drive a harder, clipped digital blowout rather than a more authentic darkroom print.",
+      "A still Solarize frame does not flash by itself. Rapidly automating Pivot or Amount can create large opposing luminance changes, especially on projection. W3C guidance says flashing content must not exceed three flashes in any one-second period unless it stays below defined thresholds. Move the controls slowly, test the largest display, and keep captions or instructions outside the effected image.",
+    ],
+    steps: [
+      "Open MOSH, load a hard-lit portrait, product still, architectural detail, or clip, then add Solarize from Color in the FX panel.",
+      "Set Amount to 0.35 and Pivot to 0.52. The current render gain makes this a clear partial reversal without immediately crushing the frame.",
+      "Sweep Pivot between roughly 0.35 and 0.65. Lower values flip more channel data; higher values reserve the reversal for brighter channel values.",
+      "Raise Amount toward 0.50 for a complete digital blend. Go above 0.50 only when you want the exaggerated clipping, then try Posterize or Film Grain after Solarize for graphic bands or texture.",
+      "Export a still for print, or animate one control slowly for motion. Check skin, gradients, readable words, and full-screen flash behavior before the file reaches a shirt, stage, classroom, or unsuspecting museum wall.",
+    ],
+    parameters: [
+      { control: "Amount", purpose: "Controls how strongly the selectively inverted color replaces the source", low: "0–0.25 subtle", high: "0.65–1 hard clipping", sweetSpot: "0.35" },
+      { control: "Pivot", purpose: "Sets the per-channel value above which red, green, or blue inverts", low: "0.15 flips more", high: "0.85 flips highlights", sweetSpot: "0.52" },
+      { control: "Source contrast", purpose: "Determines how clearly the reversal separates forms", low: "Flat, broad color shifts", high: "Sharp tonal boundaries", sweetSpot: "Hard side light" },
+    ],
+    uses: [
+      { title: "Print + editorial", body: "Freeze a restrained reversal, soft-proof the inverted colors, and inspect gradients at 100%. The screen can invent electric color that a four-color press will translate into something more municipal." },
+      { title: "Pattern + textiles", body: "Solarize one motif before building the repeat, then inspect a 3×3 proof. Reversed highlights make useful rhythm, but a clipped edge repeated sixty times becomes a labor dispute." },
+      { title: "Vector + Lottie", body: "Trace the strongest reversed boundaries into a small vector palette, or use a short raster loop behind lightweight Lottie shapes. Keep meaningful text as real text rather than solarized pixels." },
+      { title: "Projection + venue", body: "Use a slow Pivot sweep across faces, flowers, or architecture and test it at full venue scale. Avoid rapid high-contrast oscillation; a giant wall is not the place to discover your loop became a strobe." },
+      { title: "Museum + education", body: "Place a documented darkroom solarization beside the same source treated in Ether-MOSH. Students can compare a chemical positive/negative hybrid with a modern per-channel threshold shader without pretending the mechanisms are identical." },
+    ],
+    quote: "The highlight did not disappear. It changed sides and started dressing like a negative.",
+    quoteAttribution: "Hal Negative, fictional deputy curator of reversible testimony",
+    downloadHref: "/news/downloads/solarize-field-card.md",
+    product: {
+      name: "Boundless Bleeds UV Arm Sleeves",
+      href: "https://aestheticrebellion.store/products/boundless-bleeds-uv-arm-sleeves",
+      copy: "Obvious commercial interruption: Aesthetic Rebellion's Boundless Bleeds UV Arm Sleeves are paint-splattered, UPF-rated, and currently available for purchase. They protect arms from actual sunlight, which is not what this shader means by Solarize, but accuracy has never stopped an accessory from entering the syllabus.",
+    },
+    sources: [
+      { label: "Getty Research — Sabattier effect", href: "https://vocab.getty.edu/page/aat/300135014", note: "Authoritative terminology, early history, and the distinction between development-time reversal and true exposure solarization." },
+      { label: "MoMA Object:Photo — Materials glossary", href: "https://www.moma.org/interactives/objectphoto/materials/glossary.html", note: "Museum explanation of the second exposure, hybrid positive/negative image, border emphasis, and metallic appearance." },
+      { label: "The Met — An Overlooked Partnership", href: "https://www.metmuseum.org/perspectives/man-ray-lee-miller", note: "Current museum account crediting Lee Miller's rediscovery and the process she refined with Man Ray." },
+      { label: "W3C — Three Flashes or Below Threshold", href: "https://www.w3.org/WAI/WCAG22/Understanding/three-flashes-or-below-threshold.html", note: "Current accessibility guidance for animated high-contrast changes and flash thresholds." },
+      { label: "Ether-MOSH Solarize registry entry", href: "/effects#solarize", note: "Current Color category, Amount and Pivot ranges, defaults, render gain, and shader source." },
+      { label: "Posterize field report", href: "/news/posterize-the-image-before-the-gradient-files-a-complaint", note: "Related guide to deliberate tonal clipping, print proofing, and graphic reduction." },
+      { label: "Duotone field report", href: "/news/make-the-duotone-effect-pick-a-side", note: "Companion guide to luminance-based color mapping and print-inspired RGB workflows." },
+    ],
+    relatedEffects: ["posterize", "duotone", "photocopy", "crtPhosphor"],
+    faqs: [
+      { question: "What does the Solarize effect do in Ether-MOSH?", answer: "It inverts each RGB channel only when that channel's value is above Pivot, then blends the changed color with the source using Amount." },
+      { question: "Is Ether-MOSH Solarize the same as darkroom solarization?", answer: "No. The app uses a real-time per-channel threshold shader. Darkroom solarization or the Sabattier effect interrupts chemical development with another exposure to light." },
+      { question: "Where is Solarize, and what settings should I start with?", answer: "Open the FX panel, choose Color, and add Solarize. Start near 0.35 Amount and 0.52 Pivot, then tune Pivot for the source's highlights." },
+      { question: "Can I animate the Solarize effect safely for projection?", answer: "Yes, but move Amount or Pivot slowly and test the full-size output. Do not create more than three high-contrast flashes per second unless the result is verified below the applicable thresholds." },
+    ],
+  },
 ];
 
 export const NEWS_ARTICLES_BY_SLUG = new Map(NEWS_ARTICLES.map((article) => [article.slug, article]));
@@ -803,5 +874,9 @@ export const NEWS_LOOK_EXAMPLES_BY_SLUG: Record<string, [NewsLookExample, NewsLo
   "make-ascii-collapse-admit-it-is-not-actually-text": [
     { scene: "High-contrast face", settings: "Amount 0.70 · Cell 12", result: "The face resolves through square samples and bar-like marks; dark eye cells and bright forehead cells preserve recognition without real letters." },
     { scene: "Full-body silhouette", settings: "Amount 1.00 · Cell 28", result: "Large glyph-like blocks replace fine detail, turning the figure into a coarse terminal-flavored mosaic that reads best from a distance." },
+  ],
+  "make-the-solarize-effect-expose-itself": [
+    { scene: "Hard-lit portrait", settings: "Amount 0.35 · Pivot 0.52", result: "Bright skin and fabric channels reverse into cool negative color while the deepest shadows remain anchored, leaving the face readable inside a sharp tonal split." },
+    { scene: "Saturated flower still", settings: "Amount 0.48 · Pivot 0.38", result: "Petals break into acidic complementary bands, bright edges harden, and the background keeps enough original color to frame the reversal." },
   ],
 };

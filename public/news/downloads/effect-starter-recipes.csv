@@ -10,3 +10,4 @@ Kaleidoscope,Geometry,Segments,6,Spin,0.15,Duotone + Bloom,"patterns; motion gra
 Posterize,Color,Levels,5,Bias,0.50,Duotone + Film Grain,"posters; patterns; vector tracing; projection"
 Duotone,Color,Mix,0.80,Hue,0.85,Posterize + Bloom,"editorial; merch; motion graphics; museum education"
 ASCII Collapse,Data Corruption,Amount,0.70,Cell,12,Duotone + CRT,"cover art; textiles; VJ loops; computer-art education"
+Solarize,Color,Amount,0.35,Pivot,0.52,Posterize + Film Grain,"editorial; textiles; projection; darkroom education"
