@@ -13,6 +13,7 @@ import { ShufflePanel } from "@/components/editor/ShufflePanel";
 import { ParamDock } from "@/components/editor/ParamDock";
 import { BeatPanel } from "@/components/editor/BeatPanel";
 import { downloadCanvasPngNow, exportCanvas, downloadBlob, remasterCanvas } from "@/engine/export";
+import { exportPrintReady, type PrintFormat } from "@/engine/printExport";
 import { captureBestFrame } from "@/engine/bestFrame";
 import { captureLoopingGif } from "@/engine/gifCapture";
 import { CanvasRecorder } from "@/engine/recorder";
@@ -54,8 +55,10 @@ import { StartCameraOverlay } from "@/components/editor/StartCameraOverlay";
 import { ForgeTapHint } from "@/components/editor/ForgeTapHint";
 import { SourceModeToggle } from "@/components/editor/SourceModeToggle";
 import { HotTriggers } from "@/components/editor/HotTriggers";
+import { MicNudgeToast } from "@/components/editor/MicNudgeToast";
 import { ActionConfirmation } from "@/components/editor/ActionConfirmation";
 import { showExportSuccessToast } from "@/components/editor/ExportShareToast";
+import { notifyExportStarted } from "@/components/editor/ExportRegisteredToast";
 import { AccountChip } from "@/components/AccountChip";
 import { usePaywall } from "@/hooks/usePaywall";
 import { useCloudFavorites } from "@/hooks/useCloudFavorites";
@@ -124,6 +127,7 @@ export default function Editor() {
   const canUndo = useStore(s => s.past.length > 0);
   const canRedo = useStore(s => s.future.length > 0);
   const mosh = useStore(s => s.mosh);
+  const exportSettings = useStore(s => s.exportSettings);
   const micEnabled = useStore(s => s.micEnabled);
   const setMicEnabled = useStore(s => s.setMicEnabled);
   const systemAudioEnabled = useStore(s => s.systemAudioEnabled);
@@ -131,6 +135,7 @@ export default function Editor() {
   const trackEnabled = useStore(s => s.trackEnabled);
   const isPerformanceMode = useStore(s => s.isPerformanceMode);
   const setPerformanceMode = useStore(s => s.setPerformanceMode);
+  const desktopPortraitMode = useStore(s => s.desktopPortraitMode);
   const proModeEnabled = useStore(s => s.proModeEnabled);
   const helpModeEnabled = useStore(s => s.helpModeEnabled);
   const [helpCaption, setHelpCaption] = useState<{ text: string; x: number; y: number } | null>(null);
@@ -172,6 +177,7 @@ export default function Editor() {
   const [isRecording, setIsRecording] = useState(false);
   const [exportBusy, setExportBusy] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
+  const [printExportOpen, setPrintExportOpen] = useState(false);
   const [recElapsed, setRecElapsed] = useState(0);
   const [micFlash, setMicFlash] = useState<null | { on: boolean; key: number }>(null);
   const [bpmFlash, setBpmFlash] = useState<null | { bpm: number; key: number }>(null);
@@ -215,7 +221,6 @@ export default function Editor() {
   const [onboardingActive, setOnboardingActive] = useState(false);
   const [showMicHint, setShowMicHint] = useState(false);
   const [showMicNudge, setShowMicNudge] = useState(false);
-  const micNudgeShownRef = useRef(false);
   const [showTrackNudge, setShowTrackNudge] = useState(false);
   const trackNudgeShownRef = useRef(false);
   const [showPerfHint, setShowPerfHint] = useState(false);
@@ -588,6 +593,47 @@ export default function Editor() {
     }
   }, [exportBusy, isForge, paywall, tileMode]);
 
+  const exportPrintStill = useCallback(async (longEdge: 5000 | 8000, format: PrintFormat = "jpg") => {
+    if (isForge && !paywall.isSupporter) {
+      paywall.require("Forge print-ready export");
+      return;
+    }
+    if (exportBusy) return;
+    const canvas = getCanvas();
+    if (!canvas) return;
+    setPrintExportOpen(false);
+    setExportBusy(true);
+    setExportProgress(0.05);
+    notifyExportStarted("print");
+    const notice = toast.loading(`Building ${longEdge / 1000}K · ${exportSettings.printDpi} DPI print file…`, { duration: 60_000 });
+    try {
+      const state = useStore.getState();
+      const effects = state.layers.filter(layer => !layer.hidden).slice(0, 3).map(layer => layer.effectId);
+      const subject = effects.length ? effects.join("-") : (isForge ? `forge-${state.forge.seed.toString(16)}` : "visual");
+      const result = await exportPrintReady(canvas, {
+        longEdge,
+        format,
+        dpi: exportSettings.printDpi,
+        quality: 1,
+        baseName: `ether-mosh-${subject}`,
+      });
+      setExportProgress(1);
+      await shareOrDownload(result.blob, result.filename);
+      showExportSuccessToast({
+        id: notice,
+        message: `${result.width}×${result.height} · ${result.dpi} DPI ready`,
+        description: format === "jpg" ? "Maximum-quality print JPG" : "Lossless print PNG",
+        blob: result.blob,
+        filename: result.filename,
+      });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Print export failed", { id: notice });
+    } finally {
+      setExportBusy(false);
+      setExportProgress(0);
+    }
+  }, [exportBusy, isForge, paywall, exportSettings.printDpi]);
+
   // Enter/exit perf mode side effects
   const enterPerf = async () => {
     setPerformanceMode(true);
@@ -609,16 +655,22 @@ export default function Editor() {
     return () => window.clearTimeout(id);
   }, [hasSource]);
 
-  // First real content this session, in whichever mode got there first
-  // (upload, camera, or forge) — nudge toward the mic once, if nothing's
-  // already listening. Session-scoped (a ref, not localStorage) so it can
-  // nudge again next visit, per-session rather than per-browser-forever.
+  // Nudge toward turning on real audio reactivity (mic or device-audio
+  // routing) — persistently, not once. A visitor who dismisses this the
+  // first time (or just misses it) is otherwise never reminded again for
+  // the rest of the session, and "react to sound" is easy to not notice is
+  // even possible until it's pointed out more than once. Keeps re-showing
+  // on an interval for as long as neither source is on; stops for good the
+  // moment one actually is (the effect re-runs on that dependency change
+  // and returns early, clearing whatever nudge timer was in flight).
   useEffect(() => {
-    if (!hasSource) return;
-    if (micNudgeShownRef.current) return;
-    if (micEnabled || systemAudioEnabled) return;
-    micNudgeShownRef.current = true;
-    setShowMicNudge(true);
+    if (!hasSource || micEnabled || systemAudioEnabled) return;
+    const NUDGE_INTERVAL_MS = 3 * 60 * 1000;
+    let timer = window.setTimeout(function fire() {
+      setShowMicNudge(true);
+      timer = window.setTimeout(fire, NUDGE_INTERVAL_MS);
+    }, 20_000);
+    return () => window.clearTimeout(timer);
   }, [hasSource, micEnabled, systemAudioEnabled]);
 
   // If someone has been looking at an active visual for a full minute with
@@ -949,6 +1001,7 @@ export default function Editor() {
     const c = getCanvas();
     if (!c) return;
     try {
+      notifyExportStarted("screenshot");
       // This must remain synchronous with the camera-button/key/touch event:
       // phones regularly block a download that starts after a best-frame scan.
       // The dedicated Still export retains that slower scan/remaster workflow.
@@ -974,9 +1027,10 @@ export default function Editor() {
     const c = getCanvas();
     if (!c) { shareApp(); return; }
     try {
+      notifyExportStarted("share");
       const longEdge = Math.max(c.width, c.height);
       const scale = Math.min(1, 1440 / longEdge);
-      const blob = await exportCanvas(c, { format: "jpg", scale, aspect: null, quality: 0.9 });
+      const blob = await exportCanvas(c, { format: "jpg", scale, aspect: null, quality: exportSettings.shareQuality });
       const shared = await shareBlob(blob, `mosh-${Date.now()}.jpg`, {
         title: "MOSH",
         text: "made with MOSH — brutalist webgl visualizer",
@@ -989,40 +1043,42 @@ export default function Editor() {
     } catch {
       await shareApp();
     }
-  }, [isForge, paywall]);
+  }, [isForge, paywall, exportSettings.shareQuality]);
 
   /** Seconds the GIF button captures on a plain tap. Long-press picks another. */
-  const captureGif = useCallback(async (seconds = 7) => {
+  const captureGif = useCallback(async (seconds?: number) => {
     if (gifBusy) return;
     if (!paywall.require("Seamless GIF loop")) return;
     const c = getCanvas();
     if (!c) { toast.error("No visualizer to capture"); return; }
 
+    const dur = seconds ?? exportSettings.gifDefaultSeconds;
     setActionConfirm({
       type: "gif",
       onConfirm: async () => {
         setActionConfirm(null);
+        notifyExportStarted("gif");
         setGifBusy(true);
         setGifProgress(0);
         // Pause auto-shuffle so the mosh effect stays locked for the whole window.
         const prevShuffle = useStore.getState().shuffleSec;
         if (prevShuffle != null) useStore.getState().setShuffleSec(null);
-        const t = toast.loading(`Locking mosh · capturing ${seconds}s seamless GIF…`, { duration: 30_000 });
+        const t = toast.loading(`Locking mosh · capturing ${dur}s seamless GIF…`, { duration: 30_000 });
         try {
           const result = await captureLoopingGif(c, {
-            durationMs: Math.round(seconds * 1000),
-            fps: 12,
-            maxWidth: 480,
+            durationMs: Math.round(dur * 1000),
+            fps: exportSettings.gifFps,
+            maxWidth: exportSettings.gifMaxWidth,
             onProgress: (phase, p) => {
               // Weight capture as 0..0.7, encode as 0.7..1
               setGifProgress(phase === "capture" ? p * 0.7 : 0.7 + p * 0.3);
             },
           });
-          const filename = `mosh-${Date.now()}_${seconds}s_loop.gif`;
+          const filename = `mosh-${Date.now()}_${dur}s_loop.gif`;
           downloadBlob(result.blob, filename);
           const quality = result.loopScore > 0.85 ? "tight loop" : result.loopScore > 0.6 ? "clean loop" : "loop";
           showExportSuccessToast({
-            message: `${seconds}s GIF saved · ${result.frameCount}f · ${quality}`,
+            message: `${dur}s GIF saved · ${result.frameCount}f · ${quality}`,
             blob: result.blob,
             filename,
             id: t,
@@ -1037,7 +1093,7 @@ export default function Editor() {
         }
       },
     });
-  }, [gifBusy, paywall]);
+  }, [gifBusy, paywall, exportSettings.gifDefaultSeconds, exportSettings.gifFps, exportSettings.gifMaxWidth]);
 
 
   /** Stops and clears the audio stream toggleRecord captured for itself, if
@@ -1095,7 +1151,8 @@ export default function Editor() {
                 }
               }
             }
-            rec.start(c, 30, { audioStream });
+            rec.start(c, exportSettings.videoFps, { audioStream, preferMp4: exportSettings.videoFormat === "mp4" });
+            notifyExportStarted("video");
             recStartRef.current = performance.now();
             setRecElapsed(0);
             setIsRecording(true);
@@ -1163,10 +1220,16 @@ export default function Editor() {
       // Sticker/Lottie controls contain checkboxes and selects. Space must
       // remain the universal MOSH action even immediately after one of those
       // controls was focused.
+      //
+      // Shift+Space is repurposed here specifically: rather than undo (its
+      // meaning everywhere else), it asks StickerCapture to throw away the
+      // sticker's current crop lock and propose a fresh framing/border/
+      // structural shape — repeatable indefinitely, since the point is
+      // shopping through candidates before committing to a capture.
       if (e.code === "Space" && useStore.getState().stickerMode) {
         e.preventDefault();
         if (e.repeat) return;
-        if (e.shiftKey) undo();
+        if (e.shiftKey) window.dispatchEvent(new CustomEvent("mosh:reroll-sticker-shape"));
         else crossfadeLayers(mosh, MOSH_FADE_MS);
         return;
       }
@@ -1248,6 +1311,19 @@ export default function Editor() {
         e.preventDefault();
         if (e.repeat) return;
         window.dispatchEvent(new CustomEvent("mosh:make-sticker"));
+        return;
+      }
+      // Shift+K => jump straight into Lottie Sticker Mode and capture,
+      // without needing scissors mode open or the Lottie checkbox already
+      // ticked first. Opens the sticker panel (so the preview/checkbox are
+      // visibly on) via the store directly, then hands off to
+      // StickerCapture's own listener (always-mounted, same event-bridge
+      // pattern as "mosh:make-sticker" above) for the actual capture.
+      if (e.shiftKey && (e.key === "k" || e.key === "K")) {
+        e.preventDefault();
+        if (e.repeat) return;
+        useStore.getState().setStickerMode(true);
+        window.dispatchEvent(new CustomEvent("mosh:capture-lottie-sticker"));
         return;
       }
 
@@ -1555,10 +1631,10 @@ export default function Editor() {
           try { (navigator as any).vibrate?.(10); } catch {}
           const state = useStore.getState();
           if (dx < 0) {
-            if (state.future.length) state.redo();
+            if (state.future.length) crossfadeLayers(() => useStore.getState().redo(), MOSH_FADE_MS);
             else crossfadeLayers(() => useStore.getState().mosh(), MOSH_FADE_MS);
           } else if (state.past.length) {
-            state.undo();
+            crossfadeLayers(() => useStore.getState().undo(), MOSH_FADE_MS);
           }
         } else if (count === 2 && elapsed <= 420 && maxTravel <= 20) {
           try { (navigator as any).vibrate?.(10); } catch {}
@@ -1584,28 +1660,27 @@ export default function Editor() {
     };
   }, [toggleSmartFreeze]);
 
-  // Pro Mode, desktop: holding bare Shift (no other key, no modifiers)
-  // shows the menu instantly; releasing it hides it instantly. A true hold,
+  // Desktop: holding bare Shift summons the centered Hot Trigger wheel
+  // instantly; releasing dismisses it. In Pro Mode the chrome follows too. A true hold,
   // not a toggle-with-timer, so it's as fast to flash and dismiss as
   // physically possible. Forces the UI back to hidden on blur/visibility
   // change too, so alt-tabbing away mid-hold can never strand it open.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (!useStore.getState().proModeEnabled) return;
       if (e.key !== "Shift" || e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
-      setHideUI(false);
+      if (useStore.getState().proModeEnabled) setHideUI(false);
+      window.dispatchEvent(new Event("mosh:open-hot-triggers"));
     };
     const onKeyUp = (e: KeyboardEvent) => {
-      if (!useStore.getState().proModeEnabled) return;
       if (e.key !== "Shift") return;
-      if (chromePinned) return; // pin overrides the release-to-hide gesture
-      setHideUI(true);
+      window.dispatchEvent(new Event("mosh:close-hot-triggers"));
+      if (!chromePinned && useStore.getState().proModeEnabled) setHideUI(true);
     };
     const forceHidden = () => {
-      if (chromePinned) return;
-      if (useStore.getState().proModeEnabled) setHideUI(true);
+      window.dispatchEvent(new Event("mosh:close-hot-triggers"));
+      if (!chromePinned && useStore.getState().proModeEnabled) setHideUI(true);
     };
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
@@ -1709,7 +1784,7 @@ export default function Editor() {
         <meta name="description" content="Stack GPU effects, map audio to parameters, and perform live in the MOSH visual editor." />
         <link rel="canonical" href="https://ether-mosh.online/edit" />
         <meta property="og:title" content="MOSH Editor — Real-time visual instrument" />
-        <meta property="og:description" content="Stack 107 GPU effects, sync to audio, export stills and video." />
+        <meta property="og:description" content="Stack 108 GPU effects, sync to audio, export stills and video." />
         <meta property="og:url" content="https://ether-mosh.online/edit" />
       </Helmet>
       <h1 className="sr-only">MOSH Editor</h1>
@@ -1764,7 +1839,14 @@ export default function Editor() {
           }
           if (e.shiftKey) { e.preventDefault(); crossfadeLayers(mosh, MOSH_FADE_MS); }
         }}
-        className={`relative bg-background select-none w-full h-[100dvh] shrink-0 no-touch-scroll ${isCameraLive ? "live-ring" : ""}`}
+        className={`relative bg-background select-none shrink-0 no-touch-scroll ${
+          desktopPortraitMode
+            // Height-driven 9:16 box instead of the usual full-width stage —
+            // min() so a browser window too narrow for a full-height 9:16
+            // box shrinks to fit its width instead of overflowing sideways.
+            ? "self-center w-auto aspect-[9/16] h-[min(100dvh,calc(100vw*16/9))]"
+            : "w-full h-[100dvh]"
+        } ${isCameraLive ? "live-ring" : ""}`}
       >
         <div data-tap-fade-target className="absolute inset-0 opacity-100">
           <Suspense
@@ -1807,10 +1889,10 @@ export default function Editor() {
         <SourceTransition trigger={transitionKey} />
         
         {/* TapToBegin removed — StartCameraOverlay is the live-first empty state and TapToBegin's centered button used to intercept clicks meant for "go live". */} 
-        {!isPerformanceMode && !isOverlay && (
+        {!isOverlay && (
           <HotTriggers
             visualizerRef={canvasContainerRef}
-            hidden={hideUI}
+            hidden={hideUI || isPerformanceMode}
             showLegacyLaunchpad={legacyHotTriggers}
             isRecording={isRecording}
             onToggleRecord={toggleRecord}
@@ -1824,10 +1906,6 @@ export default function Editor() {
             gifProgress={gifProgress}
             onFreeze={toggleSmartFreeze}
             onMicFlash={(on) => setMicFlash({ on, key: performance.now() })}
-            showMicNudge={showMicNudge}
-            onMicNudgeYes={() => { setMicEnabled(true); setMicFlash({ on: true, key: performance.now() }); setShowMicNudge(false); }}
-            onMicNudgeNo={() => setShowMicNudge(false)}
-            onMicNudgeExpire={() => setShowMicNudge(false)}
             showTrackNudge={showTrackNudge}
             onTrackNudgeDismiss={() => setShowTrackNudge(false)}
             journeyOn={journeyOn}
@@ -1846,6 +1924,17 @@ export default function Editor() {
               try { useMoshStickerStore.getState().disposeAll(); } catch {}
               navigate("/");
             }}
+          />
+        )}
+        {/* Standalone, not nested inside HotTriggers — the hot-trigger rail
+            now lives inside a press-and-hold radial wheel that's hidden by
+            default, which buried this prompt along with it and made it show
+            up unreliably. This has to stay reachable regardless of whether
+            that wheel (or idle-fade chrome) is open. */}
+        {!isPerformanceMode && !isOverlay && showMicNudge && (
+          <MicNudgeToast
+            onYes={() => { setMicEnabled(true); setMicFlash({ on: true, key: performance.now() }); setShowMicNudge(false); }}
+            onNo={() => setShowMicNudge(false)}
           />
         )}
         {journeyOn && (
@@ -2048,16 +2137,42 @@ export default function Editor() {
               </div>
               <div className="mx-1 h-5 w-px bg-[hsl(var(--border-default))]" />
               {/* Improved Export — gradient, glow, distinct shape */}
-              <button
-                onClick={exportBestStill}
-                disabled={exportBusy}
-                className="group relative ml-1 inline-flex h-8 items-center gap-1.5 overflow-hidden rounded-sm border border-primary/60 bg-gradient-to-r from-primary/90 via-primary to-primary-glow px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.2em] text-primary-foreground shadow-[0_0_20px_hsl(var(--primary)/0.45)] transition hover:shadow-[0_0_28px_hsl(var(--primary)/0.7)] active:scale-95"
-                title="Export (⌘E)"
-              >
-                <Download className="h-3.5 w-3.5" strokeWidth={2} />
-                <span>{exportBusy ? `${Math.round(exportProgress * 100)}%` : "Export"}</span>
-                <span className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/25 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
-              </button>
+              <div className="relative ml-1 flex">
+                <button
+                  onClick={exportBestStill}
+                  disabled={exportBusy}
+                  className="group relative inline-flex h-8 items-center gap-1.5 overflow-hidden rounded-l-sm border border-r-0 border-primary/60 bg-gradient-to-r from-primary/90 via-primary to-primary-glow px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.2em] text-primary-foreground shadow-[0_0_20px_hsl(var(--primary)/0.45)] transition hover:shadow-[0_0_28px_hsl(var(--primary)/0.7)] active:scale-95"
+                  title="Quick still export (⌘E)"
+                >
+                  <Download className="h-3.5 w-3.5" strokeWidth={2} />
+                  <span>{exportBusy ? `${Math.round(exportProgress * 100)}%` : "Export"}</span>
+                  <span className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/25 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
+                </button>
+                <button
+                  type="button"
+                  disabled={exportBusy}
+                  aria-label="Print-ready export options"
+                  aria-expanded={printExportOpen}
+                  onClick={() => setPrintExportOpen(open => !open)}
+                  className="flex h-8 w-7 items-center justify-center rounded-r-sm border border-primary/60 bg-primary text-primary-foreground"
+                  title="Print-ready 5K / 8K · 300 DPI"
+                >
+                  <ChevronDown className={`h-3.5 w-3.5 transition-transform ${printExportOpen ? "rotate-180" : ""}`} />
+                </button>
+                {printExportOpen && (
+                  <div className="absolute right-0 top-10 z-[10020] w-56 rounded-sm border border-[hsl(var(--border-default))] bg-black/95 p-1.5 shadow-2xl backdrop-blur-md">
+                    <p className="px-2 py-1 font-mono text-[8px] uppercase tracking-[0.2em] text-white/45">Print ready · actual pixels · 300 DPI</p>
+                    {([5000, 8000] as const).map(size => (
+                      <button key={size} type="button" onClick={() => void exportPrintStill(size, "jpg")} className="flex w-full items-center justify-between rounded-sm px-2 py-2 font-mono text-[10px] uppercase text-white/85 hover:bg-white/10">
+                        <span>{size / 1000}K maximum-quality JPG</span><span className="text-primary">300</span>
+                      </button>
+                    ))}
+                    <button type="button" onClick={() => void exportPrintStill(5000, "png")} className="flex w-full items-center justify-between rounded-sm px-2 py-2 font-mono text-[10px] uppercase text-white/85 hover:bg-white/10">
+                      <span>5K lossless PNG</span><span className="text-primary">300</span>
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 

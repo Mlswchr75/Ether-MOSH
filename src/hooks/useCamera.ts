@@ -7,6 +7,7 @@ export { facingOfTrack } from "@/lib/cameraFacing";
 export type { CameraFacing } from "@/lib/cameraFacing";
 import { facingOfTrack } from "@/lib/cameraFacing";
 import type { CameraFacing } from "@/lib/cameraFacing";
+import { isMetaQuestUserAgent, isQuestAvatarCamera } from "@/engine/xrCapabilities";
 export type CameraError = "permission" | "busy" | "notfound" | "aborted" | "unsupported" | "unknown";
 
 /** Default facing: front camera on desktop (webcam), rear camera on touch devices. */
@@ -140,7 +141,7 @@ async function streamByDeviceLabel(facing: CameraFacing): Promise<MediaStream | 
     const devices = await navigator.mediaDevices.enumerateDevices();
     const cams = devices.filter(d => d.kind === "videoinput");
     if (cams.length < 2) return null;   // nothing to choose between
-    const wanted = facing === "user" ? /front|user|face/i : /back|rear|environment/i;
+    const wanted = facing === "user" ? /front|user|face|avatar|selfie/i : /back|rear|environment|passthrough|headset/i;
     for (const cam of cams) {
       if (cam.label && !wanted.test(cam.label)) continue;
       try {
@@ -171,7 +172,12 @@ export async function requestCameraStream(opts?: { facing?: CameraFacing; device
   }
 
   const facing = opts?.facing ?? defaultFacing();
-  const chain = constraintChain(facing, opts?.deviceId);
+  const strictQuestRoomCamera = facing === "environment" && isMetaQuestUserAgent(navigator.userAgent);
+  const chain = constraintChain(facing, opts?.deviceId).filter((constraints) => {
+    if (!strictQuestRoomCamera) return true;
+    const video = constraints.video;
+    return typeof video === "object" && ("deviceId" in video || (typeof video.facingMode === "object" && "exact" in video.facingMode));
+  });
 
   let lastErr: unknown = null;
   // Keep the first working-but-wrong-facing stream as a safety net, so a device
@@ -186,11 +192,16 @@ export async function requestCameraStream(opts?: { facing?: CameraFacing; device
       const stream = await safeGetUserMedia(c);
       const track = stream?.getVideoTracks()[0];
       if (stream && track && track.readyState === "live") {
+        if (strictQuestRoomCamera && isQuestAvatarCamera(track.label)) {
+          stream.getTracks().forEach(t => t.stop());
+          lastErr = Object.assign(new Error("Quest avatar camera is not a room camera"), { name: "NotFoundError" });
+          continue;
+        }
         // Trust the track, not the request. A soft constraint can resolve with
         // the camera that was already open, which is how a flip silently
         // becomes a no-op.
         const got = facingOfTrack(track);
-        if (isLastResort || got === null || got === facing) {
+        if ((!strictQuestRoomCamera && isLastResort) || got === null || got === facing) {
           // 🔥 Warm up video playback so hardware feeds valid frames before WebGL canvas reads it
           await warmUpCameraVideo(stream);
           return stream;
@@ -214,7 +225,7 @@ export async function requestCameraStream(opts?: { facing?: CameraFacing; device
     await warmUpCameraVideo(byDevice);
     return byDevice;
   }
-  if (fallback) {
+  if (fallback && !strictQuestRoomCamera) {
     await warmUpCameraVideo(fallback);
     return fallback;
   }

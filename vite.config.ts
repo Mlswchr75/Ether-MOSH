@@ -13,7 +13,10 @@ export default defineConfig(({ mode }) => ({
     },
   },
   build: {
-    sourcemap: "hidden",
+    // A "hidden" source map is still emitted as a deployable .map file; it
+    // merely omits the sourceMappingURL comment. MOSH ships proprietary shader
+    // and composition code, so production artifacts must not contain maps.
+    sourcemap: false,
   },
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
   resolve: {

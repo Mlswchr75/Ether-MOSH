@@ -28,7 +28,7 @@ const roleStore = () => useStore.getState() as unknown as {
 const reset = () => {
   useStore.setState({
     layers: [], selectedLayerId: null, past: [], future: [],
-    currentLook: null, currentBrief: null, recentEffects: [], recentLooks: [],
+    currentLook: null, currentBrief: null, recentFormEffects: [], recentOtherEffects: [], recentLooks: [],
   });
 };
 

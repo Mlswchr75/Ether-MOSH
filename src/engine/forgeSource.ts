@@ -210,8 +210,24 @@ function renderGeneratorInto(
 
   const entry = GENERATORS_BY_ID[generatorId];
   const generator = entry && isCanvas2DGenerator(entry) ? entry : DRIFT_FIELD;
-  const state = stateFor(runtime, generator, seed);
-  generator.render({ ctx: target, w, h, t, seed, palette, intensity, audio }, state);
+  try {
+    const state = stateFor(runtime, generator, seed);
+    generator.render({ ctx: target, w, h, t, seed, palette, intensity, audio }, state);
+  } catch (error) {
+    // A single experimental generator must never be allowed to kill the live
+    // Forge render loop. Drop its cached simulation state and fall back to the
+    // battle-tested Drift Field for this frame.
+    runtime.states.delete(`${generator.id}:${seed}`);
+    console.error(`[forge] generator "${generator.id}" failed; using Drift Field`, error);
+    if (generator.id !== DRIFT_FIELD.id) {
+      const fallbackState = stateFor(runtime, DRIFT_FIELD, seed);
+      DRIFT_FIELD.render({ ctx: target, w, h, t, seed, palette, intensity, audio }, fallbackState);
+    } else {
+      target.clearRect(0, 0, w, h);
+      target.fillStyle = palette[0] ?? "#000000";
+      target.fillRect(0, 0, w, h);
+    }
+  }
 }
 
 export type ForgeSourceOpts = ForgeState;
@@ -281,7 +297,21 @@ export function paintForgeSource(
   }
 
   if (inTransition && progress < 1) {
-    renderGeneratorInto(runtime.scratchACtx, w, h, t, seed, palette, forge.intensity, audio, forge.transitionFromGeneratorId as string, runtime);
+    // The outgoing generator must render with the seed/palette it was
+    // *actually* drawn with — by the time a transition is in flight,
+    // forge.seed/paletteIdx above have already become the incoming
+    // generator's values, so reusing them here would redraw the outgoing
+    // side in the new colors and layout instead of cross-dissolving from
+    // the frame the viewer was looking at. Fall back to the current
+    // seed/palette only if an older call site never set these (keeps this
+    // resilient rather than crashing on a stale caller).
+    const fromPalette = forge.transitionFromPaletteIdx != null
+      ? (FORGE_PALETTES[forge.transitionFromPaletteIdx] ?? FORGE_PALETTES[0])
+      : basePalette;
+    const fromSeedNum = forge.transitionFromSeed ?? forge.seed;
+    const fromPaletteColors = seededPalette(fromPalette, fromSeedNum).colors;
+    const fromSeed = fromSeedNum.toString(36);
+    renderGeneratorInto(runtime.scratchACtx, w, h, t, fromSeed, fromPaletteColors, forge.intensity, audio, forge.transitionFromGeneratorId as string, runtime);
     renderGeneratorInto(runtime.scratchBCtx, w, h, t, seed, palette, forge.intensity, audio, forge.activeGeneratorId, runtime);
     ctx.clearRect(0, 0, w, h);
     ctx.globalAlpha = 1;

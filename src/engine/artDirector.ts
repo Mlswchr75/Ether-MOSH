@@ -98,33 +98,39 @@ export type SourceStats = {
   clipLow: number;
   /** Fraction of pixels blown to white. */
   clipHigh: number;
+  /** Luminance centre of gravity, 0..1. */
+  balanceX?: number;
+  balanceY?: number;
+  /** How strongly visual energy gathers near the centre rather than edges. */
+  centerWeight?: number;
 };
 
 export const NEUTRAL_STATS: SourceStats = {
   brightness: 0.5, contrast: 0.4, saturation: 0.4,
   density: 0.4, warmth: 0.5, hueSpread: 0.4,
-  clipLow: 0, clipHigh: 0,
+  clipLow: 0, clipHigh: 0, balanceX: 0.5, balanceY: 0.5, centerWeight: 0.5,
 };
 
 /** Reused sampling surface — analysis runs on every mosh, so don't reallocate. */
 let sampleCanvas: HTMLCanvasElement | null = null;
 let sampleCtx: CanvasRenderingContext2D | null = null;
-const SAMPLE_W = 64;
-const SAMPLE_H = 36;
+const SAMPLE_W = 128;
+const SAMPLE_H = 72;
 
 /**
- * Measure the live source. Deliberately tiny (64×36 ≈ 2.3k pixels) so it can
- * run synchronously on every mosh without touching the render loop.
+ * Measure the entire live source. Browser downsampling integrates the full
+ * frame into representative pixels, so no region is skipped while analysis
+ * remains safely outside the render loop.
  *
  * Works for both <video> and <img>, which matters because MOSH is
  * camera-first — the existing palette worker only ever ran on still images, so
  * the live path had no analysis at all.
  */
-export function analyzeSource(el: HTMLVideoElement | HTMLImageElement | null): SourceStats {
+export function analyzeSource(el: HTMLVideoElement | HTMLImageElement | HTMLCanvasElement | null): SourceStats {
   if (!el || typeof document === "undefined") return { ...NEUTRAL_STATS };
   try {
-    const w = (el as HTMLVideoElement).videoWidth || (el as HTMLImageElement).naturalWidth || 0;
-    const h = (el as HTMLVideoElement).videoHeight || (el as HTMLImageElement).naturalHeight || 0;
+    const w = (el as HTMLVideoElement).videoWidth || (el as HTMLImageElement).naturalWidth || (el as HTMLCanvasElement).width || 0;
+    const h = (el as HTMLVideoElement).videoHeight || (el as HTMLImageElement).naturalHeight || (el as HTMLCanvasElement).height || 0;
     if (!w || !h) return { ...NEUTRAL_STATS };
 
     if (!sampleCanvas) {
@@ -151,6 +157,7 @@ export function statsFromPixels(data: Uint8ClampedArray | number[], w: number, h
 
   const lum = new Float32Array(n);
   let lSum = 0, lSq = 0, satSum = 0, warmSum = 0, clipLow = 0, clipHigh = 0;
+  let energySum = 0, energyX = 0, energyY = 0, centerEnergy = 0;
   const hueBins = new Array(12).fill(0);
 
   for (let i = 0; i < n; i++) {
@@ -165,6 +172,12 @@ export function statsFromPixels(data: Uint8ClampedArray | number[], w: number, h
     const chroma = mx - mn;
     satSum += mx <= 0 ? 0 : chroma / mx;
     warmSum += (r - b) * 0.5 + 0.5;
+    const x = (i % w) / Math.max(1, w - 1);
+    const y = Math.floor(i / w) / Math.max(1, h - 1);
+    const energy = 0.08 + l + chroma * 0.8;
+    energySum += energy; energyX += energy * x; energyY += energy * y;
+    const dx = x - 0.5, dy = y - 0.5;
+    centerEnergy += energy * Math.max(0, 1 - Math.sqrt(dx * dx + dy * dy) / 0.707);
 
     // Only colourful pixels get a vote on hue spread; grey pixels have no hue.
     if (chroma > 0.12) {
@@ -204,6 +217,9 @@ export function statsFromPixels(data: Uint8ClampedArray | number[], w: number, h
     hueSpread: occupied / 12,
     clipLow: clipLow / n,
     clipHigh: clipHigh / n,
+    balanceX: energyX / Math.max(0.0001, energySum),
+    balanceY: energyY / Math.max(0.0001, energySum),
+    centerWeight: centerEnergy / Math.max(0.0001, energySum),
   };
 }
 
@@ -446,6 +462,71 @@ export function craftOf(id: string): Craft | null {
   return CRAFT[id] ?? null;
 }
 
+/**
+ * Which of an effect's own params is its true "amount" — paramsForRole
+ * (below) drives that one from the brief/push and leaves the rest for
+ * character variation. Convention is params[0], which fits most of the
+ * collection fine. This table only holds the exceptions, verified against
+ * each effect's actual shader rather than guessed from the param name
+ * alone — a name that merely *differs* from "amount" (persistence, flow,
+ * punch...) but still means "more = stronger" doesn't need an entry here;
+ * only the ones where pushing params[0] toward its max is actually wrong —
+ * either the wrong direction (posterize's levels, bitCrush's bits: fewer
+ * is stronger) or not a magnitude at all (mirror's axis is a mode switch;
+ * kaleidoscope-style segment/band/cell counts are structure, not "amount").
+ *
+ * `key: null` opts an effect out of the amount concept entirely — every
+ * param falls back to character variation instead of one being forced
+ * into a role it doesn't fit.
+ */
+const STRENGTH_OVERRIDES: Record<string, { key: string | null; direction?: "down" }> = {
+  // "Levels" pushed toward its max is *fewer* discretization steps removed
+  // — the opposite of more posterization. Fewer levels is the stronger end.
+  posterize: { key: "levels", direction: "down" },
+  // Axis is a horizontal/vertical mode switch (see the shader: `uAxis < 0.5`
+  // picks which side folds) — there's no "more axis," so this opts out
+  // rather than quietly biasing which axis gets picked as push rises.
+  mirror: { key: null },
+  // Fewer bits is more crushed, same shape as posterize's levels.
+  bitCrush: { key: "bits", direction: "down" },
+  // depthEcho already has an explicit "strength" param (index 1) — using
+  // it directly beats guessing at "reach" (index 0).
+  depthEcho: { key: "strength" },
+  // zoom ranges -1..1 (zoom out vs. zoom in), not a 0..1 magnitude — "feed"
+  // (how much trail is fed back in) is the actual intensity knob.
+  infiniteZoom: { key: "feed" },
+  // speed/spin/zoom are all motion-character params — none of the three is
+  // "how much of this effect is applied," so this opts out entirely.
+  feedbackTunnel: { key: null },
+  // slices/spin/zoom: slice count is structure, spin/zoom are motion —
+  // same situation as feedbackTunnel, no clean amount among the three.
+  mandalaBloom: { key: null },
+  // Band *count* is structure, not intensity — timeSpread (how far the
+  // bands scatter through time) is the actual amount knob.
+  strataSlice: { key: "timeSpread" },
+  // Cell *count* is structure — spread (how far shards displace) is the
+  // amount knob, same reasoning as strataSlice.
+  timeShatter: { key: "spread" },
+  // Curvature is the tube's screen-warp shape, not effect intensity — mask
+  // (the phosphor shadow-mask stripe visibility) is what actually scales
+  // "how much CRT" is applied (see the shader's `mix(..., uMask * 0.55)`).
+  crtPhosphor: { key: "mask" },
+  // Threshold pushed toward its max means *fewer* edges clear the
+  // smoothstep gate — fewer glowing contours, not more (see the shader's
+  // `t = mix(0.06, 0.9, uThreshold)` then `smoothstep(t*0.45, t, e)`).
+  neonContour: { key: "threshold", direction: "down" },
+};
+
+/** The param key driving an effect's "amount," and which direction (up its
+ *  own range, or down) makes it stronger — params[0] unless overridden
+ *  above, `null` if this effect has no single knob that means "amount." */
+export function strengthParamFor(effectId: string): { key: string | null; direction: "up" | "down" } {
+  const override = STRENGTH_OVERRIDES[effectId];
+  if (override) return { key: override.key, direction: override.direction ?? "up" };
+  const first = EFFECTS_BY_ID[effectId]?.params[0];
+  return { key: first?.key ?? null, direction: "up" };
+}
+
 /** Every effect that can serve a role. */
 export function poolForRole(role: Role): string[] {
   return Object.keys(CRAFT).filter(id => CRAFT[id].role === role && EFFECTS_BY_ID[id]);
@@ -592,7 +673,7 @@ export const LOOKS: Look[] = [
     suits: { needsColor: 0.8, density: 0.3 }, drive: 0.88,
   },
   {
-    id: "liquidDream", name: "LIQUID DREAM", blurb: "A liquid dream state.",
+    id: "liquidMemory", name: "LIQUID MEMORY", blurb: "Flow that remembers where it's been.",
     picks: { grade: ["filmicTone", "oilSlick", "duotone"],
              form: ["flowTurbulence", "liquidWarp", "flowSmear"],
              accent: ["echoTrails", "bufferEcho", "trailDecay"],
@@ -674,7 +755,27 @@ export const LOOKS_BY_ID: Record<string, Look> = Object.fromEntries(LOOKS.map(l 
  * just the effects, is what stops consecutive rolls from feeling like the
  * same idea twice.
  */
-export function chooseLook(brief: FrameBrief, rand: () => number, avoid: string[] = []): Look {
+/** How hard a fully-suppressed look gets pushed down the ranking — tuned
+ *  against `suits` weights, which run roughly -1..1 per axis, so this is
+ *  comparable to losing a couple of the axes a look actually fits. */
+const LOOK_PENALTY_STRENGTH = 1.4;
+
+export function chooseLook(
+  brief: FrameBrief,
+  rand: () => number,
+  avoid: string[] = [],
+  /** Soft, decaying recency suppression (0..1 per look id — see
+   *  recencyPenalty in compose.ts) — the same memory Journey mode's own
+   *  look-equivalent choice uses. `avoid` still hard-excludes on top of
+   *  this for anything that must never come back (e.g. every look is
+   *  filtered to nothing, a caller with no memory to soften); most callers
+   *  should prefer this over `avoid` going forward. Applied as a
+   *  subtraction, not a multiplier — `suits` weights can be negative, and
+   *  multiplying a negative score by a small penalty makes it *less*
+   *  negative, the opposite of suppression. */
+  penalty?: ReadonlyMap<string, number>,
+  previousLookId?: string | null,
+): Look {
   const stale = new Set(avoid);
   const scored = LOOKS.map(look => {
     let score = 0;
@@ -682,6 +783,8 @@ export function chooseLook(brief: FrameBrief, rand: () => number, avoid: string[
       const v = brief[key as keyof FrameBrief];
       if (typeof v === "number") score += v * (weight as number);
     }
+    score -= (1 - (penalty?.get(look.id) ?? 1)) * LOOK_PENALTY_STRENGTH;
+    if (previousLookId) score += lookTransitionScore(previousLookId, look.id, brief);
     return { look, score };
   });
 
@@ -692,6 +795,24 @@ export function chooseLook(brief: FrameBrief, rand: () => number, avoid: string[
   // Sample from the top third so the fit is honoured without being rigid.
   const width = Math.max(2, Math.ceil(usable.length / 3));
   return usable[Math.floor(rand() * Math.min(width, usable.length))].look;
+}
+
+/** Judge the relationship between consecutive looks: shared vocabulary gives
+ * continuity, a controlled energy arc and a new structural idea give surprise. */
+export function lookTransitionScore(previousId: string, nextId: string, brief: FrameBrief): number {
+  if (previousId === nextId) return -2.2;
+  const previous = LOOKS_BY_ID[previousId];
+  const next = LOOKS_BY_ID[nextId];
+  if (!previous || !next) return 0;
+  const prevIds = new Set(Object.values(previous.picks).flat());
+  const nextIds = new Set(Object.values(next.picks).flat());
+  const shared = [...prevIds].filter(id => nextIds.has(id)).length;
+  const continuity = Math.min(0.42, shared * 0.12);
+  const driveArc = Math.abs(previous.drive - next.drive);
+  const arc = driveArc >= 0.12 && driveArc <= 0.42 ? 0.28 : driveArc > 0.62 ? -0.22 : 0;
+  const novelty = (next.picks.form ?? []).some(id => !(previous.picks.form ?? []).includes(id)) ? 0.18 : 0;
+  const restraint = brief.needsRestraint > 0.55 && next.drive > previous.drive ? -0.45 : 0;
+  return continuity + arc + novelty + restraint;
 }
 
 /* ────────────────────────────────────────────────────────────────────────
@@ -761,6 +882,12 @@ const COST_BUDGET = 1.5;
  */
 const GPU_BUDGET = 16;
 
+/** How hard a fully-suppressed effect gets pushed down the ranking — tuned
+ *  against the score terms above, which mostly run ±0.5..1.5 with -6 for a
+ *  genuine hard constraint (blows the GPU budget), so this reads as a real
+ *  but survivable deduction rather than the -6 tier. */
+const EFFECT_PENALTY_STRENGTH = 1.8;
+
 /** Measured GPU cost of an effect; unmeasured effects are cheap (~1x). */
 export function gpuCostOf(id: string): number {
   return CRAFT[id]?.gpu ?? 1;
@@ -793,6 +920,12 @@ export function pickForRole(
     /** 0..1. Raises the ceiling on drama, grit and colour replacement, and
      *  widens how deep into the ranking a pick may reach. */
     wildness?: number;
+    /** Soft, decaying recency suppression (0..1 per effect id — see
+     *  recencyPenalty in compose.ts), the same memory Journey mode's own
+     *  effect ranking uses. Unlike `exclude` (a hard rule: never repeat a
+     *  role already filled in *this* stack), this is a preference a strong
+     *  enough score can still overcome. */
+    penalty?: ReadonlyMap<string, number>;
   } = {},
 ): string {
   const exclude = new Set(opts.exclude ?? []);
@@ -800,6 +933,7 @@ export function pickForRole(
   const gpuLeft = opts.gpuLeft ?? GPU_BUDGET;
   const affinity = opts.affinityTarget ?? 1;
   const wildness = Math.max(0, Math.min(1, opts.wildness ?? 0.35));
+  const penalty = opts.penalty;
 
   const onLook = (look.picks[role] ?? []).filter(id => CRAFT[id] && !exclude.has(id));
   const wider = (opts.anyRole ? Object.keys(CRAFT) : poolForRole(role)).filter(id => !exclude.has(id));
@@ -885,6 +1019,13 @@ export function pickForRole(
     if (gpu > gpuLeft) score -= 6;
     score -= (gpu - 1) * 0.06;
 
+    // Soft recency suppression — applied as a subtraction, not a multiplier,
+    // because this score is genuinely signed (the GPU/budget/replaces terms
+    // above can all push it negative); multiplying a negative score by a
+    // small penalty would make it *less* negative, the opposite of what a
+    // penalty is for.
+    score -= (1 - (penalty?.get(id) ?? 1)) * EFFECT_PENALTY_STRENGTH;
+
     return { id, score: score + rand() * 0.5 };
   });
 
@@ -960,13 +1101,24 @@ export function paramsForRole(
      resembling themselves. */
   push = clamp01(push * (0.78 + wildness * 0.42) + wildness * 0.32);
 
-  def.params.forEach((p, i) => {
+  // Which param is this effect's actual "amount," and which way up its
+  // range makes it stronger — params[0]/up unless strengthParamFor
+  // overrides it (see STRENGTH_OVERRIDES's own doc for why a handful of
+  // effects need that: a differently-named-but-still-"more=stronger" param
+  // is fine left as the default, only a wrong direction or a genuinely
+  // non-magnitude param needs an entry).
+  const strength = strengthParamFor(effectId);
+
+  def.params.forEach((p) => {
     const span = p.max - p.min;
-    // The first param is the effect's "amount" by convention — that's the one
-    // the brief should drive. Later params get character variation instead.
+    // The strength param is the one the brief/push should drive. Every
+    // other param — including all of them, if this effect has no strength
+    // param at all — gets character variation instead.
     let target: number;
-    if (i === 0) {
-      target = p.min + span * (0.2 + push * 0.8);
+    if (strength.key != null && p.key === strength.key) {
+      target = strength.direction === "down"
+        ? p.max - span * (0.2 + push * 0.8)
+        : p.min + span * (0.2 + push * 0.8);
     } else {
       // Secondary params are where an effect's character lives — the angle, the
       // cell size, the falloff. Ranging them across the full span is what makes
@@ -1052,12 +1204,15 @@ export function composeRoleLayer(
     affinityTarget?: number;
     wildness: number;
     existingRegion?: LayerRegion | null;
+    /** Soft recency suppression — see pickForRole's own doc. */
+    penalty?: ReadonlyMap<string, number>;
   },
 ): ComposedLayer | null {
   const effectId = pickForRole(role, look, brief, rand, {
     exclude: options.exclude,
     affinityTarget: options.affinityTarget,
     wildness: options.wildness,
+    penalty: options.penalty,
   });
   if (!EFFECTS_BY_ID[effectId]) return null;
 
@@ -1088,6 +1243,17 @@ export function compose(
     roleCount?: number;
     avoidLooks?: string[];
     avoidEffects?: string[];
+    /** Soft, decaying recency suppression — the same memory Journey mode
+     *  uses (see recencyPenalty in compose.ts). Prefer this over
+     *  avoidLooks/avoidEffects: those hard-exclude anything used in the
+     *  last few taps until it ages out of a fixed window, which is a
+     *  noticeably more mechanical "shuffle" than a repeat that's merely
+     *  unlikely for a while. Both can be given together — avoid still wins
+     *  for anything that must never come back at all (a locked layer's own
+     *  effect id, say). */
+    lookPenalty?: ReadonlyMap<string, number>;
+    effectPenalty?: ReadonlyMap<string, number>;
+    previousLookId?: string | null;
     look?: Look;
     /**
      * 0..1. How willing the director is to break its own grammar.
@@ -1120,7 +1286,7 @@ export function compose(
     wildness?: number;
   } = {},
 ): Composition {
-  const look = opts.look ?? chooseLook(brief, rand, opts.avoidLooks ?? []);
+  const look = opts.look ?? chooseLook(brief, rand, opts.avoidLooks ?? [], opts.lookPenalty, opts.previousLookId);
   const roleCount = Math.max(1, Math.min(MAX_ROLES, opts.roleCount ?? 4));
   const wildness = Math.max(0, Math.min(1, opts.wildness ?? 0.35));
   // A wild roll is more willing to break the grammar — but only where the
@@ -1176,6 +1342,7 @@ export function compose(
       gpuLeft: Math.max(1, gpu - reserve),
       anyRole: breakRule,
       wildness,
+      penalty: opts.effectPenalty,
     });
     used.add(id);
     budget -= CRAFT[id]?.cost ?? 0.3;

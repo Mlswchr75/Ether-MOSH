@@ -80,6 +80,8 @@ export function JourneyPortalProvider({ children, config }: { children: ReactNod
       kaleidoscopeFolds: null,
       transitionFromGeneratorId: null,
       transitionStartedAt: null,
+      transitionFromSeed: null,
+      transitionFromPaletteIdx: null,
     };
 
     // Long-lived embeds (stream overlays, gallery installations) can outlast
@@ -175,6 +177,11 @@ export function JourneyPortalProvider({ children, config }: { children: ReactNod
         generatorIndex = (generatorIndex + 1) % generatorIds.length;
         forge.transitionFromGeneratorId = previous;
         forge.transitionStartedAt = performance.now();
+        // Freeze what the outgoing generator was actually drawn with —
+        // forge.seed/paletteIdx are overwritten to the incoming generator's
+        // values immediately below.
+        forge.transitionFromSeed = forge.seed;
+        forge.transitionFromPaletteIdx = forge.paletteIdx;
         forge.activeGeneratorId = generatorIds[generatorIndex];
         forge.paletteIdx = (forge.paletteIdx + 1) % 6;
         forge.seed = (forge.seed * 1664525 + 1013904223) >>> 0;

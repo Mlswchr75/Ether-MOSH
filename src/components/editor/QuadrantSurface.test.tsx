@@ -2,12 +2,13 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { QuadrantSurface } from "./QuadrantSurface";
 import { useStore } from "@/store/useStore";
+import { cancelLayerCrossfade } from "@/engine/layerCrossfade";
 
 /**
  * The store tests cover the rotation itself; these cover the wiring, which is
  * the part that compiles cleanly and still does nothing. The interaction
- * contract is that position never decides what a tap does — the same tap in the
- * same spot has to keep advancing the rotation.
+ * contract is that position never decides what a tap does: every clean tap is
+ * the same full Art Director shuffle as Space.
  */
 
 /** jsdom has no layout, so give the surface a real box to measure against. */
@@ -30,6 +31,7 @@ function tap(el: Element, x: number, y: number) {
 
 describe("QuadrantSurface", () => {
   beforeEach(() => {
+    cancelLayerCrossfade();
     window.localStorage.clear();
     stubBox();
     // setPointerCapture doesn't exist in jsdom; the component guards it, but
@@ -42,7 +44,8 @@ describe("QuadrantSurface", () => {
       currentLook: null,
       currentBrief: null,
       lastRoleRoll: null,
-      recentEffects: [],
+      recentFormEffects: [],
+      recentOtherEffects: [],
       recentLooks: [],
       showBeforeAfter: false,
       isolationMode: "off",
@@ -53,35 +56,37 @@ describe("QuadrantSurface", () => {
 
   // This project does not enable testing-library's global auto-cleanup, so
   // without this every render stacks up and the queries go ambiguous.
-  afterEach(cleanup);
+  afterEach(() => { cancelLayerCrossfade(); cleanup(); });
 
   it("mounts a surface that owns the canvas gestures", () => {
     render(<QuadrantSurface />);
     expect(screen.getByLabelText(/Visual instrument/i)).toBeTruthy();
   });
 
-  it("re-rolls a voice on a tap, wherever the tap lands", () => {
+  it("shuffles the full unlocked stack on a tap, wherever the tap lands", () => {
     render(<QuadrantSurface />);
     const el = screen.getByLabelText(/Visual instrument/i);
 
-    const before = useStore.getState().layers.map(l => l.effectId);
-    tap(el, 40, 700); // bottom-left — under the old model this was a fixed voice
-    const after = useStore.getState().layers.map(l => l.effectId);
+    const before = useStore.getState().layers.map(l => l.id);
+    const past = useStore.getState().past.length;
+    tap(el, 40, 700);
+    const after = useStore.getState().layers.map(l => l.id);
 
-    expect(after.filter((id, i) => id !== before[i])).toHaveLength(1);
+    expect(useStore.getState().past.length).toBe(past + 1);
+    expect(after.some(id => !before.includes(id) && id !== "__transition_boundary__")).toBe(true);
+    expect(useStore.getState().lastRoleRoll).toBeNull();
   });
 
-  it("advances the rotation even when every tap lands on the same spot", () => {
+  it("creates a new undoable composition when repeated at the same spot", () => {
     render(<QuadrantSurface />);
     const el = screen.getByLabelText(/Visual instrument/i);
 
-    const hit: string[] = [];
+    const initialPast = useStore.getState().past.length;
     for (let i = 0; i < 3; i++) {
-      tap(el, 200, 400); // dead centre, every time
-      hit.push(useStore.getState().lastRoleRoll!.role);
+      tap(el, 200, 400);
     }
-    // This is the whole design: the finger never moves, the voice still changes.
-    expect(new Set(hit).size).toBe(3);
+    expect(useStore.getState().past.length).toBe(initialPast + 3);
+    expect(useStore.getState().lastRoleRoll).toBeNull();
   });
 
   it("skips a locked voice so a kept look survives repeated tapping", () => {
@@ -96,14 +101,16 @@ describe("QuadrantSurface", () => {
     expect(useStore.getState().layers[0].effectId).toBe(kept.effectId);
   });
 
-  it("reads out plain all roles locked feedback when no role can roll", () => {
+  it("still executes with every layer locked while preserving those layers", () => {
     render(<QuadrantSurface />);
     const el = screen.getByLabelText(/Visual instrument/i);
     for (const layer of useStore.getState().layers) useStore.getState().toggleLocked(layer.id);
 
+    const before = useStore.getState().layers.map(layer => ({ id: layer.id, effectId: layer.effectId }));
     tap(el, 200, 400);
 
-    expect(document.querySelector("[data-role-readout]")?.textContent).toContain("all roles locked");
+    expect(useStore.getState().layers.filter(layer => layer.locked).map(layer => ({ id: layer.id, effectId: layer.effectId }))).toEqual(before);
+    expect(document.querySelector("[data-role-readout]")?.textContent).toContain("new composition");
   });
 
   it("sweeps parameters on a drag instead of re-rolling", () => {

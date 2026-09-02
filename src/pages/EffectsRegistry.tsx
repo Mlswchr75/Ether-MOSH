@@ -1,9 +1,11 @@
-import { useMemo, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
-import { ArrowLeft, Download, FileJson, Search } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, Download, FileJson, Search, X } from "lucide-react";
+import { EffectSpecimen } from "@/components/effects/EffectSpecimen";
 import { getEffectRegistry, effectRegistryToCSV, effectRegistryToJSON } from "@/engine/effectRegistry";
 import { downloadBlob } from "@/engine/export";
+import "./effects-registry.css";
 
 const CATEGORY_LABEL: Record<string, string> = {
   corruption: "Data Corruption",
@@ -15,168 +17,222 @@ const CATEGORY_LABEL: Record<string, string> = {
 
 export default function EffectsRegistry() {
   const registry = useMemo(() => getEffectRegistry(), []);
+  const registryIndex = useMemo(() => new Map(registry.map((effect, index) => [effect.id, index + 1])), [registry]);
   const [q, setQ] = useState("");
-  const [expanded, setExpanded] = useState<string | null>(null);
+  const deferredQuery = useDeferredValue(q);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const openerRef = useRef<HTMLButtonElement | null>(null);
+  const selected = useMemo(() => registry.find(effect => effect.id === selectedId) ?? null, [registry, selectedId]);
 
   const filtered = useMemo(() => {
-    const query = q.trim().toLowerCase();
+    const query = deferredQuery.trim().toLowerCase();
     if (!query) return registry;
-    return registry.filter(e =>
-      e.name.toLowerCase().includes(query) ||
-      e.id.toLowerCase().includes(query) ||
-      e.category.toLowerCase().includes(query) ||
-      e.blurb.toLowerCase().includes(query),
+    return registry.filter(effect =>
+      effect.name.toLowerCase().includes(query) ||
+      effect.id.toLowerCase().includes(query) ||
+      effect.category.toLowerCase().includes(query) ||
+      effect.blurb.toLowerCase().includes(query),
     );
-  }, [registry, q]);
+  }, [registry, deferredQuery]);
 
   const grouped = useMemo(() => {
     const map = new Map<string, typeof filtered>();
-    for (const e of filtered) {
-      const list = map.get(e.category) ?? [];
-      list.push(e);
-      map.set(e.category, list);
+    for (const effect of filtered) {
+      const list = map.get(effect.category) ?? [];
+      list.push(effect);
+      map.set(effect.category, list);
     }
     return map;
   }, [filtered]);
 
+  const closeDetail = useCallback(() => {
+    setSelectedId(null);
+    if (typeof window.requestAnimationFrame === "function") window.requestAnimationFrame(() => openerRef.current?.focus());
+    else openerRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    if (!selected) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeDetail();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [selected, closeDetail]);
+
   const exportCSV = () => {
     const csv = effectRegistryToCSV(registry);
-    downloadBlob(new Blob([csv], { type: "text/csv;charset=utf-8" }), `mosh-effects-registry.csv`);
+    downloadBlob(new Blob([csv], { type: "text/csv;charset=utf-8" }), "mosh-effects-registry.csv");
   };
 
   const exportJSON = () => {
     const json = effectRegistryToJSON(registry);
-    downloadBlob(new Blob([json], { type: "application/json" }), `mosh-effects-registry.json`);
+    downloadBlob(new Blob([json], { type: "application/json" }), "mosh-effects-registry.json");
   };
+
+  const structuredData = useMemo(() => JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "CollectionPage",
+    name: "Ether-MOSH Effect Registry",
+    description: "Every Ether-MOSH GPU effect with its description, parameters, and GLSL source.",
+    url: "https://ether-mosh.online/effects",
+    mainEntity: {
+      "@type": "ItemList",
+      numberOfItems: registry.length,
+      itemListElement: registry.map((effect, index) => ({
+        "@type": "ListItem",
+        position: index + 1,
+        url: `https://ether-mosh.online/effects#${effect.id}`,
+        name: effect.name,
+        description: effect.blurb,
+      })),
+    },
+  }), [registry]);
 
   return (
     <>
       <Helmet>
-        <title>Effect Registry · Ether-MOSH</title>
-        <meta name="description" content="Every Ether-MOSH effect — human description, parameters, and GLSL source — exportable as a spreadsheet or JSON." />
+        <title>108 GPU Glitch Effects · Ether-MOSH Effect Registry</title>
+        <meta name="description" content="Explore all 108 Ether-MOSH effects with visual examples, plain-language descriptions, parameter ranges, and the GLSL source that runs each effect." />
+        <meta name="keywords" content="glitch effects, GPU effects, GLSL shaders, pixel sorting, datamosh, halftone, moire, audio reactive visuals, Ether-MOSH" />
         <link rel="canonical" href="https://ether-mosh.online/effects" />
-        <meta name="robots" content="noindex" />
+        <meta name="robots" content="index,follow,max-image-preview:large" />
+        <meta property="og:title" content="108 GPU Glitch Effects · Ether-MOSH" />
+        <meta property="og:description" content="A visual, searchable registry of every Ether-MOSH effect, parameter, and shader." />
+        <meta property="og:type" content="website" />
+        <meta property="og:url" content="https://ether-mosh.online/effects" />
+        <meta name="twitter:card" content="summary_large_image" />
+        <script type="application/ld+json">{structuredData}</script>
       </Helmet>
-      <main className="min-h-dvh bg-background text-foreground">
-        <header className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-white/10 bg-background/80 px-4 py-3 backdrop-blur-md safe-top">
-          <Link
-            to="/edit"
-            className="flex shrink-0 items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.2em] text-white/60 hover:text-[hsl(var(--accent))]"
-          >
-            <ArrowLeft className="h-3.5 w-3.5" strokeWidth={1.5} />
-            back
+
+      <main className="effect-registry-page">
+        <header className="effect-registry-header">
+          <Link to="/edit" className="effect-registry-nav-link effect-registry-back">
+            <ArrowLeft aria-hidden="true" /> back
           </Link>
-          <h1 className="sr-only shrink-0 font-mono text-[11px] uppercase tracking-[0.25em] text-[hsl(var(--accent))] sm:not-sr-only">
-            effect registry · {registry.length}
-          </h1>
-          <div className="flex min-w-0 flex-1 items-center gap-2">
-            <div className="flex min-w-0 flex-1 items-center gap-1.5 rounded-sm border border-white/10 bg-black/40 px-2 py-1">
-              <Search className="h-3 w-3 shrink-0 text-white/40" strokeWidth={1.5} />
-              <input
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="search effects…"
-                aria-label="Search effects"
-                className="min-w-0 flex-1 bg-transparent font-mono text-[10px] uppercase tracking-[0.1em] text-white/80 outline-none placeholder:text-white/30"
-              />
-            </div>
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <button
-              type="button"
-              onClick={exportCSV}
-              className="flex items-center gap-1 font-mono text-[9px] uppercase tracking-[0.15em] text-white/50 hover:text-[hsl(var(--accent))]"
-              title="Export every effect as a spreadsheet (CSV) — name, blurb, params, GLSL"
-            >
-              <Download className="h-3 w-3" strokeWidth={1.5} />
-              csv
-            </button>
-            <button
-              type="button"
-              onClick={exportJSON}
-              className="flex items-center gap-1 font-mono text-[9px] uppercase tracking-[0.15em] text-white/50 hover:text-[hsl(var(--accent))]"
-              title="Export every effect as machine-readable JSON — structured params + GLSL source"
-            >
-              <FileJson className="h-3 w-3" strokeWidth={1.5} />
-              json
-            </button>
-          </div>
+          <div className="effect-registry-mark" aria-hidden="true">MOSH</div>
+          <h1>Effect Registry <span>· {registry.length}</span></h1>
+          <label className="effect-registry-search">
+            <Search aria-hidden="true" />
+            <span className="sr-only">Search effects</span>
+            <input value={q} onChange={event => setQ(event.target.value)} placeholder="search effects…" aria-label="Search effects" />
+          </label>
+          <button type="button" onClick={exportCSV} title="Export every effect as a spreadsheet (CSV) — name, blurb, params, GLSL">
+            <Download aria-hidden="true" /> csv
+          </button>
+          <button type="button" onClick={exportJSON} title="Export every effect as machine-readable JSON — structured params + GLSL source">
+            <FileJson aria-hidden="true" /> json
+          </button>
+          <Link to="/news" className="effect-registry-nav-link">news + updates <ArrowUpRight aria-hidden="true" /></Link>
+          <Link to="/edit" className="effect-registry-open">open MOSH <ArrowUpRight aria-hidden="true" /></Link>
         </header>
 
-        <section className="mx-auto max-w-4xl px-4 py-6 safe-bottom">
-          <p className="mb-6 max-w-2xl font-mono text-[10px] leading-relaxed text-white/40">
+        <section className="effect-registry-intro" aria-labelledby="registry-intro-title">
+          <p className="effect-registry-eyebrow">Visual field guide / live shader index / downloadable source</p>
+          <h2 id="registry-intro-title">Every effect, exposed.</h2>
+          <p>
             Every effect Ether-MOSH can render, in two languages at once: a human blurb + parameter ranges,
             and the GLSL fragment shader that actually produces it — the same code the GPU runs, so it
             doubles as the exact recipe for recreating the effect later. Export the whole registry as a
             spreadsheet or JSON below.
           </p>
+          <span className="effect-registry-result" aria-live="polite">{filtered.length} / {registry.length} effects visible</span>
+        </section>
 
+        <section className="effect-registry-list" aria-label="Ether-MOSH effects">
           {[...grouped.entries()].map(([category, effects]) => (
-            <div key={category} className="mb-8">
-              <h2 className="mb-2 font-mono text-[10px] uppercase tracking-[0.25em] text-[hsl(var(--accent))]">
-                {CATEGORY_LABEL[category] ?? category} · {effects.length}
+            <section key={category} className="effect-registry-category" aria-labelledby={`category-${category}`}>
+              <h2 id={`category-${category}`}>
+                <span>{CATEGORY_LABEL[category] ?? category}</span>
+                <i>{String(effects.length).padStart(2, "0")} effects</i>
               </h2>
-              <ul className="flex flex-col gap-1">
-                {effects.map(e => {
-                  const isOpen = expanded === e.id;
+              <ul>
+                {effects.map(effect => {
+                  const effectNumber = registryIndex.get(effect.id) ?? 0;
                   return (
-                    <li key={e.id} className="rounded-md border border-white/10 bg-black/30">
+                    <li key={effect.id} id={effect.id}>
                       <button
                         type="button"
-                        onClick={() => setExpanded(isOpen ? null : e.id)}
-                        aria-expanded={isOpen}
-                        aria-controls={`effect-detail-${e.id}`}
-                        className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left"
+                        onClick={event => {
+                          openerRef.current = event.currentTarget;
+                          setSelectedId(effect.id);
+                        }}
+                        aria-haspopup="dialog"
+                        aria-label={`Open ${effect.name} visual example and details`}
                       >
-                        <div className="min-w-0">
-                          <div className="flex items-baseline gap-2">
-                            <span className="truncate font-mono text-[11px] uppercase tracking-[0.1em] text-white/90">
-                              {e.name}
-                            </span>
-                            <span className="font-mono text-[9px] text-white/30">{e.id}</span>
-                          </div>
-                          <p className="mt-0.5 truncate font-mono text-[9px] text-white/45">{e.blurb}</p>
-                        </div>
-                        <span className="shrink-0 font-mono text-[9px] uppercase tracking-[0.15em] text-white/30">
-                          {e.params.length} param{e.params.length === 1 ? "" : "s"}
+                        <span className="effect-registry-number">{String(effectNumber).padStart(3, "0")}</span>
+                        <span className="effect-registry-thumb"><EffectSpecimen effect={effect} /></span>
+                        <span className="effect-registry-summary">
+                          <span className="effect-registry-name" data-text={effect.name}>{effect.name}</span>
+                          <span className="effect-registry-id">{effect.id}</span>
+                          <span className="effect-registry-blurb">{effect.blurb}</span>
                         </span>
+                        <span className="effect-registry-count">{effect.params.length} param{effect.params.length === 1 ? "" : "s"}<ArrowUpRight aria-hidden="true" /></span>
                       </button>
-                      {isOpen && (
-                        <div id={`effect-detail-${e.id}`} className="border-t border-white/10 px-3 py-2">
-                          <table className="mb-3 w-full text-left font-mono text-[9px]">
-                            <thead>
-                              <tr className="text-white/40">
-                                <th className="pb-1 pr-3 font-normal uppercase tracking-[0.1em]">param</th>
-                                <th className="pb-1 pr-3 font-normal uppercase tracking-[0.1em]">range</th>
-                                <th className="pb-1 font-normal uppercase tracking-[0.1em]">default</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {e.params.map(p => (
-                                <tr key={p.key} className="text-white/70">
-                                  <td className="py-0.5 pr-3">{p.label}</td>
-                                  <td className="py-0.5 pr-3 text-white/45">{p.min}..{p.max}</td>
-                                  <td className="py-0.5">{p.default}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                          <p className="mb-1 font-mono text-[8px] uppercase tracking-[0.15em] text-white/30">
-                            glsl source
-                          </p>
-                          <pre className="max-h-64 overflow-auto rounded-sm bg-black/60 p-2 font-mono text-[9px] leading-relaxed text-white/60">
-                            {e.glsl}
-                          </pre>
-                        </div>
-                      )}
                     </li>
                   );
                 })}
               </ul>
-            </div>
+            </section>
           ))}
+
+          {filtered.length === 0 && (
+            <div className="effect-registry-empty">
+              <p>No effect matches “{deferredQuery}”.</p>
+              <button type="button" onClick={() => setQ("")}>clear search</button>
+            </div>
+          )}
         </section>
+
+        <footer className="effect-registry-footer">
+          <span>108 effects / 5 categories / one GPU</span>
+          <Link to="/news">Learn the effects in News + Updates <ArrowUpRight aria-hidden="true" /></Link>
+        </footer>
       </main>
+
+      {selected && (
+        <div className="effect-detail-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) closeDetail(); }}>
+          <section className="effect-detail-dialog" role="dialog" aria-modal="true" aria-labelledby="effect-detail-title" aria-describedby="effect-detail-description">
+            <header>
+              <span>Effect detail / {String(registryIndex.get(selected.id) ?? 0).padStart(3, "0")}</span>
+              <button type="button" onClick={closeDetail} autoFocus aria-label="Close effect details"><X aria-hidden="true" /></button>
+            </header>
+
+            <div className="effect-detail-layout">
+              <div className="effect-detail-visual">
+                <EffectSpecimen effect={selected} large />
+                <span>Code-native visual signature / {selected.category}</span>
+              </div>
+
+              <div className="effect-detail-copy">
+                <p className="effect-detail-id">{selected.id}</p>
+                <h2 id="effect-detail-title" className="effect-registry-name" data-text={selected.name}>{selected.name}</h2>
+                <p id="effect-detail-description">{selected.blurb}</p>
+
+                <h3>Parameters</h3>
+                <div className="effect-detail-table-wrap">
+                  <table>
+                    <thead><tr><th>param</th><th>range</th><th>default</th></tr></thead>
+                    <tbody>
+                      {selected.params.map(param => (
+                        <tr key={param.key}><td>{param.label}</td><td>{param.min}..{param.max}</td><td>{param.default}</td></tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <h3>GLSL source</h3>
+                <pre><code>{selected.glsl}</code></pre>
+              </div>
+            </div>
+          </section>
+        </div>
+      )}
     </>
   );
 }

@@ -1,6 +1,7 @@
 import { defineTool, type ToolContext } from "@lovable.dev/mcp-js";
 import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
+import { safeMcpError } from "../security";
 
 function supabaseForUser(ctx: ToolContext) {
   return createClient(
@@ -38,7 +39,7 @@ export default defineTool({
     if (status) q = q.eq("status", status);
     const { data, error } = await q;
     if (error) {
-      return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
+      return safeMcpError("list-recent-patterns", error);
     }
     return {
       content: [

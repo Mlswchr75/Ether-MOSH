@@ -1,16 +1,23 @@
 # Supabase backend (version-controlled)
 
-This directory is the first version-controlled copy of the production database
+This directory is the version-controlled copy of the production database
 schema and payment/AI edge functions for `ether-mosh.online` (Supabase project
-ref `udtrjwredttzvdixtwla`). It didn't exist in this repo before — the schema
-only lived inside Lovable's managed Supabase integration. Bringing it into git
-is step one of decoupling the app from Lovable's infrastructure.
+ref `coyzusnfkvheplcdvctf`, "Ether-MOSH Production"). The canonical repository
+is now the source of truth for this backend rather than a site-builder-managed
+copy.
+
+Migrated 2026-09-01 off the original project (`udtrjwredttzvdixtwla`, which
+belonged to a different Supabase account this repo's owner didn't control)
+onto a dedicated project under the owner's own Supabase org. Auth users,
+profiles, presets, and entitlements were carried over as of the migration
+date; anything written on the old project after that point does not exist
+here.
 
 ## `migrations/`
 
-These 20 files are a historical record of the schema **already applied** to the
+These files are a historical record of the schema **already applied** to the
 live project — not new changes to run against it. If you link the CLI to the
-live project (`supabase link --project-ref udtrjwredttzvdixtwla`), do **not**
+live project (`supabase link --project-ref coyzusnfkvheplcdvctf`), do **not**
 run `supabase db push` blind: the tables already exist, so a push will fail on
 "already exists" errors. Either `supabase db pull` first to reconcile the
 migration history table, or use `supabase migration repair --status applied
@@ -30,16 +37,17 @@ these migrations apply cleanly in order and reproduce the full schema.
   dashboard):
   - `STRIPE_LIVE_SECRET_KEY` / `STRIPE_SANDBOX_SECRET_KEY` — your own Stripe secret keys
   - `PAYMENTS_LIVE_WEBHOOK_SECRET` / `PAYMENTS_SANDBOX_WEBHOOK_SECRET` — signing secrets from your Stripe webhook endpoint config
+  - `PAYMENTS_ALLOWED_ORIGINS` — comma-separated checkout origins; defaults to `https://ether-mosh.online`
   - `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` — provided automatically by Supabase's edge runtime, no action needed
-- `forge-analyze` — AI artwork analysis for Pattern Forge. Rewritten to call
-  Google's Gemini API directly (via its OpenAI-compatible endpoint) instead of
-  `ai.gateway.lovable.dev`. Needs:
+- `forge-analyze` — AI artwork analysis for Pattern Forge. Calls Google's
+  Gemini API directly (via its OpenAI-compatible endpoint) instead of any
+  site-builder AI gateway. Needs:
   - `GEMINI_API_KEY` — your own Gemini API key
 - `forge-delete` — unchanged, no external dependency.
 
-None of these functions need `LOVABLE_API_KEY` anymore. (The MCP server
-integration elsewhere in the app is untouched and still uses Lovable's MCP
-tooling — that's a separate concern from payments/AI.)
+None of these functions need `LOVABLE_API_KEY`. (The MCP server integration
+elsewhere in the app is untouched and still uses Lovable's MCP tooling —
+that's a separate concern from payments/AI.)
 
 ## Deploying
 

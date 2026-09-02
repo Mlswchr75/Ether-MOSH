@@ -474,7 +474,7 @@
       transition: opacity var(--radial-open-ms) linear;
     }
     .mobile-radial-wheel {
-      --radial-size: min(72vw, 78dvh, 560px);
+      --radial-size: min(84vw, 84dvh, 700px);
       --radial-rotation: 0deg;
       --radial-counter-rotation: 0deg;
       inline-size: var(--radial-size);
@@ -547,8 +547,25 @@
       place-items: center;
       transform: translate(-50%, -50%) rotate(calc(var(--slot-angle) + var(--radial-rotation))) translateY(calc(var(--radial-size) * var(--slot-radius) * -1)) rotate(calc(var(--slot-counter-angle) + var(--radial-counter-rotation)));
       transform-origin: center;
-      will-change: transform;
+      contain: layout style;
       transition: filter 54ms linear;
+    }
+    .mobile-radial-wheel__slot::before,
+    .mobile-radial-wheel__slot::after {
+      content: "";
+      position: absolute;
+      inset: -7px;
+      z-index: -1;
+      border: 1px solid hsl(var(--accent) / .28);
+      border-radius: 50%;
+      opacity: .44;
+      pointer-events: none;
+      transform: rotate(0deg) scale(.88);
+    }
+    .mobile-radial-wheel__slot::after {
+      inset: -3px 7px;
+      border-color: hsl(var(--primary) / .38);
+      transform: rotate(45deg);
     }
     .mobile-radial-wheel__slot .hot-trigger {
       --ht-size: clamp(40px, calc(var(--radial-size) * .12), 52px);
@@ -558,7 +575,31 @@
       background: linear-gradient(145deg, hsl(var(--surface-2) / .9), hsl(var(--bg-base) / .72));
       border-color: hsl(0 0% 100% / .24);
       box-shadow: 0 0 0 1px hsl(0 0% 0% / .9), 0 5px 16px hsl(0 0% 0% / .42);
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+      contain: layout paint style;
       transition: scale 48ms linear, color 48ms linear, border-color 48ms linear, background-color 48ms linear, box-shadow 48ms linear;
+    }
+    .mobile-radial-wheel__slot[data-radial-variant="0"] .hot-trigger { border-radius: 50%; }
+    .mobile-radial-wheel__slot[data-radial-variant="1"] .hot-trigger { border-radius: 20% 50% 20% 50%; }
+    .mobile-radial-wheel__slot[data-radial-variant="2"] .hot-trigger { clip-path: polygon(50% 0, 94% 25%, 94% 75%, 50% 100%, 6% 75%, 6% 25%); }
+    .mobile-radial-wheel__slot[data-radial-variant="3"] .hot-trigger { clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); }
+    .mobile-radial-wheel__slot[data-radial-variant="4"] .hot-trigger { border-radius: 8% 42% 8% 42%; }
+    .mobile-radial-wheel__slot[data-radial-variant="5"] .hot-trigger { clip-path: polygon(25% 2%, 75% 2%, 98% 50%, 75% 98%, 25% 98%, 2% 50%); }
+    .mobile-radial-wheel__slot[data-radial-variant="6"] .hot-trigger { border-radius: 50% 12% 50% 12%; }
+    .mobile-radial-wheel__slot[data-radial-variant="7"] .hot-trigger { clip-path: polygon(50% 0, 61% 35%, 100% 50%, 61% 65%, 50% 100%, 39% 65%, 0 50%, 39% 35%); }
+    .mobile-radial-wheel__slot[data-radial-variant="1"]::before,
+    .mobile-radial-wheel__slot[data-radial-variant="5"]::before { border-style: dashed; }
+    .mobile-radial-wheel__slot[data-radial-variant="2"]::after,
+    .mobile-radial-wheel__slot[data-radial-variant="6"]::after { border-radius: 16%; }
+    :is(.mobile-radial-layer, .desktop-radial-layer)[data-phase="open"] .mobile-radial-wheel__slot::before {
+      animation: radial-orbit 4.8s linear infinite var(--slot-delay, 0ms);
+    }
+    :is(.mobile-radial-layer, .desktop-radial-layer)[data-phase="open"] .mobile-radial-wheel__slot::after {
+      animation: radial-orbit-reverse 3.6s linear infinite var(--slot-delay, 0ms);
+    }
+    :is(.mobile-radial-layer, .desktop-radial-layer)[data-phase="open"] .mobile-radial-wheel__slot .hot-trigger__ico {
+      animation: radial-icon-breathe 2.4s ease-in-out infinite var(--slot-delay, 0ms);
     }
     .mobile-radial-wheel__slot[data-highlighted] .hot-trigger {
       scale: 1.34;
@@ -566,6 +607,10 @@
       border-color: hsl(var(--text-body));
       background: linear-gradient(135deg, hsl(var(--accent) / .74), hsl(var(--primary) / .5));
       box-shadow: 3px -2px 0 hsl(var(--primary) / .7), -3px 2px 0 hsl(var(--accent) / .7), 0 0 25px hsl(var(--accent) / .78);
+    }
+    .mobile-radial-wheel__slot[data-highlighted] .hot-trigger__glitch {
+      opacity: .48;
+      animation: radial-hover-glitch 180ms steps(3, end) both;
     }
     .mobile-radial-wheel__slot:has([role="menu"]) { z-index: 60; }
     .mobile-radial-wheel__slot > div > div[role="menu"],
@@ -669,18 +714,44 @@
       65% { opacity: .42; scale: .988; }
       100% { opacity: 1; scale: 1; }
     }
+    @keyframes radial-orbit { to { transform: rotate(360deg) scale(.88); } }
+    @keyframes radial-orbit-reverse { to { transform: rotate(-315deg); } }
+    @keyframes radial-icon-breathe { 0%, 100% { transform: translateZ(0) scale(.92); } 50% { transform: translateZ(0) scale(1.08); } }
+    @keyframes radial-hover-glitch {
+      0% { transform: translate(-3px, 2px) skewX(-9deg); }
+      45% { transform: translate(3px, -1px) skewX(7deg); }
+      100% { transform: translate(1px, -1px); }
+    }
     @media (pointer: coarse), (max-width: 900px) {
-      .mobile-radial-wheel { --radial-size: min(92vw, 74dvh, 430px); }
+      .mobile-radial-wheel { --radial-size: min(96vw, 82dvh, 600px); }
     }
     @media (prefers-reduced-motion: reduce) {
       .mobile-radial-wheel,
       .mobile-radial-wheel__backdrop,
       .mobile-radial-wheel__slot .hot-trigger { transition: none; }
       .mobile-radial-wheel__label { animation: none !important; }
+      .mobile-radial-wheel__slot::before,
+      .mobile-radial-wheel__slot::after,
+      .mobile-radial-wheel__slot .hot-trigger__ico { animation: none !important; }
       :is(.mobile-radial-layer, .desktop-radial-layer)[data-phase="armed"] .mobile-radial-wheel { animation: none; opacity: .4; scale: 1; }
     }
 
-  .desktop-radial-wheel { --radial-size: min(78vw, 78dvh, 560px); }
+    /* Settings overlay's supporter nudge — the one deliberately loud element
+       on that whole surface. A slow glow/scale breathe, not a jitter: it has
+       to read as "notice this" without feeling like an ad or a nag. */
+    .settings-supporter-cta {
+      animation: settings-supporter-breathe 2600ms ease-in-out infinite;
+    }
+    .settings-supporter-cta:hover { animation-play-state: paused; }
+    @keyframes settings-supporter-breathe {
+      0%, 100% { box-shadow: 0 0 0 hsl(var(--accent) / 0); scale: 1; }
+      50% { box-shadow: 0 0 34px hsl(var(--accent) / .45); scale: 1.012; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .settings-supporter-cta { animation: none; }
+    }
+
+  .desktop-radial-wheel { --radial-size: min(88vw, 88dvh, 720px); }
   @media (pointer: fine) and (min-width: 901px) {
     .mobile-radial-layer { display: none !important; }
     .desktop-radial-layer { display: block; }
@@ -1817,6 +1888,12 @@
     color: hsl(var(--foreground));
   }
   .home-info-prose p { margin: 0 0 28px; }
+  .home-info-link-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 14px 26px;
+  }
   .home-info-service-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));

@@ -56,10 +56,10 @@ export async function withOptionalForgeIsolation(
   }
 }
 
-/** Reject near-empty, near-full-frame and duplicate masks, then keep the two
- * strongest distinct objects. This prevents three saliency taps on the same
- * background from producing a loose, almost-full-frame crop. */
-export function selectUsableStickerMasks(subjects: MaskResult[]): MaskResult[] {
+/** Reject near-empty, near-full-frame and duplicate masks, then keep the
+ * strongest distinct objects. Callers can retain a small layer ensemble,
+ * while the default remains conservative for static one-click stickers. */
+export function selectUsableStickerMasks(subjects: MaskResult[], maxSubjects = 2): MaskResult[] {
   const scored = subjects.flatMap(subject => {
     let active = 0, confidence = 0, minX = subject.width, minY = subject.height, maxX = -1, maxY = -1;
     for (let y = 0; y < subject.height; y++) for (let x = 0; x < subject.width; x++) {
@@ -77,13 +77,23 @@ export function selectUsableStickerMasks(subjects: MaskResult[]): MaskResult[] {
   const kept: typeof scored = [];
   for (const candidate of scored) {
     const duplicate = kept.some(existing => {
+      if (candidate.subject.width === existing.subject.width && candidate.subject.height === existing.subject.height) {
+        let intersection = 0, union = 0;
+        for (let index = 0; index < candidate.subject.data.length; index++) {
+          const aHot = candidate.subject.data[index] >= .42;
+          const bHot = existing.subject.data[index] >= .42;
+          if (aHot && bHot) intersection++;
+          if (aHot || bHot) union++;
+        }
+        if (intersection / Math.max(1, union) > .68) return true;
+      }
       const a=candidate.box,b=existing.box;
       const intersection = Math.max(0,Math.min(a[2],b[2])-Math.max(a[0],b[0])+1) * Math.max(0,Math.min(a[3],b[3])-Math.max(a[1],b[1])+1);
       const areaA=(a[2]-a[0]+1)*(a[3]-a[1]+1), areaB=(b[2]-b[0]+1)*(b[3]-b[1]+1);
       return intersection / Math.max(1, Math.min(areaA,areaB)) > 0.72;
     });
     if (!duplicate) kept.push(candidate);
-    if (kept.length === 2) break;
+    if (kept.length === Math.max(1, maxSubjects)) break;
   }
   return kept.map(item => item.subject);
 }
@@ -101,7 +111,8 @@ function mergeSubjects(subjects: MaskResult[]): MaskResult | null {
 
 async function blobFromCanvas(canvas: HTMLCanvasElement): Promise<Blob> {
   const copy = document.createElement("canvas");
-  const maxDimension = 1536;
+  const mobile = typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(max-width: 700px), (pointer: coarse)").matches;
+  const maxDimension = mobile ? 1536 : 2048;
   const scale = Math.min(1, maxDimension / Math.max(canvas.width, canvas.height));
   copy.width = Math.max(1, Math.round(canvas.width * scale));
   copy.height = Math.max(1, Math.round(canvas.height * scale));
@@ -117,7 +128,9 @@ async function blobFromCanvas(canvas: HTMLCanvasElement): Promise<Blob> {
 }
 
 function stickerExportScale(imageData: ImageData) {
-  return Math.min(2, 1536 / Math.max(imageData.width, imageData.height));
+  const mobile = typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(max-width: 700px), (pointer: coarse)").matches;
+  const maxDimension = mobile ? 1536 : 2048;
+  return Math.min(2, maxDimension / Math.max(imageData.width, imageData.height));
 }
 
 function boundedStickerCanvas(source: HTMLCanvasElement) {

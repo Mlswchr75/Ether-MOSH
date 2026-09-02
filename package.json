@@ -1,17 +1,21 @@
 {
   "name": "vite_react_shadcn_ts",
   "private": true,
+  "license": "UNLICENSED",
   "version": "0.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && tsx scripts/generate-news-static-pages.ts",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "typecheck": "tsc --build --pretty false",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
+    "security:artifacts": "node scripts/check-production-security.mjs",
+    "security:signatures": "npm audit signatures",
+    "security:check": "npm audit --audit-level=high && npm run typecheck && npm run build && npm run security:artifacts",
     "audit:effects": "tsx scripts/effect-audit.ts"
   },
   "dependencies": {

@@ -1,13 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect } from "react";
 import { OverlayEntityView } from "./OverlayEntityView";
-import { OverlayImporter } from "./OverlayImporter";
 import { OverlayVault } from "./OverlayVault";
-import { StickerForge } from "./StickerForge";
 import { OverlayTrackingSampler } from "./OverlayTrackingSampler";
 import { OverlayInspector } from "./OverlayInspector";
 import { useOverlayStore } from "@/store/useOverlayStore";
 import { installBeforeFxBridge } from "@/engine/overlay/beforeFxBridge";
-import { useStore } from "@/store/useStore";
 
 installBeforeFxBridge();
 
@@ -22,27 +19,6 @@ export function OverlayStage() {
   const selectEntity = useOverlayStore(s => s.selectEntity);
   const duplicateEntity = useOverlayStore(s => s.duplicateEntity);
   const removeEntity = useOverlayStore(s => s.removeEntity);
-  const sourceMode = useStore(s => s.sourceMode);
-  const [toolsOpen, setToolsOpen] = useState(false);
-  const idleTimer = useRef<number | null>(null);
-
-  const armIdleClose = useCallback(() => {
-    if (idleTimer.current) window.clearTimeout(idleTimer.current);
-    idleTimer.current = window.setTimeout(() => setToolsOpen(false), 5500);
-  }, []);
-
-  useEffect(() => {
-    const toggle = () => setToolsOpen(open => {
-      const next = !open;
-      if (next) armIdleClose();
-      return next;
-    });
-    window.addEventListener("mosh:toggle-sticker-tools", toggle);
-    return () => window.removeEventListener("mosh:toggle-sticker-tools", toggle);
-  }, [armIdleClose]);
-  useEffect(() => { setToolsOpen(false); }, [sourceMode]);
-  useEffect(() => () => { if (idleTimer.current) window.clearTimeout(idleTimer.current); }, []);
-
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
@@ -75,11 +51,7 @@ export function OverlayStage() {
       {entities.map((entity, index) => (
         <OverlayEntityView key={entity.id} entity={entity} selected={selectedId === entity.id} index={index} count={entities.length} />
       ))}
-      <div data-sticker-tools={toolsOpen || undefined} className={toolsOpen ? "absolute bottom-28 left-1/2 z-[80] flex -translate-x-1/2 flex-wrap items-center justify-center gap-2" : "contents"} onPointerDown={toolsOpen ? armIdleClose : undefined} onPointerEnter={toolsOpen ? armIdleClose : undefined} onFocus={toolsOpen ? armIdleClose : undefined}>
-        {toolsOpen && <OverlayImporter />}
-        {toolsOpen && <StickerForge />}
-        <OverlayVault showCaptureButton={toolsOpen} />
-      </div>
+      <OverlayVault showCaptureButton={false} />
     </div>
   );
 }

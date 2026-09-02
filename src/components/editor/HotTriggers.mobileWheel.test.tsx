@@ -51,22 +51,28 @@ function pointerEvent(type: string, pointerId: number, clientX: number, clientY:
 }
 
 describe("mobile radial hot-trigger wheel", () => {
-  it("returns to idle after a hold-flick-release, instead of staying stuck open", () => {
+  it("stays open after a stationary hold-release, then dismisses after a selection", () => {
     vi.useFakeTimers();
     render(<Wrapper />);
     const target = screen.getByTestId("visualizer");
     const layer = document.querySelector<HTMLElement>(".mobile-radial-layer")!;
     expect(layer.dataset.phase).toBe("idle");
 
-    act(() => { target.dispatchEvent(pointerEvent("pointerdown", 3, 150, 150)); });
+    const x = window.innerWidth / 2, y = window.innerHeight / 2;
+    act(() => { target.dispatchEvent(pointerEvent("pointerdown", 3, x, y)); });
     act(() => { vi.advanceTimersByTime(RADIAL_WHEEL_HOLD_MS + 10); });
     // The hold fired and opened the wheel.
     expect(layer.dataset.phase).toBe("open");
 
-    act(() => { window.dispatchEvent(pointerEvent("pointerup", 3, 150, 150)); });
-    // Regression: releasing after a fired hold previously left the wheel
-    // open (data-phase="open") with its full-screen backdrop still
-    // absorbing pointer events, swallowing the next tap.
+    act(() => { window.dispatchEvent(pointerEvent("pointerup", 3, x, y)); });
+    // A stationary release deliberately keeps the wheel open so the user can
+    // lift, inspect, then tap a choice.
+    expect(layer.dataset.phase).toBe("open");
+
+    act(() => {
+      screen.getByRole("button", { name: "Sticker Studio — isolate, cut, animate, import and open the Vault" }).click();
+    });
+    // Once a choice is made, the wheel must get out of the opened panel's way.
     expect(layer.dataset.phase).toBe("idle");
   });
 });

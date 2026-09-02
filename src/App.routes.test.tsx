@@ -7,6 +7,11 @@ vi.mock("@/components/editor/GlCanvas", () => ({
   GlCanvas: () => <canvas data-mosh-canvas />,
 }));
 
+vi.mock("@/components/journey/PortalShapeGallery", () => ({
+  PortalShapeGallery: () => <div data-portal-gallery />,
+  JourneyPortalInterlude: () => <div data-journey-interlude />,
+}));
+
 beforeAll(() => {
   Object.defineProperty(window, "matchMedia", {
     configurable: true,
@@ -82,5 +87,18 @@ describe("public feature routes", () => {
 
     expect(await screen.findByRole("heading", { name: "refund policy", level: 1 })).not.toBeNull();
     expect(screen.queryByText("404")).toBeNull();
+  });
+
+  it("renders News + Updates instead of the 404 page", async () => {
+    renderAt("/news");
+    expect(await screen.findByRole("heading", { name: /bad signal/i }, { timeout: 5000 })).not.toBeNull();
+    expect(screen.queryByText("404")).toBeNull();
+  });
+
+  it("renders an effect article with its direct answer and tutorial", async () => {
+    renderAt("/news/sort-your-pixels-before-they-sort-you");
+    expect(await screen.findByRole("heading", { name: /sort your pixels/i }, { timeout: 5000 })).not.toBeNull();
+    expect(screen.getByText("Quick answer")).not.toBeNull();
+    expect(screen.getByText(/Make it in Ether-MOSH/i)).not.toBeNull();
   });
 });

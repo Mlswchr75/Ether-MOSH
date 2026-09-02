@@ -14,7 +14,7 @@ Complete valid account-deletion requests within **7 days** of submission.
 
 ## Verify ownership
 
-1. In the production Supabase project (`udtrjwredttzvdixtwla`), locate the Auth user by the submitted user ID.
+1. In the production Supabase project (`coyzusnfkvheplcdvctf`, "Ether-MOSH Production"), locate the Auth user by the submitted user ID.
 2. Confirm the submitted email matches the Auth user's current email.
 3. If anything is inconsistent or suspicious, re-verify ownership through the account email before destructive processing.
 

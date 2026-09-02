@@ -4,6 +4,9 @@ import { toast } from "sonner";
 import { useStore } from "@/store/useStore";
 import { buildMotifTile, buildRepeatProof, critiqueMotif, type MotifCritique, type MotifDirection, type MotifSymmetry } from "@/engine/motifMaestro";
 import { downloadBlob } from "@/engine/export";
+import { blobWithDpi } from "@/engine/pngDpi";
+import { notifyExportStarted } from "./ExportRegisteredToast";
+import { validateDecodedDimensions, validateImageUpload } from "@/lib/mediaFileSafety";
 
 const INITIAL: MotifCritique = { seamless: 1, composition: .72, contrast: .68, motif: .76 };
 
@@ -22,8 +25,8 @@ export function MotifMaestroPanel({ embedded = false }: { embedded?: boolean }) 
   useEffect(()=>{setSeamless(true);setTileMode("mirror");if(!forge.stack.length)randomise();const id=window.setTimeout(analyze,700);return()=>window.clearTimeout(id);},[]);// eslint-disable-line react-hooks/exhaustive-deps
   useEffect(()=>{if(!auto)return;const id=window.setInterval(()=>generate(true),8000);return()=>window.clearInterval(id);},[auto,generate]);
 
-  const loadBase=(file:File)=>{const url=URL.createObjectURL(file),img=new Image();img.onload=()=>{setBase(img,file.name);setMosaic(true);setOverlay(.62);URL.revokeObjectURL(url);generate();toast.success("Image dissected into Motif Maestro");};img.onerror=()=>toast.error("Couldn't read that image");img.src=url;};
-  const exportMotif=async(repeat=false)=>{const src=useStore.getState().glCanvas;if(!src)return;setBusy(true);try{const tile=buildMotifTile(src,2048,direction,symmetry),out=repeat?buildRepeatProof(tile,3):tile;const blob=await new Promise<Blob>((res,rej)=>out.toBlob(b=>b?res(b):rej(new Error("encode")),"image/png"));downloadBlob(blob,`motif-maestro-${forge.seed.toString(16)}-${repeat?"repeat":"tile"}.png`);setCritique(critiqueMotif(tile));toast.success(repeat?"3×3 repeat proof saved":"Seamless motif tile saved");}catch{toast.error("Motif export failed");}finally{setBusy(false);}};
+  const loadBase=(file:File)=>{const issue=validateImageUpload(file);if(issue){toast.error(issue);return;}const url=URL.createObjectURL(file),img=new Image();img.onload=()=>{const dimensions=validateDecodedDimensions(img.naturalWidth,img.naturalHeight);if(dimensions){URL.revokeObjectURL(url);toast.error(dimensions);return;}setBase(img,file.name);setMosaic(true);setOverlay(.62);URL.revokeObjectURL(url);generate();toast.success("Image dissected into Motif Maestro");};img.onerror=()=>{URL.revokeObjectURL(url);toast.error("Couldn't read that image");};img.src=url;};
+  const exportMotif=async(repeat=false)=>{const src=useStore.getState().glCanvas;if(!src)return;setBusy(true);notifyExportStarted("motif-tile");try{const tile=buildMotifTile(src,2048,direction,symmetry),out=repeat?buildRepeatProof(tile,3):tile;const encoded=await new Promise<Blob>((res,rej)=>out.toBlob(b=>b?res(b):rej(new Error("encode")),"image/png"));const dpi=useStore.getState().exportSettings.printDpi;const blob=await blobWithDpi(encoded,dpi);downloadBlob(blob,`motif-maestro-${forge.seed.toString(16)}-${repeat?"repeat":"tile"}_${dpi}dpi.png`);setCritique(critiqueMotif(tile));toast.success(repeat?"3×3 repeat proof saved":"Seamless motif tile saved");}catch{toast.error("Motif export failed");}finally{setBusy(false);}};
 
   return <div className={`motif-maestro ${embedded ? "motif-maestro--embedded" : ""}`} aria-label="Motif Maestro workspace">
     <aside className="motif-maestro__rail">

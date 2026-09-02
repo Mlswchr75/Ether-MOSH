@@ -36,6 +36,8 @@ const GuideGlitchTikTok = lazy(() => import("./pages/GuideGlitchTikTok.tsx"));
 const Faq = lazy(() => import("./pages/Faq.tsx"));
 const VsAvsyncLive = lazy(() => import("./pages/VsAvsyncLive.tsx"));
 const PatternForge = lazy(() => import("./pages/PatternForge.tsx"));
+const NewsIndex = lazy(() => import("./pages/NewsIndex.tsx"));
+const NewsArticle = lazy(() => import("./pages/NewsArticle.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 
 const queryClient = new QueryClient();
@@ -80,6 +82,8 @@ const App = () => (
             <Route path="/faq" element={<Faq />} />
             <Route path="/vs/avsync-live" element={<VsAvsyncLive />} />
             <Route path="/pattern-forge" element={<PatternForge />} />
+            <Route path="/news" element={<NewsIndex />} />
+            <Route path="/news/:slug" element={<NewsArticle />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>

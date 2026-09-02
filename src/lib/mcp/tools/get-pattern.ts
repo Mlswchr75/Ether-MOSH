@@ -1,6 +1,7 @@
 import { defineTool, type ToolContext } from "@lovable.dev/mcp-js";
 import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
+import { safeMcpError } from "../security";
 
 function supabaseForUser(ctx: ToolContext) {
   return createClient(
@@ -28,10 +29,10 @@ export default defineTool({
     }
     const { data, error } = await supabaseForUser(ctx)
       .from("pattern_forge_uploads")
-      .select("id, filename, uploaded_at, status, analysis, outputs_count, storage_path")
+      .select("id, filename, uploaded_at, status, analysis, outputs_count")
       .eq("id", id)
       .maybeSingle();
-    if (error) return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
+    if (error) return safeMcpError("get-pattern", error);
     if (!data) return { content: [{ type: "text", text: "Not found" }], isError: true };
     return {
       content: [{ type: "text", text: JSON.stringify(data, null, 2) }],

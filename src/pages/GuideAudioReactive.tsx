@@ -130,7 +130,7 @@ const GuideAudioReactive = () => (
             This is what makes the visuals react to sound.
           </li>
           <li>
-            <strong>Pick your effects</strong> — stack a few of the 107 GPU effects (try datamosh,
+            <strong>Pick your effects</strong> — stack a few of the 108 GPU effects (try datamosh,
             RGB shift, liquid warp, and a color effect). Each layer reacts to the audio.
           </li>
           <li>

@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { liveVisualKeywords, liveVisualOfferings, liveVisualSocials } from "@/content/liveVisuals";
 import { AmbientGlitch } from "./AmbientGlitch";
 
-const slideNames = ["Signal", "About", "Offerings", "Dyles", "Skills", "Contact"] as const;
+const slideNames = ["Signal", "About", "Offerings", "Dyles", "Skills", "Contact", "News"] as const;
 
 type HomeInfoCarouselProps = {
   onReturnToInstrument: () => void;
@@ -123,7 +123,7 @@ export const HomeInfoCarousel = ({ onReturnToInstrument }: HomeInfoCarouselProps
 
         {active === 1 && <div className="home-info-editorial">
           <div><p className="home-info-kicker">About the instrument</p><h2>Ether-MOSH makes<br/><span>sound visible.</span></h2></div>
-          <div className="home-info-prose"><strong>Ether-MOSH is an audiovisual performance instrument for the exact moment a track stops being something you hear and becomes somewhere you are.</strong><p>It turns audio, images, video, cameras, patterns, and live decisions into responsive motion. Every frame can react. Every performance can mutate. The machine brings speed; a human still decides what matters.</p><Link to="/edit">Open the instrument <ArrowUpRight/></Link></div>
+          <div className="home-info-prose"><strong>Ether-MOSH is an audiovisual performance instrument for the exact moment a track stops being something you hear and becomes somewhere you are.</strong><p>It turns audio, images, video, cameras, patterns, and live decisions into responsive motion. Every frame can react. Every performance can mutate. The machine brings speed; a human still decides what matters.</p><div className="home-info-link-row"><Link to="/edit">Open the instrument <ArrowUpRight/></Link><Link to="/effects">Explore all 108 effects <ArrowUpRight/></Link></div></div>
         </div>}
 
         {active === 2 && <div className="home-info-offerings">
@@ -137,7 +137,7 @@ export const HomeInfoCarousel = ({ onReturnToInstrument }: HomeInfoCarouselProps
         </div>}
 
         {active === 4 && <div className="home-info-skills">
-          <div><p className="home-info-kicker">Skills / areas of interest</p><h2>Signal,<br/><span>noise & nerve.</span></h2></div>
+          <div><p className="home-info-kicker">Skills / areas of interest</p><h2>Disturb<br/><span>the force.</span></h2></div>
           <div className="home-info-keywords">{liveVisualKeywords.map((keyword, index) => <span key={keyword}><i>{String(index + 1).padStart(2, "0")}</i>{keyword}</span>)}</div>
         </div>}
 
@@ -147,6 +147,11 @@ export const HomeInfoCarousel = ({ onReturnToInstrument }: HomeInfoCarouselProps
           <p>If you are an artist, label, creative director, venue, streamer, festival, brand, or person with a wall that should be doing more—tell me what you are making.</p>
           <a className="home-info-email" href="mailto:dyles@aestheticrebellion.store?subject=Ether-MOSH%20visuals%20inquiry">dyles@aestheticrebellion.store <ArrowUpRight/></a>
           <div className="home-info-socials">{liveVisualSocials.slice(0, 5).map(([name, href]) => <a key={name} href={href} target="_blank" rel="noreferrer">{name}</a>)}</div>
+        </div>}
+
+        {active === 6 && <div className="home-info-editorial home-info-editorial--news">
+          <div><p className="home-info-kicker">News + updates / effect school</p><h2>Bad signal.<br/><span>Good information.</span></h2></div>
+          <div className="home-info-prose"><strong>Real effect history, practical recipes, fake scandals, downloadable field cards, and exactly enough adult language to keep the documentation awake.</strong><p>Start with Pixel Sort, Halftone, and Moire—three sourced guides covering how each effect works, where it came from, how to find it in MOSH, and how to drag it out into print, patterns, projection, animation, education, and installations.</p><div className="home-info-link-row"><Link to="/news">Read News + Updates <ArrowUpRight/></Link><Link to="/effects">Browse the Effect Registry <ArrowUpRight/></Link></div></div>
         </div>}
       </div>
 
