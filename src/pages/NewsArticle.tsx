@@ -3,7 +3,7 @@ import { Helmet } from "react-helmet-async";
 import { Link, Navigate, useParams } from "react-router-dom";
 import { NewsFooter, NewsHeader } from "@/components/news/NewsChrome";
 import { EFFECTS_BY_ID } from "@/engine/effects";
-import { latestNewsArticles, NEWS_ARTICLES, NEWS_ARTICLES_BY_SLUG, newsArticlePath } from "@/content/news";
+import { latestNewsArticles, NEWS_ARTICLES, NEWS_ARTICLES_BY_SLUG, NEWS_LOOK_EXAMPLES_BY_SLUG, newsArticlePath } from "@/content/news";
 import "./news.css";
 
 const formatArticleDate = (publishedAt: string) => new Intl.DateTimeFormat("en-US", {
@@ -24,6 +24,7 @@ export default function NewsArticle() {
     return relatedEffect ? [relatedEffect] : [];
   });
   const next = latestNewsArticles[(latestNewsArticles.indexOf(article) + 1) % latestNewsArticles.length];
+  const lookExamples = NEWS_LOOK_EXAMPLES_BY_SLUG[article.slug];
   const jsonLd = [
     { "@context": "https://schema.org", "@type": "BlogPosting", headline: article.title, description: article.description, image: `https://ether-mosh.online${article.image}`, datePublished: article.publishedAt, dateModified: article.publishedAt, mainEntityOfPage: canonical, author: { "@type": "Organization", name: "Ether-MOSH" }, publisher: { "@type": "Organization", name: "Aesthetic Rebellion", url: "https://aestheticrebellion.store" }, keywords: article.keywords.join(", ") },
     { "@context": "https://schema.org", "@type": "FAQPage", mainEntity: article.faqs.map(f => ({ "@type": "Question", name: f.question, acceptedAnswer: { "@type": "Answer", text: f.answer } })) },
@@ -44,6 +45,7 @@ export default function NewsArticle() {
       <section className="news-answer"><span>Quick answer</span><p>{article.tldr}</p></section>
       <aside className="news-disclosure" aria-label="Satire disclosure"><strong>Satire disclosure</strong><p>{article.satireDisclosure}</p></aside>
       <section className="news-copy"><p className="news-dropcap">{article.dispatch[0]}</p><p>{article.dispatch[1]}</p><h2>What {article.subjectKind === "effect" ? `the ${article.effectName} effect` : article.effectName} actually does</h2>{article.explanation.map(p => <p key={p}>{p}</p>)}</section>
+      <section className="news-look-examples"><p className="news-kicker">Picture the result</p><h2>What it actually looks like</h2><div>{lookExamples.map((example, index) => <article key={example.scene}><span>Example {String(index + 1).padStart(2, "0")}</span><h3>{example.scene}</h3><dl><div><dt>Dial it in</dt><dd>{example.settings}</dd></div><div><dt>On screen</dt><dd>{example.result}</dd></div></dl></article>)}</div></section>
       <blockquote><p>“{article.quote}”</p><cite>— {article.quoteAttribution}</cite></blockquote>
       <section className="news-howto"><p className="news-kicker">Field procedure</p><h2>Make it in Ether-MOSH</h2><ol>{article.steps.map((step, i) => <li key={step}><span>{String(i + 1).padStart(2, "0")}</span><p>{step}</p></li>)}</ol><Link to="/edit" className="news-button">Open the instrument <ArrowUpRight/></Link></section>
       <section className="news-parameters"><p className="news-kicker">Control desk</p><h2>Settings that matter</h2><div className="news-table"><div><b>Control</b><b>Purpose</b><b>Low</b><b>High</b><b>Useful start</b></div>{article.parameters.map(row => <div key={row.control}><strong>{row.control}</strong><span>{row.purpose}</span><span>{row.low}</span><span>{row.high}</span><em>{row.sweetSpot}</em></div>)}</div></section>

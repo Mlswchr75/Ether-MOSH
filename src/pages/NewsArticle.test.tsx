@@ -2,7 +2,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { HelmetProvider } from "react-helmet-async";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
-import { NEWS_ARTICLES } from "@/content/news";
+import { NEWS_ARTICLES, NEWS_LOOK_EXAMPLES_BY_SLUG } from "@/content/news";
 import NewsArticle from "./NewsArticle";
 
 afterEach(cleanup);
@@ -50,6 +50,28 @@ describe("NewsArticle", () => {
       .toHaveLength(3);
     expect(NEWS_ARTICLES.filter(article => article.subjectKind === "mode").map(article => article.effectName))
       .toEqual(["Forge Mode", "Pattern / Motif Mode"]);
+  });
+
+  it("gives every existing report two concrete visual-result examples", () => {
+    expect(Object.keys(NEWS_LOOK_EXAMPLES_BY_SLUG)).toHaveLength(NEWS_ARTICLES.length);
+    for (const article of NEWS_ARTICLES) {
+      const examples = NEWS_LOOK_EXAMPLES_BY_SLUG[article.slug];
+      expect(examples, article.slug).toHaveLength(2);
+      for (const example of examples) {
+        expect(example.scene.length).toBeGreaterThan(4);
+        expect(example.settings.length).toBeGreaterThan(8);
+        expect(example.result.length).toBeGreaterThan(40);
+      }
+    }
+  });
+
+  it("renders the two examples inside each article without adding another route", () => {
+    const { container } = renderArticle("break-the-keyframes-before-lunch");
+
+    expect(screen.getByRole("heading", { name: "What it actually looks like" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Dancer crossing frame" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Fast camera pan" })).toBeTruthy();
+    expect(container.querySelectorAll(".news-look-examples article")).toHaveLength(2);
   });
 
   it("keeps the three new reports answer-first and release-complete", () => {

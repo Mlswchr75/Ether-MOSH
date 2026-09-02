@@ -29,6 +29,12 @@ export type NewsArticle = {
   faqs: { question: string; answer: string }[];
 };
 
+export type NewsLookExample = {
+  scene: string;
+  settings: string;
+  result: string;
+};
+
 export const NEWS_ARTICLES: NewsArticle[] = [
   {
     slug: "sort-your-pixels-before-they-sort-you",
@@ -752,3 +758,50 @@ export const NEWS_ARTICLES: NewsArticle[] = [
 export const NEWS_ARTICLES_BY_SLUG = new Map(NEWS_ARTICLES.map((article) => [article.slug, article]));
 export const latestNewsArticles = [...NEWS_ARTICLES].sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt));
 export const newsArticlePath = (article: NewsArticle) => `/news/${article.slug}`;
+
+export const NEWS_LOOK_EXAMPLES_BY_SLUG: Record<string, [NewsLookExample, NewsLookExample]> = {
+  "sort-your-pixels-before-they-sort-you": [
+    { scene: "High-contrast portrait", settings: "Amount 0.30 · Threshold 0.62", result: "Bright skin, hair, and catchlights pull into thin horizontal rails while the dark jawline and background remain recognizable." },
+    { scene: "Night skyline", settings: "Amount 0.58 · Threshold 0.38", result: "Windows and streetlights stretch into long luminous bands; the darker buildings stay behind as hard anchors." },
+  ],
+  "halftone-is-not-a-phase-mom": [
+    { scene: "Soft-lit face", settings: "Amount 0.45 · Dot Size 0.22", result: "Midtones become a fine printed screen. Eyes, mouth, and the edge of the nose still read from thumbnail distance." },
+    { scene: "Bold poster artwork", settings: "Amount 0.80 · Dot Size 0.65", result: "Gradients turn into oversized circles and flat color fields; the dots become the composition instead of surface texture." },
+  ],
+  "make-moire-before-moire-makes-you-sick": [
+    { scene: "Simple silhouette", settings: "Amount 0.22 · Pitch 0.30", result: "Wide interference bands drift across the subject like a slow topographic wave, with plenty of the source left visible." },
+    { scene: "Geometric artwork", settings: "Amount 0.62 · Pitch 0.72", result: "Two dense grids beat against each other, producing tight moving ripples that look much larger than either source grid." },
+  ],
+  "break-the-keyframes-before-lunch": [
+    { scene: "Dancer crossing frame", settings: "Amount 0.35 · Block Size 0.020", result: "Hands and shoulders leave small rectangular echoes while the still background remains mostly locked in place." },
+    { scene: "Fast camera pan", settings: "Amount 0.68 · Block Size 0.040", result: "The frame breaks into broad slabs that drag old color and shape into the new view, like motion borrowing the wrong image." },
+  ],
+  "your-fake-crt-looks-cheap": [
+    { scene: "Portrait or interview", settings: "Curvature 0.22 · Mask 0.35 · Bloom 0.18", result: "The picture bows gently at the corners, fine RGB texture sits on the surface, and highlights glow without swallowing facial detail." },
+    { scene: "Logo or neon title", settings: "Curvature 0.48 · Mask 0.65 · Bloom 0.42", result: "Edges bend into obvious tube geometry, the phosphor grille becomes visible, and bright lettering spills a soft colored halo." },
+  ],
+  "forge-mode-already-started-the-fight": [
+    { scene: "Held procedural composition", settings: "Intensity 0.42 · Hold a strong seed", result: "Sparse geometric forms keep clear negative space and repeatable structure—useful for a print still or a restrained loop." },
+    { scene: "Audio-reactive performance", settings: "Intensity 0.72 · Evolution active", result: "Denser generated forms, color fields, and effect stacks trade places on the beat, creating a full moving visual without source footage." },
+  ],
+  "stop-gaslighting-the-seam": [
+    { scene: "Single bold motif", settings: "Mirror symmetry · Low density", result: "The subject reflects cleanly across each tile edge, producing a calm repeat with obvious breathing room and no hard seam." },
+    { scene: "Textured camera still", settings: "Kaleidoscope symmetry · High density", result: "Small fragments rotate into a crowded radial fabric-like field; the 3×3 proof reveals the larger repeat rhythm." },
+  ],
+  "turn-the-kaleidoscope-effect-until-it-confesses": [
+    { scene: "Off-center portrait", settings: "6 Segments · Spin 0.15", result: "Eyes, cheekbones, and clothing repeat as six mirrored petals; the face remains recognizable but becomes a rotating radial emblem." },
+    { scene: "Architectural detail", settings: "12 Segments · Spin 0.05", result: "Windows and hard edges multiply into dense lace-like symmetry with a slow, almost mechanical turn." },
+  ],
+  "posterize-the-image-before-the-gradient-files-a-complaint": [
+    { scene: "Hard-lit portrait", settings: "5 Levels · Bias 0.50", result: "Smooth cheek and forehead gradients snap into flat color zones, with crisp borders around the eyes, nose, and hair." },
+    { scene: "Landscape at dusk", settings: "3 Levels · Bias 0.35", result: "Clouds and hills collapse into bold shadow shapes while the sky becomes a small stack of graphic color bands." },
+  ],
+  "make-the-duotone-effect-pick-a-side": [
+    { scene: "Black-and-white portrait", settings: "Mix 0.80 · Hue 0.85", result: "Shadows take the selected deep hue and highlights swing toward its opposite, preserving the face as a sharp two-color luminance map." },
+    { scene: "Concrete architecture", settings: "Mix 0.45 · Hue 0.55", result: "Original color remains underneath a restrained cool-versus-warm split, so windows and structural shadows gain graphic separation." },
+  ],
+  "make-ascii-collapse-admit-it-is-not-actually-text": [
+    { scene: "High-contrast face", settings: "Amount 0.70 · Cell 12", result: "The face resolves through square samples and bar-like marks; dark eye cells and bright forehead cells preserve recognition without real letters." },
+    { scene: "Full-body silhouette", settings: "Amount 1.00 · Cell 28", result: "Large glyph-like blocks replace fine detail, turning the figure into a coarse terminal-flavored mosaic that reads best from a distance." },
+  ],
+};
