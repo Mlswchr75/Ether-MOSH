@@ -91,6 +91,23 @@ vec3 blendHardLight(vec3 b, vec3 t) {
   return mix(2.0 * b * t, 1.0 - 2.0 * (1.0 - b) * (1.0 - t), step(0.5, t));
 }
 
+/* Every texture read here is sRGB-encoded 8-bit. Blending (and the final
+   alpha-over) directly on those values is the classic wrong-space compositing
+   bug — screen/additive read darker than they should, and 50% mixes look
+   murky instead of a clean halfway point. Converting to linear light for the
+   math and back to sRGB for the framebuffer write fixes both without
+   changing any UI-facing opacity/mode semantics. */
+vec3 srgbToLinear(vec3 c) {
+  vec3 lo = c / 12.92;
+  vec3 hi = pow((c + 0.055) / 1.055, vec3(2.4));
+  return mix(lo, hi, step(0.04045, c));
+}
+vec3 linearToSrgb(vec3 c) {
+  vec3 lo = c * 12.92;
+  vec3 hi = 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055;
+  return mix(lo, hi, step(0.0031308, c));
+}
+
 float hash21(vec2 p){
   p = fract(p * vec2(123.34, 456.21));
   p += dot(p, p + 45.32);
@@ -146,8 +163,8 @@ float regionMask(vec2 uv){
 void main() {
   vec4 prev = texture2D(uPrev, vUv);
   vec4 cur  = texture2D(uCur,  vUv);
-  vec3 b = prev.rgb;
-  vec3 t = cur.rgb;
+  vec3 b = srgbToLinear(prev.rgb);
+  vec3 t = srgbToLinear(cur.rgb);
   vec3 outRgb;
   if (uMode == 0)      outRgb = t;
   else if (uMode == 1) outRgb = 1.0 - (1.0 - b) * (1.0 - t);
@@ -158,7 +175,7 @@ void main() {
   else                 outRgb = b + t;
   float a = uOpacity * cur.a * regionMask(vUv);
   outRgb = mix(b, outRgb, a);
-  gl_FragColor = vec4(outRgb, max(prev.a, a));
+  gl_FragColor = vec4(linearToSrgb(outRgb), max(prev.a, a));
 }
 `;
 

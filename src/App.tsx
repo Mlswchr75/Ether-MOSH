@@ -33,6 +33,8 @@ const GuideMakeMusicVideo = lazy(() => import("./pages/GuideMakeMusicVideo.tsx")
 const GuideDatamoshVideo = lazy(() => import("./pages/GuideDatamoshVideo.tsx"));
 const GuideFreeVJSoftware = lazy(() => import("./pages/GuideFreeVJSoftware.tsx"));
 const GuideGlitchTikTok = lazy(() => import("./pages/GuideGlitchTikTok.tsx"));
+const NewsIndex = lazy(() => import("./pages/NewsIndex.tsx"));
+const NewsArticle = lazy(() => import("./pages/NewsArticle.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 
 const queryClient = new QueryClient();
@@ -74,6 +76,8 @@ const App = () => (
             <Route path="/guides/how-to-datamosh-a-video" element={<GuideDatamoshVideo />} />
             <Route path="/guides/free-vj-software-browser" element={<GuideFreeVJSoftware />} />
             <Route path="/guides/glitch-effect-video-tiktok" element={<GuideGlitchTikTok />} />
+            <Route path="/news" element={<NewsIndex />} />
+            <Route path="/news/:slug" element={<NewsArticle />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>

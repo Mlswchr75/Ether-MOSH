@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { EmbeddedCheckoutProvider, EmbeddedCheckout } from "@stripe/react-stripe-js";
 import type { Stripe } from "@stripe/stripe-js";
 import { getStripe, getStripeEnvironment } from "@/lib/stripe";
@@ -6,14 +6,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { createSupportReference } from "@/lib/supportReference";
 
 interface StripeEmbeddedCheckoutProps {
-  priceId: string;
-  quantity?: number;
+  productAlias: string;
   returnUrl?: string;
 }
 
 export function StripeEmbeddedCheckout({
-  priceId,
-  quantity,
+  productAlias,
   returnUrl,
 }: StripeEmbeddedCheckoutProps) {
   // getStripe() resolves to `null` — not a rejection — when Stripe.js itself
@@ -22,6 +20,7 @@ export function StripeEmbeddedCheckout({
   // and the user sees nothing with no explanation of why.
   const [stripe, setStripe] = useState<Stripe | null | "loading">("loading");
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [checkoutAttemptId] = useState(() => crypto.randomUUID());
 
   useEffect(() => {
     let active = true;
@@ -38,8 +37,12 @@ export function StripeEmbeddedCheckout({
     try {
       const { data, error } = await supabase.functions.invoke("create-checkout", {
         body: {
-          priceId,
-          quantity,
+          productAlias,
+          // Keep the legacy field during the Edge Function rollout so the
+          // newly deployed client remains compatible with the previous version.
+          priceId: productAlias,
+          quantity: 1,
+          checkoutAttemptId,
           returnUrl: returnUrl || `${window.location.origin}/pricing?checkout=success`,
           environment: getStripeEnvironment(),
         },
@@ -57,7 +60,15 @@ export function StripeEmbeddedCheckout({
       setCheckoutError(message);
       throw error;
     }
-  }, [priceId, quantity, returnUrl]);
+  }, [checkoutAttemptId, productAlias, returnUrl]);
+
+  // Stripe treats an Embedded Checkout instance as single-use. Keeping both
+  // the options object and provider identity stable avoids creating a second
+  // instance during harmless React re-renders.
+  const checkoutOptions = useMemo(
+    () => ({ fetchClientSecret }),
+    [fetchClientSecret],
+  );
 
   if (checkoutError) {
     return (
@@ -89,7 +100,11 @@ export function StripeEmbeddedCheckout({
 
   return (
     <div id="checkout">
-      <EmbeddedCheckoutProvider stripe={stripe} options={{ fetchClientSecret }}>
+      <EmbeddedCheckoutProvider
+        key={checkoutAttemptId}
+        stripe={stripe}
+        options={checkoutOptions}
+      >
         <EmbeddedCheckout />
       </EmbeddedCheckoutProvider>
     </div>

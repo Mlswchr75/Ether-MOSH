@@ -9,12 +9,14 @@ import type { Layer } from "@/store/types";
  *  enough that it's a soft cut instead of a hard one. Journey's own
  *  autonomous compositions use a fuller, more deliberate fade (see
  *  journeyDirector.ts's own pacing) — DIRECTED_FADE_MS below. */
-export const MOSH_FADE_MS = 320;
+export const MOSH_FADE_MS = 680;
 /** Journey composition changes — its own dedicated, slower pacing. */
-export const DIRECTED_FADE_MS = 760;
+export const DIRECTED_FADE_MS = 920;
 /** Single Journey swaps are shorter than a new composition, but still meld
  * through the frame instead of popping a replacement layer in all at once. */
 export const JOURNEY_DISRUPT_FADE_MS = 420;
+export const CROSSFADE_INCOMING_FLOOR = 0.25;
+export const CROSSFADE_OUTGOING_START = 0.75;
 
 /**
  * How the outgoing/incoming layer stacks bleed into one another. Two modes
@@ -223,8 +225,17 @@ export function crossfadeLayers(commit: () => void, durationMs: number) {
     const t = Math.min(1, (performance.now() - start) / durationMs);
     const eased = t * t * (3 - 2 * t); // smoothstep
 
-    const fadingOut = before.map((l, index) => ({ ...l, region: regionAt(recipe, eased, false, index) }));
-    const fadingIn = incoming.map((l, index) => ({ ...l, region: regionAt(recipe, eased, true, index) }));
+    const outgoingEnvelope = CROSSFADE_OUTGOING_START * (1 - eased);
+    const incomingEnvelope = CROSSFADE_INCOMING_FLOOR + (1 - CROSSFADE_INCOMING_FLOOR) * eased;
+    const reveal = CROSSFADE_INCOMING_FLOOR + eased * CROSSFADE_OUTGOING_START;
+    const fadingOut = before.map((l, index) => ({
+      ...l, opacity: l.opacity * outgoingEnvelope,
+      region: regionAt(recipe, reveal, false, index),
+    }));
+    const fadingIn = incoming.map((l, index) => ({
+      ...l, opacity: l.opacity * incomingEnvelope,
+      region: regionAt(recipe, reveal, true, index),
+    }));
     // Parabola peaking at the transition's midpoint, gone at both ends.
     const boundaryOpacity = 4 * eased * (1 - eased) * boundaryPeak;
     const boundaryNow: Layer = {

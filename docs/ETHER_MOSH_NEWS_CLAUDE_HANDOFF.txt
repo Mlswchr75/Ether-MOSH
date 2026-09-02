@@ -1,0 +1,31 @@
+ETHER-MOSH NEWS + UPDATES — CLAUDE HANDOFF
+Created collaboratively by Dyles Mavis and Codex on August 31, 2026.
+
+WHAT EXISTS
+- /news index and /news/:slug article routes.
+- Three launch stories: Pixel Sort, Halftone, and Moire.
+- The live registry contained 108 public effects at implementation time; always recount it instead of hard-coding an old total.
+- Original editorial art, downloads, RSS, sitemap entries, static per-route metadata, BlogPosting/FAQPage/HowTo structured data, and visible direct-answer sections.
+- A News + Updates link on the main title/landing screen, in the global footer, and as a complete News chapter in the upward-scrolling information carousel.
+- A daily local Codex publishing automation is intended to continue the series.
+
+SOURCE MAP
+- src/content/news.ts — typed article content and metadata.
+- src/pages/NewsIndex.tsx and NewsArticle.tsx — public routes.
+- src/pages/news.css — editorial design system.
+- public/news/ — images, RSS, and downloads.
+- scripts/generate-news-static-pages.ts — crawlable metadata entry points made after Vite builds.
+- docs/NEWS_EDITORIAL_PLAYBOOK.md — non-negotiable publishing and discoverability gate.
+- docs/design/news/ — accepted visual concepts and QA evidence.
+
+NON-NEGOTIABLES
+1. Education first, satire second. Fake plots and characters must be clearly disclosed; technical claims and history must be sourced.
+2. Every post covers one actual current effect with exact current controls, an answer box, a tutorial, a parameter table, real-world uses, a download, visible FAQs, structured data, canonical metadata, RSS/sitemap entries, internal links, and original accessible art.
+3. Constantly improve SEO and AEO without keyword stuffing. Discoverability is the purpose, but usefulness earns it.
+4. Include one currently live aestheticrebellion.store listing as deliberately obvious, funny, sarcastic product placement. Verify the page before publishing.
+5. Preserve the crude adult editorial voice without slurs, harassment, unsafe claims, invented sources, or promises that content will go viral.
+6. Test source accuracy, production behavior, desktop, mobile, direct URLs, downloads, and build output before publishing.
+7. Preserve unrelated work and never overwrite another agent's or Dyles's uncommitted changes.
+
+NEXT MOVE
+Continue with one not-yet-featured effect from the live registry. Read the playbook first, audit prior slugs/effect IDs, research authoritative sources, create original 16:9 editorial art, then update every discovery surface and publish only after verification.

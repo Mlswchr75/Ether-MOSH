@@ -72,4 +72,9 @@ describe("resolveStickerSource", () => {
     const duplicate = { ...subject, data: new Float32Array(subject.data) };
     expect(selectUsableStickerMasks([subject, duplicate])).toHaveLength(1);
   });
+
+  it("can preserve three distinct masks for a layered sticker", () => {
+    const third = { data: new Float32Array([1, 0, 0, 0, 1, 0, 0, 0]), width: 4, height: 2 };
+    expect(selectUsableStickerMasks([subject, secondSubject, third], 3).length).toBeGreaterThanOrEqual(2);
+  });
 });

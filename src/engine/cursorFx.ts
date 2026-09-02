@@ -11,7 +11,7 @@
  */
 import type { RenderLayer } from "./Renderer";
 
-type PointKind = "ambient" | "hover" | "burst" | "chaos";
+type PointKind = "ambient" | "hover" | "preview" | "burst" | "chaos";
 
 type ActivePoint = {
   kind: PointKind;
@@ -36,6 +36,7 @@ const AMBIENT_RELEASE_MS = 180;
 const AMBIENT_EASE = 0.35;
 /** One-shot tap burst — covers both a plain click/tap and a hot-trigger tap. */
 const BURST_LIFE_MS = 420;
+const PREVIEW_LIFE_MS = 190;
 /** Hold-to-branch burst — longer and louder, its own "digital chaos" register. */
 const CHAOS_LIFE_MS = 640;
 
@@ -108,6 +109,16 @@ class CursorFxManager {
     });
   }
 
+  /** Quiet radial-menu acknowledgement: visible enough to confirm hover,
+   * deliberately far below a real tap burst so preview never edits the look. */
+  preview(x: number, y: number) {
+    const t = performance.now();
+    this.points.set(`preview-${t}`, {
+      kind: "preview", x, y, targetX: x, targetY: y,
+      bornAt: t, releasedAt: t, peakAmount: 0.24, radius: 0.065,
+    });
+  }
+
   /** Hold-to-branch fired — its own louder, blockier "digital chaos" burst. */
   chaos(x: number, y: number) {
     const t = performance.now();
@@ -148,7 +159,7 @@ class CursorFxManager {
       // sin(t*pi) curve was tried here first and is wrong for this: it's
       // zero at t=0, so the burst would be invisible for its first ~40% of
       // life before ever reaching peakAmount.
-      const life = p.kind === "burst" ? BURST_LIFE_MS : CHAOS_LIFE_MS;
+      const life = p.kind === "preview" ? PREVIEW_LIFE_MS : p.kind === "burst" ? BURST_LIFE_MS : CHAOS_LIFE_MS;
       const t = (nowMs - p.bornAt) / life;
       if (t >= 1) { this.points.delete(key); continue; }
       const attack = 0.08;
@@ -156,7 +167,7 @@ class CursorFxManager {
         ? p.peakAmount * (t / attack)
         : p.peakAmount * Math.pow(1 - (t - attack) / (1 - attack), 1.4);
       if (amount <= 0.003) continue;
-      out.push(cursorFxLayer(key, p.x, p.y, amount, p.radius, p.kind === "chaos" ? 1 : 0.45));
+      out.push(cursorFxLayer(key, p.x, p.y, amount, p.radius, p.kind === "chaos" ? 1 : p.kind === "preview" ? 0.14 : 0.45));
     }
     return out;
   }

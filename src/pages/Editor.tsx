@@ -135,6 +135,7 @@ export default function Editor() {
   const trackEnabled = useStore(s => s.trackEnabled);
   const isPerformanceMode = useStore(s => s.isPerformanceMode);
   const setPerformanceMode = useStore(s => s.setPerformanceMode);
+  const desktopPortraitMode = useStore(s => s.desktopPortraitMode);
   const proModeEnabled = useStore(s => s.proModeEnabled);
   const helpModeEnabled = useStore(s => s.helpModeEnabled);
   const [helpCaption, setHelpCaption] = useState<{ text: string; x: number; y: number } | null>(null);
@@ -220,7 +221,6 @@ export default function Editor() {
   const [onboardingActive, setOnboardingActive] = useState(false);
   const [showMicHint, setShowMicHint] = useState(false);
   const [showMicNudge, setShowMicNudge] = useState(false);
-  const micNudgeShownRef = useRef(false);
   const [showTrackNudge, setShowTrackNudge] = useState(false);
   const trackNudgeShownRef = useRef(false);
   const [showPerfHint, setShowPerfHint] = useState(false);
@@ -655,16 +655,22 @@ export default function Editor() {
     return () => window.clearTimeout(id);
   }, [hasSource]);
 
-  // First real content this session, in whichever mode got there first
-  // (upload, camera, or forge) — nudge toward the mic once, if nothing's
-  // already listening. Session-scoped (a ref, not localStorage) so it can
-  // nudge again next visit, per-session rather than per-browser-forever.
+  // Nudge toward turning on real audio reactivity (mic or device-audio
+  // routing) — persistently, not once. A visitor who dismisses this the
+  // first time (or just misses it) is otherwise never reminded again for
+  // the rest of the session, and "react to sound" is easy to not notice is
+  // even possible until it's pointed out more than once. Keeps re-showing
+  // on an interval for as long as neither source is on; stops for good the
+  // moment one actually is (the effect re-runs on that dependency change
+  // and returns early, clearing whatever nudge timer was in flight).
   useEffect(() => {
-    if (!hasSource) return;
-    if (micNudgeShownRef.current) return;
-    if (micEnabled || systemAudioEnabled) return;
-    micNudgeShownRef.current = true;
-    setShowMicNudge(true);
+    if (!hasSource || micEnabled || systemAudioEnabled) return;
+    const NUDGE_INTERVAL_MS = 3 * 60 * 1000;
+    let timer = window.setTimeout(function fire() {
+      setShowMicNudge(true);
+      timer = window.setTimeout(fire, NUDGE_INTERVAL_MS);
+    }, 20_000);
+    return () => window.clearTimeout(timer);
   }, [hasSource, micEnabled, systemAudioEnabled]);
 
   // If someone has been looking at an active visual for a full minute with
@@ -1214,10 +1220,16 @@ export default function Editor() {
       // Sticker/Lottie controls contain checkboxes and selects. Space must
       // remain the universal MOSH action even immediately after one of those
       // controls was focused.
+      //
+      // Shift+Space is repurposed here specifically: rather than undo (its
+      // meaning everywhere else), it asks StickerCapture to throw away the
+      // sticker's current crop lock and propose a fresh framing/border/
+      // structural shape — repeatable indefinitely, since the point is
+      // shopping through candidates before committing to a capture.
       if (e.code === "Space" && useStore.getState().stickerMode) {
         e.preventDefault();
         if (e.repeat) return;
-        if (e.shiftKey) undo();
+        if (e.shiftKey) window.dispatchEvent(new CustomEvent("mosh:reroll-sticker-shape"));
         else crossfadeLayers(mosh, MOSH_FADE_MS);
         return;
       }
@@ -1619,10 +1631,10 @@ export default function Editor() {
           try { (navigator as any).vibrate?.(10); } catch {}
           const state = useStore.getState();
           if (dx < 0) {
-            if (state.future.length) state.redo();
+            if (state.future.length) crossfadeLayers(() => useStore.getState().redo(), MOSH_FADE_MS);
             else crossfadeLayers(() => useStore.getState().mosh(), MOSH_FADE_MS);
           } else if (state.past.length) {
-            state.undo();
+            crossfadeLayers(() => useStore.getState().undo(), MOSH_FADE_MS);
           }
         } else if (count === 2 && elapsed <= 420 && maxTravel <= 20) {
           try { (navigator as any).vibrate?.(10); } catch {}
@@ -1648,28 +1660,27 @@ export default function Editor() {
     };
   }, [toggleSmartFreeze]);
 
-  // Pro Mode, desktop: holding bare Shift (no other key, no modifiers)
-  // shows the menu instantly; releasing it hides it instantly. A true hold,
+  // Desktop: holding bare Shift summons the centered Hot Trigger wheel
+  // instantly; releasing dismisses it. In Pro Mode the chrome follows too. A true hold,
   // not a toggle-with-timer, so it's as fast to flash and dismiss as
   // physically possible. Forces the UI back to hidden on blur/visibility
   // change too, so alt-tabbing away mid-hold can never strand it open.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (!useStore.getState().proModeEnabled) return;
       if (e.key !== "Shift" || e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
-      setHideUI(false);
+      if (useStore.getState().proModeEnabled) setHideUI(false);
+      window.dispatchEvent(new Event("mosh:open-hot-triggers"));
     };
     const onKeyUp = (e: KeyboardEvent) => {
-      if (!useStore.getState().proModeEnabled) return;
       if (e.key !== "Shift") return;
-      if (chromePinned) return; // pin overrides the release-to-hide gesture
-      setHideUI(true);
+      window.dispatchEvent(new Event("mosh:close-hot-triggers"));
+      if (!chromePinned && useStore.getState().proModeEnabled) setHideUI(true);
     };
     const forceHidden = () => {
-      if (chromePinned) return;
-      if (useStore.getState().proModeEnabled) setHideUI(true);
+      window.dispatchEvent(new Event("mosh:close-hot-triggers"));
+      if (!chromePinned && useStore.getState().proModeEnabled) setHideUI(true);
     };
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
@@ -1773,7 +1784,7 @@ export default function Editor() {
         <meta name="description" content="Stack GPU effects, map audio to parameters, and perform live in the MOSH visual editor." />
         <link rel="canonical" href="https://ether-mosh.online/edit" />
         <meta property="og:title" content="MOSH Editor — Real-time visual instrument" />
-        <meta property="og:description" content="Stack 107 GPU effects, sync to audio, export stills and video." />
+        <meta property="og:description" content="Stack 108 GPU effects, sync to audio, export stills and video." />
         <meta property="og:url" content="https://ether-mosh.online/edit" />
       </Helmet>
       <h1 className="sr-only">MOSH Editor</h1>
@@ -1828,7 +1839,14 @@ export default function Editor() {
           }
           if (e.shiftKey) { e.preventDefault(); crossfadeLayers(mosh, MOSH_FADE_MS); }
         }}
-        className={`relative bg-background select-none w-full h-[100dvh] shrink-0 no-touch-scroll ${isCameraLive ? "live-ring" : ""}`}
+        className={`relative bg-background select-none shrink-0 no-touch-scroll ${
+          desktopPortraitMode
+            // Height-driven 9:16 box instead of the usual full-width stage —
+            // min() so a browser window too narrow for a full-height 9:16
+            // box shrinks to fit its width instead of overflowing sideways.
+            ? "self-center w-auto aspect-[9/16] h-[min(100dvh,calc(100vw*16/9))]"
+            : "w-full h-[100dvh]"
+        } ${isCameraLive ? "live-ring" : ""}`}
       >
         <div data-tap-fade-target className="absolute inset-0 opacity-100">
           <Suspense

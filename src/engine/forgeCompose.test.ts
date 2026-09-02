@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { composeForgeStack } from "./forgeCompose";
 import { EFFECTS_BY_ID, type EffectCategory } from "./effects";
-import { tileVerdict } from "./tileSafety";
+import { tileVerdict, tileSafeEffects } from "./tileSafety";
 import { GENERATORS } from "./forgeGeneratorRegistry";
 import { pickForgeGenerator, rollKaleidoscope } from "./forgeCompose";
+import { craftOf } from "./artDirector";
 
 /**
  * The bias exists so the journey director can have an opinion. Two things must
@@ -107,6 +108,73 @@ describe("forge composition", () => {
       expect(stack[0].blend).toBe("normal");
       expect(stack[0].opacity).toBe(1);
     }
+  });
+
+  describe("role-aware composition (Phase 3)", () => {
+    it("always leads with a grade-role effect — the color foundation every other layer sits in", () => {
+      // The tile-safe pool has real grade coverage (verified separately), so
+      // this should never come up empty and fall back to the flat draw.
+      const rand = rng(2024);
+      for (let i = 0; i < 100; i++) {
+        const stack = composeForgeStack({ rand, seamless: true, intensity: rand() });
+        expect(stack.length).toBeGreaterThan(0);
+        expect(craftOf(stack[0].effectId)?.role).toBe("grade");
+      }
+    });
+
+    it("leans toward accent (corruption/temporal character) as intensity climbs", () => {
+      // Not a hard guarantee per roll — a probabilistic lean, checked across
+      // many rolls the same way the categoryBias tests check their lean.
+      const roleOfSecondLayer = (intensity: number) => {
+        const rand = rng(7777);
+        let accentCount = 0, formCount = 0;
+        for (let i = 0; i < 200; i++) {
+          const stack = composeForgeStack({ rand, seamless: true, intensity });
+          const second = stack[1];
+          const role = second ? craftOf(second.effectId)?.role : null;
+          if (role === "accent") accentCount++;
+          else if (role === "form") formCount++;
+        }
+        return accentCount / Math.max(1, accentCount + formCount);
+      };
+      expect(roleOfSecondLayer(0.95)).toBeGreaterThan(roleOfSecondLayer(0.05));
+    });
+
+    it("never repeats a role's own effect across the stack even under role selection", () => {
+      const rand = rng(31337);
+      for (let i = 0; i < 150; i++) {
+        const ids = composeForgeStack({ rand, seamless: true, intensity: 1 }).map(l => l.effectId);
+        expect(new Set(ids).size).toBe(ids.length);
+      }
+    });
+
+    it("sometimes masks a non-foundation layer with a quiet region, and never the foundation itself", () => {
+      const rand = rng(909);
+      let sawRegion = false;
+      for (let i = 0; i < 200; i++) {
+        const stack = composeForgeStack({ rand, seamless: true, intensity: 0.8 });
+        if (!stack.length) continue;
+        expect(stack[0].region ?? null).toBeNull();
+        if (stack.some((l, idx) => idx > 0 && l.region)) sawRegion = true;
+      }
+      expect(sawRegion).toBe(true);
+    });
+
+    it("a region mask, when present, uses only geometric modes — Forge has no photo to read foreground/background from", () => {
+      const rand = rng(4040);
+      for (let i = 0; i < 200; i++) {
+        const stack = composeForgeStack({ rand, seamless: true, intensity: 0.9 });
+        for (const l of stack) {
+          if (l.region) expect(["shards", "hbands", "vbands", "radial"]).toContain(l.region.mode);
+        }
+      }
+    });
+
+    it("every tile-safe effect has role coverage — the precondition this whole composer relies on", () => {
+      const pool = tileSafeEffects();
+      const missing = pool.filter(id => !craftOf(id));
+      expect(missing).toEqual([]);
+    });
   });
 });
 
