@@ -76,7 +76,13 @@ const SCALES: Array<{ mul: number; weight: number }> = [
 
 const LIFE_MIN = 1700;
 const LIFE_MAX = 4200;
-const BEAT_MS = 320;
+// Every beat is a React state update (new/expired words) plus a handful of
+// getBoundingClientRect reads — real, necessary work, run forever while this
+// field is mounted. 360ms vs. the original 320ms is a ~12% cut to how often
+// that recurs, small enough that word turnover (each word already lives
+// 1.7-4.2s regardless of tick rate) reads the same, but it compounds over
+// any stretch of time the field is running.
+const BEAT_MS = 360;
 
 const rand = (lo: number, hi: number) => lo + Math.random() * (hi - lo);
 
@@ -195,10 +201,24 @@ export function GlitchWordField({ exclude, words = FIELD_WORDS }: GlitchWordFiel
       return result;
     };
 
+    /**
+     * The keep-out elements themselves — queried once, not every beat.
+     *
+     * Every `{...KEEP_OUT}` element on the home page (BioFlicker's band, the
+     * quadrant marks, the hero's own chrome) is part of the same synchronous
+     * render as this field; none are conditionally mounted or unmounted
+     * later. So the *set* of elements is fixed for the field's whole
+     * lifetime — only their positions move, as they animate in — and
+     * re-running `document.querySelectorAll` to rediscover that same set on
+     * every 320ms beat, forever, was pure repeated tree-walking for a result
+     * that never changes.
+     */
+    const keepOutEls = Array.from(document.querySelectorAll<HTMLElement>(`[${KEEP_OUT_ATTR}]`));
+
     /** Keep-out boxes relative to `host`, measured once per beat. */
     const measureReserved = (box: DOMRect): Rect[] => {
       const reserved: Rect[] = [];
-      for (const el of document.querySelectorAll<HTMLElement>(`[${KEEP_OUT_ATTR}]`)) {
+      for (const el of keepOutEls) {
         const r = el.getBoundingClientRect();
         if (!r.width || !r.height) continue;
         reserved.push({
