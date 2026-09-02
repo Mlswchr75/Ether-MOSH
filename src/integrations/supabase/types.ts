@@ -14,6 +14,27 @@ export type Database = {
   }
   public: {
     Tables: {
+      granted_emails: {
+        Row: {
+          created_at: string
+          email: string
+          note: string | null
+          product_id: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          note?: string | null
+          product_id?: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          note?: string | null
+          product_id?: string
+        }
+        Relationships: []
+      }
       email_send_log: {
         Row: {
           created_at: string
