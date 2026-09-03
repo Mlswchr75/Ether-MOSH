@@ -218,6 +218,9 @@ type State = {
    *  routinely cropping the top/bottom off portrait-oriented sources.
    *  Ignored on touch/coarse-pointer devices (see Editor.tsx). */
   desktopPortraitMode: boolean;
+  /** Selective black-crush + neon-boost grade applied in the finisher, on
+   *  top of whatever effect stack is running. */
+  darkModeOn: boolean;
   /**
    * Set for the duration of a Lottie Sticker capture (StickerCapture.tsx's
    * exportLottieSticker) — every action that can change the mosh FX stack
@@ -378,6 +381,8 @@ type Actions = {
   togglePerformanceMode: () => void;
   setDesktopPortraitMode: (b: boolean) => void;
   toggleDesktopPortraitMode: () => void;
+  setDarkMode: (b: boolean) => void;
+  toggleDarkMode: () => void;
   setCaptureLocked: (b: boolean) => void;
   setShowMetersInPerformance: (b: boolean) => void;
   setProModeEnabled: (b: boolean) => void;
@@ -570,6 +575,7 @@ export const useStore = create<State & Actions>((set, get) => ({
   exportSettings: loadExportSettings(),
   isPerformanceMode: false,
   desktopPortraitMode: false,
+  darkModeOn: false,
   captureLocked: false,
   showMetersInPerformance: typeof localStorage !== "undefined" && localStorage.getItem("cathedral_meters_in_perf") === "1",
   proModeEnabled: typeof localStorage !== "undefined" && localStorage.getItem("cathedral_pro_mode") === "1",
@@ -1240,6 +1246,8 @@ export const useStore = create<State & Actions>((set, get) => ({
   togglePerformanceMode: () => set(s => ({ isPerformanceMode: !s.isPerformanceMode })),
   setDesktopPortraitMode: (b) => set({ desktopPortraitMode: b }),
   toggleDesktopPortraitMode: () => set(s => ({ desktopPortraitMode: !s.desktopPortraitMode })),
+  setDarkMode: (b) => set({ darkModeOn: b }),
+  toggleDarkMode: () => set(s => ({ darkModeOn: !s.darkModeOn })),
   setCaptureLocked: (b) => set({ captureLocked: b }),
   setShowMetersInPerformance: (b) => {
     try { localStorage.setItem("cathedral_meters_in_perf", b ? "1" : "0"); } catch {}

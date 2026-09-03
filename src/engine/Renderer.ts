@@ -117,6 +117,10 @@ export class MoshRenderer {
   private _tileUniforms: TileUniforms = { ...DEFAULT_TILE_UNIFORMS };
   // Adaptive HDR intensity (0 = pure passthrough, 1 = full ACES filmic)
   private _hdrIntensity = 0;
+  // Dark Mode — smoothed toward _darkModeTarget each frame so the toggle
+  // fades rather than snaps.
+  private _darkMode = 0;
+  private _darkModeTarget = 0;
   /** Optional final target used by immersive VR instead of the flat canvas. */
   private xrTarget: THREE.WebGLRenderTarget | null = null;
   /** Re-applied after every buffer reallocation, which resets wrap modes. */
@@ -349,6 +353,7 @@ export class MoshRenderer {
         uniform float uOverlayGate;
         uniform float uOverlaySoft;
         uniform float uVibrance;
+        uniform float uDarkMode;
 
         vec3 aces(vec3 x) {
           const float a = 2.51, b = 0.03, c = 2.43, d = 0.59, e = 0.14;
@@ -439,6 +444,32 @@ export class MoshRenderer {
           // not the pre-ACES intermediate.
           rgb = vibrance(rgb, uVibrance);
 
+          /* Dark Mode. Not a global invert or a flat darken — both of those
+             either torch every light in the frame or just look muddy. The
+             old accidental version that this revives crushed everything
+             indiscriminately and left only stray light as scan-thin traces;
+             this one is selective instead: a pixel with real color in it
+             survives and gets pushed hotter, a pixel that's mostly just
+             luma (white, pale grey, washed highlights) falls into true
+             black. The frame ends up mostly-black with color punching
+             through it, rather than mostly-black with white lines. */
+          if (uDarkMode > 0.001) {
+            float dmLuma = dot(rgb, vec3(0.299, 0.587, 0.114));
+            float dmMax = max(rgb.r, max(rgb.g, rgb.b));
+            float dmMin = min(rgb.r, min(rgb.g, rgb.b));
+            float dmSat = dmMax < 0.02 ? 0.0 : (dmMax - dmMin) / dmMax;
+            // Only the bright, low-color part of the frame crushes — dark
+            // pixels (already reading as shadow) are left alone so black
+            // isn't spread any further than it needs to be.
+            float dmCrush = (1.0 - dmSat) * smoothstep(0.1, 0.8, dmLuma);
+            vec3 dmBlacked = rgb * (1.0 - dmCrush * 0.96);
+            // What's left gets shoved toward neon: colored pixels get an
+            // extra vibrance kick proportional to their own saturation, so
+            // the hottest hues in frame come out hottest.
+            vec3 dmNeon = vibrance(dmBlacked, 0.55 + dmSat * 0.35) * (1.0 + dmSat * 0.4);
+            rgb = mix(rgb, clamp(dmNeon, 0.0, 4.0), uDarkMode);
+          }
+
           /* Overlay keying.
 
              Done here rather than earlier because this is the last pass before
@@ -473,6 +504,7 @@ export class MoshRenderer {
         uOverlayGate: { value: 0.4 },
         uOverlaySoft: { value: 0.18 },
         uVibrance: { value: 0.35 },
+        uDarkMode: { value: 0 },
       },
       depthTest: false,
       depthWrite: false,
@@ -760,6 +792,16 @@ export class MoshRenderer {
    *  Call each frame from the render loop with a score derived from active layers. */
   setHdrIntensity(v: number) {
     this._hdrIntensity = Math.max(0, Math.min(1, v));
+  }
+
+  /** Dark Mode — a finisher-level grade, independent of the effect stack.
+   *  Crushes low-saturation/bright content (whites, pale highlights, flat
+   *  grey) toward true black while protecting and boosting whatever color
+   *  survives, so neon hues read as hot against real black instead of the
+   *  usual mid-grey ambient light. Fades in/out over a few frames rather
+   *  than snapping when toggled. */
+  setDarkMode(on: boolean) {
+    this._darkModeTarget = on ? 1 : 0;
   }
 
   /**
@@ -1202,6 +1244,8 @@ export class MoshRenderer {
     this.finisherMaterial.uniforms.uTex.value = finalTex;
     (this.finisherMaterial.uniforms.uRes.value as THREE.Vector2).set(w, h);
     this.finisherMaterial.uniforms.uHdr.value = this._hdrIntensity;
+    this._darkMode += (this._darkModeTarget - this._darkMode) * 0.12;
+    this.finisherMaterial.uniforms.uDarkMode.value = this._darkMode;
     this.finisherMaterial.uniforms.uOverlayDepth.value = this.rtDepthA.texture;
     this.quad.material = this.finisherMaterial;
     this.renderer.setRenderTarget(this.xrTarget);

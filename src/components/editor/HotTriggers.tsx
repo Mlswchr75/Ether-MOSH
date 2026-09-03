@@ -1,4 +1,4 @@
-import { Mic, MicOff, Circle, Square, Sparkles, Scissors, Snowflake, Camera, Shuffle, Star, Play, Pencil, Trash2, X, Film, Lock, Share2, Compass, Maximize2, Minimize2, SwitchCamera, Eraser, Link2, Upload, Music, Music2, Shuffle as ShuffleIcon, Undo2, Redo2, ChevronDown, MonitorSpeaker, Heart, GripVertical, RotateCcw, SkipBack, SkipForward, Palette, RectangleVertical, RectangleHorizontal } from "lucide-react";
+import { Mic, MicOff, Circle, Square, Sparkles, Scissors, Snowflake, Camera, Shuffle, Star, Play, Pencil, Trash2, X, Film, Lock, Share2, Compass, Maximize2, Minimize2, SwitchCamera, Eraser, Link2, Upload, Music, Music2, Shuffle as ShuffleIcon, Undo2, Redo2, ChevronDown, MonitorSpeaker, Heart, GripVertical, RotateCcw, SkipBack, SkipForward, Palette, RectangleVertical, RectangleHorizontal, Moon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { useStore } from "@/store/useStore";
@@ -125,7 +125,7 @@ const DEFAULT_AUTO_MOSH_SEC = 15;
  * trigger's settings overlay instead (see AccountSettingsOverlay.tsx), so
  * none of them need a ring slot of their own any more. */
 const DEFAULT_ORDER = [
-  "mosh", "undo", "redo", "journey", "auto-mosh", "clear-fx",
+  "mosh", "undo", "redo", "journey", "auto-mosh", "clear-fx", "dark-mode",
   "audio", "theme-track", "freeze",
   "capture", "gif", "share", "favorites",
   "sticker-mode",
@@ -137,6 +137,7 @@ const TRIGGER_LABELS: Record<string, string> = {
   home: "Back to start", undo: "Undo", redo: "Redo",
   "source-upload": "Upload source", "source-camera": "Live camera", "source-forge": "Forge source", "source-motif": "Motif Maestro", account: "Settings",
   mosh: "Mosh", "auto-mosh": "Auto-Mosh", "clear-fx": "Clear FX", journey: "Journey",
+  "dark-mode": "Dark Mode — crush light to black, push color to neon",
   audio: "Audio (mic / device / beat sync)",
   freeze: "Freeze", capture: "Capture — tap for a still, hold to record", gif: "GIF loop", share: "Share",
   "sticker-mode": "Sticker Studio",
@@ -1382,6 +1383,8 @@ export function HotTriggers({
   const shuffleSec = useStore(s => s.shuffleSec);
   const setShuffleSec = useStore(s => s.setShuffleSec);
   const sourceMode = useStore(s => s.sourceMode);
+  const darkModeOn = useStore(s => s.darkModeOn);
+  const toggleDarkMode = useStore(s => s.toggleDarkMode);
 
   const [pickerOpen, setPickerOpen] = useState(false);
   const [favOpen, setFavOpen] = useState(false);
@@ -1798,6 +1801,32 @@ export function HotTriggers({
       >
         <span className="hot-trigger__glitch" aria-hidden><Eraser className="h-4 w-4" strokeWidth={1.5} /></span>
         <span className="hot-trigger__ico"><Eraser className="h-4 w-4" strokeWidth={1.5} /></span>
+      </button>
+    ),
+    // Dark Mode — a finisher-level grade (see Renderer.ts) that crushes
+    // low-color/bright content toward true black while boosting whatever
+    // color survives, so the effect stack's neon reads against real black
+    // instead of mid-grey ambient light. Independent of the FX stack: it
+    // stays on across Mosh/undo/clear-fx like Journey does.
+    "dark-mode": (
+      <button
+        key="dark-mode"
+        type="button"
+        onClick={toggleDarkMode}
+        aria-label={darkModeOn ? "Dark Mode on" : "Dark Mode off"}
+        aria-pressed={darkModeOn || undefined}
+        title={darkModeOn ? "Dark Mode on — crushing light to black, pushing color to neon" : "Dark Mode — crush light to black, push color to neon"}
+        data-active={darkModeOn || undefined}
+        data-tint=""
+        data-no-longpress
+        className="hot-trigger relative"
+        style={{ ["--ht-tint" as string]: "280 20% 55%" }}
+      >
+        <span className="hot-trigger__glitch" aria-hidden><Moon className="h-4 w-4" strokeWidth={1.5} /></span>
+        <span className="hot-trigger__ico"><Moon className="h-4 w-4" strokeWidth={1.5} /></span>
+        {darkModeOn && (
+          <span className="pointer-events-none absolute inset-0 rounded-md ring-1 ring-[hsl(var(--accent))]/60 animate-pulse" />
+        )}
       </button>
     ),
     // Journey — Smart and Storm combined into one director. They were two
