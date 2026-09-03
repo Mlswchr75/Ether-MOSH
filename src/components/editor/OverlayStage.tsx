@@ -41,7 +41,15 @@ export function OverlayStage() {
   return (
     <div
       data-overlay-capture-stage
-      className="pointer-events-auto absolute inset-0 z-30 overflow-hidden"
+      // Stays mounted in every source mode (see StickerCapture.tsx) so Vault
+      // and the Make Sticker shortcut are always reachable — but with zero
+      // entities placed, this div has nothing to select or drag. Left at a
+      // blanket pointer-events-auto it silently sat over the ENTIRE canvas
+      // at z-30, above QuadrantSurface's z-20 tap-to-mosh surface, and ate
+      // every tap/click on the visualizer before it could reach anything
+      // underneath — mosh-on-tap simply never fired. Only claim the surface
+      // once there's actually an entity to select/deselect/drag.
+      className={`absolute inset-0 z-30 overflow-hidden ${entities.length > 0 ? "pointer-events-auto" : "pointer-events-none"}`}
       onPointerDown={event => {
         if (event.target === event.currentTarget) selectEntity(null);
       }}
