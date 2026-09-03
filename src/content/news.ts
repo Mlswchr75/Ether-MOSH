@@ -824,6 +824,77 @@ export const NEWS_ARTICLES: NewsArticle[] = [
       { question: "Can I animate the Solarize effect safely for projection?", answer: "Yes, but move Amount or Pivot slowly and test the full-size output. Do not create more than three high-contrast flashes per second unless the result is verified below the applicable thresholds." },
     ],
   },
+  {
+    slug: "make-the-thermal-effect-admit-it-cannot-feel-heat",
+    subjectKind: "effect",
+    effectId: "thermal",
+    effectName: "Thermal",
+    category: "False-Color Misconduct",
+    title: "Make the Thermal Effect Admit It Cannot Feel Heat",
+    dek: "The statue turned yellow, a committee declared a fever, and the ordinary RGB camera quietly requested that everyone read the technical notes.",
+    description: "Learn how the Thermal effect maps RGB luminance into false color and how to set Ether-MOSH Mix and Range for print, motion, projection, patterns, and education.",
+    publishedAt: "2026-09-03T10:10:00-07:00",
+    readMinutes: 6,
+    image: "/news/thermal-false-color-hearing.jpg",
+    imageAlt: "A fictional Thermal effect control-room hearing with two technicians comparing a white plaster bust to its violet, magenta, and yellow false-color image",
+    imageCaption: "The fictional committee confirmed that the plaster bust was warm only in the emotional sense.",
+    keywords: ["Thermal effect", "Ether-MOSH Thermal", "false-color effect", "thermal camera look", "RGB luminance map", "VJ color effects", "false-color tutorial"],
+    tldr: "Ether-MOSH's Thermal effect maps ordinary RGB luminance into a violet–magenta–yellow false-color palette. Mix blends that stylized map with the source; Range compresses or expands contrast around mid-gray. It resembles thermal-camera imagery but detects no infrared radiation and measures no temperature. Find it under Color Chaos in the FX panel.",
+    satireDisclosure: "The municipal hearing, technicians, committee, and feverish plaster bust are fictional. William Herschel's infrared experiment, real thermography principles, Ether-MOSH controls and shader behavior, accessibility guidance, and production advice are factual and sourced.",
+    dispatch: [
+      "At 10:10, fictional inspector Kelvin Maybe pointed an ordinary RGB camera at a plaster bust. The monitor turned its shadows violet, its cheeks magenta, and its forehead yellow. A committee immediately diagnosed the statue with an advanced case of Looking Expensive.",
+      "Technician Luma Span—also fictional—asked whether anyone had detected infrared radiation. Nobody had. She asked whether anyone had measured a temperature. Again, no. The committee lowered Range, widened its ties, and voted to keep calling the picture heat vision because the poster was already at the printer.",
+    ],
+    explanation: [
+      "In 1800, William Herschel placed thermometers across a prism's visible spectrum and found the greatest temperature rise just beyond red, revealing radiation the eye could not see. NASA describes modern infrared cameras as instruments that sense infrared energy emitted by warm objects; that invisible signal is the reason real thermal imaging can work in darkness.",
+      "A thermal palette is a display choice, not the detector itself. FLIR defines a color palette as colors assigned to levels of apparent temperature and explains that changing the palette can make an image easier to analyze. Accurate thermography also depends on factors including emissivity, reflected apparent temperature, distance, humidity, and atmospheric temperature. A fashionable rainbow alone is not a thermometer, despite its confidence.",
+      "Ether-MOSH starts with visible RGB pixels. Its Thermal shader converts each pixel to luminance using weighted red, green, and blue values, remaps that lightness from deep violet through magenta to pale yellow, and blends the result with Mix. The declared defaults are 0.80 Mix and 0.50 Range. Range scales contrast around mid-gray: at 0 it compresses the luminance window; at 1 it expands the window hard enough to push more pixels toward the cold and hot ends. The renderer doubles the value reaching the shader for the underlying amount parameter, so Mix reaches a complete replacement around 0.50 and becomes an exaggerated extrapolation above it.",
+      "False color can clarify structure, but color should not carry essential meaning alone. W3C guidance says information also needs shape, text, pattern, or another cue because people perceive color differently. Keep labels and legends outside the effected image, preserve a readable luminance hierarchy, offer a calmer alternate treatment when the work conveys information, and test animated projection at full size for flash and contrast problems.",
+    ],
+    steps: [
+      "Open MOSH, load a portrait, sculpture, flower, product still, or architectural clip with clear light and shadow, then open the FX panel and add Thermal from Color Chaos.",
+      "Set Mix to 0.35 and Range to 0.40. This produces a strong false-color read while retaining enough source detail to judge faces, edges, and typography.",
+      "Move Range down toward 0.20 for a smoother, compressed palette or up toward 0.70 for harder separation around mid-gray. Watch which forms disappear at the dark and bright ends.",
+      "Raise Mix toward 0.50 for a complete palette replacement. Use values above 0.50 only for deliberate clipping, then try CRT, Bloom, or Film Grain after Thermal for display texture or luminous venue work.",
+      "Export a still or record a slowly changing loop. Proof the actual print, tile, LED wall, projector, caption, and legend—and never present the result as temperature evidence from an RGB source.",
+    ],
+    parameters: [
+      { control: "Mix", purpose: "Blends the false-color map with the source image", low: "0–0.25 restrained", high: "0.65–1 exaggerated", sweetSpot: "0.35" },
+      { control: "Range", purpose: "Scales luminance contrast around mid-gray before palette mapping", low: "0 compresses", high: "1 expands + clips", sweetSpot: "0.40" },
+      { control: "Source luminance", purpose: "Determines where forms land in the violet-to-yellow ramp", low: "Soft transitions", high: "Hard separations", sweetSpot: "Clear light + shadow" },
+    ],
+    uses: [
+      { title: "Print + editorial", body: "Turn a well-lit subject into a bold false-color plate, then soft-proof the violet, magenta, and yellow at final size. Saturated monitor color may return from CMYK looking like the office printer filed a compromise." },
+      { title: "Pattern + textiles", body: "Thermal-map one motif before making the repeat, preserve a few stable luminance anchors, and inspect a 3×3 proof. Range can build rhythm; clipping the same yellow blob across every seam can build a small cult." },
+      { title: "Vector + Lottie", body: "Posterize or trace the strongest palette boundaries into vector shapes, or place a short Thermal raster loop behind lightweight Lottie linework. Keep instructions and data as real text, not colored pixels pretending to be a legend." },
+      { title: "Projection + venue", body: "Use faces, sculpture, dancers, or architecture with deliberate lighting. Slow Range movement reads across a room; rapid full-frame contrast changes demand flash testing and a lower-intensity alternate state." },
+      { title: "Museum + education", body: "Recreate Herschel's prism experiment with proper supervision, compare real infrared imagery with an RGB source, then apply Thermal in MOSH. The difference between sensing invisible radiation and recoloring visible light becomes impossible to hand-wave." },
+    ],
+    quote: "The camera did not detect a fever. It detected a midtone and put it in a very persuasive outfit.",
+    quoteAttribution: "Luma Span, fictional technician and enemy of decorative diagnostics",
+    downloadHref: "/news/downloads/thermal-field-card.md",
+    product: {
+      name: "Color Splash Warmup Hoodie",
+      href: "https://aestheticrebellion.store/products/color-splash-warmup-hoodie",
+      copy: "Mandatory commercial heat leak: Aesthetic Rebellion's Color Splash Warmup Hoodie is currently available in a loud red-orange-blue-green painterly print. It is UPF-rated activewear, not an infrared instrument, and wearing it will not reveal your emissivity. It may make the Thermal palette look underdressed, which is apparently why capitalism interrupted the lesson.",
+    },
+    sources: [
+      { label: "NASA Science — Infrared Waves", href: "https://science.nasa.gov/ems/07_infraredwaves/", note: "Authoritative history of Herschel's 1800 experiment and explanation of infrared energy and thermal imaging." },
+      { label: "NASA Earth Observatory — How to Interpret a False-Color Satellite Image", href: "https://science.nasa.gov/earth/earth-observatory/how-to-interpret-a-false-color-satellite-image/", note: "Authoritative explanation of false-color band mapping, thermal infrared, and why assigned display colors are not natural color." },
+      { label: "FLIR — Report Studio thermography reference", href: "https://support.flir.com/docdownload/assets/web/27eh/en-us/", note: "Manufacturer reference for palettes, apparent temperature, thermal tuning, emissivity, reflected radiation, and measurement conditions." },
+      { label: "W3C — Understanding Use of Color", href: "https://www.w3.org/WAI/WCAG22/Understanding/use-of-color", note: "Current accessibility guidance against using color as the only way to convey information." },
+      { label: "Ether-MOSH Thermal registry entry", href: "/effects#thermal", note: "Current public effect, editor category, Mix and Range values, render boost, and GLSL source." },
+      { label: "Duotone field report", href: "/news/make-the-duotone-effect-pick-a-side", note: "Related guide to luminance-based palette mapping for print and motion." },
+      { label: "Solarize field report", href: "/news/make-the-solarize-effect-expose-itself", note: "Related guide to thresholded color transformation and full-screen projection cautions." },
+    ],
+    relatedEffects: ["duotone", "rainbowMap", "infraredDream", "crtPhosphor"],
+    faqs: [
+      { question: "What does the Thermal effect do in Ether-MOSH?", answer: "It converts visible RGB luminance into a violet–magenta–yellow false-color map. Mix controls the blend and Range controls contrast around mid-gray." },
+      { question: "Does the Thermal effect measure temperature or use infrared?", answer: "No. It processes ordinary RGB pixels and contains no infrared sensor or temperature calibration. Use a suitable thermal camera and measurement workflow for real thermography." },
+      { question: "Where is Thermal, and what settings should I start with?", answer: "Open the FX panel, choose Color Chaos, and add Thermal. Start at 0.35 Mix and 0.40 Range, then tune Range for the source lighting." },
+      { question: "How do I make false-color artwork accessible?", answer: "Do not make hue the only carrier of meaning. Preserve light-dark differences and add text, labels, patterns, or shapes whenever the colors communicate information." },
+    ],
+  },
 ];
 
 export const NEWS_ARTICLES_BY_SLUG = new Map(NEWS_ARTICLES.map((article) => [article.slug, article]));
@@ -878,5 +949,9 @@ export const NEWS_LOOK_EXAMPLES_BY_SLUG: Record<string, [NewsLookExample, NewsLo
   "make-the-solarize-effect-expose-itself": [
     { scene: "Hard-lit portrait", settings: "Amount 0.35 · Pivot 0.52", result: "Bright skin and fabric channels reverse into cool negative color while the deepest shadows remain anchored, leaving the face readable inside a sharp tonal split." },
     { scene: "Saturated flower still", settings: "Amount 0.48 · Pivot 0.38", result: "Petals break into acidic complementary bands, bright edges harden, and the background keeps enough original color to frame the reversal." },
+  ],
+  "make-the-thermal-effect-admit-it-cannot-feel-heat": [
+    { scene: "Side-lit plaster sculpture", settings: "Mix 0.35 · Range 0.40", result: "Shadowed stone settles into violet, turning planes move through magenta, and the brightest forehead and cheek become pale yellow while carved edges remain readable." },
+    { scene: "Night performer on stage", settings: "Mix 0.50 · Range 0.72", result: "Dark rigging falls toward purple, the performer separates in saturated pink, and spotlit fabric snaps toward yellow in a hard graphic map that reads across the venue." },
   ],
 };

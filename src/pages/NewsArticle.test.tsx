@@ -42,12 +42,12 @@ describe("NewsArticle", () => {
     expect(screen.getByText("3 core controls")).toBeTruthy();
   });
 
-  it("publishes twelve unique reports including five September effects and two modes", () => {
-    expect(NEWS_ARTICLES).toHaveLength(12);
-    expect(new Set(NEWS_ARTICLES.map(article => article.slug)).size).toBe(12);
+  it("publishes thirteen unique reports including six September effects and two modes", () => {
+    expect(NEWS_ARTICLES).toHaveLength(13);
+    expect(new Set(NEWS_ARTICLES.map(article => article.slug)).size).toBe(13);
     expect(NEWS_ARTICLES.find(article => article.effectId === "kaleidoscope")?.steps).toHaveLength(5);
-    expect(NEWS_ARTICLES.filter(article => ["kaleidoscope", "posterize", "duotone", "asciiCollapse", "solarize"].includes(article.effectId ?? "")))
-      .toHaveLength(5);
+    expect(NEWS_ARTICLES.filter(article => ["kaleidoscope", "posterize", "duotone", "asciiCollapse", "solarize", "thermal"].includes(article.effectId ?? "")))
+      .toHaveLength(6);
     expect(NEWS_ARTICLES.filter(article => article.subjectKind === "mode").map(article => article.effectName))
       .toEqual(["Forge Mode", "Pattern / Motif Mode"]);
   });
@@ -74,8 +74,8 @@ describe("NewsArticle", () => {
     expect(container.querySelectorAll(".news-look-examples article")).toHaveLength(2);
   });
 
-  it("keeps the four recent reports answer-first and release-complete", () => {
-    const batch = NEWS_ARTICLES.filter(article => ["posterize", "duotone", "asciiCollapse", "solarize"].includes(article.effectId ?? ""));
+  it("keeps the five recent reports answer-first and release-complete", () => {
+    const batch = NEWS_ARTICLES.filter(article => ["posterize", "duotone", "asciiCollapse", "solarize", "thermal"].includes(article.effectId ?? ""));
     for (const article of batch) {
       const answerWords = article.tldr.trim().split(/\s+/).length;
       expect(answerWords, `${article.slug} direct answer`).toBeGreaterThanOrEqual(40);
@@ -121,5 +121,18 @@ describe("NewsArticle", () => {
       .toBe("https://aestheticrebellion.store/products/boundless-bleeds-uv-arm-sleeves");
     expect(screen.getByRole("link", { name: "Download .md" }).getAttribute("href"))
       .toBe("/news/downloads/solarize-field-card.md");
+  });
+
+  it("renders Thermal controls, RGB-versus-infrared distinction, download, and live product link", () => {
+    renderArticle("make-the-thermal-effect-admit-it-cannot-feel-heat");
+
+    expect(screen.getByRole("heading", { name: "Make the Thermal Effect Admit It Cannot Feel Heat" })).toBeTruthy();
+    expect(screen.getByText("Mix")).toBeTruthy();
+    expect(screen.getByText("Range")).toBeTruthy();
+    expect(screen.getAllByText(/detects no infrared radiation/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByRole("link", { name: /View the thing we interrupted science for/i }).getAttribute("href"))
+      .toBe("https://aestheticrebellion.store/products/color-splash-warmup-hoodie");
+    expect(screen.getByRole("link", { name: "Download .md" }).getAttribute("href"))
+      .toBe("/news/downloads/thermal-field-card.md");
   });
 });
