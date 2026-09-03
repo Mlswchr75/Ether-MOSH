@@ -658,6 +658,7 @@ export function GlCanvas() {
       if (sourceModeRef.current === "forge" || sourceModeRef.current === "motif") moshScore = Math.max(moshScore, 0.55);
       rendererRef.current?.setHdrIntensity(moshScore);
       rendererRef.current?.setHdr(moshScore);
+      rendererRef.current?.setDarkMode(useStore.getState().darkModeOn);
       // Re-applied per frame rather than once at setup: the renderer is
       // recreated on context loss, and a silently un-keyed overlay paints a
       // black rectangle over the user's whole scene.
