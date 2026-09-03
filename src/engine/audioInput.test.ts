@@ -42,7 +42,12 @@ describe("audio interface compatibility", () => {
     expect(result.stream).toBe(stream);
     expect(getUserMedia).toHaveBeenCalledTimes(2);
     expect(getUserMedia.mock.calls[1][0]).toEqual({
-      audio: { deviceId: { exact: "scarlett" } },
+      audio: {
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+        deviceId: { exact: "scarlett" },
+      },
       video: false,
     });
   });
