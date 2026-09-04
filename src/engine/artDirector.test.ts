@@ -369,11 +369,17 @@ describe("content-awareness", () => {
     expect(grey).toBeGreaterThan(vivid);
   });
 
+  /* Averaged over enough rolls to actually measure the preference.
+     Restraint is one term among many in pickForRole's score, and cost per
+     mosh only separates the two briefs by a few percent — at 40 samples the
+     seeds moved the total more than the brief did, so this passed or failed
+     on which seeds happened to be listed rather than on whether the director
+     reads the picture. Several hundred is where the sign stops flipping. */
   it("spends less detail on a busy frame than on an empty one", () => {
     const cost = (b: typeof busyBrief, seed: string) =>
       compose(b, rngFromSeed(seed)).layers.reduce((a, l) => a + (craftOf(l.effectId)?.cost ?? 0), 0);
     let busy = 0, empty = 0;
-    for (let i = 0; i < 40; i++) {
+    for (let i = 0; i < 400; i++) {
       busy += cost(busyBrief, `bz-${i}`);
       empty += cost(greyBrief, `em-${i}`);
     }
@@ -604,5 +610,59 @@ describe("effect strength (Phase 5)", () => {
         }
       }
     });
+  });
+});
+
+describe("look curation coverage", () => {
+  const curatedIds = () => {
+    const ids = new Set<string>();
+    for (const look of LOOKS) for (const role of ROLES) for (const id of look.picks[role] ?? []) ids.add(id);
+    return ids;
+  };
+
+  /* The selection funnel, not the library, is what decides how much of MOSH a
+     user ever sees. A pick comes from the chosen look's own shortlist unless a
+     chaos roll breaks the grammar — and chaos is 0 at MILD — so an effect
+     filed in no look at all is, at the settings most people leave alone,
+     effectively unreachable. This is the check that keeps the library and what
+     the director can actually reach from drifting apart again. */
+  it("files every directable effect in at least one look", () => {
+    const curated = curatedIds();
+    const orphans = Object.keys(EFFECTS_BY_ID).filter(id => craftOf(id) && !curated.has(id));
+    expect(orphans, `effects no look can reach: ${orphans.join(", ")}`).toEqual([]);
+  });
+
+  it("never lists a pick that isn't a real effect", () => {
+    for (const look of LOOKS) {
+      for (const role of ROLES) {
+        for (const id of look.picks[role] ?? []) {
+          expect(EFFECTS_BY_ID[id], `${look.id}/${role}: unknown effect "${id}"`).toBeDefined();
+        }
+      }
+    }
+  });
+
+  /* A pick filed under the wrong role is silently dropped by pickForRole's
+     own CRAFT lookup, which reads as "this look keeps ignoring that effect"
+     rather than as the typo it is. */
+  it("never files a pick under a role it isn't crafted for", () => {
+    for (const look of LOOKS) {
+      for (const role of ROLES) {
+        for (const id of look.picks[role] ?? []) {
+          expect(craftOf(id)?.role, `${look.id}/${role}: "${id}"`).toBe(role);
+        }
+      }
+    }
+  });
+
+  /* Two or three picks per role meant the top of the ranking barely moved
+     between rolls, so consecutive moshes on one look cycled the same handful
+     of effects. Three is the floor; the deck averages well above it. */
+  it("gives every look a shortlist wide enough to vary", () => {
+    for (const look of LOOKS) {
+      for (const role of ROLES) {
+        expect((look.picks[role] ?? []).length, `${look.id}/${role}`).toBeGreaterThanOrEqual(3);
+      }
+    }
   });
 });
