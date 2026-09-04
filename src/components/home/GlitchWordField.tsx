@@ -76,7 +76,13 @@ const SCALES: Array<{ mul: number; weight: number }> = [
 
 const LIFE_MIN = 1700;
 const LIFE_MAX = 4200;
-const BEAT_MS = 320;
+// Every beat is a React state update (new/expired words) plus a handful of
+// getBoundingClientRect reads — real, necessary work, run forever while this
+// field is mounted. 360ms vs. the original 320ms is a ~12% cut to how often
+// that recurs, small enough that word turnover (each word already lives
+// 1.7-4.2s regardless of tick rate) reads the same, but it compounds over
+// any stretch of time the field is running.
+const BEAT_MS = 360;
 
 const rand = (lo: number, hi: number) => lo + Math.random() * (hi - lo);
 
@@ -167,10 +173,52 @@ export function GlitchWordField({ exclude, words = FIELD_WORDS }: GlitchWordFiel
      */
     const claimed = (reserved: Rect[]): Rect[] => reserved.concat(liveRef.current.map(l => l.rect));
 
+    /**
+     * Word/fontSize → measured {w, h}, so repeat spawns of the same word at
+     * the same size skip the DOM write+read entirely.
+     *
+     * Measuring width means writing `textContent`/`fontSize` onto the hidden
+     * ruler and immediately reading `getBoundingClientRect()` — a genuine
+     * forced synchronous layout, up to twice per spawn, up to twice a beat,
+     * every 320ms, for as long as the field is mounted. The vocabulary is a
+     * fixed 14 words and fontSize is `base * one of 6 SCALES`, where `base`
+     * only changes on resize (which already tears down and restarts this
+     * effect's whole live set) — so the real key space is small and stable
+     * within a session, and a cache converges after the first handful of
+     * beats. Keying on the exact fontSize float means a post-resize `base`
+     * naturally misses instead of reading a stale, wrong-viewport width.
+     */
+    const measureCache = new Map<string, { w: number; h: number }>();
+    const measure = (word: string, fontSize: number): { w: number; h: number } => {
+      const key = `${word} ${fontSize}`;
+      const cached = measureCache.get(key);
+      if (cached) return cached;
+      meas.textContent = word;
+      meas.style.fontSize = `${fontSize}px`;
+      const r = meas.getBoundingClientRect();
+      const result = { w: r.width, h: r.height };
+      measureCache.set(key, result);
+      return result;
+    };
+
+    /**
+     * The keep-out elements themselves — queried once, not every beat.
+     *
+     * Every `{...KEEP_OUT}` element on the home page (BioFlicker's band, the
+     * quadrant marks, the hero's own chrome) is part of the same synchronous
+     * render as this field; none are conditionally mounted or unmounted
+     * later. So the *set* of elements is fixed for the field's whole
+     * lifetime — only their positions move, as they animate in — and
+     * re-running `document.querySelectorAll` to rediscover that same set on
+     * every 320ms beat, forever, was pure repeated tree-walking for a result
+     * that never changes.
+     */
+    const keepOutEls = Array.from(document.querySelectorAll<HTMLElement>(`[${KEEP_OUT_ATTR}]`));
+
     /** Keep-out boxes relative to `host`, measured once per beat. */
     const measureReserved = (box: DOMRect): Rect[] => {
       const reserved: Rect[] = [];
-      for (const el of document.querySelectorAll<HTMLElement>(`[${KEEP_OUT_ATTR}]`)) {
+      for (const el of keepOutEls) {
         const r = el.getBoundingClientRect();
         if (!r.width || !r.height) continue;
         reserved.push({
@@ -203,26 +251,23 @@ export function GlitchWordField({ exclude, words = FIELD_WORDS }: GlitchWordFiel
       let fontSize = base * pickWeighted(SCALES).mul;
       const deg = pickWeighted(ANGLES).deg;
 
-      meas.textContent = word;
-      meas.style.fontSize = `${fontSize}px`;
-      let m = meas.getBoundingClientRect();
-      if (!m.width || !m.height) return null;
+      let m = measure(word, fontSize);
+      if (!m.w || !m.h) return null;
 
       // Shrink anything that cannot fit inside the margins. Without this the
       // long words simply never place at the big size classes, and the field
       // quietly loses half its vocabulary on narrow screens.
       const maxW = W - margin * 2;
       const maxH = H - margin * 2;
-      if (m.width > maxW || m.height > maxH) {
-        fontSize *= Math.min(maxW / m.width, maxH / m.height) * 0.98;
-        meas.style.fontSize = `${fontSize}px`;
-        m = meas.getBoundingClientRect();
+      if (m.w > maxW || m.h > maxH) {
+        fontSize *= Math.min(maxW / m.w, maxH / m.h) * 0.98;
+        m = measure(word, fontSize);
       }
 
       const spot = placeWord({
         W, H,
-        w: m.width,
-        h: m.height,
+        w: m.w,
+        h: m.h,
         deg,
         margin,
         blocked: claimed(reserved),

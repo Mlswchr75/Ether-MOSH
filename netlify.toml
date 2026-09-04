@@ -16,6 +16,15 @@
   status = 301
   force = true
 
+# Belt-and-suspenders: refuse any .map file even if one is ever
+# accidentally reintroduced (build.sourcemap in vite.config.ts is the
+# actual fix — this just backstops it at the edge).
+[[redirects]]
+  from = "/*.map"
+  to = "/index.html"
+  status = 404
+  force = true
+
 [[redirects]]
   from = "/*"
   to = "/index.html"
