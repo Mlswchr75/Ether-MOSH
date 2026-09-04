@@ -974,6 +974,15 @@ export class MoshRenderer {
     this.sourceFillMaterial.uniforms.uHdr.value = Math.max(0, Math.min(1, amount));
   }
 
+  /** Baseline vibrance lift, 0..1. Independent of setHdrIntensity: this is a
+   *  house grade applied to every frame, not something that fades in with the
+   *  size of the effect stack. Drive it from the frame's own measured
+   *  saturation — see adaptiveVibrance — rather than leaving it parked, which
+   *  is what it did for as long as it had no setter. */
+  setVibrance(amount: number) {
+    this.finisherMaterial.uniforms.uVibrance.value = Math.max(0, Math.min(1, amount));
+  }
+
   setRenderScale(scale: number) {
     this.renderScale = Math.max(0.42, Math.min(0.9, scale));
     this.resize(this.cssWidth, this.cssHeight);

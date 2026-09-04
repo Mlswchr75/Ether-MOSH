@@ -1392,6 +1392,38 @@ export function compose(
   return { look, brief, layers };
 }
 
+/* ────────────────────────────────────────────────────────────────────────
+   6. Grading the finished frame
+   ────────────────────────────────────────────────────────────────────── */
+
+/** Applied to a frame that is already vivid. Small on purpose — there is
+ *  nowhere for those hues to go but into clipping, where they stop being
+ *  colours and become flat blocks. */
+export const VIBRANCE_MIN = 0.18;
+/** Applied to a near-monochrome frame, which has the whole range available. */
+export const VIBRANCE_MAX = 0.72;
+
+/**
+ * How hard the finisher's vibrance lift should push, from what the frame
+ * already has.
+ *
+ * The lift was a hardcoded 0.35 with no setter anywhere — the uniform existed,
+ * nothing ever wrote to it, so every frame got the same push whether it was a
+ * grey wall or a neon sign. That is the wrong shape for the problem twice
+ * over: it under-serves the washed-out frames that have room for real colour,
+ * and over-pushes the vivid ones into clipping, which reads as *less* range
+ * rather than more, because clipped hues all resolve to the same flat block.
+ *
+ * Scaling inversely with measured saturation spends the lift where there is
+ * something to gain. Note the finisher's own vibrance() is already
+ * chroma-weighted per pixel; this is the second half of the same idea, applied
+ * per frame from what analyzeSource actually measured.
+ */
+export function adaptiveVibrance(saturation: number): number {
+  const s = Math.max(0, Math.min(1, saturation));
+  return VIBRANCE_MIN + (VIBRANCE_MAX - VIBRANCE_MIN) * (1 - s);
+}
+
 /**
  * Roll how far a single mosh is willing to go.
  *

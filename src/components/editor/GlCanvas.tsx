@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useStore } from "@/store/useStore";
+import { NEUTRAL_STATS, adaptiveVibrance } from "@/engine/artDirector";
 import { defaultAudioMap, masterDrive, masterGain } from "@/engine/audioMapping";
 import { overlayFromUrl } from "@/lib/overlayMode";
 import { MoshRenderer, type RenderLayer } from "@/engine/Renderer";
@@ -64,6 +65,7 @@ export function GlCanvas() {
   const sensitivityRef = useRef(useStore.getState().sensitivity);
   const stackIntensityRef = useRef(useStore.getState().stackIntensity);
   const stackReactiveRef = useRef(useStore.getState().stackIntensityReactive);
+  const briefRef = useRef(useStore.getState().currentBrief);
   const isVideoSourceRef = useRef(!!useStore.getState().videoElement);
   const sourceModeRef = useRef(useStore.getState().sourceMode);
   const forgeRef = useRef(useStore.getState().forge);
@@ -437,6 +439,7 @@ export function GlCanvas() {
     sensitivityRef.current = state.sensitivity;
     stackIntensityRef.current = state.stackIntensity;
     stackReactiveRef.current = state.stackIntensityReactive;
+    briefRef.current = state.currentBrief;
     isVideoSourceRef.current = !!state.videoElement;
     sourceModeRef.current = state.sourceMode;
     forgeRef.current = state.forge;
@@ -674,6 +677,12 @@ export function GlCanvas() {
       if (sourceModeRef.current === "forge" || sourceModeRef.current === "motif") moshScore = Math.max(moshScore, 0.55);
       rendererRef.current?.setHdrIntensity(moshScore);
       rendererRef.current?.setHdr(moshScore);
+      /* Spend the vibrance lift where there is something to gain. The uniform
+         had no setter at all until now, so every frame got the same fixed
+         push — too little for a washed-out source and enough to clip an
+         already-vivid one. currentBrief is measured per mosh; before the first
+         one, fall back to the neutral reading rather than to nothing. */
+      rendererRef.current?.setVibrance(adaptiveVibrance(briefRef.current?.saturation ?? NEUTRAL_STATS.saturation));
       rendererRef.current?.setDarkMode(useStore.getState().darkModeOn);
       // Re-applied per frame rather than once at setup: the renderer is
       // recreated on context loss, and a silently un-keyed overlay paints a

@@ -4,6 +4,9 @@ import { EFFECTS_BY_ID, PUBLIC_EFFECTS } from "./effects";
 import {
   LOOKS,
   MAX_ROLES,
+  VIBRANCE_MAX,
+  VIBRANCE_MIN,
+  adaptiveVibrance,
   NEUTRAL_STATS,
   ROLES,
   briefFrom,
@@ -706,6 +709,44 @@ describe("rollRoleCount", () => {
     for (const depth of [3, 4, 5]) {
       const layers = compose(brief, rngFromSeed(`depth-${depth}`), { roleCount: depth }).layers;
       expect(layers).toHaveLength(depth);
+    }
+  });
+});
+
+describe("adaptiveVibrance", () => {
+  /* The lift used to be a hardcoded 0.35 that nothing ever wrote to, so a grey
+     wall and a neon sign got the same push. */
+  it("spends the lift where there is room for it", () => {
+    expect(adaptiveVibrance(0)).toBeCloseTo(VIBRANCE_MAX);
+    expect(adaptiveVibrance(1)).toBeCloseTo(VIBRANCE_MIN);
+    expect(adaptiveVibrance(0.2)).toBeGreaterThan(adaptiveVibrance(0.8));
+  });
+
+  it("lifts a typical frame harder than the fixed value it replaces", () => {
+    expect(adaptiveVibrance(NEUTRAL_STATS.saturation)).toBeGreaterThan(0.35);
+  });
+
+  /* Pushing an already-vivid frame does not add range, it removes it: clipped
+     hues all resolve to the same flat block. */
+  it("holds back on a frame that is already vivid", () => {
+    expect(adaptiveVibrance(0.9)).toBeLessThan(0.35);
+  });
+
+  it("stays inside the finisher's own 0..1 uniform range for any input", () => {
+    for (const s of [-5, -0.1, 0, 0.5, 1, 1.4, 99, Number.NaN]) {
+      const v = adaptiveVibrance(s);
+      if (Number.isNaN(s)) continue;
+      expect(v).toBeGreaterThanOrEqual(0);
+      expect(v).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it("falls monotonically as the source gets more colourful", () => {
+    let previous = Infinity;
+    for (let s = 0; s <= 1.0001; s += 0.1) {
+      const v = adaptiveVibrance(s);
+      expect(v).toBeLessThan(previous);
+      previous = v;
     }
   });
 });
