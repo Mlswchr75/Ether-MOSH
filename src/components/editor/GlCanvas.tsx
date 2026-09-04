@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useStore } from "@/store/useStore";
+import { defaultAudioMap, masterDrive, masterGain } from "@/engine/audioMapping";
 import { overlayFromUrl } from "@/lib/overlayMode";
 import { MoshRenderer, type RenderLayer } from "@/engine/Renderer";
 import { evalModulator } from "@/engine/modulators";
@@ -38,35 +39,13 @@ const FORGE_AUDIO_FEATURES_INTERVAL_MS = 110;
  *  colors, or composition. */
 const FORGE_SOURCE_SIZE = (typeof navigator !== "undefined" && (navigator.hardwareConcurrency || 4) <= 4) ? 384 : 512;
 
-/**
- * Heuristic default audio map for any unmapped param. When the mic is on,
- * EVERY layer breathes — no manual wiring required. Users can still override
- * per-param via the "~" tilde control to set explicit `audioMaps`.
- */
-type DefaultMap = { source: "bass" | "mid" | "treble" | "overall" | "beat"; amount: number; smoothing: number };
-function defaultAudioMap(key: string): DefaultMap {
-  const k = key.toLowerCase();
-  // Punchy / kick-driven params
-  if (/(amount|intensity|strength|power|drive|gain|mix)/.test(k))
-    return { source: "bass", amount: 0.55, smoothing: 0.25 };
-  // Beat-snappy structural shifts
-  if (/(scale|size|zoom|radius|thick|width|count|density|stripes|cells|blocks|tiles|grid|repeat)/.test(k))
-    return { source: "beat", amount: 0.35, smoothing: 0.05 };
-  // Color / hue → treble shimmer
-  if (/(hue|color|tint|saturat|chroma|rainbow|spectrum|prism)/.test(k))
-    return { source: "treble", amount: 0.45, smoothing: 0.4 };
-  // Spatial distortion → mid energy
-  if (/(shift|offset|displace|warp|distort|skew|twist|swirl|wave|wobble|bend|pinch|spread|split|spacing|angle)/.test(k))
-    return { source: "mid", amount: 0.4, smoothing: 0.3 };
-  // Time / motion / speed → overall envelope
-  if (/(speed|rate|time|phase|frequency|tempo|flow|drift)/.test(k))
-    return { source: "overall", amount: 0.3, smoothing: 0.5 };
-  // Threshold / cutoff / detail → bass
-  if (/(threshold|cutoff|edge|detail|noise|grain)/.test(k))
-    return { source: "bass", amount: 0.4, smoothing: 0.3 };
-  // Default — gentle overall pulse so nothing is ever fully static
-  return { source: "overall", amount: 0.25, smoothing: 0.5 };
-}
+/** Shares the per-param smoothing map, so it needs a key no layer/param pair
+ *  can collide with — layer ids are uuids and param keys never contain ":". */
+const MASTER_SMOOTH_KEY = "__master";
+/** Slower than any single param's filter. The master moves the entire stack at
+ *  once, so the same responsiveness that reads as liveliness on one param
+ *  reads as the whole picture flickering here. */
+const MASTER_SMOOTH_ALPHA = 0.09;
 
 
 export function GlCanvas() {
@@ -83,6 +62,8 @@ export function GlCanvas() {
   const showBeforeAfterRef = useRef(useStore.getState().showBeforeAfter);
   /** Global reactivity multiplier (Sensitivity hot trigger) — 1 = no-op. */
   const sensitivityRef = useRef(useStore.getState().sensitivity);
+  const stackIntensityRef = useRef(useStore.getState().stackIntensity);
+  const stackReactiveRef = useRef(useStore.getState().stackIntensityReactive);
   const isVideoSourceRef = useRef(!!useStore.getState().videoElement);
   const sourceModeRef = useRef(useStore.getState().sourceMode);
   const forgeRef = useRef(useStore.getState().forge);
@@ -454,6 +435,8 @@ export function GlCanvas() {
     layersRef.current = state.layers;
     showBeforeAfterRef.current = state.showBeforeAfter;
     sensitivityRef.current = state.sensitivity;
+    stackIntensityRef.current = state.stackIntensity;
+    stackReactiveRef.current = state.stackIntensityReactive;
     isVideoSourceRef.current = !!state.videoElement;
     sourceModeRef.current = state.sourceMode;
     forgeRef.current = state.forge;
@@ -596,6 +579,36 @@ export function GlCanvas() {
 
       const audioSmooth = audioSmoothRef.current;
       const reactiveOn = mic.enabled || kaossActive;
+
+      /* Master gain over the whole stack.
+
+         Every layer keeps the opacity the director gave it — that per-role mix
+         is what makes a stack read as composed rather than as four things at
+         one volume — and this scales all of them together, so the composition
+         survives while the amount of it on screen becomes a single thing you
+         can hold. At 1 with no reactivity it is exactly a no-op.
+
+         Smoothed on the same rolling filter every audio-mapped param uses, so
+         a reactive master breathes with the room instead of stepping frame to
+         frame on raw envelope noise. */
+      let master = stackIntensityRef.current;
+      if (reactiveOn && stackReactiveRef.current > 0) {
+        /* Read from `sources`, not from the mic directly: `sources` is the
+           merged truth every param mapping already listens to, so the Kaoss
+           touch surface drives the master too — motion and sound, not just
+           sound. */
+        const drive = masterDrive({
+          bass: sources.bass ?? 0,
+          mid: sources.mid ?? 0,
+          treble: sources.treble ?? 0,
+          overall: sources.overall ?? 0,
+          beat: sources.beat ?? 0,
+        });
+        const prev = audioSmooth.get(MASTER_SMOOTH_KEY) ?? drive;
+        const smoothed = prev + (drive - prev) * MASTER_SMOOTH_ALPHA;
+        audioSmooth.set(MASTER_SMOOTH_KEY, smoothed);
+        master = masterGain(master, stackReactiveRef.current, smoothed * sensitivityRef.current);
+      }
       const renderLayers: RenderLayer[] = layersRef.current.map(l => {
         const params: Record<string, number> = {};
         const def = EFFECTS_BY_ID[l.effectId];
@@ -626,7 +639,10 @@ export function GlCanvas() {
           }
           params[k] = v;
         }
-        let opacity = l.opacity;
+        // Clamped, not just scaled: past 1 the loud layers saturate and the
+        // quiet ones keep climbing, which is what pushes a stack toward
+        // flat-out rather than uniformly brighter.
+        let opacity = Math.max(0, Math.min(1, l.opacity * master));
         if (showBeforeAfterRef.current) opacity = 0;
         return {
           id: l.id,

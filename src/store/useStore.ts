@@ -223,6 +223,32 @@ type State = {
    *  audio-mapped modulator strength across every mode. 1 = no-op (the exact
    *  behavior before this field existed). */
   sensitivity: number;
+  /**
+   * Master fader over the whole effect stack, 0..1.5.
+   *
+   * Every layer keeps its own opacity — the director sets those per role, and
+   * they are what make a stack read as composed rather than as four things at
+   * the same volume. This scales all of them together, so the mix the director
+   * built survives while the amount of it on screen becomes something you can
+   * hold and move. 1 is a no-op.
+   *
+   * Above 1 the loud layers saturate first (opacity clamps at 1) and the quiet
+   * ones keep climbing, which is what a master gain is supposed to do: push
+   * the stack toward flat-out rather than uniformly brighter.
+   */
+  stackIntensity: number;
+  /**
+   * How much of the master fader is handed to the room, 0..1.
+   *
+   * 0 leaves it exactly where it is parked. Above 0 the overall audio envelope
+   * (with the beat putting an edge on transients) modulates the master
+   * *around* its setting rather than on top of it — see masterGain — so
+   * turning this up trades a fixed level for a moving one at the same centre
+   * instead of just making everything louder.
+   *
+   * Needs a live audio source; with reactivity off it does nothing.
+   */
+  stackIntensityReactive: number;
   /** Shared config for every export path — see ExportSettings' own doc. */
   exportSettings: ExportSettings;
   isPerformanceMode: boolean;
@@ -392,6 +418,8 @@ type Actions = {
   setTrackMeta: (title: string, artist: string) => void;
   setMicSensitivity: (v: number) => void;
   setSensitivity: (v: number) => void;
+  setStackIntensity: (v: number) => void;
+  setStackIntensityReactive: (v: number) => void;
   setExportSettings: (patch: Partial<ExportSettings>) => void;
   setPerformanceMode: (b: boolean) => void;
   togglePerformanceMode: () => void;
@@ -588,6 +616,8 @@ export const useStore = create<State & Actions>((set, get) => ({
   trackArtist: trackPlayer.artist,
   micSensitivity: 1,
   sensitivity: 1,
+  stackIntensity: 1,
+  stackIntensityReactive: 0,
   exportSettings: loadExportSettings(),
   isPerformanceMode: false,
   desktopPortraitMode: false,
@@ -1253,6 +1283,8 @@ export const useStore = create<State & Actions>((set, get) => ({
   setTrackMeta: (title, artist) => set({ trackTitle: title, trackArtist: artist }),
   setMicSensitivity: (v) => set({ micSensitivity: v }),
   setSensitivity: (v) => set({ sensitivity: v }),
+  setStackIntensity: (v) => set({ stackIntensity: Math.max(0, Math.min(1.5, v)) }),
+  setStackIntensityReactive: (v) => set({ stackIntensityReactive: Math.max(0, Math.min(1, v)) }),
   setExportSettings: (patch) => set(s => {
     const next = { ...s.exportSettings, ...patch };
     try { localStorage.setItem(EXPORT_SETTINGS_KEY, JSON.stringify(next)); } catch {}

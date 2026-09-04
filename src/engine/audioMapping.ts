@@ -64,3 +64,47 @@ export function bandsFrom(mic: {
     beat: beatEnvelope,
   };
 }
+
+/* ────────────────────────────────────────────────────────────────────────
+   Master stack gain
+   ────────────────────────────────────────────────────────────────────── */
+
+/** Quietest the room can pull the stack to at full reactive depth. Not zero:
+ *  a silent moment should read as the stack breathing in, not as the effects
+ *  having been switched off. */
+export const MASTER_FLOOR = 0.34;
+/** Loudest the room can push it to at full depth, relative to the fader's own
+ *  setting. Above 1 so a peak can overshoot where the fader sits — which is
+ *  the whole reason to hand the master to the room rather than leave it
+ *  parked. */
+export const MASTER_CEILING = 1.45;
+
+/**
+ * How hard the room is driving, 0..1.
+ *
+ * Body from the overall envelope, punch from the beat. Weighted toward the
+ * envelope because a master that moved on beats alone would pump the entire
+ * stack in and out on every kick — the beat is here to put an edge on the
+ * transient, not to be the signal.
+ */
+export function masterDrive(bands: Record<AudioBand, number>): number {
+  return Math.max(0, Math.min(1, bands.overall * 0.72 + bands.beat * 0.45));
+}
+
+/**
+ * The multiplier the whole stack's opacity is scaled by.
+ *
+ * `base` is the user's own master fader; `depth` (0..1) is how much of that
+ * setting is handed over to the room. At depth 0 this returns `base` exactly,
+ * which is what keeps a reactive master opt-in rather than something that
+ * quietly starts moving a fader the user parked.
+ *
+ * The room modulates *around* the fader rather than on top of it, so turning
+ * reactivity up doesn't also turn the stack up on average — it trades a fixed
+ * level for a moving one at roughly the same centre.
+ */
+export function masterGain(base: number, depth: number, drive: number): number {
+  const d = Math.max(0, Math.min(1, depth));
+  const lift = MASTER_FLOOR + (MASTER_CEILING - MASTER_FLOOR) * Math.max(0, Math.min(1, drive));
+  return base * (1 - d + d * lift);
+}
