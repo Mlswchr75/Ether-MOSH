@@ -14,6 +14,7 @@ import {
   compose,
   composeRoleLayer,
   poolForRole,
+  rollRoleCount,
   rollWildness,
   type FrameBrief,
   type Composition,
@@ -78,12 +79,22 @@ const RECENT_OTHER_MEMORY = 10;
 const LOOK_MEMORY = 5;
 
 /**
- * How many parts of the composition each intensity fills.
- * 2 = grade + finish (a straight remaster), 4 = the full sentence.
+ * How many parts of the composition each intensity centres on.
+ *
+ * 2 = grade + finish (a straight remaster), 4 = the full sentence. These are
+ * centres, not fixed depths — rollRoleCount jitters a layer either side of
+ * them per mosh, so two rolls at one setting can differ in depth as well as in
+ * content.
+ *
+ * SAVAGE is the default and now centres on the full four-part sentence rather
+ * than three. Three layers meant the default stack was routinely a grade, a
+ * warp and a glow with no accent at all — the corruption/signature role, which
+ * is the one most people are actually pressing the button for, was the part
+ * being dropped.
  */
 const ROLE_COUNT: Record<Intensity, number> = {
   mild: 2,
-  savage: 3,
+  savage: 4,
   nuclear: 5,
   interdimensional: 7,
 };
@@ -97,12 +108,17 @@ const ROLE_COUNT: Record<Intensity, number> = {
  *
  * interdimensional used to be identical to nuclear; depth and chaos are what
  * now make it a different setting rather than a different word.
+ *
+ * Raised across the board (bar MILD, whose 0 is a guarantee callers rely on).
+ * A rule-break fires on a role at chaos x 0.5, so the old SAVAGE reached
+ * outside a role shelf on roughly one slot in thirteen — rare enough that most
+ * sessions never saw one at the default setting.
  */
 const CHAOS: Record<Intensity, number> = {
   mild: 0,
-  savage: 0.15,
-  nuclear: 0.35,
-  interdimensional: 0.6,
+  savage: 0.25,
+  nuclear: 0.45,
+  interdimensional: 0.7,
 };
 
 /**
@@ -852,7 +868,7 @@ export const useStore = create<State & Actions>((set, get) => ({
 
     const locked = s.layers.filter(l => l.locked);
     const composition = prepared?.composition ?? compose(brief, rand, {
-      roleCount: ROLE_COUNT[inten],
+      roleCount: rollRoleCount(rand, ROLE_COUNT[inten]),
       chaos: CHAOS[inten],
       wildness: rollWildness(rand, WILD_FLOOR[inten]),
       // Soft, decaying suppression instead of a hard exclude — the same
@@ -897,7 +913,7 @@ export const useStore = create<State & Actions>((set, get) => ({
     const plannedMosh = {
       seed: nextSeed, intensity: inten, brief,
       composition: compose(brief, nextRand, {
-        roleCount: ROLE_COUNT[inten], chaos: CHAOS[inten],
+        roleCount: rollRoleCount(nextRand, ROLE_COUNT[inten]), chaos: CHAOS[inten],
         wildness: rollWildness(nextRand, WILD_FLOOR[inten]),
         lookPenalty: recencyPenalty(nextLooks, []),
         effectPenalty: recencyPenalty(nextForm, nextOther),
@@ -955,7 +971,7 @@ export const useStore = create<State & Actions>((set, get) => ({
     const locked = s.layers.filter(l => l.locked);
 
     const composition = s.forge.seamless ? null : compose(brief, rand, {
-      roleCount: ROLE_COUNT[inten],
+      roleCount: rollRoleCount(rand, ROLE_COUNT[inten]),
       chaos: CHAOS[inten],
       wildness: rollWildness(rand, WILD_FLOOR[inten]),
       lookPenalty: recencyPenalty(s.recentLooks, []),

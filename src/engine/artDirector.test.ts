@@ -3,6 +3,7 @@ import { rngFromSeed } from "./seed";
 import { EFFECTS_BY_ID, PUBLIC_EFFECTS } from "./effects";
 import {
   LOOKS,
+  MAX_ROLES,
   NEUTRAL_STATS,
   ROLES,
   briefFrom,
@@ -16,6 +17,7 @@ import {
   paramsForRole,
   pickForRole,
   poolForRole,
+  rollRoleCount,
   statsFromPixels,
   strengthParamFor,
   type Look,
@@ -663,6 +665,47 @@ describe("look curation coverage", () => {
       for (const role of ROLES) {
         expect((look.picks[role] ?? []).length, `${look.id}/${role}`).toBeGreaterThanOrEqual(3);
       }
+    }
+  });
+});
+
+describe("rollRoleCount", () => {
+  const sample = (base: number, n = 4000) => {
+    const counts = new Map<number, number>();
+    for (let i = 0; i < n; i++) {
+      const rand = rngFromSeed(`rc-${base}-${i}`);
+      const v = rollRoleCount(rand, base);
+      counts.set(v, (counts.get(v) ?? 0) + 1);
+    }
+    return counts;
+  };
+
+  it("centres on the tier's own depth but reaches a layer either side", () => {
+    const counts = sample(4);
+    expect([...counts.keys()].sort((a, b) => a - b)).toEqual([3, 4, 5]);
+    // The centre stays the most likely outcome — this is jitter around a
+    // chosen depth, not a uniform roll that throws the setting away.
+    expect(counts.get(4)!).toBeGreaterThan(counts.get(3)!);
+    expect(counts.get(4)!).toBeGreaterThan(counts.get(5)!);
+  });
+
+  it("never composes a single-layer stack, however low the tier", () => {
+    for (const base of [1, 2]) {
+      for (const v of sample(base, 500).keys()) expect(v).toBeGreaterThanOrEqual(2);
+    }
+  });
+
+  it("never reaches past MAX_ROLES, however high the tier", () => {
+    for (const base of [MAX_ROLES - 1, MAX_ROLES, MAX_ROLES + 3]) {
+      for (const v of sample(base, 500).keys()) expect(v).toBeLessThanOrEqual(MAX_ROLES);
+    }
+  });
+
+  it("actually produces stacks of that depth", () => {
+    const brief = briefFrom(NEUTRAL_STATS);
+    for (const depth of [3, 4, 5]) {
+      const layers = compose(brief, rngFromSeed(`depth-${depth}`), { roleCount: depth }).layers;
+      expect(layers).toHaveLength(depth);
     }
   });
 });

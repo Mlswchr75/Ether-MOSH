@@ -1408,6 +1408,29 @@ export function compose(
  * `floor` lifts the whole distribution for the higher intensity settings, so
  * NUCLEAR is wild more often than MILD without ever losing the spread.
  */
+/**
+ * Roll how many parts this particular stack is built from.
+ *
+ * The intensity tiers used to name one exact depth each, so every SAVAGE roll
+ * was three layers and every NUCLEAR five, forever. Depth is one of the most
+ * legible things about a stack — three layers and five layers do not look like
+ * two takes on one idea, they look like two different amounts of effort — and
+ * pinning it meant the one variable the eye reads first never moved.
+ *
+ * A tier now names a centre rather than a value: mostly its own depth, and
+ * often a layer either side of it. Two rolls at the same setting can differ in
+ * depth, which is variety the effect shortlists alone can't produce.
+ *
+ * Never below two — one layer is a grade with nothing on it, which reads as
+ * the effect having failed rather than as restraint — and never past
+ * MAX_ROLES, where added layers stop composing and start silting up.
+ */
+export function rollRoleCount(rand: () => number, base: number): number {
+  const r = rand();
+  const offset = r < 0.22 ? -1 : r < 0.70 ? 0 : 1;
+  return Math.max(2, Math.min(MAX_ROLES, base + offset));
+}
+
 export function rollWildness(rand: () => number, floor = 0): number {
   const band = rand();
   const raw =
