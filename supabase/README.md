@@ -1,7 +1,7 @@
 # Supabase backend (version-controlled)
 
 This directory is the version-controlled copy of the production database
-schema and payment edge functions for `ether-mosh.online` (Supabase project
+schema and payment/AI edge functions for `ether-mosh.online` (Supabase project
 ref `coyzusnfkvheplcdvctf`, "Ether-MOSH Production"). The canonical repository
 is now the source of truth for this backend rather than a site-builder-managed
 copy.
@@ -39,14 +39,22 @@ these migrations apply cleanly in order and reproduce the full schema.
   - `PAYMENTS_LIVE_WEBHOOK_SECRET` / `PAYMENTS_SANDBOX_WEBHOOK_SECRET` — signing secrets from your Stripe webhook endpoint config
   - `PAYMENTS_ALLOWED_ORIGINS` — comma-separated checkout origins; defaults to `https://ether-mosh.online`
   - `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` — provided automatically by Supabase's edge runtime, no action needed
-None of these functions need `LOVABLE_API_KEY`.
+- `forge-analyze` — AI artwork analysis for Pattern Forge. Calls Google's
+  Gemini API directly (via its OpenAI-compatible endpoint) instead of any
+  site-builder AI gateway. Needs:
+  - `GEMINI_API_KEY` — your own Gemini API key
+- `forge-delete` — unchanged, no external dependency.
+
+None of these functions need `LOVABLE_API_KEY`. (The MCP server integration
+elsewhere in the app is untouched and still uses Lovable's MCP tooling —
+that's a separate concern from payments/AI.)
 
 ## Deploying
 
 Once secrets are set on the target project:
 
 ```
-supabase functions deploy create-checkout payments-webhook
+supabase functions deploy create-checkout payments-webhook forge-analyze forge-delete
 ```
 
 Test against Stripe's sandbox/test-mode keys and a test webhook endpoint before
