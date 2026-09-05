@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { Check, Mic, X } from "lucide-react";
 
 /**
@@ -19,8 +20,28 @@ import { Check, Mic, X } from "lucide-react";
  * it), so `fixed bottom-4` anchored to the shell's real bottom, thousands of
  * pixels below the fold. `absolute` scoped to the one-viewport-tall wrapper
  * sidesteps that entirely, the same way the existing pin button does.
+ *
+ * Auto-expires. It used to stay up until it was explicitly answered, which is
+ * what made it read as a box demanding attention rather than an offer: a
+ * visitor who simply wasn't interested had to dismiss the same card every
+ * time it reappeared. Ignoring it is now a valid answer — Editor only raises
+ * it while the radial menu is open, and re-offers occasionally while it
+ * stays open, so nothing is lost by letting one go by.
  */
+const AUTO_DISMISS_MS = 9_000;
+
 export function MicNudgeToast({ onYes, onNo }: { onYes: () => void; onNo: () => void }) {
+  /* Held in a ref, and the timer armed once on mount. The caller passes an
+     inline arrow, so `onNo` is a new function on every render — depending on
+     it directly would clear and re-arm this timeout each time the parent
+     re-rendered, and the card would never actually expire. */
+  const onNoRef = useRef(onNo);
+  onNoRef.current = onNo;
+  useEffect(() => {
+    const t = window.setTimeout(() => onNoRef.current(), AUTO_DISMISS_MS);
+    return () => window.clearTimeout(t);
+  }, []);
+
   return (
     <div className="absolute bottom-4 right-4 z-[80] safe-right safe-bottom">
       <div
