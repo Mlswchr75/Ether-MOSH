@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type DragEvent } from 'react'
 import { Crosshair, Download, Film, ImagePlus, Layers3, Library, LoaderCircle, ScanLine, Sparkles, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { useStore } from '@/store/useStore';
+import { useProximityIdle } from '@/hooks/useProximityIdle';
 import { useOverlayStore } from '@/store/useOverlayStore';
 import { stickerEngine, type StickerScore } from '@/engine/StickerEngine';
 import { segmentationEngine, type MaskResult, type SegmentableSource } from '@/engine/SegmentationEngine';
@@ -59,6 +60,13 @@ export function StickerCapture() {
 
   const [score, setScore]       = useState<StickerScore>({ value: 0, saturation: 0, complexity: 0 });
   const [flash, setFlash]       = useState(false);
+  /* The Sticker Studio panel sits over the top-right of a full-screen
+     visualiser. It steps out of the way when nobody is reaching for it, and
+     comes back only for a pointer that approaches it — never for a keystroke,
+     so the whole app stays drivable from the keyboard without ever putting
+     chrome back over the artwork. See useProximityIdle. */
+  const studioRef = useRef<HTMLElement>(null);
+  const studioHidden = useProximityIdle(studioRef);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [lottieMode, setLottieMode] = useState(false);
   const [lottieBackground, setLottieBackground] = useState<LottieStickerBackground>('black');
@@ -677,7 +685,16 @@ export function StickerCapture() {
         </div>
       )}
 
-      <section className="pointer-events-auto absolute right-3 top-14 z-[60] max-h-[calc(100dvh-5rem)] w-[min(92vw,21rem)] overflow-y-auto rounded-2xl border border-white/15 bg-black/90 p-3 shadow-2xl backdrop-blur-xl" aria-label="Sticker Studio">
+      <section
+        ref={studioRef}
+        /* Hidden visually rather than unmounted: the reveal zone is derived
+           from this element's own rect, and scroll position plus any
+           in-progress input inside it survive the round trip. */
+        data-idle-hidden={studioHidden || undefined}
+        aria-hidden={studioHidden || undefined}
+        className={`absolute right-3 top-14 z-[60] max-h-[calc(100dvh-5rem)] w-[min(92vw,21rem)] overflow-y-auto rounded-2xl border border-white/15 bg-black/90 p-3 shadow-2xl backdrop-blur-xl transition-opacity duration-300 ${studioHidden ? "pointer-events-none opacity-0" : "pointer-events-auto opacity-100"}`}
+        aria-label="Sticker Studio"
+      >
         <div className="flex items-center justify-between gap-2">
           <div><p className="font-mono text-[9px] uppercase tracking-[0.2em] text-cyan-100">Sticker Studio</p><p className="mt-0.5 font-mono text-[6px] uppercase tracking-[0.1em] text-white/35">isolate · cut · animate · reuse</p></div>
           <button type="button" onClick={() => useStore.getState().setStickerMode(false)} aria-label="Close Sticker panel" className="rounded-full p-1 text-white/40 hover:bg-white/10 hover:text-white"><X size={11} /></button>
