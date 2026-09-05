@@ -42,7 +42,7 @@ import { DEFAULT_TILE_UNIFORMS, type TileMode, type TileUniforms } from "@/engin
 import { extractPalette } from "@/engine/imagePalette";
 import { BIOME_LABELS, biomeAccentHex } from "@/engine/imagePalette";
 import { upscaleImage } from "@/engine/upscaler";
-import { trackPlayer } from "@/engine/trackPlayer";
+import { trackPlayer, type UploadedTrack } from "@/engine/trackPlayer";
 import {
   loadAudioInputPreference,
   saveAudioInputPreference,
@@ -217,6 +217,24 @@ type State = {
   /** Theme-track playback, mutually exclusive with mic/system audio. */
   trackEnabled: boolean;
   trackTitle: string;
+  /**
+   * Audio files the visitor loaded themselves, this session.
+   *
+   * Session-scoped on purpose: an upload becomes an object URL, which is
+   * alive only for as long as this document is. Persisting the *list* across
+   * reloads would leave rows pointing at revoked blobs — a menu full of
+   * tracks that error when tapped. Actually surviving a reload means storing
+   * the audio itself (IndexedDB), which is its own piece of work.
+   */
+  uploadedTracks: UploadedTrack[];
+  /**
+   * Whether the radial trigger menu is open.
+   *
+   * Lives in the store rather than inside the wheel because it gates
+   * behaviour outside the wheel — the audio nudge only fires while the menu
+   * the visitor would use to answer it is actually on screen.
+   */
+  radialMenuOpen: boolean;
   trackArtist: string;
   micSensitivity: number;
   /** Global reactivity multiplier — scales mic/device-audio sensitivity and
@@ -415,6 +433,8 @@ type Actions = {
   setAudioInputDevice: (deviceId: string | null, label?: string | null) => void;
   setAudioInputChannel: (channel: AudioInputChannel) => void;
   setTrackEnabled: (b: boolean) => void;
+  addUploadedTrack: (track: UploadedTrack) => void;
+  setRadialMenuOpen: (open: boolean) => void;
   setTrackMeta: (title: string, artist: string) => void;
   setMicSensitivity: (v: number) => void;
   setSensitivity: (v: number) => void;
@@ -612,6 +632,8 @@ export const useStore = create<State & Actions>((set, get) => ({
   audioInputDeviceLabel: storedAudioInput.label,
   audioInputChannel: storedAudioInput.channel,
   trackEnabled: false,
+  uploadedTracks: [],
+  radialMenuOpen: false,
   trackTitle: trackPlayer.title,
   trackArtist: trackPlayer.artist,
   micSensitivity: 1,
@@ -1203,7 +1225,28 @@ export const useStore = create<State & Actions>((set, get) => ({
     const role = nextAvailableRole(s.layers, s.roleCursor, { includeCurrent: true });
     if (!role) return null;
     if (role !== s.roleCursor) set({ roleCursor: role });
-    const layerId = groupLayersByRole(s.layers)[role].find(layer => !layer.locked)?.id;
+    /* Continue from whichever sibling this role rolled last, rather than
+       always taking the first.
+
+       A role is not one layer. The director doubles accent, finish and form
+       to build anything deeper than the four-part sentence, so a 7-layer
+       stack holds three roles twice over. Taking `.find(unlocked)` every
+       time meant each doubled role was represented forever by its first
+       layer: the cursor visits grade, form, accent, finish and comes back
+       around to the same four layers, so the siblings could never be reached
+       no matter how long you moshed through. Half a NUCLEAR stack and nearly
+       half an INTERDIMENSIONAL one sat frozen while the rest rerolled.
+
+       Resuming after the last one rolled walks the whole group across
+       successive passes: accent's first layer this time round, its second
+       the next, wrapping when the group runs out. */
+    const group = groupLayersByRole(s.layers)[role];
+    const lastId = s.selectedRoleLayers[role];
+    const lastIdx = lastId ? group.findIndex(layer => layer.id === lastId) : -1;
+    const layerId = (
+      group.slice(lastIdx + 1).find(layer => !layer.locked)
+      ?? group.find(layer => !layer.locked)
+    )?.id;
     if (!layerId) return null;
     return get().rerollRole(role, layerId);
   },
@@ -1254,6 +1297,13 @@ export const useStore = create<State & Actions>((set, get) => ({
     });
     return { audioInputChannel: channel };
   }),
+  addUploadedTrack: (track) => set(s => (
+    // Re-uploading the same file replaces its row rather than stacking a
+    // duplicate: the old object URL is dead to us either way, and two rows
+    // with one name is a menu bug, not a feature.
+    { uploadedTracks: [track, ...s.uploadedTracks.filter(t => t.title !== track.title)] }
+  )),
+  setRadialMenuOpen: (open) => set(s => s.radialMenuOpen === open ? s : { radialMenuOpen: open }),
   setTrackEnabled: (b) => {
     if (b) {
       trackPlayer.play().then(() => {
