@@ -283,6 +283,8 @@ function TrackTrigger({ delay, showNudge, onNudgeDismiss }: { delay: number; sho
   const trackTitle = useStore(s => s.trackTitle);
   const setTrackEnabled = useStore(s => s.setTrackEnabled);
   const setTrackMeta = useStore(s => s.setTrackMeta);
+  const uploadedTracks = useStore(s => s.uploadedTracks);
+  const addUploadedTrack = useStore(s => s.addUploadedTrack);
   const [open, setOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -313,13 +315,22 @@ function TrackTrigger({ delay, showNudge, onNudgeDismiss }: { delay: number; sho
         type="button"
         aria-label={trackEnabled ? `Pause ${trackTitle}` : "Play a random MOSH track"}
         aria-pressed={trackEnabled}
-        title={trackEnabled ? `Pause · ${trackTitle}` : "Play a random track"}
+        title={trackEnabled ? `Pause · ${trackTitle} — shift-click to pick a track` : "Play a random track — shift-click to pick"}
         data-active={trackEnabled || undefined}
         data-tint=""
         data-no-longpress
         className="hot-trigger"
         style={{ animationDelay: `${delay}ms`, ["--ht-tint" as string]: "262 68% 72%" }}
-        onClick={() => trackEnabled ? setTrackEnabled(false) : startRandomTrack()}
+        /* Shift opens the picker instead of toggling. The caret below already
+           opens it, but it is a 20px target tucked in a corner of another
+           button — fine to discover once, tedious to hit every time you want
+           a specific track. Shift-click is the same escalation convention the
+           rest of the app uses for "the considered version of this action",
+           and it leaves the plain tap doing exactly what it always did. */
+        onClick={(event) => {
+          if (event.shiftKey) { setOpen(true); return; }
+          if (trackEnabled) setTrackEnabled(false); else startRandomTrack();
+        }}
       >
         <span className="hot-trigger__glitch" aria-hidden>
           {trackEnabled ? <Music className="h-4 w-4" strokeWidth={1.5} /> : <Music2 className="h-4 w-4" strokeWidth={1.5} />}
@@ -396,6 +407,44 @@ function TrackTrigger({ delay, showNudge, onNudgeDismiss }: { delay: number; sho
             </button>
           </div>
 
+          {uploadedTracks.length > 0 && (
+            <>
+              <div className="mt-2.5 mb-1 font-mono text-[9px] uppercase tracking-[0.18em] text-[hsl(var(--text-tertiary))]">
+                yours
+              </div>
+              <div className="flex flex-col gap-0.5">
+                {uploadedTracks.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    role="menuitem"
+                    data-no-longpress
+                    data-active={trackEnabled && trackTitle === t.title || undefined}
+                    onClick={async () => {
+                      setOpen(false);
+                      try {
+                        await trackPlayer.setSource(t.url, t.title, "");
+                        setTrackMeta(t.title, "");
+                        setTrackEnabled(true);
+                      } catch (err) {
+                        // An object URL dies with the document that made it,
+                        // and Safari can drop one earlier under memory
+                        // pressure. Say so rather than failing silently on a
+                        // row that looks perfectly fine.
+                        console.error("[track] uploaded track no longer available:", err);
+                        toast.error(`"${t.title}" is no longer loaded — add the file again`);
+                      }
+                    }}
+                    className="flex w-full items-center gap-2 rounded-sm border border-transparent px-2 py-1.5 text-left font-mono text-[10px] uppercase tracking-[0.1em] text-[hsl(var(--text-secondary))] transition hover:border-[hsl(var(--accent))] hover:text-[hsl(var(--accent))] data-[active]:border-[hsl(var(--accent))]/40 data-[active]:text-[hsl(var(--accent))]"
+                  >
+                    <Upload className="h-3 w-3 shrink-0" strokeWidth={1.5} />
+                    <span className="truncate">{t.title}</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+
           <div className="mt-2.5 mb-1 font-mono text-[9px] uppercase tracking-[0.18em] text-[hsl(var(--text-tertiary))]">
             showcase
           </div>
@@ -465,6 +514,10 @@ function TrackTrigger({ delay, showNudge, onNudgeDismiss }: { delay: number; sho
                 await trackPlayer.setSource(url, name, "");
                 setTrackMeta(name, "");
                 setTrackEnabled(true);
+                // Keep it in the picker. Without this an upload was playable
+                // exactly once — switching to a showcase track and back meant
+                // re-browsing for a file already loaded in this session.
+                addUploadedTrack({ id: `upload:${name}`, url, title: name });
                 setOpen(false);
               } catch (err) {
                 console.error("[track] failed to load audio file:", err);
@@ -757,7 +810,15 @@ function MobileRadialWheel({
     layer.dataset.phase = phase;
     openRef.current = phase === "open";
     wheelRef.current?.setAttribute("aria-hidden", phase === "open" ? "false" : "true");
+    // Published so the audio nudge can fire only while the menu that answers
+    // it is actually on screen (see Editor's nudge effect).
+    useStore.getState().setRadialMenuOpen(phase === "open");
   };
+
+  // A menu that stops existing is not open. setPhase is imperative here (it
+  // writes straight to the DOM rather than through state), so nothing else
+  // would clear this on unmount.
+  useEffect(() => () => useStore.getState().setRadialMenuOpen(false), []);
 
   const select = (id: string | null) => {
     if (highlightRef.current === id) return;
@@ -1080,6 +1141,12 @@ function DesktopRadialWheel({
   onMosh: () => void;
 }) {
   const [phase, setPhase] = useState<"idle" | "armed" | "open">("idle");
+  // Same signal the mobile wheel publishes, so the nudge behaves identically
+  // on both. Cleared on unmount — a menu that stops existing is not open.
+  useEffect(() => {
+    useStore.getState().setRadialMenuOpen(phase === "open");
+  }, [phase]);
+  useEffect(() => () => useStore.getState().setRadialMenuOpen(false), []);
   const [editing, setEditing] = useState(false);
   const [highlighted, setHighlighted] = useState<string | null>(null);
   const [center, setCenter] = useState({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
