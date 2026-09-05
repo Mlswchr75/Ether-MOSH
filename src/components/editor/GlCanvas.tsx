@@ -179,15 +179,38 @@ export function GlCanvas() {
       cursorFx.moveAmbient(`ptr-${e.pointerId}`, uv.x, uv.y);
     };
     const onUp = (e: PointerEvent) => cursorFx.release(`ptr-${e.pointerId}`);
+    /* Per-pointer end events are not guaranteed. Alt-tabbing mid-drag, an OS
+       gesture stealing the touch, a context menu, or the pointer leaving the
+       document all end the interaction without a pointerup, stranding the
+       point at full strength on that part of the frame for the rest of the
+       session — and because these layers are appended after the stack, no
+       amount of moshing clears one. These are the coarse "input is gone"
+       signals a browser does reliably send. */
+    const releaseAll = () => cursorFx.releaseAll();
+    const onVisibility = () => { if (document.hidden) cursorFx.releaseAll(); };
+    const onPointerOut = (e: PointerEvent) => {
+      // relatedTarget null means the pointer left the document, not just
+      // moved between elements inside it.
+      if (!e.relatedTarget) cursorFx.releaseAll();
+    };
     window.addEventListener("pointerdown", onDown, { capture: true, passive: true });
     window.addEventListener("pointermove", onMove, { capture: true, passive: true });
     window.addEventListener("pointerup", onUp, { capture: true, passive: true });
     window.addEventListener("pointercancel", onUp, { capture: true, passive: true });
+    window.addEventListener("blur", releaseAll);
+    window.addEventListener("pointerout", onPointerOut, { capture: true, passive: true });
+    document.addEventListener("visibilitychange", onVisibility);
     return () => {
       window.removeEventListener("pointerdown", onDown, { capture: true });
       window.removeEventListener("pointermove", onMove, { capture: true });
       window.removeEventListener("pointerup", onUp, { capture: true });
       window.removeEventListener("pointercancel", onUp, { capture: true });
+      window.removeEventListener("blur", releaseAll);
+      window.removeEventListener("pointerout", onPointerOut, { capture: true });
+      document.removeEventListener("visibilitychange", onVisibility);
+      // Unmounting is teardown: there is no next frame to run a fade on, and
+      // a point surviving into the next mount is exactly the stuck-effect bug.
+      cursorFx.clear();
     };
   }, []);
 

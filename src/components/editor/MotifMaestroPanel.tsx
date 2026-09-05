@@ -22,7 +22,27 @@ export function MotifMaestroPanel({ embedded = false }: { embedded?: boolean }) 
     if(evolve){ setIntensity(Math.max(.18,Math.min(1,forge.intensity+(Math.random()-.5)*variation*.32))); setDensity(Math.max(.1,Math.min(1,forge.mosaicDensity+(Math.random()-.5)*variation*.28))); }
     randomise(); window.setTimeout(()=>{analyze();setBusy(false);},520);
   },[analyze,busy,forge.intensity,forge.mosaicDensity,randomise,setDensity,setIntensity,setSeamless,setTileMode,symmetry,variation]);
-  useEffect(()=>{setSeamless(true);setTileMode("mirror");if(!forge.stack.length)randomise();const id=window.setTimeout(analyze,700);return()=>window.clearTimeout(id);},[]);// eslint-disable-line react-hooks/exhaustive-deps
+  /* Motif Maestro forces mirror tiling and seamless mode on while it is open,
+     because that is what a repeat-pattern workspace is for. Both are GLOBAL
+     visual state — tileMode drives a whole extra render pass in the Renderer —
+     and this used to set them on mount with no matching teardown. Leaving the
+     panel therefore left mirror tiling on for the rest of the session: every
+     frame folded into a 2x2 grid with visible seams down the middle and across,
+     on every source, surviving every mosh and even "clear all FX", because none
+     of that touches tileMode. Restoring what was there on the way out is the
+     whole fix. */
+  useEffect(()=>{
+    const previousTileMode=useStore.getState().tileMode;
+    const previousSeamless=useStore.getState().forge.seamless;
+    setSeamless(true);setTileMode("mirror");
+    if(!forge.stack.length)randomise();
+    const id=window.setTimeout(analyze,700);
+    return()=>{
+      window.clearTimeout(id);
+      setTileMode(previousTileMode);
+      setSeamless(previousSeamless);
+    };
+  },[]);// eslint-disable-line react-hooks/exhaustive-deps
   useEffect(()=>{if(!auto)return;const id=window.setInterval(()=>generate(true),8000);return()=>window.clearInterval(id);},[auto,generate]);
 
   const loadBase=(file:File)=>{const issue=validateImageUpload(file);if(issue){toast.error(issue);return;}const url=URL.createObjectURL(file),img=new Image();img.onload=()=>{const dimensions=validateDecodedDimensions(img.naturalWidth,img.naturalHeight);if(dimensions){URL.revokeObjectURL(url);toast.error(dimensions);return;}setBase(img,file.name);setMosaic(true);setOverlay(.62);URL.revokeObjectURL(url);generate();toast.success("Image dissected into Motif Maestro");};img.onerror=()=>{URL.revokeObjectURL(url);toast.error("Couldn't read that image");};img.src=url;};

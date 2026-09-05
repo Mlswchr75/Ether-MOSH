@@ -1267,6 +1267,11 @@ export const useStore = create<State & Actions>((set, get) => ({
     selectedRole: null,
     selectedRoleLayers: {},
     roleCursor: "grade",
+    /* Tiling is a whole extra render pass that outlives the stack, so a
+       cleared stack with mirror tiling still on leaves the frame folded into
+       a seamed 2x2 grid — visibly "an effect that won't go away", which is
+       exactly what this button exists to answer. Nothing else ever reset it. */
+    tileMode: "none" as const,
   })),
 
   reset: () => set(s => ({ ...s, past: pushPast(s), future: [], layers: [], ...resetRoleSelection([]) })),
