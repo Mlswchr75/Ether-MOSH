@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { groupLayersByRole, ROLE_ORDER } from "@/engine/effectRoles";
+import { groupLayersByRole, resolveLayerRole, ROLE_ORDER } from "@/engine/effectRoles";
 import type { Layer } from "./types";
 import { useStore } from "./useStore";
 
@@ -60,29 +60,51 @@ describe("role-aware effect controls", () => {
     expect(roleStore().selectedLayerId).toBe(accents[1].id);
     expect(roleStore().layers).toEqual(before);
 
+    // Depth is jittered per mosh now, so no intensity is guaranteed to leave a
+    // role empty — strip the role instead of picking a setting that used to.
     store.mosh("mild");
+    useStore.setState({ layers: roleStore().layers.filter(layer => layer.role !== "form") });
     store.selectRole("form");
     expect(roleStore().selectedLayerId).toBeNull();
   });
 
-  it("exposes the composition roles at every intensity depth", () => {
+  /* An intensity names a centre depth, not a fixed one — rollRoleCount jitters
+     a layer either side of it per mosh. So this asserts what the tiers still
+     promise: a stack always reads bottom-to-top in semantic order, always
+     opens on the grade, lands within its tier's own band, and a higher tier is
+     never shallower than a lower one. */
+  it("exposes the composition roles in semantic order, at each intensity's depth band", () => {
     const store = roleStore();
-    const expected = {
-      mild: ["grade", "finish"],
-      savage: ["grade", "form", "finish"],
-      nuclear: ["grade", "form", "accent", "accent", "finish"],
-      interdimensional: ["grade", "form", "form", "accent", "accent", "finish", "finish"],
+    const bands = {
+      mild: [2, 3],
+      savage: [3, 5],
+      nuclear: [4, 6],
+      interdimensional: [6, 7],
     } as const;
 
-    for (const [intensity, roles] of Object.entries(expected)) {
-      store.mosh(intensity as "mild" | "savage" | "nuclear" | "interdimensional");
-      expect(roleStore().layers.map(layer => layer.role)).toEqual(roles);
+    for (const [intensity, [min, max]] of Object.entries(bands)) {
+      const depths: number[] = [];
+      for (let i = 0; i < 25; i++) {
+        store.mosh(intensity as keyof typeof bands);
+        const roles = roleStore().layers.map(resolveLayerRole);
+        expect(roles.length, intensity).toBeGreaterThanOrEqual(min);
+        expect(roles.length, intensity).toBeLessThanOrEqual(max);
+        expect(roles[0], intensity).toBe("grade");
+        const ranks = roles.map(role => ROLE_ORDER.indexOf(role));
+        expect(ranks, intensity).toEqual([...ranks].sort((a, b) => a - b));
+        depths.push(roles.length);
+      }
+      // The jitter must not swamp the setting: every roll stays in its band,
+      // so a tier is still meaningfully deeper than the one below it.
+      expect(Math.min(...depths), intensity).toBeGreaterThanOrEqual(min);
     }
   });
 
   it("rerolls only the explicitly selected repeated-role layer", () => {
     const store = roleStore();
-    store.mosh("nuclear");
+    // INTERDIMENSIONAL rather than NUCLEAR: depth is jittered now, and only
+    // this tier's whole band (6-7) doubles the accent every time.
+    store.mosh("interdimensional");
     const accents = groupLayersByRole(roleStore().layers).accent;
     const target = accents[1];
     const before = roleStore().layers.map(layer => ({ id: layer.id, effectId: layer.effectId }));
@@ -126,7 +148,9 @@ describe("role-aware effect controls", () => {
 
   it("does not fall through from a locked remembered repeated-role selection", () => {
     const store = roleStore();
-    store.mosh("nuclear");
+    // INTERDIMENSIONAL rather than NUCLEAR: jittered depth means NUCLEAR can
+    // land on a single accent, which leaves nothing repeated to test.
+    store.mosh("interdimensional");
     const [lockedAccent] = groupLayersByRole(roleStore().layers).accent;
     store.selectRoleLayer("accent", lockedAccent.id);
     store.toggleLocked(lockedAccent.id);
@@ -153,12 +177,17 @@ describe("role-aware effect controls", () => {
   it("adds a missing role in semantic stack order and makes it undoable", () => {
     const store = roleStore();
     store.mosh("mild");
+    // addRole only fills a role that is actually empty, and jittered depth
+    // means MILD no longer reliably leaves one out.
+    useStore.setState({ layers: roleStore().layers.filter(layer => layer.role !== "form") });
     const before = structuredClone(roleStore().layers);
 
     const roll = store.addRole("form");
 
-    expect(roleStore().layers.map(layer => layer.role)).toEqual(["grade", "form", "finish"]);
-    expect(roleStore().layers[1].id).toBe(roll!.layerId);
+    expect(roleStore().layers.map(resolveLayerRole))
+      .toEqual([...before.map(resolveLayerRole), "form" as const]
+        .sort((a, b) => ROLE_ORDER.indexOf(a) - ROLE_ORDER.indexOf(b)));
+    expect(roleStore().layers.find(layer => layer.role === "form")!.id).toBe(roll!.layerId);
     store.undo();
     expect(roleStore().layers).toEqual(before);
   });
@@ -197,6 +226,9 @@ describe("role-aware effect controls", () => {
   it("makes Add one history step and clears redo", () => {
     const store = roleStore();
     store.mosh("mild");
+    // addRole is a no-op on an already-filled role, and jittered depth means
+    // MILD no longer reliably leaves the form out.
+    useStore.setState({ layers: roleStore().layers.filter(layer => layer.role !== "form") });
     const pastBefore = roleStore().past.length;
     useStore.setState({ future: [structuredClone(roleStore().layers)] });
 
@@ -221,7 +253,9 @@ describe("role-aware effect controls", () => {
 
   it("makes a duplicated layer the coherent selection for its semantic role", () => {
     const store = roleStore();
-    store.mosh("nuclear");
+    // INTERDIMENSIONAL rather than NUCLEAR: depth is jittered per mosh now,
+    // and this is the one tier whose whole band doubles the accent.
+    store.mosh("interdimensional");
     const target = groupLayersByRole(roleStore().layers).accent[1];
 
     store.selectRoleLayer("accent", target.id);
@@ -254,6 +288,10 @@ describe("role-aware effect controls", () => {
   it("repairs stale selected layer IDs after undo, preset loading, and a full mosh", () => {
     const store = roleStore();
     store.mosh("mild");
+    // addRole is a no-op when the role is already filled, and jittered depth
+    // means MILD no longer reliably leaves the form out — without this the
+    // undo below would roll back the mosh instead of the added role.
+    useStore.setState({ layers: roleStore().layers.filter(layer => layer.role !== "form") });
     store.addRole("form");
     store.undo();
     expect(roleStore().selectedRole).toBe("grade");

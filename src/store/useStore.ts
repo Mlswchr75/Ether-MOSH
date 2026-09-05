@@ -14,6 +14,7 @@ import {
   compose,
   composeRoleLayer,
   poolForRole,
+  rollRoleCount,
   rollWildness,
   type FrameBrief,
   type Composition,
@@ -78,12 +79,22 @@ const RECENT_OTHER_MEMORY = 10;
 const LOOK_MEMORY = 5;
 
 /**
- * How many parts of the composition each intensity fills.
- * 2 = grade + finish (a straight remaster), 4 = the full sentence.
+ * How many parts of the composition each intensity centres on.
+ *
+ * 2 = grade + finish (a straight remaster), 4 = the full sentence. These are
+ * centres, not fixed depths — rollRoleCount jitters a layer either side of
+ * them per mosh, so two rolls at one setting can differ in depth as well as in
+ * content.
+ *
+ * SAVAGE is the default and now centres on the full four-part sentence rather
+ * than three. Three layers meant the default stack was routinely a grade, a
+ * warp and a glow with no accent at all — the corruption/signature role, which
+ * is the one most people are actually pressing the button for, was the part
+ * being dropped.
  */
 const ROLE_COUNT: Record<Intensity, number> = {
   mild: 2,
-  savage: 3,
+  savage: 4,
   nuclear: 5,
   interdimensional: 7,
 };
@@ -97,12 +108,17 @@ const ROLE_COUNT: Record<Intensity, number> = {
  *
  * interdimensional used to be identical to nuclear; depth and chaos are what
  * now make it a different setting rather than a different word.
+ *
+ * Raised across the board (bar MILD, whose 0 is a guarantee callers rely on).
+ * A rule-break fires on a role at chaos x 0.5, so the old SAVAGE reached
+ * outside a role shelf on roughly one slot in thirteen — rare enough that most
+ * sessions never saw one at the default setting.
  */
 const CHAOS: Record<Intensity, number> = {
   mild: 0,
-  savage: 0.15,
-  nuclear: 0.35,
-  interdimensional: 0.6,
+  savage: 0.25,
+  nuclear: 0.45,
+  interdimensional: 0.7,
 };
 
 /**
@@ -207,6 +223,32 @@ type State = {
    *  audio-mapped modulator strength across every mode. 1 = no-op (the exact
    *  behavior before this field existed). */
   sensitivity: number;
+  /**
+   * Master fader over the whole effect stack, 0..1.5.
+   *
+   * Every layer keeps its own opacity — the director sets those per role, and
+   * they are what make a stack read as composed rather than as four things at
+   * the same volume. This scales all of them together, so the mix the director
+   * built survives while the amount of it on screen becomes something you can
+   * hold and move. 1 is a no-op.
+   *
+   * Above 1 the loud layers saturate first (opacity clamps at 1) and the quiet
+   * ones keep climbing, which is what a master gain is supposed to do: push
+   * the stack toward flat-out rather than uniformly brighter.
+   */
+  stackIntensity: number;
+  /**
+   * How much of the master fader is handed to the room, 0..1.
+   *
+   * 0 leaves it exactly where it is parked. Above 0 the overall audio envelope
+   * (with the beat putting an edge on transients) modulates the master
+   * *around* its setting rather than on top of it — see masterGain — so
+   * turning this up trades a fixed level for a moving one at the same centre
+   * instead of just making everything louder.
+   *
+   * Needs a live audio source; with reactivity off it does nothing.
+   */
+  stackIntensityReactive: number;
   /** Shared config for every export path — see ExportSettings' own doc. */
   exportSettings: ExportSettings;
   isPerformanceMode: boolean;
@@ -376,6 +418,8 @@ type Actions = {
   setTrackMeta: (title: string, artist: string) => void;
   setMicSensitivity: (v: number) => void;
   setSensitivity: (v: number) => void;
+  setStackIntensity: (v: number) => void;
+  setStackIntensityReactive: (v: number) => void;
   setExportSettings: (patch: Partial<ExportSettings>) => void;
   setPerformanceMode: (b: boolean) => void;
   togglePerformanceMode: () => void;
@@ -572,6 +616,8 @@ export const useStore = create<State & Actions>((set, get) => ({
   trackArtist: trackPlayer.artist,
   micSensitivity: 1,
   sensitivity: 1,
+  stackIntensity: 1,
+  stackIntensityReactive: 0,
   exportSettings: loadExportSettings(),
   isPerformanceMode: false,
   desktopPortraitMode: false,
@@ -852,7 +898,7 @@ export const useStore = create<State & Actions>((set, get) => ({
 
     const locked = s.layers.filter(l => l.locked);
     const composition = prepared?.composition ?? compose(brief, rand, {
-      roleCount: ROLE_COUNT[inten],
+      roleCount: rollRoleCount(rand, ROLE_COUNT[inten]),
       chaos: CHAOS[inten],
       wildness: rollWildness(rand, WILD_FLOOR[inten]),
       // Soft, decaying suppression instead of a hard exclude — the same
@@ -897,7 +943,7 @@ export const useStore = create<State & Actions>((set, get) => ({
     const plannedMosh = {
       seed: nextSeed, intensity: inten, brief,
       composition: compose(brief, nextRand, {
-        roleCount: ROLE_COUNT[inten], chaos: CHAOS[inten],
+        roleCount: rollRoleCount(nextRand, ROLE_COUNT[inten]), chaos: CHAOS[inten],
         wildness: rollWildness(nextRand, WILD_FLOOR[inten]),
         lookPenalty: recencyPenalty(nextLooks, []),
         effectPenalty: recencyPenalty(nextForm, nextOther),
@@ -937,14 +983,15 @@ export const useStore = create<State & Actions>((set, get) => ({
    * generator/seed/kaleidoscope reroll (previously only randomiseForge()),
    * plus an effect-stack reshuffle that shares its palette choice.
    *
-   * Seamless mode is the one place this still defers to Forge's own
-   * composer (composeForgeLayers) for the effect stack: compose() — the
-   * general Art Director — has no concept of tile-safety (see
-   * tileSafety.ts / forgeCompose.ts's own seamless-pool filtering), so
-   * routing seamless mode's stack through it risks picking effects that
-   * don't tile. Giving the Art Director real tile-safety awareness is its
-   * own piece of work, not this one — the generator/seed/palette/
-   * kaleidoscope reroll below still applies in seamless mode either way.
+   * Seamless mode now goes through the same director as everything else.
+   * It used to be the one mode that didn't: compose() had no concept of
+   * tile-safety, so seamless deferred to Forge's own composer, which fills
+   * roles from the tile-safe pool but has no look, no brief and no named
+   * intent. That left the mode the pattern work actually ships from as the
+   * only one with no art direction at all. compose() now takes `tileSafe`,
+   * which draws from the seamless look deck, confines every pick to effects
+   * that survive a repeat, and suppresses region masks (see its own note on
+   * why masks can't be filtered safe).
    */
   forgeMosh: (intensity) => set(s => {
     if (s.captureLocked) return s;
@@ -954,14 +1001,15 @@ export const useStore = create<State & Actions>((set, get) => ({
     const rand = rngFromSeed(seed);
     const locked = s.layers.filter(l => l.locked);
 
-    const composition = s.forge.seamless ? null : compose(brief, rand, {
-      roleCount: ROLE_COUNT[inten],
+    const composition = compose(brief, rand, {
+      roleCount: rollRoleCount(rand, ROLE_COUNT[inten]),
       chaos: CHAOS[inten],
       wildness: rollWildness(rand, WILD_FLOOR[inten]),
       lookPenalty: recencyPenalty(s.recentLooks, []),
       effectPenalty: recencyPenalty(s.recentFormEffects, s.recentOtherEffects),
       previousLookId: s.currentLook?.id,
       avoidEffects: locked.map(l => l.effectId),
+      tileSafe: s.forge.seamless,
     });
     // One palette choice shared by the effect stack's grade and the
     // generator's own colors, rather than each half rolling its own and
@@ -981,20 +1029,6 @@ export const useStore = create<State & Actions>((set, get) => ({
       transitionFromSeed: generatorChanged ? s.forge.seed : null,
       transitionFromPaletteIdx: generatorChanged ? s.forge.paletteIdx : null,
     };
-
-    if (!composition) {
-      // Seamless: same tile-safe composer randomiseForge() already used,
-      // just folded into this one coordinated action instead of a second
-      // separate tap target.
-      const stack = composeForgeLayers(nextForge);
-      nextForge.stack = stack;
-      return {
-        ...s,
-        past: pushPast(s), future: [],
-        forge: nextForge,
-        ...(["forge", "motif"].includes(s.sourceMode) ? { layers: stack } : {}),
-      };
-    }
 
     const fresh: Layer[] = composition.layers.map(cl => {
       const def = EFFECTS_BY_ID[cl.effectId];
@@ -1237,6 +1271,8 @@ export const useStore = create<State & Actions>((set, get) => ({
   setTrackMeta: (title, artist) => set({ trackTitle: title, trackArtist: artist }),
   setMicSensitivity: (v) => set({ micSensitivity: v }),
   setSensitivity: (v) => set({ sensitivity: v }),
+  setStackIntensity: (v) => set({ stackIntensity: Math.max(0, Math.min(1.5, v)) }),
+  setStackIntensityReactive: (v) => set({ stackIntensityReactive: Math.max(0, Math.min(1, v)) }),
   setExportSettings: (patch) => set(s => {
     const next = { ...s.exportSettings, ...patch };
     try { localStorage.setItem(EXPORT_SETTINGS_KEY, JSON.stringify(next)); } catch {}

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { groupLayersByRole } from "@/engine/effectRoles";
+import { ROLE_ORDER, groupLayersByRole, resolveLayerRole } from "@/engine/effectRoles";
 import { useStore } from "./useStore";
 
 describe("moshNext", () => {
@@ -24,10 +24,16 @@ describe("moshNext", () => {
   });
 
   it("starts at color and advances over represented roles", () => {
+    // Which roles a stack fills now varies per mosh (depth is jittered), so
+    // walk whatever this one actually built rather than a fixed list.
+    const represented = [...new Set(useStore.getState().layers.map(resolveLayerRole))]
+      .sort((a, b) => ROLE_ORDER.indexOf(a) - ROLE_ORDER.indexOf(b));
+
+    expect(represented[0]).toBe("grade");
     expect(useStore.getState().roleCursor).toBe("grade");
-    expect(useStore.getState().moshNext()!.role).toBe("grade");
-    expect(useStore.getState().moshNext()!.role).toBe("form");
-    expect(useStore.getState().moshNext()!.role).toBe("finish");
+    for (const role of represented) {
+      expect(useStore.getState().moshNext()!.role).toBe(role);
+    }
   });
 
   it("steps over a fully locked role without changing it", () => {
@@ -44,7 +50,9 @@ describe("moshNext", () => {
   });
 
   it("rerolls an unlocked repeated accent when its remembered sibling is locked", () => {
-    useStore.getState().mosh("nuclear");
+    // INTERDIMENSIONAL rather than NUCLEAR: depth is jittered per mosh now,
+    // and this is the one tier whose whole band doubles the accent.
+    useStore.getState().mosh("interdimensional");
     const accents = groupLayersByRole(useStore.getState().layers).accent;
     const [lockedAccent, targetAccent] = accents;
     useStore.setState({
