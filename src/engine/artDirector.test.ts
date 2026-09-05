@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { rngFromSeed } from "./seed";
 import { EFFECTS_BY_ID, PUBLIC_EFFECTS } from "./effects";
+import { tileVerdict } from "./tileSafety";
 import {
   LOOKS,
   MAX_ROLES,
@@ -748,5 +749,97 @@ describe("adaptiveVibrance", () => {
       expect(v).toBeLessThan(previous);
       previous = v;
     }
+  });
+});
+
+describe("seamless composition", () => {
+  const brief = briefFrom(NEUTRAL_STATS);
+  const seamlessLooks = () => LOOKS.filter(l => l.seamless);
+
+  /* The contract the whole mode rests on: an effect that breaks the seam
+     ruins the tile outright, so it must be unreachable — not merely unlikely.
+     Swept at full wildness and full chaos, which is where every widening
+     mechanism (wide pick window, rule-breaks into other roles, thin-pool
+     fallbacks) is working hardest to reach outside the shortlist. */
+  it("never composes an effect that breaks the seam, at any depth or chaos", () => {
+    for (let i = 0; i < 300; i++) {
+      const layers = compose(brief, rngFromSeed(`tile-${i}`), {
+        roleCount: 2 + (i % (MAX_ROLES - 1)),
+        chaos: 1,
+        wildness: 1,
+        tileSafe: true,
+      }).layers;
+      expect(layers.length).toBeGreaterThan(0);
+      for (const layer of layers) {
+        expect(tileVerdict(layer.effectId).safe, `${layer.effectId} breaks the seam`).toBe(true);
+      }
+    }
+  });
+
+  /* A region mask is the one part of the grammar filtering cannot make safe:
+     radial has a centre, foreground/background read a depth proxy that means
+     nothing against a generated pattern, and the band modes are rolled with a
+     continuous scale and random phase. */
+  it("never masks a region when tiling", () => {
+    for (let i = 0; i < 200; i++) {
+      const layers = compose(brief, rngFromSeed(`region-${i}`), {
+        roleCount: MAX_ROLES, chaos: 1, wildness: 1, tileSafe: true,
+      }).layers;
+      for (const layer of layers) expect(layer.region ?? null).toBeNull();
+    }
+  });
+
+  it("draws only from the seamless deck when tiling, and never from it otherwise", () => {
+    for (let i = 0; i < 200; i++) {
+      expect(chooseLook(brief, rngFromSeed(`sl-${i}`), [], undefined, null, true).seamless).toBe(true);
+      expect(chooseLook(brief, rngFromSeed(`nl-${i}`), [], undefined, null, false).seamless).toBeFalsy();
+    }
+  });
+
+  it("builds every seamless look entirely from tile-safe effects", () => {
+    expect(seamlessLooks().length).toBeGreaterThan(0);
+    for (const look of seamlessLooks()) {
+      for (const role of ROLES) {
+        const picks = look.picks[role] ?? [];
+        // Enough to vary — the whole reason the main deck's shortlists were
+        // widened. A role with one or two picks barely moves between rolls.
+        expect(picks.length, `${look.id}/${role}`).toBeGreaterThanOrEqual(3);
+        for (const id of picks) {
+          expect(craftOf(id)?.role, `${look.id}/${role}: ${id}`).toBe(role);
+          expect(tileVerdict(id).safe, `${look.id}/${role}: ${id} breaks the seam`).toBe(true);
+        }
+      }
+    }
+  });
+
+  /* Same guarantee the main deck carries: nothing in the pool is unreachable.
+     Without this, widening the tile-safe pool later would silently leave the
+     new effects stranded, which is exactly the bug the main deck had. */
+  it("leaves no tile-safe effect unreachable in seamless mode", () => {
+    const curated = new Set<string>();
+    for (const look of seamlessLooks()) for (const role of ROLES) {
+      for (const id of look.picks[role] ?? []) curated.add(id);
+    }
+    const orphans = Object.keys(EFFECTS_BY_ID)
+      .filter(id => craftOf(id) && tileVerdict(id).safe && !curated.has(id));
+    expect(orphans, `tile-safe but in no seamless look: ${orphans.join(", ")}`).toEqual([]);
+  });
+
+  it("still fills every role it is asked for", () => {
+    for (const depth of [2, 3, 4, 5]) {
+      const layers = compose(brief, rngFromSeed(`depth-sl-${depth}`), {
+        roleCount: depth, tileSafe: true,
+      }).layers;
+      expect(layers).toHaveLength(depth);
+    }
+  });
+
+  it("leaves non-seamless composition untouched", () => {
+    // The seamless deck is additive: a normal roll must land exactly where it
+    // did before it existed, or this change silently re-grades every camera
+    // stack too.
+    const plain = compose(brief, rngFromSeed("parity"), { roleCount: 4, chaos: 0.25, wildness: 0.5 });
+    expect(plain.look.seamless).toBeFalsy();
+    expect(plain.layers.length).toBe(4);
   });
 });

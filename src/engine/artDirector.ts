@@ -19,6 +19,7 @@
  * grammar intact.
  */
 import { EFFECTS, EFFECTS_BY_ID } from "./effects";
+import { tileVerdict } from "./tileSafety";
 import type { BlendMode, LayerRegion, RegionMode } from "./blend";
 
 /**
@@ -527,9 +528,11 @@ export function strengthParamFor(effectId: string): { key: string | null; direct
   return { key: first?.key ?? null, direction: "up" };
 }
 
-/** Every effect that can serve a role. */
-export function poolForRole(role: Role): string[] {
-  return Object.keys(CRAFT).filter(id => CRAFT[id].role === role && EFFECTS_BY_ID[id]);
+/** Every effect that can serve a role. `tileSafe` narrows it to the ones that
+ *  survive seamless tiling (see tileSafety.ts for what breaks it). */
+export function poolForRole(role: Role, tileSafe = false): string[] {
+  return Object.keys(CRAFT).filter(id =>
+    CRAFT[id].role === role && EFFECTS_BY_ID[id] && (!tileSafe || tileVerdict(id).safe));
 }
 
 /* ────────────────────────────────────────────────────────────────────────
@@ -547,6 +550,18 @@ export type Look = {
   suits: Partial<Record<keyof FrameBrief, number>>;
   /** Overall push, 0..1 — scales param deviation and layer opacity. */
   drive: number;
+  /**
+   * Built entirely from tile-safe effects, for seamless pattern work.
+   *
+   * A separate deck rather than a filter over the main one, because most of
+   * the main deck cannot survive tiling and the ones that can't are not
+   * fixable: VORTEX, MANDALA BURST and INFINITE TUNNEL are *defined* by
+   * centre-relative geometry, and a centre is by definition not repeatable.
+   * Filtering those looks to their tile-safe picks would leave a look that no
+   * longer resembles its own name. So seamless mode gets looks composed for
+   * it, and these are used only there — see chooseLook's `tileSafe`.
+   */
+  seamless?: boolean;
 };
 
 /**
@@ -744,7 +759,87 @@ export const LOOKS: Look[] = [
              finish: ["volumetricShaft", "emberField", "dustMotes", "reactionBloom", "fog"] },
     suits: { needsContrast: 0.4, brightness: -0.2 }, drive: 0.86,
   },
+
+/* ── The seamless deck ───────────────────────────────────────────────────
+   Looks for pattern work, drawn only from effects that survive tiling.
+
+   Seamless mode used to bypass art direction entirely: it ran Forge's own
+   composer, which picks role by role from the tile-safe pool but has no look,
+   no brief and no named intent — so a seamless shuffle got variety without
+   ever getting a point of view. Everything the director does for the camera
+   (a named look, depth that varies, params read off the content) was simply
+   absent from the mode the pattern business actually ships from.
+
+   Why a separate deck rather than filtering the main one: only 59 of the 107
+   directable effects tile at all, and they are not evenly spread — 11 of 39
+   form effects, 10 of 21 accents. Fifteen of the twenty-five main looks have
+   at least one role with no tile-safe pick whatsoever, and for several the gap
+   is inherent rather than an oversight. VORTEX, MANDALA BURST, INFINITE TUNNEL
+   and FESTIVAL PLASMA are built on centre-relative geometry, and a centre is
+   by definition not repeatable. Filtering them would leave looks that no
+   longer resemble their own names.
+
+   Between them these seven reach every tile-safe effect in every role, so
+   nothing in the seamless pool is unreachable — the same guarantee the main
+   deck now carries. */
+  {
+    id: "acidBloom", name: "ACID BLOOM", blurb: "Wet colour blooming through itself.", seamless: true,
+    picks: { grade: ["rainbowMap", "oilSlick", "chromaPulse", "hueRotate"],
+             form: ["liquidWarp", "inkFlow", "melt"],
+             accent: ["datamosh", "blockShift", "jitter"],
+             finish: ["bloom", "dreamGlow", "plasmaField", "caustics"] },
+    suits: { needsColor: 0.8, saturation: -0.3 }, drive: 0.82,
+  },
+  {
+    id: "shatterPlate", name: "SHATTER PLATE", blurb: "Cut glass locked into a repeat.", seamless: true,
+    picks: { grade: ["liquidChrome", "colorQuake", "posterize", "contourMap"],
+             form: ["voronoiShatter", "crystalize", "emboss"],
+             accent: ["hexShatter", "blockShift", "compressionTears"],
+             finish: ["holoShine", "bloom", "anamorphic"] },
+    suits: { needsStructure: 0.9, contrast: 0.3 }, drive: 0.74,
+  },
+  {
+    id: "tapeRot", name: "TAPE ROT", blurb: "A pattern recovered off a damaged tape.", seamless: true,
+    picks: { grade: ["vhsBleed", "bitCrush", "scanlines", "paletteDither"],
+             form: ["pixelSort", "sliceDrift", "displacement"],
+             accent: ["datamosh", "staticSnow", "scanlineWarp", "glitchTeleport"],
+             finish: ["filmGrain", "fog", "dustMotes"] },
+    suits: { density: 0.5, needsRestraint: -0.3 }, drive: 0.8,
+  },
+  {
+    id: "inkFlood", name: "INK FLOOD", blurb: "Pigment finding its own channels.", seamless: true,
+    picks: { grade: ["kuwahara", "oilSlick", "duotone", "filmicTone"],
+             form: ["inkFlow", "melt", "liquidWarp"],
+             accent: ["scanFreeze", "jitter", "blockShift"],
+             finish: ["dreamGlow", "fog", "causticWater", "auroraVeil"] },
+    suits: { density: -0.4, needsContrast: 0.4 }, drive: 0.6,
+  },
+  {
+    id: "heatMap", name: "HEAT MAP", blurb: "False colour mapped to a repeating field.", seamless: true,
+    picks: { grade: ["thermal", "infraredDream", "topoContour", "rainbowMap"],
+             form: ["displacement", "melt", "moire"],
+             accent: ["compressionTears", "jitter", "asciiCollapse"],
+             finish: ["neonContour", "bloom", "godRays"] },
+    suits: { needsColor: 0.7, saturation: -0.4 }, drive: 0.78,
+  },
+  {
+    id: "pressRoom", name: "PRESS ROOM", blurb: "Ink on paper, screened and misregistered.", seamless: true,
+    picks: { grade: ["halftone", "crossHatch", "photocopy", "solarize"],
+             form: ["emboss", "moire", "frameSmear"],
+             accent: ["asciiCollapse", "staticSnow", "blockShift"],
+             finish: ["filmGrain", "dustMotes", "fog", "anamorphic"] },
+    suits: { saturation: -0.6, contrast: 0.4 }, drive: 0.55,
+  },
+  {
+    id: "voltCircuit", name: "VOLT CIRCUIT", blurb: "Current traced across a printed board.", seamless: true,
+    picks: { grade: ["voltage", "anaglyph", "noiseTint", "chromaPulse"],
+             form: ["sliceDrift", "pixelSort", "crystalize"],
+             accent: ["glitchTeleport", "scanlineWarp", "hexShatter"],
+             finish: ["neonContour", "plasmaField", "bloom", "holoShine"] },
+    suits: { brightness: -0.4, needsColor: 0.5 }, drive: 0.88,
+  },
 ];
+
 
 export const LOOKS_BY_ID: Record<string, Look> = Object.fromEntries(LOOKS.map(l => [l.id, l]));
 
@@ -775,9 +870,14 @@ export function chooseLook(
    *  negative, the opposite of suppression. */
   penalty?: ReadonlyMap<string, number>,
   previousLookId?: string | null,
+  /** Draw from the seamless deck instead of the main one. The two are
+   *  disjoint: a look built for tiling has no business grading a camera, and
+   *  most of the camera deck cannot tile at all. */
+  tileSafe = false,
 ): Look {
   const stale = new Set(avoid);
-  const scored = LOOKS.map(look => {
+  const deck = LOOKS.filter(l => !!l.seamless === tileSafe);
+  const scored = deck.map(look => {
     let score = 0;
     for (const [key, weight] of Object.entries(look.suits)) {
       const v = brief[key as keyof FrameBrief];
@@ -926,17 +1026,25 @@ export function pickForRole(
      *  role already filled in *this* stack), this is a preference a strong
      *  enough score can still overcome. */
     penalty?: ReadonlyMap<string, number>;
+    /** Confine every pool to effects that survive seamless tiling. A hard
+     *  filter, not a preference: an effect that breaks the seam ruins the
+     *  tile outright, so it must never be reachable — not by a rule-break,
+     *  not by a wide pick window, not by the fallback when a pool is thin. */
+    tileSafe?: boolean;
   } = {},
 ): string {
   const exclude = new Set(opts.exclude ?? []);
+  const tileSafe = !!opts.tileSafe;
+  const admissible = (id: string) => !tileSafe || tileVerdict(id).safe;
   const budget = opts.budgetLeft ?? COST_BUDGET;
   const gpuLeft = opts.gpuLeft ?? GPU_BUDGET;
   const affinity = opts.affinityTarget ?? 1;
   const wildness = Math.max(0, Math.min(1, opts.wildness ?? 0.35));
   const penalty = opts.penalty;
 
-  const onLook = (look.picks[role] ?? []).filter(id => CRAFT[id] && !exclude.has(id));
-  const wider = (opts.anyRole ? Object.keys(CRAFT) : poolForRole(role)).filter(id => !exclude.has(id));
+  const onLook = (look.picks[role] ?? []).filter(id => CRAFT[id] && !exclude.has(id) && admissible(id));
+  const wider = (opts.anyRole ? Object.keys(CRAFT).filter(admissible) : poolForRole(role, tileSafe))
+    .filter(id => !exclude.has(id));
   const offLook = wider.filter(id => !(look.picks[role] ?? []).includes(id));
 
   // Affinity decides which shelf to reach for; the brief decides what to take.
@@ -947,7 +1055,7 @@ export function pickForRole(
   else if (affinity >= 0.2) pool = onLook.length ? onLook : wider;
   else if (affinity <= -0.2) pool = offLook.length ? offLook : wider;
   else pool = wider.length ? wider : onLook;
-  if (!pool.length) pool = poolForRole(role);
+  if (!pool.length) pool = poolForRole(role, tileSafe);
 
   // Frame time is a hard constraint, not a preference. Scoring alone was enough
   // while picks only ever came from the top three, but a wider window can reach
@@ -1284,9 +1392,20 @@ export function compose(
      * Spread between taps is what makes the button worth pressing again.
      */
     wildness?: number;
+    /**
+     * Compose for seamless tiling.
+     *
+     * Draws the look from the seamless deck and confines every pick to
+     * effects that survive a repeat, and suppresses region masks entirely —
+     * see the `region` note below for why those are the one part of the
+     * grammar that cannot be made tile-safe by filtering.
+     */
+    tileSafe?: boolean;
   } = {},
 ): Composition {
-  const look = opts.look ?? chooseLook(brief, rand, opts.avoidLooks ?? [], opts.lookPenalty, opts.previousLookId);
+  const tileSafe = !!opts.tileSafe;
+  const look = opts.look
+    ?? chooseLook(brief, rand, opts.avoidLooks ?? [], opts.lookPenalty, opts.previousLookId, tileSafe);
   const roleCount = Math.max(1, Math.min(MAX_ROLES, opts.roleCount ?? 4));
   const wildness = Math.max(0, Math.min(1, opts.wildness ?? 0.35));
   // A wild roll is more willing to break the grammar — but only where the
@@ -1323,7 +1442,16 @@ export function compose(
   // Spatial partition for this stack, if it gets one. The form layer takes one
   // side and the accent the other, so the two loudest layers land on different
   // pixels instead of on top of each other.
-  let partition = rand() < 0.12 + wildness * 0.64 ? rollPartition(rand, wildness) : null;
+  /* No partition when tiling.
+
+     A region mask is the one part of the grammar that filtering cannot make
+     safe. `radial` has a centre, and a centre never repeats. `foreground`/
+     `background` read a depth proxy that means nothing against a generated
+     pattern. Even `hbands`/`vbands`/`shards`, which could tile at an integral
+     scale, are rolled here with a continuous scale, a random phase and a
+     feather — so any given roll is overwhelmingly likely to cut the seam.
+     Masking is a nice-to-have; the seam is the contract. */
+  let partition = !tileSafe && rand() < 0.12 + wildness * 0.64 ? rollPartition(rand, wildness) : null;
 
   for (let ri = 0; ri < roles.length; ri++) {
     const role = roles[ri];
@@ -1343,6 +1471,7 @@ export function compose(
       anyRole: breakRule,
       wildness,
       penalty: opts.effectPenalty,
+      tileSafe,
     });
     used.add(id);
     budget -= CRAFT[id]?.cost ?? 0.3;
@@ -1371,7 +1500,7 @@ export function compose(
       region = partition?.a ?? null;
     } else if (role === "accent" && partition) {
       region = partition.b;
-    } else if (role === "finish" && rand() < wildness * 0.4) {
+    } else if (role === "finish" && !tileSafe && rand() < wildness * 0.4) {
       // Light confined to one part of the frame reads as something happening
       // inside the scene rather than as a filter laid over the top of it.
       region = rollPartition(rand, wildness).a;

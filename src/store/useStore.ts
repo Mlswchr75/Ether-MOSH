@@ -983,14 +983,15 @@ export const useStore = create<State & Actions>((set, get) => ({
    * generator/seed/kaleidoscope reroll (previously only randomiseForge()),
    * plus an effect-stack reshuffle that shares its palette choice.
    *
-   * Seamless mode is the one place this still defers to Forge's own
-   * composer (composeForgeLayers) for the effect stack: compose() — the
-   * general Art Director — has no concept of tile-safety (see
-   * tileSafety.ts / forgeCompose.ts's own seamless-pool filtering), so
-   * routing seamless mode's stack through it risks picking effects that
-   * don't tile. Giving the Art Director real tile-safety awareness is its
-   * own piece of work, not this one — the generator/seed/palette/
-   * kaleidoscope reroll below still applies in seamless mode either way.
+   * Seamless mode now goes through the same director as everything else.
+   * It used to be the one mode that didn't: compose() had no concept of
+   * tile-safety, so seamless deferred to Forge's own composer, which fills
+   * roles from the tile-safe pool but has no look, no brief and no named
+   * intent. That left the mode the pattern work actually ships from as the
+   * only one with no art direction at all. compose() now takes `tileSafe`,
+   * which draws from the seamless look deck, confines every pick to effects
+   * that survive a repeat, and suppresses region masks (see its own note on
+   * why masks can't be filtered safe).
    */
   forgeMosh: (intensity) => set(s => {
     if (s.captureLocked) return s;
@@ -1000,7 +1001,7 @@ export const useStore = create<State & Actions>((set, get) => ({
     const rand = rngFromSeed(seed);
     const locked = s.layers.filter(l => l.locked);
 
-    const composition = s.forge.seamless ? null : compose(brief, rand, {
+    const composition = compose(brief, rand, {
       roleCount: rollRoleCount(rand, ROLE_COUNT[inten]),
       chaos: CHAOS[inten],
       wildness: rollWildness(rand, WILD_FLOOR[inten]),
@@ -1008,6 +1009,7 @@ export const useStore = create<State & Actions>((set, get) => ({
       effectPenalty: recencyPenalty(s.recentFormEffects, s.recentOtherEffects),
       previousLookId: s.currentLook?.id,
       avoidEffects: locked.map(l => l.effectId),
+      tileSafe: s.forge.seamless,
     });
     // One palette choice shared by the effect stack's grade and the
     // generator's own colors, rather than each half rolling its own and
@@ -1027,20 +1029,6 @@ export const useStore = create<State & Actions>((set, get) => ({
       transitionFromSeed: generatorChanged ? s.forge.seed : null,
       transitionFromPaletteIdx: generatorChanged ? s.forge.paletteIdx : null,
     };
-
-    if (!composition) {
-      // Seamless: same tile-safe composer randomiseForge() already used,
-      // just folded into this one coordinated action instead of a second
-      // separate tap target.
-      const stack = composeForgeLayers(nextForge);
-      nextForge.stack = stack;
-      return {
-        ...s,
-        past: pushPast(s), future: [],
-        forge: nextForge,
-        ...(["forge", "motif"].includes(s.sourceMode) ? { layers: stack } : {}),
-      };
-    }
 
     const fresh: Layer[] = composition.layers.map(cl => {
       const def = EFFECTS_BY_ID[cl.effectId];
