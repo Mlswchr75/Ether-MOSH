@@ -1363,6 +1363,63 @@
     will-change: transform, filter;
     animation: mosh-icon-bob 3.4s ease-in-out infinite;
   }
+  /* The three ways into MOSH share the spotlight on a slow, readable cycle. */
+  .home-mode-button {
+    isolation: isolate;
+    box-shadow: 0 0 34px hsl(var(--accent) / .38), inset 0 0 18px hsl(var(--primary) / .12);
+    transition: border-color 180ms ease, color 180ms ease, box-shadow 180ms ease;
+    animation: home-mode-feature 9s ease-in-out infinite;
+  }
+  .home-mode-button:nth-child(2) { animation-delay: -6s; }
+  .home-mode-button:nth-child(3) { animation-delay: -3s; }
+  .home-mode-button:hover,
+  .home-mode-button:focus-visible {
+    border-color: hsl(var(--primary));
+    box-shadow: 0 0 48px hsl(var(--primary) / .58), inset 0 0 22px hsl(var(--accent) / .2);
+  }
+  .home-mode-icon {
+    will-change: transform, filter;
+    animation: home-mode-mosh 9s steps(1, end) infinite;
+  }
+  .home-mode-button:nth-child(2) .home-mode-icon { animation-delay: -6s; }
+  .home-mode-button:nth-child(3) .home-mode-icon { animation-delay: -3s; }
+  .home-mode-label {
+    position: absolute;
+    z-index: 2;
+    left: 50%;
+    top: 50%;
+    width: max-content;
+    pointer-events: none;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: clamp(1.25rem, 3.2vw, 2.6rem);
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    color: hsl(var(--foreground));
+    opacity: 0;
+    text-shadow: 4px 0 hsl(var(--primary)), -4px 0 hsl(var(--accent)), 0 0 24px hsl(var(--primary) / .8);
+    transform: translate(-50%, -50%);
+    animation: home-mode-label 9s steps(1, end) infinite;
+  }
+  .home-mode-button:nth-child(2) .home-mode-label { animation-delay: -6s; }
+  .home-mode-button:nth-child(3) .home-mode-label { animation-delay: -3s; }
+  @keyframes home-mode-feature {
+    0%, 21% { transform: scale(1.13); box-shadow: 0 0 54px hsl(var(--primary) / .55), inset 0 0 24px hsl(var(--accent) / .2); }
+    28%, 100% { transform: scale(1); }
+  }
+  @keyframes home-mode-mosh {
+    0%  { transform: translate(-3px, 1px) skewX(-8deg); filter: drop-shadow(4px 0 hsl(var(--primary))) drop-shadow(-4px 0 hsl(var(--accent))); }
+    5%  { transform: translate(3px, -1px) skewX(7deg); filter: hue-rotate(75deg) saturate(2); }
+    10% { transform: translate(-1px, 2px) scaleX(1.18); filter: drop-shadow(-3px 0 hsl(var(--primary))) drop-shadow(3px 0 hsl(var(--accent))); }
+    16%, 100% { transform: none; filter: drop-shadow(0 0 9px hsl(var(--primary) / .62)); }
+  }
+  @keyframes home-mode-label {
+    0%  { opacity: .96; transform: translate(-53%, -50%) skewX(-9deg) scaleX(1.14); clip-path: inset(0 0 62% 0); }
+    5%  { opacity: .75; transform: translate(-47%, -48%) skewX(8deg); clip-path: inset(35% 0 12% 0); }
+    10% { opacity: .94; transform: translate(-51%, -52%) scaleX(.88); clip-path: inset(9% 0 46% 0); }
+    16%, 100% { opacity: 0; transform: translate(-50%, -50%); clip-path: inset(50% 0); }
+  }
   .mosh-glitch {
     will-change: transform, filter;
     filter: drop-shadow(0 0 10px hsl(var(--primary) / 0.7));
@@ -1422,7 +1479,9 @@
   }
   @media (prefers-reduced-motion: reduce) {
     .mosh-text, .mosh-text::before, .mosh-text::after,
-    .mosh-icon, .mosh-glitch, .bio-flicker { animation: none !important; }
+    .mosh-icon, .mosh-glitch, .home-mode-button, .home-mode-icon,
+    .home-mode-label, .bio-flicker { animation: none !important; }
+    .home-mode-label { opacity: 0; }
     .bio-flicker { opacity: 0.5; }
   }
 
@@ -1626,59 +1685,33 @@
     50%      { transform: translate(3px, 3px); }
   }
   .info-hint {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    min-height: 44px;
-    padding: 7px 15px 7px 9px;
-    border: 1px solid hsl(var(--primary) / .66);
-    border-radius: 999px;
-    color: hsl(var(--foreground) / .92);
-    background: linear-gradient(105deg, hsl(var(--background) / .86), hsl(var(--primary) / .16));
-    box-shadow: 0 0 0 1px hsl(var(--background) / .45), 0 0 26px hsl(var(--primary) / .34), inset 0 0 18px hsl(var(--accent) / .08);
-    backdrop-filter: blur(14px);
-    transition: border-color 180ms ease, color 180ms ease, scale 180ms ease;
-    animation: info-hint-pulse 2.8s ease-in-out infinite;
+    white-space: nowrap;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: .3em;
+    color: hsl(var(--foreground) / .52);
+    transition: color 180ms ease;
+    animation: info-hint-pulse 3.4s ease-in-out infinite;
   }
-  .info-hint:hover {
-    scale: 1.045;
-    color: hsl(var(--accent));
-    border-color: hsl(var(--accent) / .82);
-  }
+  .info-hint:hover { color: hsl(var(--foreground) / .78); }
   .info-hint-arrow {
-    display: grid;
-    width: 30px;
-    height: 30px;
-    flex: 0 0 auto;
-    place-items: center;
-    border-radius: 50%;
-    color: hsl(var(--background));
-    background: hsl(var(--primary));
-    box-shadow: 0 0 18px hsl(var(--primary) / .72);
+    display: inline-block;
+    color: inherit;
     animation: info-hint-arrow 1.35s ease-in-out infinite;
   }
-  .info-hint-arrow svg { width: 17px; height: 17px; stroke-width: 2.4; }
-  .info-hint-copy { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; white-space: nowrap; }
-  .info-hint-copy strong,
-  .info-hint-copy small {
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    text-transform: uppercase;
-  }
-  .info-hint-copy strong { font-size: 9px; line-height: 1; letter-spacing: .22em; }
-  .info-hint-copy small { font-size: 7px; line-height: 1; letter-spacing: .13em; color: hsl(var(--foreground) / .58); }
   @keyframes info-hint-pulse {
-    0%, 100% { opacity: .82; box-shadow: 0 0 0 1px hsl(var(--background) / .45), 0 0 20px hsl(var(--primary) / .25), inset 0 0 18px hsl(var(--accent) / .07); }
-    50% { opacity: 1; box-shadow: 0 0 0 1px hsl(var(--background) / .45), 0 0 38px hsl(var(--primary) / .52), inset 0 0 22px hsl(var(--accent) / .13); }
+    0%, 100% { opacity: .42; }
+    50% { opacity: .66; }
   }
   @keyframes info-hint-arrow {
     0%, 100% { transform: translateY(2px); }
     45% { transform: translateY(-3px); }
   }
   @media (max-width: 560px) {
-    .info-hint { min-height: 40px; padding: 5px 12px 5px 7px; gap: 8px; }
-    .info-hint-arrow { width: 28px; height: 28px; }
-    .info-hint-copy strong { font-size: 8px; }
-    .info-hint-copy small { font-size: 6px; }
+    .home-mode-actions { gap: .85rem; }
+    .home-mode-button { width: 4.25rem; height: 4.25rem; }
+    .info-hint { font-size: 8px; letter-spacing: .22em; }
   }
   .home-info-panel {
     background:

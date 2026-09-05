@@ -1,7 +1,7 @@
 import { Link, useNavigate } from "react-router-dom";
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Helmet } from "react-helmet-async";
-import { ChevronsUp, Flame, Upload, Video } from "lucide-react";
+import { Flame, Upload, Video } from "lucide-react";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
 import { useStore } from "@/store/useStore";
@@ -289,42 +289,39 @@ const Index = () => {
                 contents — marking the full-bleed parent would reserve the
                 whole page and leave the field nowhere to land. */}
             <div {...KEEP_OUT} className="flex flex-col items-center gap-6">
-              {/* Upload + camera — entrance via wrapper; CSS animations on the
-                  inner elements are independent */}
+              {/* Each entry point gets an equal turn as the featured action. */}
               <motion.div
                 initial={{ scale: 0.55, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 transition={{ type: "spring", stiffness: 260, damping: 22, delay: 0.15 }}
-                className="pointer-events-auto flex items-center gap-5"
+                className="home-mode-actions pointer-events-auto flex items-center gap-5"
               >
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); openPicker(); }}
                   aria-label="Upload an image"
-                  className="relative flex h-24 w-24 items-center justify-center rounded-full border border-primary/70 bg-background/30 text-primary backdrop-blur-[2px] animate-pulse-soft mosh-icon transition hover:scale-105"
-                  style={{
-                    boxShadow: "0 0 60px hsl(var(--primary) / 0.55), inset 0 0 24px hsl(var(--accent) / 0.25)",
-                  }}
+                  className="home-mode-button relative flex h-20 w-20 items-center justify-center rounded-full border border-primary/70 bg-background/30 text-primary backdrop-blur-[2px]"
                 >
-                  <Upload className="h-10 w-10 mosh-glitch" aria-hidden="true" />
+                  <Upload className="home-mode-icon h-8 w-8" aria-hidden="true" />
+                  <span className="home-mode-label" aria-hidden="true">Upload</span>
                 </button>
                 <button
                   type="button"
                   onClick={handleGoLive}
                   aria-label="Go live with your camera"
-                  className="relative flex h-16 w-16 items-center justify-center rounded-full border border-accent/70 bg-background/30 text-accent backdrop-blur-[2px] transition hover:scale-105"
-                  style={{ boxShadow: "0 0 40px hsl(var(--accent) / 0.45)" }}
+                  className="home-mode-button relative flex h-20 w-20 items-center justify-center rounded-full border border-accent/70 bg-background/30 text-accent backdrop-blur-[2px]"
                 >
-                  <Video className="h-7 w-7" aria-hidden="true" />
+                  <Video className="home-mode-icon h-8 w-8" aria-hidden="true" />
+                  <span className="home-mode-label" aria-hidden="true">Camera</span>
                 </button>
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); navigate("/forge"); }}
                   aria-label="Open Forge mode"
-                  className="relative flex h-16 w-16 items-center justify-center rounded-full border border-accent/70 bg-background/30 text-accent backdrop-blur-[2px] transition hover:scale-105"
-                  style={{ boxShadow: "0 0 40px hsl(var(--accent) / 0.45)" }}
+                  className="home-mode-button relative flex h-20 w-20 items-center justify-center rounded-full border border-accent/70 bg-background/30 text-accent backdrop-blur-[2px]"
                 >
-                  <Flame className="h-7 w-7" aria-hidden="true" />
+                  <Flame className="home-mode-icon h-8 w-8" aria-hidden="true" />
+                  <span className="home-mode-label" aria-hidden="true">Forge</span>
                 </button>
               </motion.div>
 
@@ -417,8 +414,7 @@ const Index = () => {
           aria-label="Scroll up to explore live visuals"
           className="info-hint pointer-events-auto absolute left-1/2 top-[4.5rem] z-20 -translate-x-1/2"
         >
-          <span className="info-hint-arrow" aria-hidden><ChevronsUp /></span>
-          <span className="info-hint-copy"><strong>Scroll up</strong><small>Explore live visuals</small></span>
+          scroll up to explore live visuals <span className="info-hint-arrow" aria-hidden>↑</span>
         </motion.button>
 
         {/* Bottom credit */}
