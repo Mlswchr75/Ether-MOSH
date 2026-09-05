@@ -81,6 +81,13 @@ const ANALYZE_TOOL = {
 // drop-in swap: different base URL and bearer key, identical body shape below.
 const GEMINI_OPENAI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
 
+// Google retires model aliases on its own schedule, and a retired one fails at
+// call time rather than at deploy time — gemini-2.5-pro, pinned here originally,
+// now 404s for any account created after it closed to new users. Reading the id
+// from the environment makes the next retirement a secret change instead of a
+// code change, a redeploy and a release.
+const GEMINI_MODEL = Deno.env.get("GEMINI_MODEL") ?? "gemini-3.1-pro-preview";
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -127,7 +134,7 @@ Deno.serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gemini-2.5-pro",
+        model: GEMINI_MODEL,
         messages: [
           {
             role: "system",
@@ -149,17 +156,22 @@ Deno.serve(async (req) => {
     });
 
     if (!resp.ok) {
+      // Read and log the body before branching. A 429 used to return silently,
+      // which hid the one detail that decides whether a retry is worth anything:
+      // an exhausted per-minute cap says "wait", but `limit: 0` says the model
+      // has no quota on this plan at all and waiting will never help.
+      const t = await resp.text();
+      console.error("Gemini API error", resp.status, GEMINI_MODEL, t);
+
       if (resp.status === 429) {
         return new Response(JSON.stringify({ error: "Rate limited, please retry shortly." }), {
           status: 429,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      const t = await resp.text();
-      console.error("Gemini API error", resp.status, t);
       await admin
         .from("pattern_forge_uploads")
-        .update({ status: "failed", error: `gemini ${resp.status}` })
+        .update({ status: "failed", error: `gemini ${resp.status} (${GEMINI_MODEL})` })
         .eq("id", rowId);
       return new Response(JSON.stringify({ error: "AI analysis error" }), {
         status: 502,

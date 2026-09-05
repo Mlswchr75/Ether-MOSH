@@ -42,7 +42,17 @@ these migrations apply cleanly in order and reproduce the full schema.
 - `forge-analyze` — AI artwork analysis for Pattern Forge. Calls Google's
   Gemini API directly (via its OpenAI-compatible endpoint) instead of any
   site-builder AI gateway. Needs:
-  - `GEMINI_API_KEY` — your own Gemini API key
+  - `GEMINI_API_KEY` — your own Gemini API key, from https://aistudio.google.com/apikey.
+    Set it on the Supabase project, never as a `VITE_` variable — anything with that
+    prefix is compiled into the browser bundle and readable by anyone.
+  - `GEMINI_MODEL` — optional; overrides the model id. Defaults to
+    `gemini-3.1-pro-preview`. Google retires model aliases on its own schedule and a
+    retired id fails at call time, not deploy time, so this exists to let a swap be a
+    secret change rather than a release. Check which ids your key can actually reach
+    at https://ai.dev/rate-limit — a `429` naming `limit: 0` means the model has no
+    quota on your plan at all (waiting will not help; either enable billing or pick a
+    model your tier includes), whereas an exhausted per-minute cap really is worth a
+    retry.
 - `forge-delete` — unchanged, no external dependency.
 
 None of these functions need `LOVABLE_API_KEY`. (The MCP server integration
