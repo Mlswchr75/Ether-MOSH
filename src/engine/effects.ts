@@ -2400,12 +2400,18 @@ export const EFFECTS: EffectDef[] = [
   // uPulse/noise rather than duplicating zoomBlur or jitter, and a second
   // grain stock next to filmGrain's halation-heavy one.
   fx("invert", "Invert", "color", "Full tonal negative, with an audio-driven punch.",
-    [{ key: "amount", label: "Amount", min: 0, max: 1, default: 1.0 },
+    [{ key: "amount", label: "Amount", min: 0, max: 1, default: 0.6 },
      { key: "punch", label: "Pulse Punch", min: 0, max: 1, default: 0.35 }],
     `
     vec4 c = texture2D(uTex, vUv);
     vec3 inverted = 1.0 - c.rgb;
-    float m = clamp(uAmount + uPulse * uPulse * uPunch, 0.0, 1.0);
+    // uAmount arrives pre-boosted by the renderer's AMOUNT_RENDER_BOOST (2x)
+    // for effects that want extra reach past their declared range — halving
+    // it back recovers the 0..1 mix factor this effect actually needs, so
+    // the pulse term below has real headroom to push into instead of a
+    // shipped default that's already saturated the clamp on its own.
+    float baseAmt = uAmount * 0.5;
+    float m = clamp(baseAmt + uPulse * uPulse * uPunch, 0.0, 1.0);
     gl_FragColor = vec4(mix(c.rgb, inverted, m), c.a);
     `),
 

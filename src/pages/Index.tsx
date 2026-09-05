@@ -5,7 +5,7 @@ import { ChevronsUp, Flame, Upload, Video } from "lucide-react";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
 import { useStore } from "@/store/useStore";
-import { EFFECTS } from "@/engine/effects";
+import { PUBLIC_EFFECTS } from "@/engine/effects";
 import { loadImageFile, loadImageFromClipboard } from "@/lib/sourceLoader";
 import { haptic } from "@/hooks/useHaptics";
 import { defaultFacing, requestCameraStream } from "@/hooks/useCamera";
@@ -232,10 +232,10 @@ const Index = () => {
     >
       <Helmet>
         <title>Ether-MOSH — Audio-Reactive Visual Instrument</title>
-        <meta name="description" content={`Ether-MOSH is a browser-based audio-reactive visual instrument. Drop an image or go live with your camera, stack ${EFFECTS.length} GPU glitch effects, sync them to your music, and export stills or video — all processed locally in your browser.`} />
+        <meta name="description" content={`Ether-MOSH is a browser-based audio-reactive visual instrument. Drop an image or go live with your camera, stack ${PUBLIC_EFFECTS.length} GPU glitch effects, sync them to your music, and export stills or video — all processed locally in your browser.`} />
         <link rel="canonical" href="https://ether-mosh.online/" />
         <meta property="og:title" content="Ether-MOSH — Audio-Reactive Visual Instrument" />
-        <meta property="og:description" content={`Drop an image and warp it in real time. ${EFFECTS.length} GPU effects, beat-synced chaos, in your browser.`} />
+        <meta property="og:description" content={`Drop an image and warp it in real time. ${PUBLIC_EFFECTS.length} GPU effects, beat-synced chaos, in your browser.`} />
         <meta property="og:url" content="https://ether-mosh.online/" />
       </Helmet>
       <h1 className="sr-only">Ether-MOSH — Real-time audio-reactive image and video glitch instrument</h1>
@@ -351,7 +351,7 @@ const Index = () => {
                 transition={{ duration: 0.4, delay: 0, ease: EASE_SNAP }}
                 className="max-w-xl font-mono text-xs uppercase tracking-[0.25em] text-foreground/70"
               >
-                Ether-MOSH is a real-time, audio-reactive visual instrument. Load any image, stack {EFFECTS.length} GPU effects, sync to your music, and export stills or video — all in your browser.
+                Ether-MOSH is a real-time, audio-reactive visual instrument. Load any image, stack {PUBLIC_EFFECTS.length} GPU effects, sync to your music, and export stills or video — all in your browser.
               </motion.p>
 
               <motion.div

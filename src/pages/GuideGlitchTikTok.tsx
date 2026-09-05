@@ -1,7 +1,7 @@
 import { Helmet } from "react-helmet-async";
 import { Link } from "react-router-dom";
 import LegalLayout, { LegalH2 } from "@/components/LegalLayout";
-import { EFFECTS } from "@/engine/effects";
+import { PUBLIC_EFFECTS } from "@/engine/effects";
 
 const canonical = "https://ether-mosh.online/guides/glitch-effect-video-tiktok";
 const title = "How to Make Glitch Effect Videos for TikTok (Free)";
@@ -160,7 +160,7 @@ const GuideGlitchTikTok = () => (
       <section>
         <LegalH2>Why Ether-MOSH beats a glitch filter app</LegalH2>
         <p className="mt-3">
-          Filter apps give you one canned look. Ether-MOSH gives you {EFFECTS.length} stackable GPU effects, live
+          Filter apps give you one canned look. Ether-MOSH gives you {PUBLIC_EFFECTS.length} stackable GPU effects, live
           audio reactivity, and no watermark — all{" "}
           <Link to="/" className="text-accent hover:underline">free in your browser</Link>. The
           optional <Link to="/pricing" className="text-accent hover:underline">Supporter upgrade</Link>{" "}

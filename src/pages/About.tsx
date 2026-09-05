@@ -1,6 +1,6 @@
 import LegalLayout, { LegalH2 } from "@/components/LegalLayout";
 import { Github, Linkedin, Twitter, Instagram, Music } from "lucide-react";
-import { EFFECTS } from "@/engine/effects";
+import { PUBLIC_EFFECTS } from "@/engine/effects";
 import { JourneyPortal, JourneyPortalProvider } from "@/components/journey/JourneyPortal";
 import { PortalShapeGallery } from "@/components/journey/PortalShapeGallery";
 import "./about.css";
@@ -64,7 +64,7 @@ const About = () => (
       <LegalH2>Endeavors</LegalH2>
       <p className="mt-2">
         <strong>Ether-MOSH (Audio-Reactive Visual Instrument)</strong><br />
-        A real-time, GPU-accelerated instrument for live performance and creative exploration. {EFFECTS.length} effects.
+        A real-time, GPU-accelerated instrument for live performance and creative exploration. {PUBLIC_EFFECTS.length} effects.
         Beat-synced chaos. Built in the browser. Free to use.
       </p>
       <p className="mt-4">

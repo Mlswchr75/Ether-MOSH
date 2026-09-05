@@ -64,7 +64,7 @@ import { usePaywall } from "@/hooks/usePaywall";
 import { useCloudFavorites } from "@/hooks/useCloudFavorites";
 import { JourneyDirector, type JourneyDirectorState } from "@/engine/journeyDirector";
 import type { JourneyMic } from "@/engine/journeyCore";
-import { EFFECTS, PUBLIC_EFFECTS } from "@/engine/effects";
+import { PUBLIC_EFFECTS } from "@/engine/effects";
 import { useIdleFade, markUiActive, isMoshOnlyActivity } from "@/hooks/useIdleFade";
 import { captureQuickThumb } from "@/engine/quickThumb";
 import {
@@ -1823,7 +1823,7 @@ export default function Editor() {
         <meta name="description" content="Stack GPU effects, map audio to parameters, and perform live in the MOSH visual editor." />
         <link rel="canonical" href="https://ether-mosh.online/edit" />
         <meta property="og:title" content="MOSH Editor — Real-time visual instrument" />
-        <meta property="og:description" content={`Stack ${EFFECTS.length} GPU effects, sync to audio, export stills and video.`} />
+        <meta property="og:description" content={`Stack ${PUBLIC_EFFECTS.length} GPU effects, sync to audio, export stills and video.`} />
         <meta property="og:url" content="https://ether-mosh.online/edit" />
       </Helmet>
       <h1 className="sr-only">MOSH Editor</h1>
@@ -1905,12 +1905,11 @@ export default function Editor() {
         {freezeFrame && <FrozenFrame frame={freezeFrame} />}
         {!hasSource && !isOverlay && <StartCameraOverlay />}
         <SystemAudioHud visible={systemAudioEnabled && !isOverlay} />
-        {hasSource && !isOverlay && (
+        {hasSource && !isForge && !isMotif && !isOverlay && (
           <QuadrantSurface onTogglePerf={togglePerf} onTune={focusTune} />
         )}
-        {/* QuadrantSurface owns the tap in Forge too (it re-rolls the forge
-            pattern there instead of the FX stack) — this is just the label
-            telling you that's the interaction. */}
+        {/* Forge has no photo to assign roles on — GlCanvas binds a plain
+            click-to-shuffle directly to its own canvas instead. */}
         {isForge && !isOverlay && <ForgeTapHint />}
         {/* Always visible, never idle-faded — unlike HotTriggers' effect
             triggers, this is how you get OUT of whichever mode you're in,
