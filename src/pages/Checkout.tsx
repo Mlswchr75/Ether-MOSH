@@ -28,9 +28,15 @@ function CheckoutContent() {
           <p className="font-mono text-[10px] uppercase tracking-[0.35em] text-accent">secure checkout</p>
           <h1 className="mt-3 font-sans text-4xl font-bold tracking-tight">Complete your unlock</h1>
           {product ? (
-            <p className="mt-3 text-sm text-foreground/60">
-              {product.label} · {product.amount}
-            </p>
+            <>
+              <p className="mt-3 text-sm text-foreground/60">
+                {product.label} · {product.amount}
+              </p>
+              <p className="mx-auto mt-3 max-w-xl font-mono text-[10px] leading-relaxed text-foreground/45">
+                Stripe automatically shows the fastest eligible wallets, cards, and local payment
+                methods for your device and region. International prices may be shown in local currency.
+              </p>
+            </>
           ) : null}
         </div>
 
@@ -54,7 +60,8 @@ function CheckoutContent() {
         ) : (
           <div className="mt-10 overflow-hidden rounded-xl border border-border/60 bg-background/60 p-2">
             <StripeEmbeddedCheckout
-              priceId={product.alias}
+              key={product.alias}
+              productAlias={product.alias}
               returnUrl={`${window.location.origin}/pricing?checkout=success`}
             />
           </div>

@@ -5,12 +5,11 @@ import { isHintDismissed, dismissHint } from "./HintPulse";
 const KEY = "mosh_forge_tap_hint";
 
 /**
- * Forge mode's only affordance is "tap the canvas" — QuadrantSurface owns
- * that gesture (it re-rolls the forge pattern there instead of the FX
- * stack), not this component. This just tells the user that's the
- * interaction, and gets out of the way for good once they've done it once
- * (tracked by a seed change, the real signal that a shuffle happened,
- * rather than by the tap itself).
+ * Forge mode's only affordance is "tap the canvas" — GlCanvas binds the
+ * click-to-shuffle directly to the canvas element, not here. This just tells
+ * the user that's the interaction, and gets out of the way for good once
+ * they've done it once (tracked by a seed change, the real signal that a
+ * shuffle happened, rather than by the click event itself).
  */
 export function ForgeTapHint() {
   const [dismissed, setDismissed] = useState(() => isHintDismissed(KEY));

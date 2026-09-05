@@ -92,7 +92,7 @@ class SegmentationEngine {
 
   /** Analyze a frame for visually interesting regions via color-variance + center-bias saliency. */
   analyzeSaliency(source: SegmentableSource, maxPoints = 3): SaliencyPoint[] {
-    const S = 32;
+    const S = 48;
     if (!this._salCanvas) {
       this._salCanvas = document.createElement('canvas');
       this._salCanvas.width = S;
@@ -103,6 +103,18 @@ class SegmentationEngine {
     if (!tc) return [{ x: 0.5, y: 0.5, score: 1 }];
     tc.drawImage(source, 0, 0, S, S);
     const px = tc.getImageData(0, 0, S, S).data;
+
+    // Border pixels give a cheap background estimate. Adding distance from
+    // that color lets flat, low-texture subjects produce useful prompts too;
+    // variance alone mostly notices noisy edges and can miss a clean logo,
+    // face, garment or product silhouette entirely.
+    let bgR = 0, bgG = 0, bgB = 0, bgN = 0;
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+      if (x > 1 && x < S - 2 && y > 1 && y < S - 2) continue;
+      const i = (y * S + x) * 4;
+      bgR += px[i]; bgG += px[i + 1]; bgB += px[i + 2]; bgN++;
+    }
+    bgR /= Math.max(1, bgN); bgG /= Math.max(1, bgN); bgB /= Math.max(1, bgN);
 
     const cells = 8, cs = S / cells;
     const scores: SaliencyPoint[] = [];
@@ -121,10 +133,14 @@ class SegmentationEngine {
         }
         if (!n) continue;
         const variance = ((sr2 - sr * sr / n) + (sg2 - sg * sg / n) + (sb2 - sb * sb / n)) / (n * 3);
+        const mr = sr / n, mg = sg / n, mb = sb / n;
+        const backgroundDistance = Math.hypot(mr - bgR, mg - bgG, mb - bgB) / 441.673;
+        const chroma = (Math.max(mr, mg, mb) - Math.min(mr, mg, mb)) / 255;
         const dx = (cx + 0.5) / cells - 0.5;
         const dy = (cy + 0.5) / cells - 0.5;
-        const centerBias = Math.exp(-(dx * dx + dy * dy) / 0.2);
-        scores.push({ x: (cx + 0.5) / cells, y: (cy + 0.5) / cells, score: variance * centerBias });
+        const centerBias = .82 + .18 * Math.exp(-(dx * dx + dy * dy) / 0.2);
+        const detail = Math.sqrt(Math.max(0, variance)) / 128;
+        scores.push({ x: (cx + 0.5) / cells, y: (cy + 0.5) / cells, score: (detail * .46 + backgroundDistance * .42 + chroma * .12) * centerBias });
       }
     }
 

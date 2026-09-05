@@ -11,10 +11,14 @@ import {
   composeRoleLayer,
   craftOf,
   gpuCostOf,
+  lookTransitionScore,
   opacityForRole,
+  paramsForRole,
   pickForRole,
   poolForRole,
   statsFromPixels,
+  strengthParamFor,
+  type Look,
   type SourceStats,
 } from "./artDirector";
 
@@ -78,6 +82,22 @@ describe("content analysis", () => {
     const warm = statsFromPixels(solid(8, 8, 220, 120, 40), 8, 8);
     const cool = statsFromPixels(solid(8, 8, 40, 120, 220), 8, 8);
     expect(warm.warmth).toBeGreaterThan(cool.warmth);
+  });
+
+  it("locates visual energy instead of treating the frame as spatially flat", () => {
+    const px = solid(16, 8, 0, 0, 0);
+    for (let y = 0; y < 8; y++) for (let x = 0; x < 4; x++) {
+      const i = (y * 16 + x) * 4; px[i] = 255; px[i + 1] = 220; px[i + 2] = 60;
+    }
+    expect(statsFromPixels(px, 16, 8).balanceX).toBeLessThan(0.4);
+  });
+});
+
+describe("sequence judgement", () => {
+  it("rejects exact repetition and rewards a related but novel continuation", () => {
+    const brief = briefFrom(NEUTRAL_STATS);
+    expect(lookTransitionScore("chromeNoir", "chromeNoir", brief)).toBeLessThan(-2);
+    expect(lookTransitionScore("chromeNoir", "livingCrystal", brief)).toBeGreaterThan(-0.5);
   });
 });
 
@@ -495,5 +515,94 @@ describe("frame budget", () => {
     for (let i = 0; i < 120; i++) {
       expect(compose(brief, rngFromSeed(`full-${i}`)).layers).toHaveLength(4);
     }
+  });
+});
+
+describe("effect strength (Phase 5)", () => {
+  const brief = briefFrom(NEUTRAL_STATS);
+  const maxDrive: Look = { id: "max", name: "MAX", blurb: "", picks: {}, suits: {}, drive: 1 };
+  const minDrive: Look = { id: "min", name: "MIN", blurb: "", picks: {}, suits: {}, drive: 0 };
+
+  describe("strengthParamFor", () => {
+    it("defaults to params[0] pushed up, for an effect with no override", () => {
+      expect(strengthParamFor("pixelSort")).toEqual({ key: "amount", direction: "up" });
+    });
+
+    it("resolves every documented override correctly", () => {
+      expect(strengthParamFor("posterize")).toEqual({ key: "levels", direction: "down" });
+      expect(strengthParamFor("bitCrush")).toEqual({ key: "bits", direction: "down" });
+      expect(strengthParamFor("neonContour")).toEqual({ key: "threshold", direction: "down" });
+      expect(strengthParamFor("depthEcho")).toEqual({ key: "strength", direction: "up" });
+      expect(strengthParamFor("infiniteZoom")).toEqual({ key: "feed", direction: "up" });
+      expect(strengthParamFor("strataSlice")).toEqual({ key: "timeSpread", direction: "up" });
+      expect(strengthParamFor("timeShatter")).toEqual({ key: "spread", direction: "up" });
+      expect(strengthParamFor("crtPhosphor")).toEqual({ key: "mask", direction: "up" });
+    });
+
+    it("opts out (key: null) for effects with no real amount knob", () => {
+      expect(strengthParamFor("mirror").key).toBeNull();
+      expect(strengthParamFor("feedbackTunnel").key).toBeNull();
+      expect(strengthParamFor("mandalaBloom").key).toBeNull();
+    });
+
+    it("every overridden key actually exists on that effect's own params", () => {
+      // A typo here would silently no-op the whole override — paramsForRole
+      // just wouldn't find a param matching the (wrong) key and every param
+      // would fall through to character variation instead.
+      for (const id of ["posterize", "bitCrush", "neonContour", "depthEcho", "infiniteZoom", "strataSlice", "timeShatter", "crtPhosphor"]) {
+        const { key } = strengthParamFor(id);
+        expect(EFFECTS_BY_ID[id].params.some(p => p.key === key), `${id}.${key}`).toBe(true);
+      }
+    });
+  });
+
+  describe("paramsForRole", () => {
+    it("pushes a 'down' effect's strength param toward its min at max drive, not its max", () => {
+      const rand = rngFromSeed("posterize-max");
+      const params = paramsForRole("posterize", "grade", maxDrive, brief, rand, 0);
+      const p = EFFECTS_BY_ID.posterize.params.find(p => p.key === "levels")!;
+      // Low wildness (0) keeps jitter small, so this should land close to
+      // the min end rather than anywhere near the max — the inverse of
+      // what an un-overridden "up" effect would do.
+      expect(params.levels).toBeLessThan(p.min + (p.max - p.min) * 0.4);
+    });
+
+    it("pushes a default 'up' effect's strength param toward its max at max drive", () => {
+      const rand = rngFromSeed("pixelSort-max");
+      const params = paramsForRole("pixelSort", "accent", maxDrive, brief, rand, 0);
+      const p = EFFECTS_BY_ID.pixelSort.params.find(p => p.key === "amount")!;
+      expect(params.amount).toBeGreaterThan(p.min + (p.max - p.min) * 0.6);
+    });
+
+    it("keeps an opted-out effect's params near their defaults regardless of drive — nothing gets forced toward an extreme", () => {
+      const rand = rngFromSeed("mirror-max");
+      const params = paramsForRole("mirror", "form", maxDrive, brief, rand, 0);
+      for (const p of EFFECTS_BY_ID.mirror.params) {
+        // Character variation centers on the default with wildness-scaled
+        // spread — at wildness 0 that spread is at its narrowest, so this
+        // should land close to default regardless of how high drive is.
+        expect(Math.abs(params[p.key] - p.default)).toBeLessThan((p.max - p.min) * 0.35);
+      }
+    });
+
+    it("min drive still respects the override direction — a 'down' effect's strength param moves toward its max instead", () => {
+      const rand = rngFromSeed("posterize-min");
+      const params = paramsForRole("posterize", "grade", minDrive, brief, rand, 0);
+      const p = EFFECTS_BY_ID.posterize.params.find(p => p.key === "levels")!;
+      expect(params.levels).toBeGreaterThan(p.min + (p.max - p.min) * 0.6);
+    });
+
+    it("keeps every param within its declared range across the whole collection, both directions, at full wildness", () => {
+      const rand = rngFromSeed("range-sweep");
+      for (const id of Object.keys(EFFECTS_BY_ID)) {
+        for (const drive of [maxDrive, minDrive]) {
+          const params = paramsForRole(id, "accent", drive, brief, rand, 1);
+          for (const p of EFFECTS_BY_ID[id].params) {
+            expect(params[p.key], `${id}.${p.key}`).toBeGreaterThanOrEqual(p.min);
+            expect(params[p.key], `${id}.${p.key}`).toBeLessThanOrEqual(p.max);
+          }
+        }
+      }
+    });
   });
 });

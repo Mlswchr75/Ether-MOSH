@@ -6,7 +6,7 @@
  *   • Pinch OUT (zoom in)     → enter fullscreen
  *   • Pinch IN  (zoom out)    → exit fullscreen
  *
- * No swipes, no rotate, no contextmenu hijack, no toasts.
+ * Horizontal two-finger swipe → undo / redo-or-new-Mosh.
  */
 import { useEffect, useRef } from "react";
 import { useStore } from "@/store/useStore";
@@ -38,6 +38,7 @@ export function TrackpadGestures({ targetRef, onTogglePerf }: Props) {
     if (!target) return;
 
     let pinchAccum = 1;
+    let horizontalAccum = 0;
     let lastFire = 0;
 
     const tryFire = (wantFs: boolean) => {
@@ -52,12 +53,26 @@ export function TrackpadGestures({ targetRef, onTogglePerf }: Props) {
 
     const onWheel = (e: WheelEvent) => {
       if (!isFineRef.current) return;
-      // Only act on trackpad pinch (ctrl+wheel synthetic). Ignore plain scroll.
-      if (!e.ctrlKey) return;
+      if (e.ctrlKey) {
+        e.preventDefault();
+        pinchAccum *= Math.exp(-e.deltaY * 0.01);
+        if (pinchAccum > 1 + PINCH_THRESHOLD) tryFire(true);
+        else if (pinchAccum < 1 - PINCH_THRESHOLD) tryFire(false);
+        return;
+      }
+      if (Math.abs(e.deltaX) < Math.abs(e.deltaY) * 1.35 || Math.abs(e.deltaX) < 2) return;
       e.preventDefault();
-      pinchAccum *= Math.exp(-e.deltaY * 0.01);
-      if (pinchAccum > 1 + PINCH_THRESHOLD) tryFire(true);
-      else if (pinchAccum < 1 - PINCH_THRESHOLD) tryFire(false);
+      horizontalAccum += e.deltaX;
+      const now = performance.now();
+      if (Math.abs(horizontalAccum) < 72 || now - lastFire < COOLDOWN_MS) return;
+      const state = useStore.getState();
+      if (horizontalAccum > 0) {
+        crossfadeLayers(() => state.future.length ? useStore.getState().redo() : useStore.getState().mosh(), MOSH_FADE_MS);
+      } else if (state.past.length) {
+        crossfadeLayers(() => useStore.getState().undo(), MOSH_FADE_MS);
+      }
+      horizontalAccum = 0;
+      lastFire = now;
     };
 
     const onDblClick = (e: MouseEvent) => {

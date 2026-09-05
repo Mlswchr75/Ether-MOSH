@@ -67,7 +67,18 @@ export default function Pricing() {
       navigate(`/auth?next=${encodeURIComponent(`/checkout?price=${priceId}`)}`);
       return;
     }
-    navigate(`/checkout?price=${priceId}`);
+    // A real navigation, not React Router's navigate(): Stripe Embedded
+    // Checkout enforces a page-wide singleton — only one instance may exist
+    // per document at a time — and its React wrapper's cleanup on unmount
+    // isn't reliably synchronous with a client-side route change. Someone
+    // who visits /checkout, goes back to /pricing, and starts checkout again
+    // (all without a full reload, as SPA routing would otherwise do) can
+    // collide with the still-alive prior instance: Stripe throws
+    // "You cannot have multiple Embedded Checkout objects", and the payment
+    // form just sits there empty forever with no visible error. Forcing a
+    // real page load here guarantees Stripe.js always starts from a clean
+    // slate whenever checkout is entered, regardless of how someone got here.
+    window.location.href = `/checkout?price=${priceId}`;
   };
 
   return (

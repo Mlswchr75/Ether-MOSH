@@ -13,12 +13,12 @@ import { paintForgeSource, createForgeRuntime, disposeForgeRuntime, type ForgeRu
 import { AudioWindow, SILENT_FEATURES, type AudioFeatures, type JourneyMic } from "@/engine/journeyCore";
 import { FrequencyStrip, BeatBorder } from "./AudioFeedback";
 import { startAnalyzer, stopAnalyzer, getAudioData } from "@/engine/audioAnalyzer";
-import { IsolationOverlay } from "./IsolationOverlay";
 import { StickerCapture } from "./StickerCapture";
 import { toast } from "sonner";
 import { vrMode } from "@/engine/vrMode";
 import { VrButton } from "./VrButton";
 import { cursorFx } from "@/engine/cursorFx";
+import { crossfadeLayers, MOSH_FADE_MS } from "@/engine/layerCrossfade";
 
 /** Matches JourneyDirector's default sampleMs — the cadence its AudioFeatures
  *  computation was designed for, not an arbitrary choice. */
@@ -657,6 +657,7 @@ export function GlCanvas() {
       if (sourceModeRef.current === "forge" || sourceModeRef.current === "motif") moshScore = Math.max(moshScore, 0.55);
       rendererRef.current?.setHdrIntensity(moshScore);
       rendererRef.current?.setHdr(moshScore);
+      rendererRef.current?.setDarkMode(useStore.getState().darkModeOn);
       // Re-applied per frame rather than once at setup: the renderer is
       // recreated on context loss, and a silently un-keyed overlay paints a
       // black rectangle over the user's whole scene.
@@ -731,11 +732,23 @@ export function GlCanvas() {
       <canvas
         ref={canvasRef}
         data-mosh-canvas
-        className="relative z-10 block h-full w-full"
+        className={`relative z-10 block h-full w-full ${["forge", "motif"].includes(sourceMode) ? "cursor-pointer" : ""}`}
         style={{ imageRendering: "auto", objectFit: "cover" }}
+        // Generated modes do not mount QuadrantSurface, so their canvas is
+        // the only tap target. forgeMosh() (not the plain Art Director
+        // mosh() every other mode's Space/tap uses) rerolls the generator,
+        // seed and palette together with the effect stack — mosh() alone
+        // left Forge's own pattern completely frozen across taps, only
+        // reshuffling the effects drawn on top of it. Binding it to the
+        // canvas itself, not the container, means it only fires when the
+        // click actually lands on the visible pixels — any overlay drawn
+        // above it (HotTriggers etc.) is a separate element that receives
+        // the click first.
+        onClick={["forge", "motif"].includes(sourceMode)
+          ? () => crossfadeLayers(() => useStore.getState().forgeMosh(), MOSH_FADE_MS)
+          : undefined}
       />
 
-      <IsolationOverlay />
       <StickerCapture />
       <VrButton getRenderer={() => rendererRef.current} getFrame={() => vrFrameRef.current} />
 

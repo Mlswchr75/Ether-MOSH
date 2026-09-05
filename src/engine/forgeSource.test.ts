@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { paintForgeSource, createForgeRuntime, TRANSITION_MS } from "./forgeSource";
 import type { ForgeState } from "@/store/types";
 import { BaseMockCtx2D, getCanvasBuffer, installCanvas2DPolyfillIfNeeded } from "./testHelpers/canvas2dPolyfillBase";
@@ -141,6 +141,18 @@ class ForgeSourceMockCtx2D extends BaseMockCtx2D {
     const [wx, wy] = apply(this.matrix, x, y);
     this.pathPoints.push({ x: wx, y: wy });
   }
+  // Drift Field's mesh overlay strokes a warped diagonal line set on ~45%
+  // of seeds (see driftField.ts's `mesh: rand() < 0.45`) — no-op like the
+  // blob pass's fill(), since assertions here never depend on stroke
+  // visuals either, only on "does it throw" / "do pixels differ".
+  lineTo(x: number, y: number) {
+    const [wx, wy] = apply(this.matrix, x, y);
+    this.pathPoints.push({ x: wx, y: wy });
+  }
+  stroke() {}
+  strokeStyle: unknown = "#000";
+  lineWidth = 1;
+  lineCap = "butt";
   arc(cx: number, cy: number, _r: number, startAngle?: number, endAngle?: number) {
     if (startAngle === undefined || endAngle === undefined) return; // no-op arcs (blob pass)
     const [wx, wy] = apply(this.matrix, cx, cy);
@@ -253,6 +265,8 @@ const BASE_FORGE: ForgeState = {
   kaleidoscopeFolds: null,
   transitionFromGeneratorId: null,
   transitionStartedAt: null,
+  transitionFromSeed: null,
+  transitionFromPaletteIdx: null,
 };
 
 describe("paintForgeSource orchestration", () => {
@@ -298,8 +312,54 @@ describe("paintForgeSource orchestration", () => {
       activeGeneratorId: "shatterField",
       transitionFromGeneratorId: "driftField",
       transitionStartedAt: performance.now(),
+      transitionFromSeed: 111,
+      transitionFromPaletteIdx: 0,
     };
     expect(() => paintForgeSource(ctx, w, h, 1.0, forge, AUDIO, runtime)).not.toThrow();
+  });
+
+  it("renders the outgoing generator with the seed/palette it was actually drawn with, not the incoming generator's", () => {
+    // A shuffle overwrites forge.seed/paletteIdx with the *incoming*
+    // generator's values before this ever paints — the transition must not
+    // redraw the outgoing generator with those new values, or the crossfade
+    // isn't actually fading from the frame the viewer was looking at (the
+    // bug this test guards against).
+    //
+    // performance.now() is pinned identically for both renders below so
+    // progress computes to exactly 0 (transition just started) each time —
+    // real wall-clock time between the two calls would otherwise let the
+    // incoming side's tiny nonzero opacity differ between them, which
+    // produces a pixel difference for the wrong reason and defeats this
+    // test's whole point.
+    const w = 16, h = 16;
+    const runtime = createForgeRuntime();
+    const now = 1_000_000;
+    const nowSpy = vi.spyOn(performance, "now").mockReturnValue(now);
+    try {
+      const base: ForgeState = {
+        ...BASE_FORGE,
+        seed: 999, paletteIdx: 3, // "incoming" values — deliberately far from the frozen ones below
+        activeGeneratorId: "shatterField",
+        transitionFromGeneratorId: "driftField",
+        transitionStartedAt: now,
+      };
+
+      const frozenCtx = makeCtx(w, h);
+      paintForgeSource(frozenCtx, w, h, 1.0, { ...base, transitionFromSeed: 111, transitionFromPaletteIdx: 0 }, AUDIO, runtime);
+      const frozenPixels = frozenCtx.getImageData(0, 0, w, h).data;
+
+      const unfrozenCtx = makeCtx(w, h);
+      paintForgeSource(unfrozenCtx, w, h, 1.0, { ...base, transitionFromSeed: null, transitionFromPaletteIdx: null }, AUDIO, runtime);
+      const unfrozenPixels = unfrozenCtx.getImageData(0, 0, w, h).data;
+
+      let differs = false;
+      for (let i = 0; i < frozenPixels.length; i++) {
+        if (frozenPixels[i] !== unfrozenPixels[i]) { differs = true; break; }
+      }
+      expect(differs).toBe(true);
+    } finally {
+      nowSpy.mockRestore();
+    }
   });
 
   it("exposes the transition duration for the store to reference", () => {

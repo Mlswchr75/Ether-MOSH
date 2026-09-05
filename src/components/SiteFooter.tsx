@@ -11,6 +11,7 @@ const SiteFooter = () => (
         <Link to="/live-visuals" className="hover:text-accent transition">visual services</Link>
         <Link to="/pricing" className="hover:text-accent transition">pricing</Link>
         <Link to="/guides" className="hover:text-accent transition">guides</Link>
+        <Link to="/news" className="hover:text-accent transition">news + updates</Link>
         <Link to="/terms" className="hover:text-accent transition">terms</Link>
         <Link to="/privacy" className="hover:text-accent transition">privacy</Link>
         <Link to="/refunds" className="hover:text-accent transition">refunds</Link>

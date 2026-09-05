@@ -1,27 +1,25 @@
 /**
- * QuadrantSurface — the canvas as a play surface, not a menu.
+ * QuadrantSurface — the canvas as a semantic-role visual instrument.
  *
- * A plain tap re-rolls everything — one full re-roll, same as the MOSH
- * button, Shift+M, and desktop double-click. Forge and Motif have no FX
- * stack of their own to mosh, so a tap there re-rolls the forge pattern
- * instead (generator, palette, seed) via randomiseForge() — their shared
- * equivalent of a full re-roll. This surface owns every source mode with a
- * canvas (upload, camera, Forge, Motif), not just upload/camera, so tapping
- * the visualizer does the same thing wherever you are instead of depending
- * on which source is loaded. Binding the gesture here instead of leaving
- * each mode to wire its own canvas click also means an overlay drawn above
- * the canvas can never silently swallow the tap the way a canvas-only
- * onClick could.
+ * Tapping deliberately has no geography. An earlier version mapped each corner
+ * to one layer, which put a decision in front of the gesture that used to be
+ * pure play: you had to know the map, and aim, before anything happened. Now
+ * position only matters once you are already dragging, where it is continuous
+ * and self-evident:
  *
- *   TAP anywhere  → mosh() (or randomiseForge() in Forge/Motif) — a full
- *                   re-roll.
+ *   TAP anywhere  → re-rolls the NEXT role in rotation (grade → form → accent
+ *                   → finish), so repeated taps evolve the look a part at a
+ *                   time instead of replacing it wholesale. Locked roles are
+ *                   skipped, which is how you steer: keep what you like, keep
+ *                   tapping, and the rest rearranges around it.
  *   DRAG anywhere → invisible XY pad over the selected layer. Horizontal
  *                   sweeps its primary param, vertical its secondary (up =
  *                   more). The values written are the same ones the Tune menu
  *                   edits, so the sliders track the finger.
  *
- * A press long enough to belong to the editor's own 750ms canvas hold (the
- * menu rack) does not also fire a tap on release.
+ * A full re-roll is deliberately NOT bound here. The MOSH button is already the
+ * obvious affordance for it, and the editor owns a 750ms canvas hold for the
+ * menu rack — putting a second hold on this surface would fire both.
  *
  * Nothing is painted over the canvas except a brief readout and the role rail,
  * and both live outside <canvas> so captureStream() never records them.
@@ -85,13 +83,15 @@ type Readout = {
 };
 
 type Props = {
+  /** Fires after a tap re-rolls a semantic role. */
+  onRoll?: (role: Role) => void;
   /** Two-finger pinch — kept here so a single surface owns every canvas gesture. */
   onTogglePerf?: () => void;
   /** Opens the existing Tune panel for the chosen effect layer. */
   onTune?: (layerId: string) => void;
 };
 
-export function QuadrantSurface({ onTogglePerf, onTune = () => {} }: Props) {
+export function QuadrantSurface({ onRoll, onTogglePerf, onTune = () => {} }: Props) {
   const kaossOn = useKaossStore(s => s.instrumentEnabled);
   const showBeforeAfter = useStore(s => s.showBeforeAfter);
   const isolationMode = useStore(s => s.isolationMode);
@@ -278,18 +278,16 @@ export function QuadrantSurface({ onTogglePerf, onTune = () => {} }: Props) {
     // long enough to belong to the menu-rack hold is not a tap.
     if (d.moved || performance.now() - d.startedAt >= TAP_MS) return;
 
-    // A plain tap re-rolls the whole stack, same as the Mosh button, Shift+M,
-    // and desktop double-click — one consistent "moshs the fx stack" gesture
-    // everywhere instead of a partial single-role reroll only tap owned.
-    // Forge and Motif have no FX stack to mosh; their own re-roll is
-    // randomiseForge(), which rerolls the generator/palette/seed the same
-    // way mosh() rerolls effect layers (Motif shares Forge's whole
-    // generator pipeline — see randomiseForge()'s own ["forge","motif"]
-    // check in useStore.ts).
-    const store = useStore.getState();
-    const isForgeLike = store.sourceMode === "forge" || store.sourceMode === "motif";
-    const roll = isForgeLike ? store.randomiseForge : store.mosh;
-    crossfadeLayers(() => roll(), MOSH_FADE_MS);
+    // A clean single tap is the same full-stack Art Director action as Space.
+    // Locked layers remain pinned because mosh() already honours them.
+    crossfadeLayers(() => useStore.getState().mosh(), MOSH_FADE_MS);
+    showReadout({
+      effectName: "", xLabel: "", xValue: 0, yLabel: "", yValue: 0,
+      message: "new composition",
+      look: useStore.getState().currentLook?.name,
+      at: performance.now(),
+    });
+    onRoll?.(useStore.getState().roleCursor);
   };
 
   const onPointerCancel = (e: React.PointerEvent) => {
@@ -312,7 +310,7 @@ export function QuadrantSurface({ onTogglePerf, onTune = () => {} }: Props) {
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerCancel}
       onContextMenu={(e) => e.preventDefault()}
-      aria-label="Visual instrument — tap to re-roll the whole stack, drag to sweep the selected role's parameters"
+      aria-label="Visual instrument — tap to re-roll the next role, hold to re-roll everything, drag to sweep the selected role's parameters"
     >
       {readout && <QuadrantReadout r={readout} />}
     </div>

@@ -117,6 +117,10 @@ export class MoshRenderer {
   private _tileUniforms: TileUniforms = { ...DEFAULT_TILE_UNIFORMS };
   // Adaptive HDR intensity (0 = pure passthrough, 1 = full ACES filmic)
   private _hdrIntensity = 0;
+  // Dark Mode — smoothed toward _darkModeTarget each frame so the toggle
+  // fades rather than snaps.
+  private _darkMode = 0;
+  private _darkModeTarget = 0;
   /** Optional final target used by immersive VR instead of the flat canvas. */
   private xrTarget: THREE.WebGLRenderTarget | null = null;
   /** Re-applied after every buffer reallocation, which resets wrap modes. */
@@ -137,6 +141,10 @@ export class MoshRenderer {
       precision: "mediump",
     });
     this.renderer.setClearColor(0x000000, 0);
+    // Was implicitly relying on three.js's default; making it explicit so a
+    // future three.js version bump can't silently change the output encoding
+    // out from under every effect's color math.
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
 
     // 🔥 FIX: Set pixel unpack alignment to 1 byte so non-4-byte divisible video/image textures never break WebGL
     try {
@@ -344,14 +352,71 @@ export class MoshRenderer {
         uniform sampler2D uOverlayDepth;
         uniform float uOverlayGate;
         uniform float uOverlaySoft;
+        uniform float uVibrance;
+        uniform float uDarkMode;
 
         vec3 aces(vec3 x) {
           const float a = 2.51, b = 0.03, c = 2.43, d = 0.59, e = 0.14;
           return clamp((x*(a*x+b))/(x*(c*x+d)+e), 0.0, 1.0);
         }
 
+        // Vibrance, not flat saturation: pixels that are already vivid get
+        // little extra push (they'd just clip to a flat neon block), while
+        // muted/desaturated pixels get lifted the most. Keeps the wider
+        // color range from reading as "everything is neon."
+        vec3 vibrance(vec3 color, float amount) {
+          float luma = dot(color, vec3(0.299, 0.587, 0.114));
+          float maxc = max(color.r, max(color.g, color.b));
+          float minc = min(color.r, min(color.g, color.b));
+          float chroma = maxc - minc;
+          float boost = amount * (1.0 - chroma);
+          return mix(vec3(luma), color, 1.0 + boost);
+        }
+
+        // Everything upstream is fully aliased (antialias:false on the
+        // WebGLRenderer, and every effect quad is a raw full-screen pass) —
+        // this is the one shared place to buy edges back for every effect at
+        // once. Classic compact FXAA: a handful of extra taps, no extra pass.
+        vec3 fxaa(sampler2D tex, vec2 uv, vec2 res) {
+          vec2 px = 1.0 / res;
+          vec3 rgbNW = texture2D(tex, uv + vec2(-1.0, -1.0) * px).rgb;
+          vec3 rgbNE = texture2D(tex, uv + vec2( 1.0, -1.0) * px).rgb;
+          vec3 rgbSW = texture2D(tex, uv + vec2(-1.0,  1.0) * px).rgb;
+          vec3 rgbSE = texture2D(tex, uv + vec2( 1.0,  1.0) * px).rgb;
+          vec3 rgbM  = texture2D(tex, uv).rgb;
+
+          const vec3 luma = vec3(0.299, 0.587, 0.114);
+          float lumaNW = dot(rgbNW, luma);
+          float lumaNE = dot(rgbNE, luma);
+          float lumaSW = dot(rgbSW, luma);
+          float lumaSE = dot(rgbSE, luma);
+          float lumaM  = dot(rgbM,  luma);
+
+          float lumaMin = min(lumaM, min(min(lumaNW, lumaNE), min(lumaSW, lumaSE)));
+          float lumaMax = max(lumaM, max(max(lumaNW, lumaNE), max(lumaSW, lumaSE)));
+
+          vec2 dir;
+          dir.x = -((lumaNW + lumaNE) - (lumaSW + lumaSE));
+          dir.y =  ((lumaNW + lumaSW) - (lumaNE + lumaSE));
+
+          float dirReduce = max((lumaNW + lumaNE + lumaSW + lumaSE) * 0.03125, 1.0 / 128.0);
+          float rcpDirMin = 1.0 / (min(abs(dir.x), abs(dir.y)) + dirReduce);
+          dir = clamp(dir * rcpDirMin, -8.0, 8.0) * px;
+
+          vec3 rgbA = 0.5 * (
+            texture2D(tex, uv + dir * (1.0 / 3.0 - 0.5)).rgb +
+            texture2D(tex, uv + dir * (2.0 / 3.0 - 0.5)).rgb);
+          vec3 rgbB = rgbA * 0.5 + 0.25 * (
+            texture2D(tex, uv + dir * -0.5).rgb +
+            texture2D(tex, uv + dir *  0.5).rgb);
+
+          float lumaB = dot(rgbB, luma);
+          return (lumaB < lumaMin || lumaB > lumaMax) ? rgbA : rgbB;
+        }
+
         void main() {
           vec4 col = texture2D(uTex, vUv);
+          col.rgb = fxaa(uTex, vUv, uRes);
 
           // 4-tap cross blur for unsharp mask
           vec2 px = 1.5 / uRes;
@@ -372,6 +437,38 @@ export class MoshRenderer {
 
           // At uHdr=0: pure passthrough. Above 0.08: processing fully active.
           vec3 rgb = mix(col.rgb, result, smoothstep(0.0, 0.08, uHdr));
+
+          // Baseline vibrance lift — applied to every frame regardless of
+          // uHdr, since it's a default look rather than a mosh-intensity
+          // effect. Runs after tone mapping so it grades the final colors,
+          // not the pre-ACES intermediate.
+          rgb = vibrance(rgb, uVibrance);
+
+          /* Dark Mode. Not a global invert or a flat darken — both of those
+             either torch every light in the frame or just look muddy. The
+             old accidental version that this revives crushed everything
+             indiscriminately and left only stray light as scan-thin traces;
+             this one is selective instead: a pixel with real color in it
+             survives and gets pushed hotter, a pixel that's mostly just
+             luma (white, pale grey, washed highlights) falls into true
+             black. The frame ends up mostly-black with color punching
+             through it, rather than mostly-black with white lines. */
+          if (uDarkMode > 0.001) {
+            float dmLuma = dot(rgb, vec3(0.299, 0.587, 0.114));
+            float dmMax = max(rgb.r, max(rgb.g, rgb.b));
+            float dmMin = min(rgb.r, min(rgb.g, rgb.b));
+            float dmSat = dmMax < 0.02 ? 0.0 : (dmMax - dmMin) / dmMax;
+            // Only the bright, low-color part of the frame crushes — dark
+            // pixels (already reading as shadow) are left alone so black
+            // isn't spread any further than it needs to be.
+            float dmCrush = (1.0 - dmSat) * smoothstep(0.1, 0.8, dmLuma);
+            vec3 dmBlacked = rgb * (1.0 - dmCrush * 0.96);
+            // What's left gets shoved toward neon: colored pixels get an
+            // extra vibrance kick proportional to their own saturation, so
+            // the hottest hues in frame come out hottest.
+            vec3 dmNeon = vibrance(dmBlacked, 0.55 + dmSat * 0.35) * (1.0 + dmSat * 0.4);
+            rgb = mix(rgb, clamp(dmNeon, 0.0, 4.0), uDarkMode);
+          }
 
           /* Overlay keying.
 
@@ -406,6 +503,8 @@ export class MoshRenderer {
         uOverlayDepth: { value: null },
         uOverlayGate: { value: 0.4 },
         uOverlaySoft: { value: 0.18 },
+        uVibrance: { value: 0.35 },
+        uDarkMode: { value: 0 },
       },
       depthTest: false,
       depthWrite: false,
@@ -565,6 +664,15 @@ export class MoshRenderer {
     this.allocTargets(2, 2);
   }
 
+  private _halfFloatSupport: boolean | null = null;
+  private supportsHalfFloatTargets(): boolean {
+    if (this._halfFloatSupport === null) {
+      const ext = this.renderer.extensions;
+      this._halfFloatSupport = ext.has("EXT_color_buffer_float") || ext.has("EXT_color_buffer_half_float");
+    }
+    return this._halfFloatSupport;
+  }
+
   private allocTargets(w: number, h: number) {
     this.rtA?.dispose();
     this.rtB?.dispose();
@@ -588,8 +696,19 @@ export class MoshRenderer {
     this.rtA = new THREE.WebGLRenderTarget(w, h, opts);
     this.rtB = new THREE.WebGLRenderTarget(w, h, opts);
     this.rtC = new THREE.WebGLRenderTarget(w, h, opts);
-    this.rtHistA = new THREE.WebGLRenderTarget(w, h, opts);
-    this.rtHistB = new THREE.WebGLRenderTarget(w, h, opts);
+
+    // The feedback/history pair is what compounds banding: uFeedback reads
+    // last frame's output back in every frame, so any quantization here gets
+    // re-quantized over and over across a chained effect stack. Half-float
+    // just on these two (not the other ~12 targets) kills that without
+    // doubling memory/bandwidth for the whole pipeline. Falls back to 8-bit
+    // on hardware without a color-renderable float extension.
+    const histOpts: THREE.RenderTargetOptions = {
+      ...opts,
+      type: this.supportsHalfFloatTargets() ? THREE.HalfFloatType : THREE.UnsignedByteType,
+    };
+    this.rtHistA = new THREE.WebGLRenderTarget(w, h, histOpts);
+    this.rtHistB = new THREE.WebGLRenderTarget(w, h, histOpts);
 
     // Depth runs at quarter resolution. It is a soft blob mask that gets
     // diffused anyway, so full-res detail in it would be spent and then blurred
@@ -673,6 +792,16 @@ export class MoshRenderer {
    *  Call each frame from the render loop with a score derived from active layers. */
   setHdrIntensity(v: number) {
     this._hdrIntensity = Math.max(0, Math.min(1, v));
+  }
+
+  /** Dark Mode — a finisher-level grade, independent of the effect stack.
+   *  Crushes low-saturation/bright content (whites, pale highlights, flat
+   *  grey) toward true black while protecting and boosting whatever color
+   *  survives, so neon hues read as hot against real black instead of the
+   *  usual mid-grey ambient light. Fades in/out over a few frames rather
+   *  than snapping when toggled. */
+  setDarkMode(on: boolean) {
+    this._darkModeTarget = on ? 1 : 0;
   }
 
   /**
@@ -1115,6 +1244,8 @@ export class MoshRenderer {
     this.finisherMaterial.uniforms.uTex.value = finalTex;
     (this.finisherMaterial.uniforms.uRes.value as THREE.Vector2).set(w, h);
     this.finisherMaterial.uniforms.uHdr.value = this._hdrIntensity;
+    this._darkMode += (this._darkModeTarget - this._darkMode) * 0.12;
+    this.finisherMaterial.uniforms.uDarkMode.value = this._darkMode;
     this.finisherMaterial.uniforms.uOverlayDepth.value = this.rtDepthA.texture;
     this.quad.material = this.finisherMaterial;
     this.renderer.setRenderTarget(this.xrTarget);

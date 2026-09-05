@@ -13,15 +13,20 @@
  */
 import { EFFECTS_BY_ID, type EffectCategory } from "./effects";
 import { tileSafeEffects, tileVerdict } from "./tileSafety";
-import type { BlendMode } from "./blend";
+import type { BlendMode, LayerRegion } from "./blend";
 import { GENERATORS } from "./forgeGeneratorRegistry";
 import { KALEIDOSCOPE_FOLD_OPTIONS } from "./forgeKaleidoscope";
+import { craftOf, ROLES, type Role } from "./artDirector";
 
 export type ForgeLayer = {
   effectId: string;
   params: Record<string, number>;
   opacity: number;
   blend: BlendMode;
+  /** Confines this layer to part of the frame instead of covering it edge to
+   *  edge — see composeForgeStack's own doc for why one layer sometimes gets
+   *  this. Absent/null means full-frame, same as before this field existed. */
+  region?: LayerRegion | null;
 };
 
 /** Blends that build a pattern up rather than erasing what is under them. */
@@ -75,8 +80,78 @@ function weightedDraw(
   return out;
 }
 
+/** Weighted pick among a role's own candidates, honoring categoryBias the
+ *  same way the flat fallback draw does — role decides *which slot* gets
+ *  filled, category bias still decides *which effect* fills it. */
+function pickRoleEffect(
+  pool: string[],
+  role: Role,
+  bias: Partial<Record<EffectCategory, number>> | undefined,
+  rand: () => number,
+  exclude: Set<string>,
+): string | null {
+  const candidates = pool.filter(id => !exclude.has(id) && craftOf(id)?.role === role);
+  if (!candidates.length) return null;
+  if (!bias) return candidates[Math.floor(rand() * candidates.length)];
+  const picked = weightedDraw(candidates, id => bias[EFFECTS_BY_ID[id]?.category ?? "corruption"] ?? MIN_WEIGHT, 1, rand);
+  return picked[0] ?? null;
+}
+
+/** The flat, structure-free draw this composer used before role awareness —
+ *  kept as the fallback for a pool too sparse to fill any role at all (an
+ *  empty stack would otherwise be possible), so a shuffle never silently
+ *  produces nothing just because this pool has no craftOf() coverage yet. */
+function pickFlatBag(
+  pool: string[],
+  count: number,
+  bias: Partial<Record<EffectCategory, number>> | undefined,
+  rand: () => number,
+): string[] {
+  if (bias) {
+    return weightedDraw(pool, id => bias[EFFECTS_BY_ID[id]?.category ?? "corruption"] ?? MIN_WEIGHT, count, rand);
+  }
+  const bag = pool.slice();
+  for (let i = bag.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [bag[i], bag[j]] = [bag[j], bag[i]];
+  }
+  return bag.slice(0, count);
+}
+
+/** A single-layer region mask, geometric modes only — Forge has no photo to
+ *  read foreground/background from (unlike the general Art Director's own
+ *  rollPartition), so this is confined to shapes the pattern itself can
+ *  carry: shattered plate, interleaved bands, centre-vs-surround. Ranges
+ *  mirror rollPartition's own for the same modes, so a masked Forge layer
+ *  reads the same way a masked regular-mosh layer does. */
+function rollQuietRegion(rand: () => number): LayerRegion {
+  const kind = rand();
+  if (kind < 0.4) {
+    const scale = 3 + Math.round(rand() * 12);
+    return { mode: "shards", scale, phase: rand() * 100, gate: 0.5, feather: 0.02 };
+  }
+  if (kind < 0.75) {
+    const mode = rand() < 0.5 ? "vbands" : "hbands";
+    return { mode, scale: 2 + Math.round(rand() * 10), phase: rand(), feather: 0.03 + rand() * 0.16 };
+  }
+  return { mode: "radial", scale: 0.18 + rand() * 0.36, feather: 0.04 + rand() * 0.22 };
+}
+
 /**
  * Build a stack.
+ *
+ * Every effect already carries the same role (grade/form/accent/finish) the
+ * general Art Director uses to keep its own compositions coherent — this
+ * used to go untapped here, so a shuffle was pure category-weighted chance
+ * with no notion of "one thing setting the color, one thing doing the
+ * damage, maybe a polish coat," which is what actually reads as composed
+ * rather than random. Grade is the one constant (the color world every
+ * other layer sits in); form/accent take turns as the primary structural
+ * move, weighted toward accent's corruption/temporal character as intensity
+ * climbs; finish and a second accent are increasingly likely on top of that,
+ * not guaranteed. One non-foundation layer, if the stack has one, sometimes
+ * gets a region mask (rollQuietRegion) so it doesn't blanket the frame —
+ * the "one quieter region" that makes the busier ones read as busier.
  *
  * Params are sampled across each effect's *declared* range rather than nudged
  * around defaults, because a pattern generator has no "correct" look to
@@ -86,34 +161,64 @@ function weightedDraw(
 export function composeForgeStack(opts: ForgeOpts): ForgeLayer[] {
   const { rand } = opts;
   const intensity = Math.max(0, Math.min(1, opts.intensity ?? 0.6));
+  const bias = opts.categoryBias;
 
   const pool = opts.seamless ? tileSafeEffects() : Object.keys(EFFECTS_BY_ID);
   if (!pool.length) return [];
 
-  const count = Math.min(pool.length, 2 + Math.round(rand() * (1 + intensity * 3)));
+  const exclude = new Set<string>();
+  const picks: { id: string; role: Role }[] = [];
+  const addPick = (id: string | null, role: Role) => {
+    if (!id) return false;
+    picks.push({ id, role });
+    exclude.add(id);
+    return true;
+  };
 
-  const bias = opts.categoryBias;
-  let bag: string[];
-  if (bias) {
-    bag = weightedDraw(
-      pool,
-      id => bias[EFFECTS_BY_ID[id]?.category ?? "corruption"] ?? MIN_WEIGHT,
-      count,
-      rand,
-    );
-  } else {
-    // Fisher-Yates over a copy: a random comparator is a biased shuffle, and with
-    // a pool this size the bias is visible as certain effects rarely appearing.
-    bag = pool.slice();
-    for (let i = bag.length - 1; i > 0; i--) {
-      const j = Math.floor(rand() * (i + 1));
-      [bag[i], bag[j]] = [bag[j], bag[i]];
-    }
+  // Foundation: the color world every other layer sits in.
+  addPick(pickRoleEffect(pool, "grade", bias, rand, exclude), "grade");
+
+  // The primary structural move — accent (corruption/temporal character)
+  // more often as intensity climbs, form otherwise. Falls back to whichever
+  // of the two actually has candidates if the preferred one comes up empty.
+  const wantAccentFirst = rand() < 0.25 + intensity * 0.5;
+  const firstRole: Role = wantAccentFirst ? "accent" : "form";
+  const secondRole: Role = wantAccentFirst ? "form" : "accent";
+  if (!addPick(pickRoleEffect(pool, firstRole, bias, rand, exclude), firstRole)) {
+    addPick(pickRoleEffect(pool, secondRole, bias, rand, exclude), secondRole);
   }
 
+  // A polish coat, increasingly likely at higher intensity but never
+  // guaranteed — a stack that always finishes with a glow reads as a filter,
+  // not a composition.
+  if (rand() < 0.35 + intensity * 0.4) addPick(pickRoleEffect(pool, "finish", bias, rand, exclude), "finish");
+
+  // A second accent only once there's real intensity to spend on it.
+  if (intensity > 0.45 && rand() < (intensity - 0.45) * 1.1) {
+    addPick(pickRoleEffect(pool, "accent", bias, rand, exclude), "accent");
+  }
+
+  let ids = picks.sort((a, b) => ROLES.indexOf(a.role) - ROLES.indexOf(b.role)).map(p => p.id);
+
+  // Safety net: a pool too sparse in craftOf() coverage to fill even the
+  // foundation role (not the case for any pool today — see this phase's own
+  // coverage check — but this composer must never go silently empty if that
+  // ever changes) falls back to the old flat weighted/shuffled draw.
+  if (!ids.length) {
+    const count = Math.min(pool.length, 2 + Math.round(rand() * (1 + intensity * 3)));
+    ids = pickFlatBag(pool, count, bias, rand);
+  }
+
+  // One non-foundation layer, sometimes, holds back a region instead of
+  // covering the whole frame — never the foundation itself, which is what
+  // establishes the field everything else sits on.
+  const quietIndex = ids.length > 1 && rand() < 0.3 + intensity * 0.25
+    ? 1 + Math.floor(rand() * (ids.length - 1))
+    : -1;
+
   const out: ForgeLayer[] = [];
-  for (let i = 0; i < count; i++) {
-    const id = bag[i];
+  for (let i = 0; i < ids.length; i++) {
+    const id = ids[i];
     const def = EFFECTS_BY_ID[id];
     if (!def) continue;
 
@@ -135,6 +240,7 @@ export function composeForgeStack(opts: ForgeOpts): ForgeLayer[] {
       // exotic blend at the bottom has nothing underneath to blend with.
       blend: i === 0 ? "normal" : PATTERN_BLENDS[Math.floor(rand() * PATTERN_BLENDS.length)],
       opacity: i === 0 ? 1 : 0.45 + rand() * 0.5,
+      region: i === quietIndex ? rollQuietRegion(rand) : null,
     });
   }
   return out;

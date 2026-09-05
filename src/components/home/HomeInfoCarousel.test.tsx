@@ -12,26 +12,29 @@ const renderCarousel = () => render(
 afterEach(cleanup);
 
 describe("HomeInfoCarousel", () => {
-  it("loops forward from Contact back to Signal", () => {
+  it("loops forward from News back to Signal", () => {
     renderCarousel();
     const next = screen.getByRole("button", { name: "Next chapter" });
 
-    for (let step = 0; step < 5; step += 1) fireEvent.click(next);
-    expect(screen.getByText(/06 \/ 06 · Contact/i)).toBeTruthy();
+    for (let step = 0; step < 6; step += 1) fireEvent.click(next);
+    expect(screen.getByText(/07 \/ 07 · News/i)).toBeTruthy();
+    expect(screen.getByRole("link", { name: /Read News \+ Updates/i })).toBeTruthy();
+    expect(screen.getByRole("link", { name: /Browse the Effect Registry/i }).getAttribute("href")).toBe("/effects");
 
     fireEvent.click(next);
-    expect(screen.getByText(/01 \/ 06 · Signal/i)).toBeTruthy();
+    expect(screen.getByText(/01 \/ 07 · Signal/i)).toBeTruthy();
   });
 
-  it("loops backward from Signal to Contact", () => {
+  it("loops backward from Signal to News", () => {
     renderCarousel();
     fireEvent.click(screen.getByRole("button", { name: "Previous chapter" }));
-    expect(screen.getByText(/06 \/ 06 · Contact/i)).toBeTruthy();
+    expect(screen.getByText(/07 \/ 07 · News/i)).toBeTruthy();
   });
 
   it("supports keyboard navigation", () => {
     renderCarousel();
     fireEvent.keyDown(screen.getByRole("region", { name: "Ether-MOSH live visuals" }), { key: "ArrowRight" });
-    expect(screen.getByText(/02 \/ 06 · About/i)).toBeTruthy();
+    expect(screen.getByText(/02 \/ 07 · About/i)).toBeTruthy();
+    expect(screen.getByRole("link", { name: /Explore all \d+ effects/i }).getAttribute("href")).toBe("/effects");
   });
 });

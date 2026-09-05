@@ -16,6 +16,7 @@ import {
   poolForRole,
   rollWildness,
   type FrameBrief,
+  type Composition,
   type Look,
   type Role,
 } from "@/engine/artDirector";
@@ -34,7 +35,7 @@ import { exportSetlist, importSetlist, setlistToJson, SETLIST_SLOTS } from "@/en
 import type { AudioMap, Favorite, ForgeState, Intensity, IsolationMode, Layer, Modulator, PaletteProfile, SourceMode, StickerEntry } from "./types";
 import { composeForgeStack, pickForgeGenerator, rollKaleidoscope } from "@/engine/forgeCompose";
 import { DRIFT_FIELD } from "@/engine/forgeGenerators/driftField";
-import { FORGE_PALETTES } from "@/engine/forgePalettes";
+import { FORGE_PALETTES, chooseArtDirectedPalette } from "@/engine/forgePalettes";
 import { facingOfTrack, type CameraFacing } from "@/lib/cameraFacing";
 import { DEFAULT_TILE_UNIFORMS, type TileMode, type TileUniforms } from "@/engine/tile";
 import { extractPalette } from "@/engine/imagePalette";
@@ -63,7 +64,7 @@ function generateFavoriteName(layers: Layer[]): string {
   return names.length > 2 ? `${shown} +${names.length - 2}` : shown;
 }
 
-const HISTORY_LIMIT = 20;
+export const HISTORY_LIMIT = 12;
 /** Recency-memory windows feeding recencyPenalty (see compose.ts) — the
  *  same shape and the same numbers Journey mode's own memory uses (
  *  recentStructural/recentAccent in journeyDirector.ts), so a repeat is
@@ -118,6 +119,11 @@ const WILD_FLOOR: Record<Intensity, number> = {
   nuclear: 0.42,
   interdimensional: 0.62,
 };
+
+function briefDistance(a: FrameBrief, b: FrameBrief): number {
+  const keys: Array<keyof FrameBrief> = ["brightness", "contrast", "saturation", "density", "warmth", "hueSpread"];
+  return keys.reduce((sum, key) => sum + Math.abs((a[key] as number) - (b[key] as number)), 0) / keys.length;
+}
 
 /**
  * One shared settings object for every export path in the app — screenshot,
@@ -205,6 +211,36 @@ type State = {
   exportSettings: ExportSettings;
   isPerformanceMode: boolean;
   showMetersInPerformance: boolean;
+  /** Desktop-only: constrains the canvas stage to a tall (9:16) box instead
+   *  of filling the full landscape viewport width. Mobile never needs this —
+   *  rotating the device already gets a portrait frame — but a desktop
+   *  browser window has no equivalent, so wide "cover" framing was
+   *  routinely cropping the top/bottom off portrait-oriented sources.
+   *  Ignored on touch/coarse-pointer devices (see Editor.tsx). */
+  desktopPortraitMode: boolean;
+  /** Selective black-crush + neon-boost grade applied in the finisher, on
+   *  top of whatever effect stack is running. */
+  darkModeOn: boolean;
+  /**
+   * Set for the duration of a Lottie Sticker capture (StickerCapture.tsx's
+   * exportLottieSticker) — every action that can change the mosh FX stack
+   * (mosh, forgeMosh, moshNext, rerollRole, loadSlot, applyFavorite,
+   * reseedForge — including Auto-Mosh's own timer, which calls mosh()
+   * through the same path) no-ops while this is true, instead of checking
+   * sticker-specific state itself. A capture spans several real seconds
+   * across multiple frames; without this, any of those firing mid-capture
+   * — a stray click, Auto-Mosh's timer, anything — would change what the
+   * canvas is actually rendering partway through, so later frames in the
+   * same sticker/GIF would show a different FX stack (and, for the
+   * organic-mask path, a genuinely different shape) than earlier ones.
+   * "Regardless of whatever other settings are enabled" only holds with
+   * one central gate every stack-changing action shares, rather than each
+   * capture-adjacent feature remembering to check sticker state on its
+   * own. The one deliberate exception is randomiseForge() — see its own
+   * doc for why: it doubles as the render loop's error-recovery fallback,
+   * which needs to work regardless of capture state.
+   */
+  captureLocked: boolean;
   /** Hides all chrome by default; the only way back in is the deliberate
    *  hold+second-tap (touch) or hold-Shift (desktop) gesture — see
    *  Editor.tsx's pro-mode-gated input handlers. */
@@ -233,10 +269,8 @@ type State = {
   paletteProfile: PaletteProfile | null;
   /** Saved effect presets. */
   favorites: Favorite[];
-  /** Isolation overlay mode. */
+  /** Sticker Studio content-aware cut strategy. */
   isolationMode: IsolationMode;
-  isolationFeather: number;
-  isolationInvert: boolean;
   /** Sticker capture mode. */
   stickerMode: boolean;
   stickerGallery: StickerEntry[];
@@ -257,6 +291,8 @@ type State = {
   currentLook: { id: string; name: string; blurb: string } | null;
   /** Latest content analysis, for the UI to show what the director saw. */
   currentBrief: FrameBrief | null;
+  /** One fully judged stack waiting behind the visible one. */
+  plannedMosh: { seed: string; intensity: Intensity; brief: FrameBrief; composition: Composition } | null;
   /** Last semantic-role roll — drives the transient on-canvas readout. */
   lastRoleRoll: RoleRoll | null;
   /** The semantic role targeted by the next clean canvas tap. */
@@ -308,6 +344,14 @@ type Actions = {
   addRole: (role: Role) => RoleRoll | null;
 
   mosh: (intensity?: Intensity) => void;
+  /**
+   * The Forge/Motif equivalent of mosh() — one tap, one coordinated shuffle
+   * of everything Forge owns (generator, seed, palette, kaleidoscope) *and*
+   * the effect stack, instead of mosh()'s effect-only shuffle leaving the
+   * generator frozen (see forgeMosh's own doc comment for why that used to
+   * be the case).
+   */
+  forgeMosh: (intensity?: Intensity) => void;
   reset: () => void;
 
   /** Re-roll the next unlocked semantic role. */
@@ -335,6 +379,11 @@ type Actions = {
   setExportSettings: (patch: Partial<ExportSettings>) => void;
   setPerformanceMode: (b: boolean) => void;
   togglePerformanceMode: () => void;
+  setDesktopPortraitMode: (b: boolean) => void;
+  toggleDesktopPortraitMode: () => void;
+  setDarkMode: (b: boolean) => void;
+  toggleDarkMode: () => void;
+  setCaptureLocked: (b: boolean) => void;
   setShowMetersInPerformance: (b: boolean) => void;
   setProModeEnabled: (b: boolean) => void;
   setHelpModeEnabled: (b: boolean) => void;
@@ -378,8 +427,6 @@ type Actions = {
   removeStickerFromGallery: (id: string) => void;
   setStickerMode: (b: boolean) => void;
   setIsolationMode: (m: IsolationMode) => void;
-  setIsolationFeather: (n: number) => void;
-  setIsolationInvert: (b: boolean) => void;
 
   /** Switch which source feeds the renderer. Camera's own getUserMedia call
    *  stays with the caller (needs to run inside a user gesture) — this only
@@ -445,6 +492,7 @@ function composeForgeLayers(forge: ForgeState): Layer[] {
     locked: false,
     opacity: l.opacity,
     blend: l.blend,
+    region: l.region ?? null,
     params: l.params,
     mods: {},
   }));
@@ -526,6 +574,9 @@ export const useStore = create<State & Actions>((set, get) => ({
   sensitivity: 1,
   exportSettings: loadExportSettings(),
   isPerformanceMode: false,
+  desktopPortraitMode: false,
+  darkModeOn: false,
+  captureLocked: false,
   showMetersInPerformance: typeof localStorage !== "undefined" && localStorage.getItem("cathedral_meters_in_perf") === "1",
   proModeEnabled: typeof localStorage !== "undefined" && localStorage.getItem("cathedral_pro_mode") === "1",
   helpModeEnabled: false,
@@ -542,9 +593,7 @@ export const useStore = create<State & Actions>((set, get) => ({
   tileUniforms: { ...DEFAULT_TILE_UNIFORMS },
   paletteProfile: null,
   favorites: loadFavoritesFromStorage(),
-  isolationMode: "off" as IsolationMode,
-  isolationFeather: 4,
-  isolationInvert: false,
+  isolationMode: "auto" as IsolationMode,
   stickerMode: false,
   stickerGallery: [],
   cameraFacing: null,
@@ -556,13 +605,14 @@ export const useStore = create<State & Actions>((set, get) => ({
   recentLooks: [],
   currentLook: null,
   currentBrief: null,
+  plannedMosh: null,
   lastRoleRoll: null,
   sourceMode: "upload" as SourceMode,
   forge: {
     paletteIdx: 0,
     seed: Math.floor(Math.random() * 0xFFFFFF),
     intensity: 0.6,
-    seamless: true,
+    seamless: false,
     stack: [],
     baseImage: null,
     baseName: null,
@@ -573,6 +623,8 @@ export const useStore = create<State & Actions>((set, get) => ({
     kaleidoscopeFolds: null,
     transitionFromGeneratorId: null,
     transitionStartedAt: null,
+    transitionFromSeed: null,
+    transitionFromPaletteIdx: null,
   } as ForgeState,
   preForgeLayers: null,
 
@@ -597,6 +649,7 @@ export const useStore = create<State & Actions>((set, get) => ({
       videoElement: null, videoStream: null,
       cameraFacing: null,
       paletteProfile: null,
+      plannedMosh: null,
       sourceMode: "upload",
       ...(wasForge ? { layers: preForge ?? [], preForgeLayers: null } : {}),
     });
@@ -662,6 +715,7 @@ export const useStore = create<State & Actions>((set, get) => ({
       videoStream: stream,
       sourceName: name ?? "live camera",
       paletteProfile: null,
+      plannedMosh: null,
       cameraFacing: facing,
       sourceMode: "camera",
       ...(wasForge ? { layers: preForge ?? [], preForgeLayers: null } : {}),
@@ -675,7 +729,7 @@ export const useStore = create<State & Actions>((set, get) => ({
       try { s.videoElement.parentNode?.removeChild(s.videoElement); } catch {}
     }
     // Facing belongs to the stream that just stopped.
-    set({ videoElement: null, videoStream: null, cameraFacing: null });
+    set({ videoElement: null, videoStream: null, cameraFacing: null, plannedMosh: null });
   },
   clearImage: () => {
     try { document.documentElement.style.removeProperty("--synth-accent"); } catch {}
@@ -687,7 +741,7 @@ export const useStore = create<State & Actions>((set, get) => ({
     }
     set({
       imageUrl: null, imageElement: null, videoElement: null, videoStream: null,
-      cameraFacing: null, sourceName: null, layers: [], past: [], future: [], paletteProfile: null,
+      cameraFacing: null, sourceName: null, layers: [], past: [], future: [], paletteProfile: null, plannedMosh: null,
       ...resetRoleSelection([]),
     });
   },
@@ -788,16 +842,16 @@ export const useStore = create<State & Actions>((set, get) => ({
   }),
 
   mosh: (intensity) => set(s => {
+    if (s.captureLocked) return s;
     const inten = intensity ?? s.intensity;
-    const seed = generateSeed();
+    const brief = briefFrom(analyzeSource(s.videoElement ?? s.imageElement ?? s.glCanvas));
+    const prepared = s.plannedMosh?.intensity === inten && briefDistance(s.plannedMosh.brief, brief) < 0.16
+      ? s.plannedMosh : null;
+    const seed = prepared?.seed ?? generateSeed();
     const rand = rngFromSeed(seed);
 
-    // Look at the actual frame first. This is the whole point: the stack is
-    // built for THIS content, not drawn from a hat.
-    const brief = briefFrom(analyzeSource(s.videoElement ?? s.imageElement));
-
     const locked = s.layers.filter(l => l.locked);
-    const composition = compose(brief, rand, {
+    const composition = prepared?.composition ?? compose(brief, rand, {
       roleCount: ROLE_COUNT[inten],
       chaos: CHAOS[inten],
       wildness: rollWildness(rand, WILD_FLOOR[inten]),
@@ -807,6 +861,7 @@ export const useStore = create<State & Actions>((set, get) => ({
       // gap that made the two shuffle noticeably differently.
       lookPenalty: recencyPenalty(s.recentLooks, []),
       effectPenalty: recencyPenalty(s.recentFormEffects, s.recentOtherEffects),
+      previousLookId: s.currentLook?.id,
       // A locked layer's effect id is a real hard constraint, not a
       // preference — the director must never reach for it since it's
       // already pinned in a fixed slot.
@@ -833,6 +888,23 @@ export const useStore = create<State & Actions>((set, get) => ({
     const otherIds = composition.layers.filter(l => l.role !== "form").map(l => l.effectId);
     const layers = [...locked, ...fresh];
     const selection = resetRoleSelection(layers);
+    const paletteIdx = chooseArtDirectedPalette(brief, rand, s.forge.paletteIdx);
+    const nextSeed = generateSeed();
+    const nextRand = rngFromSeed(nextSeed);
+    const nextForm = [...formIds, ...s.recentFormEffects].slice(0, RECENT_FORM_MEMORY);
+    const nextOther = [...otherIds, ...s.recentOtherEffects].slice(0, RECENT_OTHER_MEMORY);
+    const nextLooks = [composition.look.id, ...s.recentLooks].slice(0, LOOK_MEMORY);
+    const plannedMosh = {
+      seed: nextSeed, intensity: inten, brief,
+      composition: compose(brief, nextRand, {
+        roleCount: ROLE_COUNT[inten], chaos: CHAOS[inten],
+        wildness: rollWildness(nextRand, WILD_FLOOR[inten]),
+        lookPenalty: recencyPenalty(nextLooks, []),
+        effectPenalty: recencyPenalty(nextForm, nextOther),
+        previousLookId: composition.look.id,
+        avoidEffects: locked.map(l => l.effectId),
+      }),
+    };
     return {
       ...s,
       past: pushPast(s), future: [],
@@ -849,6 +921,118 @@ export const useStore = create<State & Actions>((set, get) => ({
         blurb: composition.look.blurb,
       },
       currentBrief: brief,
+      forge: { ...s.forge, paletteIdx },
+      plannedMosh,
+      lastRoleRoll: null,
+      ...selection,
+    };
+  }),
+
+  /**
+   * mosh() only ever shuffled the effect stack — in Forge/Motif mode that
+   * left the generator, its seed, and the palette driving its actual pixels
+   * completely untouched, so consecutive taps looked like minor variations
+   * on the same underlying pattern rather than a real reroll (Forge review,
+   * Phase 2). This coordinates both halves as one shuffle: Forge's own
+   * generator/seed/kaleidoscope reroll (previously only randomiseForge()),
+   * plus an effect-stack reshuffle that shares its palette choice.
+   *
+   * Seamless mode is the one place this still defers to Forge's own
+   * composer (composeForgeLayers) for the effect stack: compose() — the
+   * general Art Director — has no concept of tile-safety (see
+   * tileSafety.ts / forgeCompose.ts's own seamless-pool filtering), so
+   * routing seamless mode's stack through it risks picking effects that
+   * don't tile. Giving the Art Director real tile-safety awareness is its
+   * own piece of work, not this one — the generator/seed/palette/
+   * kaleidoscope reroll below still applies in seamless mode either way.
+   */
+  forgeMosh: (intensity) => set(s => {
+    if (s.captureLocked) return s;
+    const inten = intensity ?? s.intensity;
+    const brief = briefFrom(analyzeSource(s.videoElement ?? s.imageElement ?? s.glCanvas));
+    const seed = generateSeed();
+    const rand = rngFromSeed(seed);
+    const locked = s.layers.filter(l => l.locked);
+
+    const composition = s.forge.seamless ? null : compose(brief, rand, {
+      roleCount: ROLE_COUNT[inten],
+      chaos: CHAOS[inten],
+      wildness: rollWildness(rand, WILD_FLOOR[inten]),
+      lookPenalty: recencyPenalty(s.recentLooks, []),
+      effectPenalty: recencyPenalty(s.recentFormEffects, s.recentOtherEffects),
+      previousLookId: s.currentLook?.id,
+      avoidEffects: locked.map(l => l.effectId),
+    });
+    // One palette choice shared by the effect stack's grade and the
+    // generator's own colors, rather than each half rolling its own and
+    // landing on two unrelated palettes.
+    const paletteIdx = chooseArtDirectedPalette(brief, rand, s.forge.paletteIdx);
+
+    const pickedGeneratorId = pickForgeGenerator(Math.random);
+    const generatorChanged = pickedGeneratorId !== s.forge.activeGeneratorId;
+    const nextForge: ForgeState = {
+      ...s.forge,
+      seed: Math.floor(Math.random() * 0xFFFFFF),
+      paletteIdx,
+      activeGeneratorId: pickedGeneratorId,
+      kaleidoscopeFolds: rollKaleidoscope(Math.random),
+      transitionFromGeneratorId: generatorChanged ? s.forge.activeGeneratorId : null,
+      transitionStartedAt: generatorChanged ? performance.now() : null,
+      transitionFromSeed: generatorChanged ? s.forge.seed : null,
+      transitionFromPaletteIdx: generatorChanged ? s.forge.paletteIdx : null,
+    };
+
+    if (!composition) {
+      // Seamless: same tile-safe composer randomiseForge() already used,
+      // just folded into this one coordinated action instead of a second
+      // separate tap target.
+      const stack = composeForgeLayers(nextForge);
+      nextForge.stack = stack;
+      return {
+        ...s,
+        past: pushPast(s), future: [],
+        forge: nextForge,
+        ...(["forge", "motif"].includes(s.sourceMode) ? { layers: stack } : {}),
+      };
+    }
+
+    const fresh: Layer[] = composition.layers.map(cl => {
+      const def = EFFECTS_BY_ID[cl.effectId];
+      return {
+        id: newId(),
+        effectId: cl.effectId,
+        role: cl.role,
+        hidden: false, locked: false,
+        blend: cl.blend,
+        opacity: cl.opacity,
+        region: cl.region ?? null,
+        params: cl.params,
+        mods: Object.fromEntries(def.params.map(p => [p.key, null])),
+        audioMaps: Object.fromEntries(def.params.map(p => [p.key, null])),
+      };
+    });
+    const formIds = composition.layers.filter(l => l.role === "form").map(l => l.effectId);
+    const otherIds = composition.layers.filter(l => l.role !== "form").map(l => l.effectId);
+    const layers = [...locked, ...fresh];
+    const selection = resetRoleSelection(layers);
+    nextForge.stack = fresh;
+
+    return {
+      ...s,
+      past: pushPast(s), future: [],
+      layers,
+      seed,
+      recentFormEffects: [...formIds, ...s.recentFormEffects].slice(0, RECENT_FORM_MEMORY),
+      recentOtherEffects: [...otherIds, ...s.recentOtherEffects].slice(0, RECENT_OTHER_MEMORY),
+      recentLooks: [composition.look.id, ...s.recentLooks].slice(0, LOOK_MEMORY),
+      currentLook: {
+        id: composition.look.id,
+        name: composition.look.name,
+        blurb: composition.look.blurb,
+      },
+      currentBrief: brief,
+      forge: nextForge,
+      plannedMosh: null,
       lastRoleRoll: null,
       ...selection,
     };
@@ -856,6 +1040,7 @@ export const useStore = create<State & Actions>((set, get) => ({
 
   rerollRole: (requestedRole, requestedLayerId) => {
     const s = get();
+    if (s.captureLocked) return null;
     const role = requestedRole ?? s.selectedRole ?? s.roleCursor;
     const group = groupLayersByRole(s.layers)[role];
     const rememberedId = s.selectedRoleLayers[role];
@@ -870,7 +1055,7 @@ export const useStore = create<State & Actions>((set, get) => ({
     if (!poolForRole(role).some(effectId => !excluded.includes(effectId))) return null;
 
     const rand = rngFromSeed(generateSeed());
-    const brief = s.currentBrief ?? briefFrom(analyzeSource(s.videoElement ?? s.imageElement));
+    const brief = s.currentBrief ?? briefFrom(analyzeSource(s.videoElement ?? s.imageElement ?? s.glCanvas));
     const look: Look = (s.currentLook && LOOKS_LOOKUP[s.currentLook.id])
       ?? chooseLook(brief, rand, [], recencyPenalty(s.recentLooks, []));
     const affinity = skewedAffinity(rand);
@@ -927,7 +1112,7 @@ export const useStore = create<State & Actions>((set, get) => ({
     const s = get();
     if (groupLayersByRole(s.layers)[role].length) return null;
     const rand = rngFromSeed(generateSeed());
-    const brief = s.currentBrief ?? briefFrom(analyzeSource(s.videoElement ?? s.imageElement));
+    const brief = s.currentBrief ?? briefFrom(analyzeSource(s.videoElement ?? s.imageElement ?? s.glCanvas));
     const look: Look = (s.currentLook && LOOKS_LOOKUP[s.currentLook.id])
       ?? chooseLook(brief, rand, [], recencyPenalty(s.recentLooks, []));
     const affinity = skewedAffinity(rand);
@@ -1059,6 +1244,11 @@ export const useStore = create<State & Actions>((set, get) => ({
   }),
   setPerformanceMode: (b) => set({ isPerformanceMode: b }),
   togglePerformanceMode: () => set(s => ({ isPerformanceMode: !s.isPerformanceMode })),
+  setDesktopPortraitMode: (b) => set({ desktopPortraitMode: b }),
+  toggleDesktopPortraitMode: () => set(s => ({ desktopPortraitMode: !s.desktopPortraitMode })),
+  setDarkMode: (b) => set({ darkModeOn: b }),
+  toggleDarkMode: () => set(s => ({ darkModeOn: !s.darkModeOn })),
+  setCaptureLocked: (b) => set({ captureLocked: b }),
   setShowMetersInPerformance: (b) => {
     try { localStorage.setItem("cathedral_meters_in_perf", b ? "1" : "0"); } catch {}
     set({ showMetersInPerformance: b });
@@ -1098,6 +1288,7 @@ export const useStore = create<State & Actions>((set, get) => ({
   }),
   loadSlot: (i) => {
     const s = get();
+    if (s.captureLocked) return false;
     const slot = s.slots[i];
     if (!slot) return false;
     const cloned = normalizeLayerRoles(slot).map(l => ({ ...l, id: newId(), params: { ...l.params }, mods: { ...l.mods }, audioMaps: { ...(l.audioMaps ?? {}) } }));
@@ -1157,6 +1348,7 @@ export const useStore = create<State & Actions>((set, get) => ({
 
   applyFavorite: (id) => {
     const s = get();
+    if (s.captureLocked) return false;
     const fav = s.favorites.find(f => f.id === id);
     if (!fav) return false;
     const cloned = normalizeLayerRoles(fav.layers).map(l => ({ ...l, id: newId(), params: { ...l.params }, mods: { ...l.mods }, audioMaps: { ...(l.audioMaps ?? {}) } }));
@@ -1232,10 +1424,18 @@ export const useStore = create<State & Actions>((set, get) => ({
   // every layer) is exactly what flattened composed stacks back into mud.
   moshDirected: (directed) => set(s => {
     const seed = generateSeed();
+    const rand = rngFromSeed(seed);
+    const brief = briefFrom(analyzeSource(s.videoElement ?? s.imageElement ?? s.glCanvas));
     const locked = s.layers.filter(l => l.locked);
     const fresh = buildDirectedLayers(directed);
     const layers = [...locked, ...fresh];
-    return { ...s, past: pushPast(s), future: [], layers, seed, ...resetRoleSelection(layers) };
+    return {
+      ...s, past: pushPast(s), future: [], layers, seed,
+      currentBrief: brief,
+      forge: { ...s.forge, paletteIdx: chooseArtDirectedPalette(brief, rand, s.forge.paletteIdx) },
+      plannedMosh: null,
+      ...resetRoleSelection(layers),
+    };
   }),
   // Bare `set({ layers })` — no undo push, no seed regen, no role-selection
   // reset. Exists for the Journey crossfade driver (Editor.tsx), which needs
@@ -1368,8 +1568,6 @@ export const useStore = create<State & Actions>((set, get) => ({
   removeStickerFromGallery: (id) => set(s => ({ stickerGallery: s.stickerGallery.filter(x => x.id !== id) })),
   setStickerMode: (b) => set({ stickerMode: b }),
   setIsolationMode: (m) => set({ isolationMode: m }),
-  setIsolationFeather: (n) => set({ isolationFeather: n }),
-  setIsolationInvert: (b) => set({ isolationInvert: b }),
 
   setSourceMode: (mode) => {
     const s = get();
@@ -1408,14 +1606,25 @@ export const useStore = create<State & Actions>((set, get) => ({
     set({ sourceMode: mode });
   },
 
+  // Deliberately NOT gated by captureLocked, unlike every other
+  // stack-changing action here: this is also GlCanvas's own error-recovery
+  // fallback when a Forge generator's render throws mid-frame ("escape a
+  // poisoned in-flight generator transition"). Blocking that during a
+  // capture would leave a genuinely broken render stuck broken for the
+  // whole capture with no way to self-correct — worse than the rare
+  // generator-swap this reseed causes when it fires as recovery. Its two
+  // other call sites (SourceModeToggle, ForgeRedirect) only fire when
+  // forge.stack is still empty, so they can't reach here mid-capture
+  // either way — a capture in progress already has a real stack.
   randomiseForge: () => {
     const s = get();
+    const brief = briefFrom(analyzeSource(s.videoElement ?? s.imageElement ?? s.glCanvas));
     const pickedGeneratorId = pickForgeGenerator(Math.random);
     const generatorChanged = pickedGeneratorId !== s.forge.activeGeneratorId;
     const nextForge: ForgeState = {
       ...s.forge,
       seed: Math.floor(Math.random() * 0xFFFFFF),
-      paletteIdx: Math.floor(Math.random() * FORGE_PALETTES.length),
+      paletteIdx: chooseArtDirectedPalette(brief, Math.random, s.forge.paletteIdx),
       activeGeneratorId: pickedGeneratorId,
       kaleidoscopeFolds: rollKaleidoscope(Math.random),
       // Only start a crossfade when the generator actually changed — a
@@ -1424,6 +1633,12 @@ export const useStore = create<State & Actions>((set, get) => ({
       // pixel-identical images.
       transitionFromGeneratorId: generatorChanged ? s.forge.activeGeneratorId : null,
       transitionStartedAt: generatorChanged ? performance.now() : null,
+      // Freeze the seed/palette the outgoing generator was actually drawn
+      // with — s.forge.seed/paletteIdx are about to become the *incoming*
+      // generator's values below, so paintForgeSource needs these to render
+      // the outgoing side as the frame that was actually on screen.
+      transitionFromSeed: generatorChanged ? s.forge.seed : null,
+      transitionFromPaletteIdx: generatorChanged ? s.forge.paletteIdx : null,
     };
     const stack = composeForgeLayers(nextForge);
     nextForge.stack = stack;
@@ -1444,7 +1659,7 @@ export const useStore = create<State & Actions>((set, get) => ({
   setForgeMosaic: (enabled) => set(s => ({ forge: { ...s.forge, mosaicEnabled: enabled } })),
   setForgeMosaicDensity: (v) => set(s => ({ forge: { ...s.forge, mosaicDensity: Math.max(0, Math.min(1, v)) } })),
   setForgeOverlay: (v) => set(s => ({ forge: { ...s.forge, overlay: v } })),
-  reseedForge: () => set(s => ({ forge: { ...s.forge, seed: Math.floor(Math.random() * 0xFFFFFF) } })),
+  reseedForge: () => set(s => s.captureLocked ? s : { forge: { ...s.forge, seed: Math.floor(Math.random() * 0xFFFFFF) } }),
 }));
 
 function mapLayer(layers: Layer[], id: string, fn: (l: Layer) => Layer): Layer[] {

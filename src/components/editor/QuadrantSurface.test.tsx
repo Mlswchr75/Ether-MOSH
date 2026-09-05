@@ -5,20 +5,10 @@ import { useStore } from "@/store/useStore";
 import { cancelLayerCrossfade } from "@/engine/layerCrossfade";
 
 /**
- * The store tests cover mosh() itself; these cover the wiring, which is the
- * part that compiles cleanly and still does nothing. The interaction contract
- * is that a plain tap always moshes the whole stack — same as the Mosh
- * button, Shift+M, and desktop double-click — regardless of where on the
- * surface it lands.
- *
- * Layer identity churns on every mosh (compose() mints fresh layer ids), and
- * the crossfade this triggers synchronously overwrites `layers` with a
- * transitional blend the instant `commit()` returns (see
- * layerCrossfade.ts's `tick()`), so a same-tick assertion can't read the
- * settled post-mosh stack out of `layers`. `past.length` (mosh's undo push)
- * and `lastRoleRoll` (which mosh always resets to null, unlike the old
- * per-role reroll) are set directly by `commit()` and never touched by the
- * crossfade's `setLayersRaw`, so they're what these tests read instead.
+ * The store tests cover the rotation itself; these cover the wiring, which is
+ * the part that compiles cleanly and still does nothing. The interaction
+ * contract is that position never decides what a tap does: every clean tap is
+ * the same full Art Director shuffle as Space.
  */
 
 /** jsdom has no layout, so give the surface a real box to measure against. */
@@ -41,10 +31,6 @@ function tap(el: Element, x: number, y: number) {
 
 describe("QuadrantSurface", () => {
   beforeEach(() => {
-    // A tap now always goes through crossfadeLayers, whose in-flight fade is
-    // tracked in a module-level rAF handle — without cancelling it here, a
-    // fade left running past the end of one test can tick (and mutate
-    // `layers`) during a later, unrelated test.
     cancelLayerCrossfade();
     window.localStorage.clear();
     stubBox();
@@ -70,38 +56,37 @@ describe("QuadrantSurface", () => {
 
   // This project does not enable testing-library's global auto-cleanup, so
   // without this every render stacks up and the queries go ambiguous.
-  afterEach(() => {
-    cancelLayerCrossfade();
-    cleanup();
-  });
+  afterEach(() => { cancelLayerCrossfade(); cleanup(); });
 
   it("mounts a surface that owns the canvas gestures", () => {
     render(<QuadrantSurface />);
     expect(screen.getByLabelText(/Visual instrument/i)).toBeTruthy();
   });
 
-  it("moshes the whole stack on a tap, wherever the tap lands", () => {
+  it("shuffles the full unlocked stack on a tap, wherever the tap lands", () => {
     render(<QuadrantSurface />);
     const el = screen.getByLabelText(/Visual instrument/i);
 
-    const pastBefore = useStore.getState().past.length;
-    tap(el, 40, 700); // bottom-left — position never decides what a tap does
+    const before = useStore.getState().layers.map(l => l.id);
+    const past = useStore.getState().past.length;
+    tap(el, 40, 700);
+    const after = useStore.getState().layers.map(l => l.id);
 
-    expect(useStore.getState().past.length).toBe(pastBefore + 1);
-    // mosh() always clears lastRoleRoll — the old per-role reroll left it set.
+    expect(useStore.getState().past.length).toBe(past + 1);
+    expect(after.some(id => !before.includes(id) && id !== "__transition_boundary__")).toBe(true);
     expect(useStore.getState().lastRoleRoll).toBeNull();
   });
 
-  it("moshes again on every tap, even when every tap lands on the same spot", () => {
+  it("creates a new undoable composition when repeated at the same spot", () => {
     render(<QuadrantSurface />);
     const el = screen.getByLabelText(/Visual instrument/i);
 
-    const pastBefore = useStore.getState().past.length;
-    for (let i = 0; i < 3; i++) tap(el, 200, 400); // dead centre, every time
-
-    // Each tap is a full, independent mosh — the finger never moves, the
-    // stack still rerolls every time instead of only the first.
-    expect(useStore.getState().past.length).toBe(pastBefore + 3);
+    const initialPast = useStore.getState().past.length;
+    for (let i = 0; i < 3; i++) {
+      tap(el, 200, 400);
+    }
+    expect(useStore.getState().past.length).toBe(initialPast + 3);
+    expect(useStore.getState().lastRoleRoll).toBeNull();
   });
 
   it("skips a locked voice so a kept look survives repeated tapping", () => {
@@ -116,21 +101,16 @@ describe("QuadrantSurface", () => {
     expect(useStore.getState().layers[0].effectId).toBe(kept.effectId);
   });
 
-  it("still moshes in fresh layers on top when every existing layer is locked", () => {
+  it("still executes with every layer locked while preserving those layers", () => {
     render(<QuadrantSurface />);
     const el = screen.getByLabelText(/Visual instrument/i);
-    const lockedIds = useStore.getState().layers.map(l => l.id);
-    for (const id of lockedIds) useStore.getState().toggleLocked(id);
+    for (const layer of useStore.getState().layers) useStore.getState().toggleLocked(layer.id);
 
-    const pastBefore = useStore.getState().past.length;
+    const before = useStore.getState().layers.map(layer => ({ id: layer.id, effectId: layer.effectId }));
     tap(el, 200, 400);
 
-    // A full mosh, unlike the old per-role reroll, never refuses to roll —
-    // it composes a fresh set of layers on top of whatever is locked.
-    expect(useStore.getState().past.length).toBe(pastBefore + 1);
-    for (const id of lockedIds) {
-      expect(useStore.getState().layers.some(l => l.id === id && l.locked)).toBe(true);
-    }
+    expect(useStore.getState().layers.filter(layer => layer.locked).map(layer => ({ id: layer.id, effectId: layer.effectId }))).toEqual(before);
+    expect(document.querySelector("[data-role-readout]")?.textContent).toContain("new composition");
   });
 
   it("sweeps parameters on a drag instead of re-rolling", () => {

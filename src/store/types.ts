@@ -2,7 +2,9 @@ import type { BlendMode } from "@/engine/blend";
 import type { Role } from "@/engine/artDirector";
 export type { PaletteProfile, BiomeId } from "@/engine/imagePalette";
 
-export type IsolationMode = 'off' | 'auto' | 'tap';
+/** Sticker Studio cut strategy. `off` preserves the source's existing alpha,
+ * while the other modes synthesize a content-aware cut from opaque renders. */
+export type IsolationMode = 'off' | 'auto' | 'layers' | 'tap';
 
 export type StickerEntry = {
   id: string;
@@ -113,4 +115,14 @@ export type ForgeState = {
   transitionFromGeneratorId: string | null;
   /** performance.now() timestamp the current transition began, or null when settled. */
   transitionStartedAt: number | null;
+  /**
+   * The seed/palette the outgoing generator was actually drawn with, frozen
+   * at the moment the transition started — `seed`/`paletteIdx` above are
+   * already the *incoming* generator's values by then, so without these the
+   * "outgoing" side of the crossfade renders the old generator with the new
+   * seed and colors instead of the frame the viewer was looking at. Set
+   * alongside transitionFromGeneratorId; cleared with it.
+   */
+  transitionFromSeed: number | null;
+  transitionFromPaletteIdx: number | null;
 };

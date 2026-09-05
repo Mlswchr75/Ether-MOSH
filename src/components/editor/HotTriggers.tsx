@@ -1,15 +1,12 @@
-import { Mic, MicOff, Circle, Square, Sparkles, Scissors, Snowflake, Camera, Shuffle, Star, Play, Pencil, Trash2, X, Film, Lock, Share2, Compass, Maximize2, Minimize2, Gem, Home, SwitchCamera, Crosshair, Eraser, Link2, Upload, Music, Music2, Shuffle as ShuffleIcon, Undo2, Redo2, Gauge, ChevronDown, MonitorSpeaker, Heart, GripVertical, RotateCcw, EyeOff, HelpCircle, SkipBack, SkipForward, Palette, Flame, UserCircle, Library, Download, Glasses } from "lucide-react";
+import { Mic, MicOff, Circle, Square, Sparkles, Scissors, Snowflake, Camera, Shuffle, Star, Play, Pencil, Trash2, X, Film, Lock, Share2, Compass, Maximize2, Minimize2, SwitchCamera, Eraser, Link2, Upload, Music, Music2, Shuffle as ShuffleIcon, Undo2, Redo2, ChevronDown, MonitorSpeaker, Heart, GripVertical, RotateCcw, SkipBack, SkipForward, Palette, RectangleVertical, RectangleHorizontal, Moon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { useStore } from "@/store/useStore";
 import { trackPlayer, DEFAULT_TRACK_TITLE, SHOWCASE_TRACKS } from "@/engine/trackPlayer";
 import { runTrackAction } from "@/engine/trackActions";
 import { requestCameraStream, type CameraFacing } from "@/hooks/useCamera";
-import { IsolationPanel } from "./IsolationPanel";
 import { ForgePanel } from "./ForgePanel";
 import { MotifMaestroPanel } from "./MotifMaestroPanel";
-import { ExportSettingsPanel } from "./ExportSettingsPanel";
-import { MoshStickerTrigger } from "./MoshStickerTrigger";
 import { shareUrl } from "@/lib/share";
 import { toggleSystemAudio } from "@/engine/systemAudio";
 import { AudioInputControls } from "./AudioInputControls";
@@ -18,12 +15,8 @@ import { cursorFx } from "@/engine/cursorFx";
 import { toast } from "sonner";
 import { clampRadialPoint, defaultRadialPoint, nearestRadialId, type RadialLayout } from "@/lib/radialLayout";
 import { validateAudioUpload } from "@/lib/mediaFileSafety";
-import {
-  readXrUiOverride,
-  XR_UI_OVERRIDE_EVENT,
-  XR_UI_OVERRIDE_KEY,
-  type XrUiOverride,
-} from "@/engine/xrCapabilities";
+import { MoshVortexIcon, LiveFeedIcon, UploadBeamIcon, ForgeFlameIcon, MotifMandalaIcon, HomeBeaconIcon, AccountCrystalIcon } from "./HotTriggerIcons";
+import { AccountSettingsOverlay } from "./AccountSettingsOverlay";
 
 /** Viewport-normalized UV for a client point — used for the one-shot "digital
  *  chaos" burst a hold-branch fires at. An approximation (viewport, not the
@@ -84,8 +77,19 @@ export function radialFlickThreshold(pointerType: string) {
   return pointerType === "mouse" ? 34 : pointerType === "pen" ? 38 : MOBILE_WHEEL_FLICK_PX;
 }
 
+export function radialGestureShouldActivate(maxTravel: number, pointerType: string) {
+  return maxTravel >= radialFlickThreshold(pointerType);
+}
+
 export function radialHoldJitterTolerance(pointerType: string) {
   return pointerType === "touch" ? 20 : pointerType === "pen" ? 12 : 8;
+}
+
+/** Hold-to-open is intentionally confined to the middle: a circle whose
+ * diameter is half the shorter viewport edge, always under 25% of its area. */
+export function isCentralRadialHoldPoint(x: number, y: number, width: number, height: number) {
+  const radius = Math.min(width, height) * 0.25;
+  return Math.hypot(x - width / 2, y - height / 2) <= radius;
 }
 
 export function normalizeRadialDegrees(value: number) {
@@ -114,42 +118,37 @@ export function radialTriggerIndex(angle: number, distance: number, total: numbe
 export const AUTO_MOSH_TIMINGS = [3, 15, 30, 60, 300, 600] as const;
 const DEFAULT_AUTO_MOSH_SEC = 15;
 
-/** Every trigger the rail can show, in the order a first-time visitor would
- *  most plausibly want to meet them: escape hatches and undo first, the two
- *  actions that actually make the image move (Mosh / Auto-Mosh) grouped with
- *  what tames them (Clear FX, Journey), then how it reacts to sound, then
- *  capture/export, then the deeper creative tools, then account-adjacent and
- *  situational stuff last. Not load-bearing for anything but the *default*
- *  order — "customize layout" lets anyone override it per-browser. */
+/** Performance-first: make/change/restore, direct the live response, capture,
+ * deepen the artwork, then source/system/navigation utilities.
+ * pro-mode, sensitivity, export-settings, support, and the VR/immersive
+ * override used to live here too — all five now live inside the "account"
+ * trigger's settings overlay instead (see AccountSettingsOverlay.tsx), so
+ * none of them need a ring slot of their own any more. */
 const DEFAULT_ORDER = [
-  "home", "source-upload", "source-camera", "source-forge", "source-motif", "account", "undo", "redo",
-  "mosh", "auto-mosh", "clear-fx", "journey",
-  "audio", "sensitivity",
-  "freeze", "capture", "gif", "share", "export-settings",
-  "mosh-sticker", "sticker-mode", "sticker-capture", "sticker-tools", "sticker-vault", "isolation", "theme-track",
-  "forge-palette", "motif-maestro", "favorites", "fullscreen", "pro-mode", "xr-menu", "switch-camera", "support",
+  "mosh", "undo", "redo", "journey", "auto-mosh", "clear-fx", "dark-mode",
+  "audio", "theme-track", "freeze",
+  "capture", "gif", "share", "favorites",
+  "sticker-mode",
+  "source-camera", "switch-camera", "source-upload", "source-forge", "forge-palette", "source-motif", "motif-maestro",
+  "fullscreen", "desktop-portrait", "account", "home",
 ] as const;
 
 const TRIGGER_LABELS: Record<string, string> = {
   home: "Back to start", undo: "Undo", redo: "Redo",
-  "source-upload": "Upload source", "source-camera": "Live camera", "source-forge": "Forge source", "source-motif": "Motif Maestro", account: "Account",
+  "source-upload": "Upload source", "source-camera": "Live camera", "source-forge": "Forge source", "source-motif": "Motif Maestro", account: "Settings",
   mosh: "Mosh", "auto-mosh": "Auto-Mosh", "clear-fx": "Clear FX", journey: "Journey",
-  audio: "Audio (mic / device / beat sync)", sensitivity: "Sensitivity",
-  "pro-mode": "Pro Mode — hide all UI",
+  "dark-mode": "Dark Mode — crush light to black, push color to neon",
+  audio: "Audio (mic / device / beat sync)",
   freeze: "Freeze", capture: "Capture — tap for a still, hold to record", gif: "GIF loop", share: "Share",
-  "export-settings": "Export settings — format, quality, and DPI for every export",
-  "mosh-sticker": "Mosh sticker", "sticker-mode": "Sticker capture", isolation: "AI isolation",
-  "sticker-capture": "Capture sticker",
-  "sticker-tools": "Sticker tools",
-  "sticker-vault": "Sticker Vault",
+  "sticker-mode": "Sticker Studio",
   "theme-track": "Theme track", favorites: "Favorites", fullscreen: "Fullscreen",
-  "forge-palette": "Forge palette and settings",
+  "forge-palette": "Forge settings — colour is directed automatically",
   "motif-maestro": "Motif Maestro controls",
-  "xr-menu": "VR / immersive menu override",
-  "switch-camera": "Switch camera", support: "Support MOSH",
+  "switch-camera": "Switch camera",
+  "desktop-portrait": "Portrait view",
 };
 
-const ORDER_KEY = "cathedral_hot_trigger_order_v1";
+const ORDER_KEY = "cathedral_hot_trigger_order_v2";
 
 function loadOrder(): string[] {
   try {
@@ -187,7 +186,7 @@ function HotBtn({
   label: string;
   active?: boolean;
   delay: number;
-  onClick: () => void;
+  onClick: (e: React.MouseEvent<HTMLButtonElement>) => void;
   children: ReactNode;
   tint?: string;
   disabled?: boolean;
@@ -532,9 +531,13 @@ function AudioTrigger({ delay, onMicFlash }: { delay: number; onMicFlash?: (on: 
         label={micEnabled ? "Mic on" : systemAudioEnabled ? "Device audio on" : "Listen mode"}
         active={listening || beatEnabled}
         tint="var(--signal-good)"
-        onClick={() => {
+        onClick={(e) => {
           if (micEnabled) { setMicEnabled(false); onMicFlash?.(false); return; }
           if (systemAudioEnabled) { setSystemAudioEnabled(false); onMicFlash?.(false); return; }
+          // Opening the source/beat-sync popover, not firing a one-shot
+          // action — must not bubble into the ring-item wrapper's
+          // dismiss-on-click, or the popover would never get to show.
+          e.stopPropagation();
           setOpen(v => !v);
         }}
       >
@@ -543,7 +546,7 @@ function AudioTrigger({ delay, onMicFlash }: { delay: number; onMicFlash?: (on: 
       <button
         type="button"
         onPointerDown={(e) => e.stopPropagation()}
-        onClick={() => setOpen(o => !o)}
+        onClick={(e) => { e.stopPropagation(); setOpen(o => !o); }}
         aria-label="Audio options — source and beat sync"
         aria-expanded={open || undefined}
         aria-haspopup="menu"
@@ -611,74 +614,6 @@ function AudioTrigger({ delay, onMicFlash }: { delay: number; onMicFlash?: (on: 
             >
               <Heart className="h-2.5 w-2.5" strokeWidth={1.5} /> tap
             </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/**
- * Global reactivity multiplier — a single slider that scales mic/device
- * sensitivity AND audio-mapped modulator strength together, in every mode
- * (see GlCanvas.tsx). Defaults to 1×, a genuine no-op: nothing about the
- * current look changes until this is actually touched.
- */
-function SensitivityTrigger({ delay }: { delay: number }) {
-  const sensitivity = useStore(s => s.sensitivity);
-  const setSensitivity = useStore(s => s.setSensitivity);
-  const [open, setOpen] = useState(false);
-  const wrapRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const close = (e: PointerEvent) => {
-      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
-    };
-    window.addEventListener("pointerdown", close, true);
-    return () => window.removeEventListener("pointerdown", close, true);
-  }, [open]);
-
-  return (
-    <div ref={wrapRef} className="relative">
-      <HotBtn
-        delay={delay}
-        label={`Sensitivity · ${sensitivity.toFixed(2)}×`}
-        active={sensitivity !== 1}
-        tint="150 70% 62%"
-        onClick={() => setOpen(v => !v)}
-      >
-        <Gauge className="h-4 w-4" strokeWidth={1.5} />
-      </HotBtn>
-      {open && (
-        <div
-          className="panel-in-3d absolute right-full top-0 z-50 mr-2 w-52 rounded-md border border-white/10 bg-black/85 p-2.5 backdrop-blur-md"
-          onPointerDown={(e) => e.stopPropagation()}
-        >
-          <div className="mb-1.5 flex items-center justify-between font-mono text-[9px] uppercase tracking-[0.2em] text-[hsl(var(--accent))]">
-            <span>sensitivity</span>
-            <span>{sensitivity.toFixed(2)}×</span>
-          </div>
-          <input
-            type="range" min={0.2} max={2.5} step={0.05} value={sensitivity}
-            onChange={(e) => setSensitivity(+e.target.value)}
-            aria-label="Global sensitivity"
-            className="slider-hair w-full"
-          />
-          <div className="mt-1.5 flex items-center justify-between">
-            <p className="max-w-[75%] font-mono text-[9px] leading-tight text-white/45">
-              Scales how hard everything reacts — mic/device audio and any
-              beat/audio-mapped effect, in every mode. 1× changes nothing.
-            </p>
-            {sensitivity !== 1 && (
-              <button
-                type="button"
-                onClick={() => setSensitivity(1)}
-                className="shrink-0 font-mono text-[9px] uppercase tracking-[0.1em] text-white/50 hover:text-[hsl(var(--accent))]"
-              >
-                reset
-              </button>
-            )}
           </div>
         </div>
       )}
@@ -770,13 +705,17 @@ function CustomizeTrigger({
 }
 
 function MobileRadialWheel({
-  ids, registry, visualizerRef, isRecording, onSelect,
+  ids, registry, visualizerRef, isRecording, onSelect, onMosh,
 }: {
   ids: string[];
   registry: Record<string, ReactNode>;
   visualizerRef?: RefObject<HTMLElement>;
   isRecording: boolean;
   onSelect: (id: string) => void;
+  /** Hold-and-release without steering to any ring item, or a direct tap
+   *  on the center hub — both mosh to the next FX stack, same as a plain
+   *  click/spacebar always has. */
+  onMosh: () => void;
 }) {
   const layerRef = useRef<HTMLDivElement>(null);
   const wheelRef = useRef<HTMLDivElement>(null);
@@ -786,6 +725,7 @@ function MobileRadialWheel({
   const openRef = useRef(false);
   const gestureRef = useRef({
     pointerId: -1, x: 0, y: 0, lastX: 0, lastY: 0,
+    originX: 0, originY: 0, maxTravel: 0,
     startedAt: 0, armed: false, fired: false, cancelled: false, pointerType: "mouse",
   });
   const armTimerRef = useRef<number | null>(null);
@@ -824,6 +764,11 @@ function MobileRadialWheel({
     if (highlightRef.current) slotRefs.current.get(highlightRef.current)?.removeAttribute("data-highlighted");
     highlightRef.current = id;
     if (id) slotRefs.current.get(id)?.setAttribute("data-highlighted", "true");
+    if (id) {
+      const rect = slotRefs.current.get(id)?.getBoundingClientRect();
+      if (rect) cursorFx.preview((rect.left + rect.width / 2) / Math.max(1, window.innerWidth), (rect.top + rect.height / 2) / Math.max(1, window.innerHeight));
+      try { navigator.vibrate?.(3); } catch {}
+    }
     const label = labelRef.current;
     if (label) {
       label.textContent = id ? (TRIGGER_LABELS[id] ?? id) : "MOSH";
@@ -878,10 +823,12 @@ function MobileRadialWheel({
       eventTarget instanceof Element && !!eventTarget.closest("button, a, input, textarea, select, [role='slider'], [data-no-longpress], .mobile-radial-wheel");
     const onDown = (event: PointerEvent) => {
       if ((event.pointerType === "mouse" && event.button !== 0) || ignored(event.target) || gestureRef.current.pointerId !== -1) return;
+      if (!isCentralRadialHoldPoint(event.clientX, event.clientY, window.innerWidth, window.innerHeight)) return;
       clearTimers();
       gestureRef.current = {
         pointerId: event.pointerId, x: event.clientX, y: event.clientY,
         lastX: event.clientX, lastY: event.clientY, startedAt: performance.now(),
+        originX: event.clientX, originY: event.clientY, maxTravel: 0,
         armed: false, fired: false, cancelled: false, pointerType: event.pointerType || "mouse",
       };
       armTimerRef.current = window.setTimeout(() => {
@@ -893,10 +840,12 @@ function MobileRadialWheel({
         const gesture = gestureRef.current;
         if (gesture.pointerId !== event.pointerId || gesture.cancelled) return;
         gesture.fired = true;
+        gesture.x = window.innerWidth / 2;
+        gesture.y = window.innerHeight / 2;
         suppressClickRef.current = true;
         setPhase("open");
         cacheWheelRect();
-        selectFromFlick(gesture.lastX - gesture.x, gesture.lastY - gesture.y, gesture.pointerType);
+        select(null);
         try { navigator.vibrate?.(12); } catch {}
       }, RADIAL_WHEEL_HOLD_MS);
     };
@@ -907,6 +856,7 @@ function MobileRadialWheel({
       const sample = samples[samples.length - 1] ?? event;
       gesture.lastX = sample.clientX;
       gesture.lastY = sample.clientY;
+      gesture.maxTravel = Math.max(gesture.maxTravel, Math.hypot(sample.clientX - gesture.originX, sample.clientY - gesture.originY));
       const dx = sample.clientX - gesture.x;
       const dy = sample.clientY - gesture.y;
       const distance = Math.hypot(dx, dy);
@@ -919,21 +869,25 @@ function MobileRadialWheel({
         }
         return;
       }
-      selectFromFlick(dx, dy, gesture.pointerType);
+      if (radialGestureShouldActivate(gesture.maxTravel, gesture.pointerType)) selectFromFlick(dx, dy, gesture.pointerType);
     };
     const onEnd = (event: PointerEvent) => {
       if (event.pointerId !== gestureRef.current.pointerId) return;
       clearTimers();
+      let keepOpen = false;
       if (gestureRef.current.fired) {
-        selectFromFlick(event.clientX - gestureRef.current.x, event.clientY - gestureRef.current.y, gestureRef.current.pointerType);
-        if (highlightRef.current) activateRef.current(highlightRef.current);
+        const gesture = gestureRef.current;
+        gesture.maxTravel = Math.max(gesture.maxTravel, Math.hypot(event.clientX - gesture.originX, event.clientY - gesture.originY));
+        if (radialGestureShouldActivate(gesture.maxTravel, gesture.pointerType)) {
+          selectFromFlick(event.clientX - gesture.x, event.clientY - gesture.y, gesture.pointerType);
+          if (highlightRef.current) activateRef.current(highlightRef.current);
+          else keepOpen = true;
+        } else {
+          select(null);
+          keepOpen = true;
+        }
       }
-      // Always return to idle here — previously this only happened when the
-      // gesture never fired, so a successful hold-flick-release (or a hold
-      // that opened the wheel without landing on a segment) left the wheel
-      // open with its full-screen backdrop still absorbing pointer events.
-      setPhase("idle");
-      select(null);
+      if (!keepOpen) { setPhase("idle"); select(null); }
       gestureRef.current.pointerId = -1;
     };
     const onCancel = (event: PointerEvent) => {
@@ -1079,14 +1033,16 @@ function MobileRadialWheel({
                   ref={(node) => { if (node) slotRefs.current.set(id, node); else slotRefs.current.delete(id); }}
                   role="menuitem"
                   data-radial-id={id}
+                  data-radial-variant={index % 8}
                   data-radial-action
                   className="mobile-radial-wheel__slot"
                   style={{
                     ["--slot-angle" as string]: `${angle}deg`,
                     ["--slot-counter-angle" as string]: `${-angle}deg`,
                     ["--slot-radius" as string]: `${radius / 100}`,
+                    ["--slot-delay" as string]: `${-(index % 9) * 137}ms`,
                   }}
-                  onClick={() => onSelect(id)}
+                  onClick={() => { onSelect(id); dismiss(); }}
                   onPointerDown={(event) => event.stopPropagation()}
                   onPointerEnter={() => select(id)}
                   onFocus={() => select(id)}
@@ -1097,9 +1053,10 @@ function MobileRadialWheel({
             })}
             <button
               type="button"
+              data-mosh-input
               className="mobile-radial-wheel__hub"
-              onClick={dismiss}
-              aria-label="Close radial controls"
+              onClick={() => { onMosh(); dismiss(); }}
+              aria-label="Mosh to the next FX stack"
             >
               <span ref={labelRef} className="mobile-radial-wheel__label">MOSH</span>
               <small>{isRecording ? "REC" : "steer · tap · flick"}</small>
@@ -1110,13 +1067,17 @@ function MobileRadialWheel({
 }
 
 function DesktopRadialWheel({
-  ids, registry, visualizerRef, isRecording, onSelect,
+  ids, registry, visualizerRef, isRecording, onSelect, onMosh,
 }: {
   ids: string[];
   registry: Record<string, ReactNode>;
   visualizerRef?: RefObject<HTMLElement>;
   isRecording: boolean;
   onSelect: (id: string) => void;
+  /** Hold-and-release without steering to any ring item, or a direct click
+   *  on the center hub — both mosh to the next FX stack, same as a plain
+   *  click/spacebar always has. */
+  onMosh: () => void;
 }) {
   const [phase, setPhase] = useState<"idle" | "armed" | "open">("idle");
   const [editing, setEditing] = useState(false);
@@ -1127,17 +1088,40 @@ function DesktopRadialWheel({
   });
   const wheelRef = useRef<HTMLDivElement>(null);
   const layerRef = useRef<HTMLDivElement>(null);
+  const labelRef = useRef<HTMLSpanElement>(null);
+  const labelSwapRef = useRef(false);
   const idsRef = useRef(ids);
   const layoutRef = useRef(layout);
   const highlightedRef = useRef<string | null>(null);
-  const gestureRef = useRef({ pointerId: -1, x: 0, y: 0, lastX: 0, lastY: 0, startedAt: 0, fired: false, armed: false, cancelled: false, pointerType: "mouse" });
+  const editingRef = useRef(editing);
+  const gestureRef = useRef({ pointerId: -1, x: 0, y: 0, lastX: 0, lastY: 0, originX: 0, originY: 0, maxTravel: 0, startedAt: 0, fired: false, armed: false, cancelled: false, pointerType: "mouse" });
   const editDragRef = useRef<{ pointerId: number; id: string } | null>(null);
   idsRef.current = ids;
   layoutRef.current = layout;
+  editingRef.current = editing;
 
+  // Same "glitch a fresh name in" swap the mobile wheel's hub already did —
+  // brought over here so hovering/steering across ring items reads
+  // identically on both. `dataset.swap` alternates a/b purely to force the
+  // CSS animation to re-trigger on every change, even repeats.
+  const updateLabel = (text: string) => {
+    const label = labelRef.current;
+    if (!label) return;
+    label.textContent = text;
+    labelSwapRef.current = !labelSwapRef.current;
+    label.dataset.swap = labelSwapRef.current ? "a" : "b";
+  };
   const select = (id: string | null) => {
+    if (highlightedRef.current === id) return;
     highlightedRef.current = id;
     setHighlighted(id);
+    updateLabel(editingRef.current ? "DONE" : (id ? (TRIGGER_LABELS[id] ?? id) : "MOSH"));
+    if (id) {
+      const slot = wheelRef.current?.querySelector<HTMLElement>(`[data-radial-id="${CSS.escape(id)}"]`);
+      const rect = slot?.getBoundingClientRect();
+      if (rect) cursorFx.preview((rect.left + rect.width / 2) / Math.max(1, window.innerWidth), (rect.top + rect.height / 2) / Math.max(1, window.innerHeight));
+      try { navigator.vibrate?.(3); } catch {}
+    }
   };
   const activate = useCallback((id: string) => {
     onSelect(id);
@@ -1187,8 +1171,9 @@ function DesktopRadialWheel({
       eventTarget instanceof Element && !!eventTarget.closest("button, a, input, textarea, select, [role='slider'], [data-no-longpress], .desktop-radial-wheel");
     const onDown = (event: PointerEvent) => {
       if (event.pointerType === "touch" || event.button !== 0 || ignored(event.target) || gestureRef.current.pointerId !== -1) return;
+      if (!isCentralRadialHoldPoint(event.clientX, event.clientY, window.innerWidth, window.innerHeight)) return;
       cancelTimers();
-      gestureRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, lastX: event.clientX, lastY: event.clientY, startedAt: performance.now(), fired: false, armed: false, cancelled: false, pointerType: event.pointerType || "mouse" };
+      gestureRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, lastX: event.clientX, lastY: event.clientY, originX: event.clientX, originY: event.clientY, maxTravel: 0, startedAt: performance.now(), fired: false, armed: false, cancelled: false, pointerType: event.pointerType || "mouse" };
       armTimer = window.setTimeout(() => {
         if (gestureRef.current.pointerId !== event.pointerId || gestureRef.current.cancelled) return;
         gestureRef.current.armed = true;
@@ -1196,17 +1181,12 @@ function DesktopRadialWheel({
       }, RADIAL_WHEEL_ARM_MS);
       openTimer = window.setTimeout(() => {
         if (gestureRef.current.pointerId !== event.pointerId || gestureRef.current.cancelled) return;
-        const size = Math.min(window.innerWidth * 0.78, window.innerHeight * 0.78, 560);
-        const radius = size / 2 + 12;
-        const nextCenter = {
-          x: Math.max(radius, Math.min(window.innerWidth - radius, event.clientX)),
-          y: Math.max(radius, Math.min(window.innerHeight - radius, event.clientY)),
-        };
+        const nextCenter = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
         gestureRef.current = { ...gestureRef.current, x: nextCenter.x, y: nextCenter.y, fired: true };
         setCenter(nextCenter);
         setEditing(false);
         setPhase("open");
-        selectFromPointer(gestureRef.current.lastX, gestureRef.current.lastY, gestureRef.current.pointerType);
+        select(null);
       }, RADIAL_WHEEL_HOLD_MS);
     };
     const onMove = (event: PointerEvent) => {
@@ -1216,6 +1196,7 @@ function DesktopRadialWheel({
       const sample = samples[samples.length - 1] ?? event;
       gesture.lastX = sample.clientX;
       gesture.lastY = sample.clientY;
+      gesture.maxTravel = Math.max(gesture.maxTravel, Math.hypot(sample.clientX - gesture.originX, sample.clientY - gesture.originY));
       const distance = Math.hypot(sample.clientX - gesture.x, sample.clientY - gesture.y);
       if (!gesture.fired) {
         if (!gesture.armed && performance.now() - gesture.startedAt < RADIAL_WHEEL_ARM_MS && distance > radialHoldJitterTolerance(gesture.pointerType)) {
@@ -1225,19 +1206,25 @@ function DesktopRadialWheel({
         }
         return;
       }
-      selectFromPointer(sample.clientX, sample.clientY, gesture.pointerType);
+      if (radialGestureShouldActivate(gesture.maxTravel, gesture.pointerType)) selectFromPointer(sample.clientX, sample.clientY, gesture.pointerType);
     };
     const onEnd = (event: PointerEvent) => {
       if (event.pointerId !== gestureRef.current.pointerId) return;
       cancelTimers();
+      let keepOpen = false;
       if (gestureRef.current.fired) {
-        selectFromPointer(event.clientX, event.clientY, gestureRef.current.pointerType);
-        if (highlightedRef.current) activate(highlightedRef.current);
+        const gesture = gestureRef.current;
+        gesture.maxTravel = Math.max(gesture.maxTravel, Math.hypot(event.clientX - gesture.originX, event.clientY - gesture.originY));
+        if (radialGestureShouldActivate(gesture.maxTravel, gesture.pointerType)) {
+          selectFromPointer(event.clientX, event.clientY, gesture.pointerType);
+          if (highlightedRef.current) activate(highlightedRef.current);
+          else keepOpen = true;
+        } else {
+          select(null);
+          keepOpen = true;
+        }
       }
-      // Always return to idle — previously a hold that opened the wheel but
-      // never landed on a segment (fired with no highlight) hit neither
-      // branch below and left the wheel stuck open.
-      setPhase("idle");
+      if (!keepOpen) setPhase("idle");
       gestureRef.current.pointerId = -1;
       select(null);
     };
@@ -1257,7 +1244,7 @@ function DesktopRadialWheel({
   }, [visualizerRef, activate]);
 
   useEffect(() => {
-    const open = () => setPhase("open");
+    const open = () => { setCenter({ x: window.innerWidth / 2, y: window.innerHeight / 2 }); setPhase("open"); };
     const close = () => { setPhase("idle"); setEditing(false); select(null); };
     const key = (event: KeyboardEvent) => { if (event.key === "Escape") close(); };
     window.addEventListener("mosh:open-hot-triggers", open);
@@ -1293,13 +1280,22 @@ function DesktopRadialWheel({
                 key={id}
                 role="menuitem"
                 data-radial-id={id}
+                data-radial-variant={index % 8}
                 data-radial-action
                 data-highlighted={highlighted === id || undefined}
                 data-editing={editing || undefined}
                 className="mobile-radial-wheel__slot"
-                style={{ transform: `translate(-50%, -50%) translate(calc(var(--radial-size) * ${point.x}), calc(var(--radial-size) * ${point.y}))` }}
+                style={{
+                  transform: `translate(-50%, -50%) translate(calc(var(--radial-size) * ${point.x}), calc(var(--radial-size) * ${point.y}))`,
+                  ["--slot-delay" as string]: `${-(index % 9) * 137}ms`,
+                }}
                 onClickCapture={(event) => { if (editing) { event.preventDefault(); event.stopPropagation(); } }}
-                onClick={() => onSelect(id)}
+                onClick={() => {
+                  if (editing) return;
+                  onSelect(id);
+                  setPhase("idle");
+                  setHighlighted(null);
+                }}
                 onPointerDown={(event) => event.stopPropagation()}
                 onPointerEnter={() => select(id)}
                 onFocus={() => select(id)}
@@ -1337,8 +1333,33 @@ function DesktopRadialWheel({
             );
           })}
           <div className="mobile-radial-wheel__hub">
-            <button type="button" onClick={() => setEditing(value => !value)} aria-pressed={editing}>
-              <span className="mobile-radial-wheel__label">{editing ? "DONE" : (highlighted ? (TRIGGER_LABELS[highlighted] ?? highlighted) : "MOSH")}</span>
+            <button
+              type="button"
+              data-mosh-input
+              onClick={() => {
+                // While customizing layout, the hub is still the "DONE"
+                // toggle it always was — mosh only takes over once editing
+                // is off, so a mid-drag click can't fire an unrelated mosh.
+                if (editing) {
+                  setEditing(false);
+                  updateLabel(highlightedRef.current ? (TRIGGER_LABELS[highlightedRef.current] ?? highlightedRef.current) : "MOSH");
+                  return;
+                }
+                onMosh();
+                setPhase("idle");
+              }}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                setEditing(value => {
+                  const next = !value;
+                  updateLabel(next ? "DONE" : (highlightedRef.current ? (TRIGGER_LABELS[highlightedRef.current] ?? highlightedRef.current) : "MOSH"));
+                  return next;
+                });
+              }}
+              aria-pressed={editing}
+              aria-label={editing ? "Done customizing layout" : "Mosh to the next FX stack — right-click to customize layout"}
+            >
+              <span ref={labelRef} className="mobile-radial-wheel__label">MOSH</span>
               <small>{editing ? "drag every icon" : (isRecording ? "REC" : "hold · steer · release")}</small>
             </button>
             {editing && <button type="button" className="radial-layout-reset" onClick={() => saveLayout({})}>reset</button>}
@@ -1359,6 +1380,10 @@ export function HotTriggers({
   onClearFx, hasFx, onSaveFavorite, showTrackNudge, onTrackNudgeDismiss,
 }: Props) {
   const mosh = useStore(s => s.mosh);
+  // Shared by the ring's own "mosh" slot AND both radial wheels' center
+  // hub — releasing a hold without steering to any ring item now mosh'es
+  // to the next FX stack directly, the same as this button always has.
+  const triggerMosh = useCallback(() => crossfadeLayers(mosh, MOSH_FADE_MS), [mosh]);
   const undo = useStore(s => s.undo);
   const redo = useStore(s => s.redo);
   const canUndo = useStore(s => s.past.length > 0);
@@ -1366,6 +1391,8 @@ export function HotTriggers({
   const shuffleSec = useStore(s => s.shuffleSec);
   const setShuffleSec = useStore(s => s.setShuffleSec);
   const sourceMode = useStore(s => s.sourceMode);
+  const darkModeOn = useStore(s => s.darkModeOn);
+  const toggleDarkMode = useStore(s => s.toggleDarkMode);
 
   const [pickerOpen, setPickerOpen] = useState(false);
   const [favOpen, setFavOpen] = useState(false);
@@ -1380,8 +1407,6 @@ export function HotTriggers({
   const renameFavorite = useStore(s => s.renameFavorite);
   const heldRef = useRef(false);
   const holdTimerRef = useRef<number | null>(null);
-  const proHeldRef = useRef(false);
-  const proHoldTimerRef = useRef<number | null>(null);
   const captureHeldRef = useRef(false);
   const captureHoldTimerRef = useRef<number | null>(null);
   const favHeldRef = useRef(false);
@@ -1451,45 +1476,20 @@ export function HotTriggers({
   const setVideoSource = useStore(s => s.setVideoSource);
   const clearVideoSource = useStore(s => s.clearVideoSource);
   const [flipBusy, setFlipBusy] = useState(false);
+  const desktopPortraitMode = useStore(s => s.desktopPortraitMode);
+  const toggleDesktopPortraitMode = useStore(s => s.toggleDesktopPortraitMode);
 
-  const isolationMode = useStore(s => s.isolationMode);
   const stickerMode = useStore(s => s.stickerMode);
   const setStickerMode = useStore(s => s.setStickerMode);
-  const proModeEnabled = useStore(s => s.proModeEnabled);
-  const setProModeEnabled = useStore(s => s.setProModeEnabled);
-  const helpModeEnabled = useStore(s => s.helpModeEnabled);
-  const setHelpModeEnabled = useStore(s => s.setHelpModeEnabled);
-  const [isoOpen, setIsoOpen] = useState(false);
   const [forgePanelOpen, setForgePanelOpen] = useState(false);
   const [motifPanelOpen, setMotifPanelOpen] = useState(false);
-  const [exportSettingsOpen, setExportSettingsOpen] = useState(false);
-  const [xrUiOverride, setXrUiOverride] = useState<XrUiOverride>(() =>
-    typeof window === "undefined" ? "auto" : readXrUiOverride(window.localStorage)
-  );
-
-  const cycleXrUiOverride = () => {
-    const next: XrUiOverride = xrUiOverride === "auto" ? "on" : xrUiOverride === "on" ? "off" : "auto";
-    setXrUiOverride(next);
-    try {
-      if (next === "auto") window.localStorage.removeItem(XR_UI_OVERRIDE_KEY);
-      else window.localStorage.setItem(XR_UI_OVERRIDE_KEY, next);
-    } catch {}
-    window.dispatchEvent(new Event(XR_UI_OVERRIDE_EVENT));
-    toast.success(
-      next === "auto" ? "VR controls: automatic" : next === "on" ? "VR controls: forced on" : "VR controls: forced off",
-      { description: next === "auto" ? "Shown automatically on Quest/Oculus only." : next === "on" ? "Immersive controls will be offered when this browser supports WebXR." : "Immersive controls stay hidden on this device." }
-    );
-  };
-
-  useEffect(() => {
-    if (!isoOpen) return;
-    const onDown = (e: PointerEvent) => {
-      if ((e.target as HTMLElement | null)?.closest("[data-iso-panel]")) return;
-      setIsoOpen(false);
-    };
-    window.addEventListener("pointerdown", onDown, true);
-    return () => window.removeEventListener("pointerdown", onDown, true);
-  }, [isoOpen]);
+  // The consolidated settings overlay — opened from the "account" trigger,
+  // or (landing on its Export tab specifically) from the "export started"
+  // toast any export path anywhere in the app can fire. Pro Mode, Help
+  // Mode, sensitivity, export settings, and the VR/immersive override all
+  // moved inside it; see AccountSettingsOverlay.tsx.
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsInitialTab, setSettingsInitialTab] = useState<"general" | "export">("general");
 
   useEffect(() => {
     if (!forgePanelOpen) return;
@@ -1511,22 +1511,13 @@ export function HotTriggers({
     return () => window.removeEventListener("pointerdown", onDown, true);
   }, [motifPanelOpen]);
 
-  useEffect(() => {
-    if (!exportSettingsOpen) return;
-    const onDown = (e: PointerEvent) => {
-      if ((e.target as HTMLElement | null)?.closest("[data-export-settings-panel]")) return;
-      setExportSettingsOpen(false);
-    };
-    window.addEventListener("pointerdown", onDown, true);
-    return () => window.removeEventListener("pointerdown", onDown, true);
-  }, [exportSettingsOpen]);
-
   // Reachable from outside this component too — the "export started" toast
-  // (fired by any export path, anywhere in the app) opens this same panel
-  // when tapped, via the same plain-window-event pattern useIdleFade's
-  // markUiActive() uses to cross that same module boundary.
+  // (fired by any export path, anywhere in the app) opens the settings
+  // overlay straight to its Export tab when tapped, via the same
+  // plain-window-event pattern useIdleFade's markUiActive() uses to cross
+  // that same module boundary.
   useEffect(() => {
-    const open = () => setExportSettingsOpen(true);
+    const open = () => { setSettingsInitialTab("export"); setSettingsOpen(true); };
     window.addEventListener("mosh:open-export-settings", open);
     return () => window.removeEventListener("mosh:open-export-settings", open);
   }, []);
@@ -1689,32 +1680,46 @@ export function HotTriggers({
   const registry: Record<string, ReactNode> = {
     home: onHome && (
       <HotBtn key="home" delay={0} label="Back to start" onClick={onHome} tint="220 12% 80%">
-        <Home className="h-4 w-4" strokeWidth={1.5} />
+        <HomeBeaconIcon className="h-4 w-4" />
       </HotBtn>
     ),
     "source-upload": (
       <HotBtn key="source-upload" delay={0} label="Upload source — hold for photo deck" active={sourceMode === "upload"} onClick={onUploadTap} onPointerDown={startUploadHold} onPointerUp={endUploadHold} onPointerCancel={endUploadHold} tint="326 90% 65%">
-        <Upload className="h-4 w-4" strokeWidth={1.5} />
+        <UploadBeamIcon className="h-4 w-4" />
       </HotBtn>
     ),
     "source-camera": (
       <HotBtn key="source-camera" delay={0} label="Live camera" active={sourceMode === "camera"} onClick={() => window.dispatchEvent(new CustomEvent("mosh:switch-mode", { detail: "camera" }))} tint="190 90% 62%">
-        <Camera className="h-4 w-4" strokeWidth={1.5} />
+        <LiveFeedIcon className="h-4 w-4" />
       </HotBtn>
     ),
     "source-forge": (
       <HotBtn key="source-forge" delay={0} label="Forge source" active={sourceMode === "forge"} onClick={() => window.dispatchEvent(new CustomEvent("mosh:switch-mode", { detail: "forge" }))} tint="24 94% 62%">
-        <Flame className="h-4 w-4" strokeWidth={1.5} />
+        <ForgeFlameIcon className="h-4 w-4" />
       </HotBtn>
     ),
     "source-motif": (
       <HotBtn key="source-motif" delay={0} label="Motif Maestro" active={sourceMode === "motif"} onClick={() => window.dispatchEvent(new CustomEvent("mosh:switch-mode", { detail: "motif" }))} tint="270 92% 72%">
-        <Sparkles className="h-4 w-4" strokeWidth={1.5} />
+        <MotifMandalaIcon className="h-4 w-4" />
       </HotBtn>
     ),
+    // Opens the consolidated settings overlay now, instead of navigating
+    // straight to the full account page — that page is still one click away
+    // inside the overlay itself ("My Account"), for what genuinely needs its
+    // own page (sign-in, subscription). See AccountSettingsOverlay.tsx.
     account: onAccount && (
-      <HotBtn key="account" delay={0} label="Account" onClick={onAccount} tint="266 70% 75%">
-        <UserCircle className="h-4 w-4" strokeWidth={1.5} />
+      <HotBtn
+        key="account"
+        delay={0}
+        label="Settings"
+        // Always lands on General from here — only the export-started toast's
+        // cross-module event should jump straight to the Export tab. Without
+        // resetting this, opening Settings normally after that event fired
+        // once would keep landing back on Export.
+        onClick={() => { setSettingsInitialTab("general"); setSettingsOpen(true); }}
+        tint="266 70% 75%"
+      >
+        <AccountCrystalIcon className="h-4 w-4" />
       </HotBtn>
     ),
     undo: (
@@ -1729,8 +1734,8 @@ export function HotTriggers({
     ),
     mosh: (
       <span key="mosh" data-mosh-input className="contents">
-        <HotBtn delay={0} label="Mosh" onClick={() => crossfadeLayers(mosh, MOSH_FADE_MS)} tint="12 90% 58%">
-          <Sparkles className="h-4 w-4" strokeWidth={1.5} />
+        <HotBtn delay={0} label="Mosh" onClick={triggerMosh} tint="12 90% 58%">
+          <MoshVortexIcon className="h-4 w-4" />
         </HotBtn>
       </span>
     ),
@@ -1806,6 +1811,32 @@ export function HotTriggers({
         <span className="hot-trigger__ico"><Eraser className="h-4 w-4" strokeWidth={1.5} /></span>
       </button>
     ),
+    // Dark Mode — a finisher-level grade (see Renderer.ts) that crushes
+    // low-color/bright content toward true black while boosting whatever
+    // color survives, so the effect stack's neon reads against real black
+    // instead of mid-grey ambient light. Independent of the FX stack: it
+    // stays on across Mosh/undo/clear-fx like Journey does.
+    "dark-mode": (
+      <button
+        key="dark-mode"
+        type="button"
+        onClick={toggleDarkMode}
+        aria-label={darkModeOn ? "Dark Mode on" : "Dark Mode off"}
+        aria-pressed={darkModeOn || undefined}
+        title={darkModeOn ? "Dark Mode on — crushing light to black, pushing color to neon" : "Dark Mode — crush light to black, push color to neon"}
+        data-active={darkModeOn || undefined}
+        data-tint=""
+        data-no-longpress
+        className="hot-trigger relative"
+        style={{ ["--ht-tint" as string]: "280 20% 55%" }}
+      >
+        <span className="hot-trigger__glitch" aria-hidden><Moon className="h-4 w-4" strokeWidth={1.5} /></span>
+        <span className="hot-trigger__ico"><Moon className="h-4 w-4" strokeWidth={1.5} /></span>
+        {darkModeOn && (
+          <span className="pointer-events-none absolute inset-0 rounded-md ring-1 ring-[hsl(var(--accent))]/60 animate-pulse" />
+        )}
+      </button>
+    ),
     // Journey — Smart and Storm combined into one director. They were two
     // buttons doing halves of the same job: Smart chose what suited the
     // moment but never touched it again until the next switch; Storm never
@@ -1847,7 +1878,6 @@ export function HotTriggers({
         <AudioTrigger delay={0} onMicFlash={onMicFlash} />
       </div>
     ),
-    sensitivity: <SensitivityTrigger key="sensitivity" delay={0} />,
     freeze: (
       <HotBtn key="freeze" delay={0} label="Freeze" onClick={onFreeze} tint="200 80% 76%">
         <Snowflake className="h-4 w-4" strokeWidth={1.5} />
@@ -1896,109 +1926,17 @@ export function HotTriggers({
         <Share2 className="h-4 w-4" strokeWidth={1.5} />
       </HotBtn>
     ),
-    "export-settings": (
-      <div key="export-settings" className="relative" data-export-settings-panel>
-        <HotBtn
-          delay={0}
-          label={exportSettingsOpen ? "Close export settings" : "Export settings — format, quality, and DPI for every export"}
-          active={exportSettingsOpen}
-          onClick={() => setExportSettingsOpen(open => !open)}
-          tint="42 90% 62%"
-        >
-          <Download className="h-4 w-4" strokeWidth={1.5} />
-        </HotBtn>
-        {exportSettingsOpen && createPortal(
-          <div className="fixed right-3 top-14 z-[95] safe-top safe-right" data-export-settings-panel>
-            <ExportSettingsPanel onClose={() => setExportSettingsOpen(false)} />
-          </div>,
-          document.body,
-        )}
-      </div>
-    ),
-    "mosh-sticker": <MoshStickerTrigger key="mosh-sticker" delay={0} />,
     "sticker-mode": (
       <HotBtn
         key="sticker-mode"
         delay={0}
-        label="Sticker capture mode"
+        label="Sticker Studio — isolate, cut, animate, import and open the Vault"
         active={stickerMode}
         onClick={() => setStickerMode(!stickerMode)}
         tint="96 55% 62%"
       >
         <Scissors className="h-4 w-4" strokeWidth={1.5} />
       </HotBtn>
-    ),
-    "xr-menu": (
-      <HotBtn
-        key="xr-menu"
-        delay={0}
-        label={xrUiOverride === "auto" ? "VR controls: automatic (Quest/Oculus only)" : xrUiOverride === "on" ? "VR controls: forced on" : "VR controls: forced off"}
-        active={xrUiOverride === "on"}
-        onClick={cycleXrUiOverride}
-        tint="196 82% 68%"
-      >
-        <Glasses className="h-4 w-4" strokeWidth={1.5} />
-        <span className="pointer-events-none absolute -bottom-1 -right-1 rounded-sm bg-black/75 px-1 font-mono text-[7px] uppercase leading-[10px] text-white/70">
-          {xrUiOverride === "auto" ? "A" : xrUiOverride === "on" ? "ON" : "OFF"}
-        </span>
-      </HotBtn>
-    ),
-    "pro-mode": (
-      <HotBtn
-        key="pro-mode"
-        delay={0}
-        label={helpModeEnabled ? "Pro Mode (hold: Help Mode is ON)" : "Pro Mode — hide all UI (hold for Help Mode)"}
-        active={proModeEnabled || helpModeEnabled}
-        onClick={() => { if (proHeldRef.current) return; setProModeEnabled(!proModeEnabled); }}
-        onPointerDown={(e) => {
-          proHeldRef.current = false;
-          if (proHoldTimerRef.current) window.clearTimeout(proHoldTimerRef.current);
-          const { clientX, clientY } = e;
-          proHoldTimerRef.current = window.setTimeout(() => {
-            proHeldRef.current = true;
-            setHelpModeEnabled(!helpModeEnabled);
-            const uv = clientToViewportUv(clientX, clientY);
-            cursorFx.chaos(uv.x, uv.y);
-            try { (navigator as any).vibrate?.(10); } catch {}
-          }, 420);
-        }}
-        onPointerUp={() => { if (proHoldTimerRef.current) { window.clearTimeout(proHoldTimerRef.current); proHoldTimerRef.current = null; } }}
-        onPointerCancel={() => { if (proHoldTimerRef.current) { window.clearTimeout(proHoldTimerRef.current); proHoldTimerRef.current = null; } }}
-        tint={helpModeEnabled ? "200 90% 65%" : "0 0% 70%"}
-      >
-        {helpModeEnabled ? <HelpCircle className="h-4 w-4" strokeWidth={1.5} /> : <EyeOff className="h-4 w-4" strokeWidth={1.5} />}
-      </HotBtn>
-    ),
-    isolation: (
-      <div key="isolation" className="relative" data-iso-panel>
-        <HotBtn delay={0} label="Isolation mode" active={isolationMode !== 'off'} onClick={() => setIsoOpen(v => !v)} tint="174 65% 55%">
-          <Crosshair className="h-4 w-4" strokeWidth={1.5} />
-        </HotBtn>
-        {isolationMode !== 'off' && (
-          <span className="pointer-events-none absolute inset-0 rounded-md ring-1 ring-[hsl(var(--accent))]/60 animate-pulse" />
-        )}
-        {isoOpen && (
-          <div className="absolute right-full mr-2 top-0 z-40">
-            <IsolationPanel onClose={() => setIsoOpen(false)} />
-          </div>
-        )}
-      </div>
-    ),
-    // StickerCapture owns the actual capture logic, but renders its compact
-    // control into this rail slot when the mode is on (rather than floating a
-    // second, oversized button over export feedback near the bottom-right).
-    "sticker-capture": stickerMode && <div key="sticker-capture" id="mosh-sticker-capture-slot" />,
-    "sticker-tools": (
-      <HotBtn key="sticker-tools" delay={0} label="Open sticker tools" onClick={() => window.dispatchEvent(new Event("mosh:toggle-sticker-tools"))} tint="286 78% 68%">
-        <Sparkles className="h-4 w-4" strokeWidth={1.5} />
-      </HotBtn>
-    ),
-    "sticker-vault": (
-      <div key="sticker-vault" data-sticker-vault-trigger>
-        <HotBtn delay={0} label="Open Sticker Vault" onClick={() => window.dispatchEvent(new Event("mosh:toggle-sticker-vault"))} tint="186 82% 64%">
-          <Library className="h-4 w-4" strokeWidth={1.5} />
-        </HotBtn>
-      </div>
     ),
     "theme-track": <TrackTrigger key="theme-track" delay={0} showNudge={showTrackNudge} onNudgeDismiss={onTrackNudgeDismiss} />,
     "forge-palette": sourceMode === "forge" && (
@@ -2007,7 +1945,9 @@ export function HotTriggers({
           delay={0}
           label={forgePanelOpen ? "Close Forge palette and settings" : "Open Forge palette and settings"}
           active={forgePanelOpen}
-          onClick={() => setForgePanelOpen(open => !open)}
+          // Opens/closes a portal-rendered panel, not a one-shot action —
+          // must not bubble into the ring-item wrapper's dismiss-on-click.
+          onClick={(e) => { e.stopPropagation(); setForgePanelOpen(open => !open); }}
           tint="318 82% 68%"
         >
           <Palette className="h-4 w-4" strokeWidth={1.5} />
@@ -2026,7 +1966,9 @@ export function HotTriggers({
           delay={0}
           label={motifPanelOpen ? "Close Motif Maestro controls" : "Open Motif Maestro controls"}
           active={motifPanelOpen}
-          onClick={() => setMotifPanelOpen(open => !open)}
+          // Same reasoning as forge-palette above — must not bubble into
+          // the ring-item wrapper's dismiss-on-click.
+          onClick={(e) => { e.stopPropagation(); setMotifPanelOpen(open => !open); }}
           tint="270 92% 72%"
         >
           <Sparkles className="h-4 w-4" strokeWidth={1.5} />
@@ -2050,7 +1992,9 @@ export function HotTriggers({
           data-no-longpress
           className="hot-trigger"
           style={{ ["--ht-tint" as string]: "var(--signal-warn)" }}
-          onClick={onFavTap}
+          // A tap opens the favorites popover, not a one-shot action — must
+          // not bubble into the ring-item wrapper's dismiss-on-click.
+          onClick={(e) => { e.stopPropagation(); onFavTap(); }}
           onPointerDown={startFavHold}
           onPointerUp={endFavHold}
           onPointerLeave={endFavHold}
@@ -2207,15 +2151,35 @@ export function HotTriggers({
         <SwitchCamera className="h-4 w-4" strokeWidth={1.5} />
       </HotBtn>
     ),
-    support: onSupport && (
-      <HotBtn key="support" delay={0} label="Support MOSH" onClick={onSupport} tint="280 70% 72%">
-        <Gem className="h-4 w-4" strokeWidth={1.5} />
+    // Desktop-only — a phone solves this by physically rotating, but a
+    // desktop browser window has no equivalent, so wide "cover" framing was
+    // routinely cropping the top/bottom off portrait-oriented sources.
+    "desktop-portrait": !isTouchScreen && (
+      <HotBtn
+        key="desktop-portrait"
+        delay={0}
+        label={desktopPortraitMode ? "Exit portrait view" : "Portrait view — for tall images"}
+        active={desktopPortraitMode}
+        onClick={toggleDesktopPortraitMode}
+        tint="46 90% 62%"
+      >
+        {desktopPortraitMode
+          ? <RectangleHorizontal className="h-4 w-4" strokeWidth={1.5} />
+          : <RectangleVertical className="h-4 w-4" strokeWidth={1.5} />}
       </HotBtn>
     ),
+    // Was its own wheel trigger ("Support MOSH") — now the loud, animated
+    // nudge inside the settings overlay instead. onSupport is passed
+    // straight through to AccountSettingsOverlay below.
   };
 
   const availableIds = order.filter(id => !!registry[id]);
   const present = new Set(availableIds);
+  // The two radial wheels never show "mosh" as a ring slot — their center
+  // hub IS the mosh button now (see triggerMosh above). Still present in
+  // `availableIds`/`registry` for the legacy flat rail and the hidden XR
+  // registry, neither of which has a "center".
+  const wheelIds = availableIds.filter(id => id !== "mosh");
   const [scrollStart, setScrollStart] = useState(0);
   const wheelCarryRef = useRef(0);
   const dragIdRef = useRef<string | null>(null);
@@ -2257,15 +2221,34 @@ export function HotTriggers({
     return () => rail.removeEventListener("wheel", onWheel);
   }, [showLegacyLaunchpad]);
 
+  // Same reasoning as MicNudgeToast: this overlay is itself the way out of
+  // Pro Mode (and everything else buried behind it), so it can't be nested
+  // inside the branch that Pro Mode hides — toggling Pro Mode ON from
+  // inside these settings would otherwise yank the settings overlay out
+  // from under the user mid-click, along with the very toggle they just
+  // used. Rendered the same way regardless of `hidden`.
+  const settingsOverlay = onAccount && (
+    <AccountSettingsOverlay
+      open={settingsOpen}
+      onClose={() => setSettingsOpen(false)}
+      onMyAccount={onAccount}
+      onSupport={onSupport}
+      initialTab={settingsInitialTab}
+    />
+  );
+
   // Performance/immersive mode hides the DOM chrome, but Quest still needs the
   // live action registry. Keep one non-rendered copy mounted so the WebXR
   // wheel invokes these exact handlers instead of drifting into a second set
   // of trigger implementations.
   if (hidden) {
     return (
-      <div hidden aria-hidden data-xr-hot-trigger-registry>
-        {availableIds.map(id => <div key={id} data-trigger-id={id}>{registry[id]}</div>)}
-      </div>
+      <>
+        <div hidden aria-hidden data-xr-hot-trigger-registry>
+          {availableIds.map(id => <div key={id} data-trigger-id={id}>{registry[id]}</div>)}
+        </div>
+        {settingsOverlay}
+      </>
     );
   }
 
@@ -2273,21 +2256,24 @@ export function HotTriggers({
     <>
     {isTouchScreen ? (
       <MobileRadialWheel
-        ids={availableIds}
+        ids={wheelIds}
         registry={registry}
         visualizerRef={visualizerRef}
         isRecording={isRecording}
         onSelect={setSelectedTriggerId}
+        onMosh={triggerMosh}
       />
     ) : (
       <DesktopRadialWheel
-        ids={availableIds}
+        ids={wheelIds}
         registry={registry}
         visualizerRef={visualizerRef}
         isRecording={isRecording}
         onSelect={setSelectedTriggerId}
+        onMosh={triggerMosh}
       />
     )}
+    {settingsOverlay}
     {showLegacyLaunchpad && (
     /* Vertically centered so the dock occupies the right edge evenly across
        desktop, tablet and phone aspect ratios. */
@@ -2404,7 +2390,12 @@ function GifButton({
       <button
         type="button"
         onPointerDown={(e) => e.stopPropagation()}
-        onClick={() => { if (!gifBusy) setOpen(o => !o); }}
+        // The wheel's own ring-item wrapper now dismisses the whole wheel on
+        // any click within it (so one-shot triggers close after picking) —
+        // this button opens a length submenu instead of firing an action
+        // directly, so its click must not bubble into that dismissal or the
+        // submenu would never get a chance to show.
+        onClick={(e) => { e.stopPropagation(); if (!gifBusy) setOpen(o => !o); }}
         aria-label={gifBusy ? "Capturing GIF loop…" : "Capture seamless GIF loop"}
         aria-pressed={gifBusy || undefined}
         aria-expanded={open || undefined}
