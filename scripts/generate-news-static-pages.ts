@@ -24,15 +24,15 @@ const pages: Page[] = [{ route:"/news", title:"News + Updates: Glitch Art Effect
 
 function render(page: Page) {
   const canonical = absolute(page.route), image = absolute(page.image);
-  const tags = `<title>${esc(page.title)}</title>
-    <meta name="description" content="${esc(page.description)}" />
-    <meta name="keywords" content="${esc(page.keywords.join(", "))}" />
-    <link rel="canonical" href="${canonical}" />
-    <link rel="alternate" type="application/rss+xml" title="Ether-MOSH News + Updates" href="${ORIGIN}/news/feed.xml" />
-    <meta property="og:type" content="${page.type}" /><meta property="og:site_name" content="Ether-MOSH" /><meta property="og:title" content="${esc(page.title)}" /><meta property="og:description" content="${esc(page.description)}" /><meta property="og:url" content="${canonical}" /><meta property="og:image" content="${image}" />
-    <meta name="twitter:card" content="summary_large_image" /><meta name="twitter:title" content="${esc(page.title)}" /><meta name="twitter:description" content="${esc(page.description)}" /><meta name="twitter:image" content="${image}" />
+  const tags = `<title data-rh="true">${esc(page.title)}</title>
+    <meta name="description" content="${esc(page.description)}" data-rh="true" />
+    <meta name="keywords" content="${esc(page.keywords.join(", "))}" data-rh="true" />
+    <link rel="canonical" href="${canonical}" data-rh="true" />
+    <link rel="alternate" type="application/rss+xml" title="Ether-MOSH News + Updates" href="${ORIGIN}/news/feed.xml" data-rh="true" />
+    <meta property="og:type" content="${page.type}" data-rh="true" /><meta property="og:site_name" content="Ether-MOSH" data-rh="true" /><meta property="og:title" content="${esc(page.title)}" data-rh="true" /><meta property="og:description" content="${esc(page.description)}" data-rh="true" /><meta property="og:url" content="${canonical}" data-rh="true" /><meta property="og:image" content="${image}" data-rh="true" />
+    <meta name="twitter:card" content="summary_large_image" data-rh="true" /><meta name="twitter:title" content="${esc(page.title)}" data-rh="true" /><meta name="twitter:description" content="${esc(page.description)}" data-rh="true" /><meta name="twitter:image" content="${image}" data-rh="true" />
     <script type="application/ld+json">${JSON.stringify(page.jsonLd).replaceAll("<", "\\u003c")}</script>`;
-  return template.replace(/\s*<title>[\s\S]*?<\/title>/, "").replace(/\s*<meta name="description"[^>]*>/, "").replace(/\s*<meta property="og:[^"]+"[^>]*>/g, "").replace(/\s*<meta name="twitter:[^"]+"[^>]*>/g, "").replace("</head>", `${tags}\n  </head>`).replace('<div id="root"></div>', `<div id="root"><noscript>${page.noscript}</noscript></div>`);
+  return template.replace(/\s*<title(?:\s[^>]*)?>[\s\S]*?<\/title>/, "").replace(/\s*<meta name="description"[^>]*>/, "").replace(/\s*<meta property="og:[^"]+"[^>]*>/g, "").replace(/\s*<meta name="twitter:[^"]+"[^>]*>/g, "").replace("</head>", `${tags}\n  </head>`).replace('<div id="root"></div>', `<div id="root"><noscript>${page.noscript}</noscript></div>`);
 }
 
 await Promise.all(pages.map(async page => { const dir = path.join(dist, page.route.slice(1)); await mkdir(dir, {recursive:true}); await writeFile(path.join(dir,"index.html"), render(page)); }));
@@ -40,7 +40,7 @@ const feed = `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel>
 <title>Ether-MOSH News + Updates</title><link>${ORIGIN}/news</link><description>Satirical, sourced effect and mode education with practical production guides from Ether-MOSH.</description><language>en-us</language><atom:link href="${ORIGIN}/news/feed.xml" rel="self" type="application/rss+xml"/>
 ${latestNewsArticles.map(a => `<item><title>${esc(a.title)}</title><link>${absolute(newsArticlePath(a))}</link><guid>${absolute(newsArticlePath(a))}</guid><pubDate>${new Date(a.publishedAt).toUTCString()}</pubDate><description>${esc(a.description)}</description></item>`).join("\n")}
-</channel></rss>`;
+</channel></rss>\n`;
 await mkdir(path.join(dist, "news"), { recursive: true });
 await writeFile(path.join(dist, "news", "feed.xml"), feed);
 console.log(`Generated ${pages.length} crawlable news entry points.`);

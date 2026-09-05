@@ -895,6 +895,76 @@ export const NEWS_ARTICLES: NewsArticle[] = [
       { question: "How do I make false-color artwork accessible?", answer: "Do not make hue the only carrier of meaning. Preserve light-dark differences and add text, labels, patterns, or shapes whenever the colors communicate information." },
     ],
   },
+  {
+    slug: "make-the-rgb-shift-effect-split-before-it-gets-a-lawyer",
+    subjectKind: "effect",
+    effectId: "rgbShift",
+    effectName: "RGB Shift",
+    category: "Optical Misconduct",
+    title: "Make the RGB Shift Effect Split Before It Gets a Lawyer",
+    dek: "The lens separated three color channels, an inspector called it a staffing issue, and the green sample tried to remain professionally neutral.",
+    description: "Learn how the RGB Shift effect makes radial color fringes and how to set Ether-MOSH Amount and Angle for print, motion, projection, patterns, and education.",
+    publishedAt: "2026-09-05T14:48:00-07:00",
+    readMinutes: 6,
+    image: "/news/rgb-shift-optics-tribunal.jpg",
+    imageAlt: "Fictional RGB Shift effect optics tribunal with three inspectors watching a lens split a sculpted portrait into red, green, and blue radial edge images",
+    imageCaption: "The fictional tribunal found all three channels liable for leaving the same edge in different directions.",
+    keywords: ["RGB Shift effect", "Ether-MOSH RGB Shift", "chromatic aberration effect", "color fringing", "channel separation", "VJ color effects", "RGB Shift tutorial"],
+    tldr: "Ether-MOSH RGB Shift separates red, green, and blue samples radially from a movable off-center focus, creating lens-like color fringes without simulating a physical lens. Amount sets divergence strength; Angle moves the focus around the frame. Find it under Color Chaos. Start around 0.18 Amount and 0.25 Angle, then raise Amount only where edge detail can survive.",
+    satireDisclosure: "The optics tribunal, inspectors, staffing dispute, and litigious color channels are fictional. Newton's prism experiments, modern chromatic-aberration terminology, Ether-MOSH controls and shader behavior, accessibility cautions, and production advice are factual and sourced.",
+    dispatch: [
+      "At 14:48, fictional chief inspector Vera Fringe placed a sculpted portrait behind a suspiciously large lens. Red moved outward, blue withdrew in the opposite direction, and green shifted just enough to deny coordinating either action.",
+      "Deputy Focus Warren—also fictional—declared the separation a routine personnel matter. The tribunal rejected this immediately. It was obviously RGB Shift: a deliberate color-channel split, an excellent transition accent, and a terrible way to render a fire-exit diagram unless your venue enjoys interpretive evacuation.",
+    ],
+    explanation: [
+      "Isaac Newton published Opticks in 1704 and opened its experimental argument with the proposition that lights of different colors have different degrees of refrangibility. That wavelength-dependent bending is fundamental to real chromatic aberration: a lens can bring colors to different focus distances or image positions, producing blur or colored fringes around contrast edges.",
+      "Modern optics separates axial or longitudinal chromatic aberration from transverse or lateral chromatic aberration. The first concerns different focal distances along the optical axis; the second concerns different image positions or magnifications in the focal plane. Lens makers reduce these errors with combinations of glasses and optical elements chosen for different dispersion, which is why a corrected microscope objective involves substantially more engineering than dragging a fun slider to 0.80.",
+      "Ether-MOSH does not trace wavelengths through glass. Its RGB Shift shader picks an off-center focus, samples red farther outward, green slightly outward, and blue inward along a radial direction, then adds a restrained violet rim that grows toward the frame edge. Amount controls the separation; Angle spans 0 to pi in the interface and is doubled in the shader so one drag moves the focus through a full circle. The declared default is 0.40 Amount and 0 Angle.",
+      "The renderer doubles every underlying amount parameter while preserving true zero, so RGB Shift reaches its declared shader strength near 0.50 on the visible Amount control and becomes deliberately extreme above that. Treat the look as a graphic cousin of lateral chromatic aberration, not a calibrated lens model. Keep essential type, captions, safety information, and data outside the shifted layer; animate slowly, and test high-contrast full-screen output against flash guidance before a venue show.",
+    ],
+    steps: [
+      "Open MOSH, load a portrait, product still, architectural edge, sculpture, or high-contrast clip, then open the FX panel and add RGB Shift from Color Chaos.",
+      "Set Amount to 0.18 and Angle to 0.25. Look at the outer third of the frame, where the radial channel split is easiest to judge without losing the subject.",
+      "Move Angle slowly from 0 toward 3.14 to orbit the off-center focus through one full turn. Stop where red and blue fringes reinforce the composition instead of cutting through eyes or labels.",
+      "Raise Amount toward 0.35 for a harder transition accent. Add Pixel Sort, Jitter, VHS Bleed, or Bloom after RGB Shift only when each layer still has a distinct job.",
+      "Export a still or record one measured Angle sweep. Proof physical output, tile edges, vector traces, captions, LED processors, and projectors at their actual size before calling the split intentional in public.",
+    ],
+    parameters: [
+      { control: "Amount", purpose: "Sets radial red, green, and blue sample separation", low: "0–0.15 subtle", high: "0.50–1 extreme", sweetSpot: "0.18" },
+      { control: "Angle", purpose: "Moves the off-center focus around one full orbit", low: "0 starts rightward", high: "3.14 completes the full circle", sweetSpot: "0.25" },
+      { control: "Edge contrast", purpose: "Determines where color fringes remain legible", low: "Soft color haze", high: "Crisp RGB outlines", sweetSpot: "Clear silhouettes" },
+    ],
+    uses: [
+      { title: "Print + editorial", body: "Use a restrained split around one strong silhouette, then inspect red and blue edges at 100% and soft-proof the final stock. What glows on RGB glass may become a less thrilling little registration argument in CMYK." },
+      { title: "Pattern + textiles", body: "Shift the motif before building the repeat, then inspect a 3×3 proof so radial fringes do not form an accidental stripe at every seam. Preserve one quiet color anchor or the fabric may begin vibrating while stationary." },
+      { title: "Vector + Lottie", body: "Trace only the largest displaced edge silhouettes into a few vector fills, or keep RGB Shift in a short raster layer behind real vector type. Three clean contours animate better than several thousand paths recreating every pixel's legal complaint." },
+      { title: "Projection + venue", body: "Place the focal direction away from captions and performer faces, use one slow Angle move as a transition, and test the actual LED wall or projector. Fast saturated edge changes need a calmer alternate state and a flash-risk check." },
+      { title: "Museum + education", body: "Pass white light through a prism, compare a documented lens-aberration diagram with the MOSH output, and ask students which parts are physical optics and which are channel sampling. The resemblance becomes useful without becoming misinformation." },
+    ],
+    quote: "The lens did not break the portrait into three people. The shader merely gave every channel its own strong opinion about where the cheek ended.",
+    quoteAttribution: "Vera Fringe, fictional chief inspector and reluctant union mediator",
+    downloadHref: "/news/downloads/rgb-shift-field-card.md",
+    product: {
+      name: "Brushstroke Riot AOP Crewneck Sweatshirt",
+      href: "https://aestheticrebellion.store/products/brushstroke-riot-sweatshirt",
+      copy: "Mandatory commercial color separation: Aesthetic Rebellion's currently listed Brushstroke Riot crewneck arrives with red, blue, yellow, and green marks already refusing to occupy one polite region. Buying it will not correct your lens or improve your Angle setting. It will make your torso look like the channels negotiated directly with a paint department, so capitalism has approved this interruption.",
+    },
+    sources: [
+      { label: "Isaac Newton — Opticks (1704)", href: "https://www.gutenberg.org/cache/epub/33504/pg33504-images.html", note: "Primary text for Newton's prism experiments and proposition that differently colored light has different refrangibility." },
+      { label: "NCBI Bookshelf — Chromatic Aberration", href: "https://www.ncbi.nlm.nih.gov/books/NBK597386/", note: "Medical-optics reference defining chromatic aberration and distinguishing axial from transverse forms." },
+      { label: "Nikon MicroscopyU — Optical Microscopy", href: "https://www.microscopyu.com/pdfs/Davidson_and_Abramowitz_2002.pdf", note: "Microscopy reference describing lens dispersion, separate color focus points, and resulting color fringes." },
+      { label: "W3C — Understanding Three Flashes or Below Threshold", href: "https://www.w3.org/WAI/WCAG22/Understanding/three-flashes-or-below-threshold", note: "Current guidance for evaluating rapidly changing, high-contrast display content." },
+      { label: "Ether-MOSH RGB Shift registry entry", href: "/effects#rgbShift", note: "Current public effect, Color Chaos category, Amount and Angle values, render boost, and GLSL source." },
+      { label: "Pixel Sort field report", href: "/news/sort-your-pixels-before-they-sort-you", note: "Related guide to brightness-driven displacement and channel-split stacking." },
+    ],
+    relatedEffects: ["chromaAberrate", "jitter", "vhsBleed", "prismDispersion"],
+    faqs: [
+      { question: "What does the RGB Shift effect do in Ether-MOSH?", answer: "It samples the red, green, and blue channels at different positions along a radial direction, creating color fringes that grow with distance from a movable off-center focus." },
+      { question: "Is RGB Shift the same as real chromatic aberration?", answer: "No. It is a GPU stylization inspired by lateral color fringing. Real chromatic aberration comes from wavelength-dependent refraction and can also change focus along the optical axis." },
+      { question: "Where is RGB Shift, and what settings should I start with?", answer: "Open the FX panel, choose Color Chaos, and add RGB Shift. Start at 0.18 Amount and 0.25 Angle, then place the strongest fringe away from text and faces." },
+      { question: "Can I animate RGB Shift safely for projection?", answer: "Yes, if you move Angle or Amount slowly, keep essential information unshifted, provide a calmer alternate state, and test the full-size output for flash and contrast risks." },
+    ],
+  },
 ];
 
 export const NEWS_ARTICLES_BY_SLUG = new Map(NEWS_ARTICLES.map((article) => [article.slug, article]));
@@ -953,5 +1023,9 @@ export const NEWS_LOOK_EXAMPLES_BY_SLUG: Record<string, [NewsLookExample, NewsLo
   "make-the-thermal-effect-admit-it-cannot-feel-heat": [
     { scene: "Side-lit plaster sculpture", settings: "Mix 0.35 · Range 0.40", result: "Shadowed stone settles into violet, turning planes move through magenta, and the brightest forehead and cheek become pale yellow while carved edges remain readable." },
     { scene: "Night performer on stage", settings: "Mix 0.50 · Range 0.72", result: "Dark rigging falls toward purple, the performer separates in saturated pink, and spotlit fabric snaps toward yellow in a hard graphic map that reads across the venue." },
+  ],
+  "make-the-rgb-shift-effect-split-before-it-gets-a-lawyer": [
+    { scene: "Centered studio portrait", settings: "Amount 0.18 · Angle 0.25", result: "The face stays legible while hair, shoulders, and the far cheek pick up crisp red and blue outlines that widen toward the outside of the frame." },
+    { scene: "Brutalist concrete facade", settings: "Amount 0.35 · Angle 1.40", result: "Window frames split into colored radial rails, hard corners carry a violet rim, and the center remains comparatively stable as the outer structure pulls apart." },
   ],
 };

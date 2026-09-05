@@ -1,5 +1,6 @@
 import { ArrowLeft, ArrowRight, ArrowUpRight, Download } from "lucide-react";
 import { Helmet } from "react-helmet-async";
+import { useLayoutEffect } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
 import { NewsFooter, NewsHeader } from "@/components/news/NewsChrome";
 import { EFFECTS_BY_ID } from "@/engine/effects";
@@ -13,6 +14,10 @@ const formatArticleDate = (publishedAt: string) => new Intl.DateTimeFormat("en-U
 export default function NewsArticle() {
   const { slug } = useParams();
   const article = slug ? NEWS_ARTICLES_BY_SLUG.get(slug) : undefined;
+  useLayoutEffect(() => {
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+  }, [slug]);
   if (!article) return <Navigate to="/news" replace/>;
   const canonical = `https://ether-mosh.online${newsArticlePath(article)}`;
   const effect = article.effectId ? EFFECTS_BY_ID[article.effectId] : undefined;
