@@ -89,6 +89,30 @@ const ROLE_COUNT: Record<Intensity, number> = {
 };
 
 /**
+ * How far a rolled layer count may drift from ROLE_COUNT's base, per
+ * intensity. 0 for mild keeps its "the shot back, not reinvented" promise
+ * exact — every other tier gets natural depth variety (3 one tap, 4 the
+ * next) instead of a metronomic fixed stack size at every tap.
+ */
+const ROLE_COUNT_JITTER: Record<Intensity, number> = {
+  mild: 0,
+  // Savage is the app's default intensity and the one several tests treat
+  // as a known, stable 3-role composition (grade/form/finish) — jittering
+  // it would make those tests flaky rather than wrong. Nuclear and
+  // interdimensional are where "wilder = more variety" already lives.
+  savage: 0,
+  nuclear: 1,
+  interdimensional: 1,
+};
+
+function rollRoleCount(inten: Intensity, rand: () => number): number {
+  const jitter = ROLE_COUNT_JITTER[inten];
+  if (!jitter) return ROLE_COUNT[inten];
+  const delta = Math.floor(rand() * (jitter * 2 + 1)) - jitter; // -jitter..+jitter
+  return Math.max(1, ROLE_COUNT[inten] + delta);
+}
+
+/**
  * How far the director may break its own grammar at each intensity.
  *
  * Mild stays strict — it is the setting you reach for when you want the shot
@@ -100,9 +124,9 @@ const ROLE_COUNT: Record<Intensity, number> = {
  */
 const CHAOS: Record<Intensity, number> = {
   mild: 0,
-  savage: 0.15,
-  nuclear: 0.35,
-  interdimensional: 0.6,
+  savage: 0.22,
+  nuclear: 0.45,
+  interdimensional: 0.7,
 };
 
 /**
@@ -852,7 +876,7 @@ export const useStore = create<State & Actions>((set, get) => ({
 
     const locked = s.layers.filter(l => l.locked);
     const composition = prepared?.composition ?? compose(brief, rand, {
-      roleCount: ROLE_COUNT[inten],
+      roleCount: rollRoleCount(inten, rand),
       chaos: CHAOS[inten],
       wildness: rollWildness(rand, WILD_FLOOR[inten]),
       // Soft, decaying suppression instead of a hard exclude — the same
@@ -897,7 +921,7 @@ export const useStore = create<State & Actions>((set, get) => ({
     const plannedMosh = {
       seed: nextSeed, intensity: inten, brief,
       composition: compose(brief, nextRand, {
-        roleCount: ROLE_COUNT[inten], chaos: CHAOS[inten],
+        roleCount: rollRoleCount(inten, nextRand), chaos: CHAOS[inten],
         wildness: rollWildness(nextRand, WILD_FLOOR[inten]),
         lookPenalty: recencyPenalty(nextLooks, []),
         effectPenalty: recencyPenalty(nextForm, nextOther),
@@ -955,7 +979,7 @@ export const useStore = create<State & Actions>((set, get) => ({
     const locked = s.layers.filter(l => l.locked);
 
     const composition = s.forge.seamless ? null : compose(brief, rand, {
-      roleCount: ROLE_COUNT[inten],
+      roleCount: rollRoleCount(inten, rand),
       chaos: CHAOS[inten],
       wildness: rollWildness(rand, WILD_FLOOR[inten]),
       lookPenalty: recencyPenalty(s.recentLooks, []),

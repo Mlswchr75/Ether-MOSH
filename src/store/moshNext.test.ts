@@ -44,7 +44,10 @@ describe("moshNext", () => {
   });
 
   it("rerolls an unlocked repeated accent when its remembered sibling is locked", () => {
-    useStore.getState().mosh("nuclear");
+    // interdimensional, not nuclear: nuclear's depth now jitters 4-6, and at
+    // 4 there's only a single accent layer. Interdimensional's jittered
+    // range (6-7) guarantees a repeated accent either way.
+    useStore.getState().mosh("interdimensional");
     const accents = groupLayersByRole(useStore.getState().layers).accent;
     const [lockedAccent, targetAccent] = accents;
     useStore.setState({

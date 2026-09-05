@@ -67,22 +67,42 @@ describe("role-aware effect controls", () => {
 
   it("exposes the composition roles at every intensity depth", () => {
     const store = roleStore();
-    const expected = {
+    // Mild and savage are pinned to an exact, deterministic depth (see
+    // useStore's ROLE_COUNT_JITTER — savage is the default intensity and
+    // several tests, this one included, treat it as a known shape). Nuclear
+    // and interdimensional deliberately roll a range now (real variety
+    // between taps was the point), so they're checked structurally instead
+    // of against one fixed sequence: role order still follows the grammar,
+    // starts at grade, and length falls within the ±1 jitter band around
+    // each tier's base depth.
+    const exact = {
       mild: ["grade", "finish"],
       savage: ["grade", "form", "finish"],
-      nuclear: ["grade", "form", "accent", "accent", "finish"],
-      interdimensional: ["grade", "form", "form", "accent", "accent", "finish", "finish"],
     } as const;
-
-    for (const [intensity, roles] of Object.entries(expected)) {
-      store.mosh(intensity as "mild" | "savage" | "nuclear" | "interdimensional");
+    for (const [intensity, roles] of Object.entries(exact)) {
+      store.mosh(intensity as "mild" | "savage");
       expect(roleStore().layers.map(layer => layer.role)).toEqual(roles);
+    }
+
+    const ranged = { nuclear: [4, 6], interdimensional: [6, 7] } as const;
+    for (const [intensity, [min, max]] of Object.entries(ranged)) {
+      store.mosh(intensity as "nuclear" | "interdimensional");
+      const roles = roleStore().layers.map(layer => layer.role);
+      expect(roles.length).toBeGreaterThanOrEqual(min);
+      expect(roles.length).toBeLessThanOrEqual(max);
+      expect(roles[0]).toBe("grade");
+      const order = roles.map(r => ROLE_ORDER.indexOf(r!));
+      expect(order).toEqual([...order].sort((a, b) => a - b));
     }
   });
 
   it("rerolls only the explicitly selected repeated-role layer", () => {
     const store = roleStore();
-    store.mosh("nuclear");
+    // Interdimensional, not nuclear: nuclear's depth now jitters 4-6, and at
+    // 4 there's only a single accent layer. Interdimensional's jittered
+    // range (6-7) guarantees a repeated accent either way (see the
+    // structural test above), so `accents[1]` is always defined here.
+    store.mosh("interdimensional");
     const accents = groupLayersByRole(roleStore().layers).accent;
     const target = accents[1];
     const before = roleStore().layers.map(layer => ({ id: layer.id, effectId: layer.effectId }));
@@ -221,7 +241,8 @@ describe("role-aware effect controls", () => {
 
   it("makes a duplicated layer the coherent selection for its semantic role", () => {
     const store = roleStore();
-    store.mosh("nuclear");
+    // interdimensional, not nuclear — see the note in the reroll test above.
+    store.mosh("interdimensional");
     const target = groupLayersByRole(roleStore().layers).accent[1];
 
     store.selectRoleLayer("accent", target.id);

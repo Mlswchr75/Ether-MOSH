@@ -503,7 +503,7 @@ export class MoshRenderer {
         uOverlayDepth: { value: null },
         uOverlayGate: { value: 0.4 },
         uOverlaySoft: { value: 0.18 },
-        uVibrance: { value: 0.35 },
+        uVibrance: { value: 0.45 },
         uDarkMode: { value: 0 },
       },
       depthTest: false,
@@ -1244,6 +1244,12 @@ export class MoshRenderer {
     this.finisherMaterial.uniforms.uTex.value = finalTex;
     (this.finisherMaterial.uniforms.uRes.value as THREE.Vector2).set(w, h);
     this.finisherMaterial.uniforms.uHdr.value = this._hdrIntensity;
+    // Vibrance was a flat 0.35 regardless of how loud the stack running on
+    // top of it was — a bare/mild source and a fully-cranked mosh got the
+    // exact same color push. Scaling it with the same mosh-intensity signal
+    // that drives the HDR finisher means a heavier stack actually reads
+    // heavier in color, not just in distortion.
+    this.finisherMaterial.uniforms.uVibrance.value = 0.45 + this._hdrIntensity * 0.35;
     this._darkMode += (this._darkModeTarget - this._darkMode) * 0.12;
     this.finisherMaterial.uniforms.uDarkMode.value = this._darkMode;
     this.finisherMaterial.uniforms.uOverlayDepth.value = this.rtDepthA.texture;
