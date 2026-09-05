@@ -197,20 +197,35 @@ function makeBoundaryLayer(recipe: RevealRecipe): Layer {
  * scene change itself reads as a bleed/glitch rather than a clean dissolve.
  *
  * A single module-level animation slot means one crossfade cleanly
- * supersedes another regardless of what triggered either — Journey firing
- * mid-tap, or two rapid manual taps, both just restart the fade from
- * wherever it currently is rather than fighting or stacking.
+ * supersedes another regardless of what triggered either. Before a new
+ * commit runs, an interrupted fade settles to its real target stack. The
+ * temporary outgoing/incoming/boundary layers must never become input to the
+ * next mosh (or its undo snapshot), otherwise rapid taps compound whole
+ * transition stacks and leave the oldest layers apparently frozen.
  */
 let fadeRaf: number | null = null;
+let fadeTarget: Layer[] | null = null;
+
+function settleLayerCrossfade() {
+  if (fadeRaf != null) {
+    cancelAnimationFrame(fadeRaf);
+    fadeRaf = null;
+  }
+  if (fadeTarget) {
+    useStore.getState().setLayersRaw(fadeTarget);
+    fadeTarget = null;
+  }
+}
 
 export function crossfadeLayers(commit: () => void, durationMs: number) {
-  if (fadeRaf != null) { cancelAnimationFrame(fadeRaf); fadeRaf = null; }
+  settleLayerCrossfade();
 
   const before = useStore.getState().layers.filter(l => !l.locked);
 
   commit();
 
   const after = useStore.getState().layers;
+  fadeTarget = after;
   const lockedAfter = after.filter(l => l.locked);
   const incoming = after.filter(l => !l.locked);
 
@@ -257,6 +272,7 @@ export function crossfadeLayers(commit: () => void, durationMs: number) {
       // outgoing layers and the transient boundary layer, instead of
       // leaving them sitting at opacity 0 or a stale region).
       useStore.getState().setLayersRaw(after);
+      fadeTarget = null;
     }
   };
   // Synchronous first call, not the first rAF frame — so the very first
@@ -266,5 +282,5 @@ export function crossfadeLayers(commit: () => void, durationMs: number) {
 }
 
 export function cancelLayerCrossfade() {
-  if (fadeRaf != null) { cancelAnimationFrame(fadeRaf); fadeRaf = null; }
+  settleLayerCrossfade();
 }
