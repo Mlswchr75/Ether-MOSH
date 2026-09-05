@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { useStore } from '@/store/useStore';
 import { useOverlayStore } from '@/store/useOverlayStore';
 import { stickerEngine, type StickerScore } from '@/engine/StickerEngine';
-import { segmentationEngine, type MaskResult } from '@/engine/SegmentationEngine';
+import { segmentationEngine, type MaskResult, type SegmentableSource } from '@/engine/SegmentationEngine';
 import { OverlayStage } from '@/components/editor/OverlayStage';
 import { MoshStickerTrigger } from '@/components/editor/MoshStickerTrigger';
 import { OverlayImporter } from '@/components/editor/OverlayImporter';
@@ -45,6 +45,7 @@ export function StickerCapture() {
   const setIsolationMode     = useStore(s => s.setIsolationMode);
   const glCanvas             = useStore(s => s.glCanvas);
   const video                = useStore(s => s.videoElement);
+  const image                = useStore(s => s.imageElement);
   const sourceMode           = useStore(s => s.sourceMode);
   // Only changes on a genuine mosh-stack reshuffle (mosh()/reroll-seed/
   // favorite/preset-load) — never on an audio-reactive param wiggle within
@@ -85,6 +86,7 @@ export function StickerCapture() {
   const isPointerDown= useRef(false);
   const glRef        = useRef<HTMLCanvasElement | null>(null);
   const vidRef       = useRef<HTMLVideoElement | null>(null);
+  const imgRef       = useRef<HTMLImageElement | null>(null);
   const previewRef   = useRef<HTMLCanvasElement | null>(null);
   const focusRef     = useRef<OrganicFocus | undefined>(undefined);
   const alphaBoxRef  = useRef<ContentBox | undefined>(undefined);
@@ -105,6 +107,7 @@ export function StickerCapture() {
 
   useEffect(() => { glRef.current = glCanvas; }, [glCanvas]);
   useEffect(() => { vidRef.current = video; }, [video]);
+  useEffect(() => { imgRef.current = image; }, [image]);
   // A genuine-alpha capture only makes sense while the uploaded transparent
   // PNG is still the actual MOSH source — if the user switches to camera,
   // video, forge or any other source, the real-alpha path would otherwise
@@ -251,6 +254,17 @@ export function StickerCapture() {
   }, [isolationMode, lottieBackground, lottieMode, stickerMode, tapPoint, transparentActive]);
 
   const setPhase = (p: Phase) => { phaseRef.current = p; _setPhase(p); };
+
+  /**
+   * Whatever the current source mode actually has: the live camera feed
+   * where there is one, the uploaded still where there isn't, and — in forge
+   * mode, which has neither — the rendered canvas itself, since the forge
+   * output *is* the picture there rather than a distinct clean layer under
+   * an FX stack. Keeps sticker capture working identically across every
+   * source mode instead of only camera.
+   */
+  const captureSource = (): SegmentableSource | null => vidRef.current ?? imgRef.current ?? glRef.current;
+
   const doFlash = () => { setFlash(true); setTimeout(() => setFlash(false), 150); };
 
   const publishSticker = useCallback((entry: StickerEntry) => {
@@ -294,11 +308,11 @@ export function StickerCapture() {
     const tick = () => {
       rafRef.current = requestAnimationFrame(tick);
       frameRef.current++;
-      const gl = glRef.current, vid = vidRef.current;
-      if (!gl) return;
+      const gl = glRef.current, src = captureSource();
+      if (!gl || !src) return;
 
       if (frameRef.current % 6 === 0) setScore(stickerEngine.scoreFrame(gl));
-      if (vid && frameRef.current % 90 === 0) stickerEngine.refreshBestMask(vid);
+      if (frameRef.current % 90 === 0) stickerEngine.refreshBestMask(src);
       if (phaseRef.current === 'recording') {
         const mask = stickerEngine.getBestMask();
         if (mask && recFrames.current.length < 30) {
@@ -312,6 +326,13 @@ export function StickerCapture() {
     return () => cancelAnimationFrame(rafRef.current);
   }, [stickerMode, finishRecording]);
 
+  // The actual capture — segmenting/cropping/compositing off the live
+  // render — now happens in OverlayVault's own "mosh:make-sticker" listener
+  // (resolveStickerSource reads glCanvas directly, which is already
+  // source-mode-agnostic since it's the final rendered frame regardless of
+  // upload/camera/forge/motif). This just supplies the tap feedback and
+  // fires the event; captureSource()/refreshBestMask below are still used
+  // by the hold-to-record animated path.
   const captureStatic = useCallback(async () => {
     const gl = glRef.current;
     if (!gl || phaseRef.current !== 'idle') return;

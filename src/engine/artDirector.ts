@@ -311,9 +311,9 @@ export type Craft = {
 };
 
 /**
- * Role and fidelity for all 65 effects. This is the taste layer: it's what
- * lets the director reach for `godRays` when a frame needs light and
- * `posterize` only when the look actually wants a poster.
+ * Role and fidelity for every effect the director can pick. This is the taste
+ * layer: it's what lets the director reach for `godRays` when a frame needs
+ * light and `posterize` only when the look actually wants a poster.
  */
 const CRAFT: Record<string, Craft> = {
   // ── GRADE ──────────────────────────────────────────────────────────
@@ -456,6 +456,18 @@ const CRAFT: Record<string, Craft> = {
   volumetricShaft: { role: "finish", fidelity: "cinematic", gives: { light: 1.0 }, cost: 0.3, gpu: 6.0 },
   emberField:      { role: "finish", fidelity: "cinematic", gives: { light: 0.8, color: 0.4 }, cost: 0.3, gpu: 2.6 },
   prismFlame:      { role: "finish", fidelity: "cinematic", gives: { light: 0.9, color: 0.7 }, cost: 0.5, gpu: 6.0 },
+
+  // ── DESTRUCTION INDEX EXPANSION ────────────────────────────────────
+  invert:          { role: "grade",  fidelity: "neutral",   gives: { contrast: 0.6, color: 0.3 }, cost: 0.5, replaces: 0.6 },
+  threshold:       { role: "grade",  fidelity: "lofi",      gives: { contrast: 1.0 }, cost: 0.75, replaces: 0.7 },
+  selfBlend:       { role: "grade",  fidelity: "cinematic", gives: { contrast: 0.6, structure: 0.3 }, cost: 0.4 },
+  syncRoll:        { role: "accent", fidelity: "lofi",      gives: { structure: 0.4 }, cost: 0.5 },
+  interlaceComb:   { role: "accent", fidelity: "lofi",      gives: { structure: 0.3 }, cost: 0.45, gpu: 1.5 },
+  signalDropout:   { role: "accent", fidelity: "lofi",      gives: {}, cost: 0.5 },
+  keyingHalo:      { role: "finish", fidelity: "cinematic", gives: { light: 0.6, color: 0.3 }, cost: 0.3, gpu: 1.8 },
+  cameraShake:     { role: "form",   fidelity: "neutral",   gives: { structure: 0.3 }, cost: 0.3 },
+  zoomPunch:       { role: "form",   fidelity: "cinematic", gives: { structure: 0.5, light: 0.2 }, cost: 0.35 },
+  paperGrain:      { role: "finish", fidelity: "neutral",   gives: {}, cost: 0.15 },
 };
 
 export function craftOf(id: string): Craft | null {

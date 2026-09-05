@@ -9,7 +9,16 @@ const TOUCH_MODEL  = "https://storage.googleapis.com/mediapipe-models/interactiv
 
 export type MaskResult     = { data: Float32Array; width: number; height: number };
 export type SaliencyPoint  = { x: number; y: number; score: number };
-export type SegmentableSource = HTMLVideoElement | HTMLCanvasElement;
+
+/**
+ * Anything the sticker/isolation pipeline can pull a frame from — a live
+ * camera feed, an uploaded still, or a rendered canvas (e.g. the forge
+ * output, which has no separate "clean" element to segment from). All three
+ * are valid `TexImageSource`s for MediaPipe's segmenters and valid
+ * `CanvasImageSource`s for `drawImage`, so nothing downstream needs to know
+ * which one it got.
+ */
+export type SegmentableSource = HTMLVideoElement | HTMLImageElement | HTMLCanvasElement;
 
 class SegmentationEngine {
   private autoSeg: ImageSegmenter | null = null;
@@ -81,7 +90,7 @@ class SegmentationEngine {
     return s / mask.length;
   }
 
-  /** Analyze a rendered frame for visually interesting regions via color-variance + center-bias saliency. */
+  /** Analyze a frame for visually interesting regions via color-variance + center-bias saliency. */
   analyzeSaliency(source: SegmentableSource, maxPoints = 3): SaliencyPoint[] {
     const S = 48;
     if (!this._salCanvas) {

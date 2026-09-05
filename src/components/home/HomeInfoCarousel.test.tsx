@@ -35,6 +35,6 @@ describe("HomeInfoCarousel", () => {
     renderCarousel();
     fireEvent.keyDown(screen.getByRole("region", { name: "Ether-MOSH live visuals" }), { key: "ArrowRight" });
     expect(screen.getByText(/02 \/ 07 · About/i)).toBeTruthy();
-    expect(screen.getByRole("link", { name: /Explore all 108 effects/i }).getAttribute("href")).toBe("/effects");
+    expect(screen.getByRole("link", { name: /Explore all \d+ effects/i }).getAttribute("href")).toBe("/effects");
   });
 });

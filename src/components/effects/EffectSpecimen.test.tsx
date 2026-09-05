@@ -11,8 +11,8 @@ describe("EffectSpecimen", () => {
     const { container, rerender } = render(<>{registry.map(effect => <EffectSpecimen key={effect.id} effect={effect} />)}</>);
     const firstPass = [...container.querySelectorAll("svg")].map(svg => svg.getAttribute("data-specimen-signature"));
 
-    expect(firstPass).toHaveLength(108);
-    expect(new Set(firstPass).size).toBe(108);
+    expect(firstPass).toHaveLength(registry.length);
+    expect(new Set(firstPass).size).toBe(registry.length);
 
     rerender(<>{registry.map(effect => <EffectSpecimen key={effect.id} effect={effect} />)}</>);
     const secondPass = [...container.querySelectorAll("svg")].map(svg => svg.getAttribute("data-specimen-signature"));

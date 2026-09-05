@@ -107,7 +107,6 @@ export function GlCanvas() {
   const videoElement = useStore(s => s.videoElement);
   const sourceMode = useStore(s => s.sourceMode);
   const forgeSeamless = useStore(s => s.forge.seamless);
-  const randomiseForge = useStore(s => s.randomiseForge);
   const cameraFacing = useStore(s => s.cameraFacing);
   const showBeforeAfter = useStore(s => s.showBeforeAfter);
   const beforeAfterSplit = useStore(s => s.beforeAfterSplit);

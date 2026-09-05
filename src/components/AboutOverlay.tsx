@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { PUBLIC_EFFECTS } from "@/engine/effects";
 
 /**
  * "?" trigger + full-screen about overlay. Kept dependency-free (no dialog
@@ -51,7 +52,7 @@ export const AboutTrigger = ({ hidden = false }: AboutTriggerProps) => {
               browser; nothing is uploaded anywhere.
             </p>
             <ul className="mt-4 space-y-1 font-mono text-[11px] uppercase tracking-[0.2em] text-foreground/55">
-              <li>· 105 shader effects, stackable + blendable</li>
+              <li>· {PUBLIC_EFFECTS.length} shader effects, stackable + blendable</li>
               <li>· live camera: front / rear / any webcam</li>
               <li>· beat sync, mic + system-audio reactivity</li>
               <li>· PNG stills + WebM video export</li>

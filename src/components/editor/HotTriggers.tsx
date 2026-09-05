@@ -978,7 +978,14 @@ function MobileRadialWheel({
 
   return (
     <div ref={layerRef} data-phase="idle" className="mobile-radial-layer pointer-events-none absolute inset-0 z-[70]">
-      <button type="button" className="pointer-events-auto absolute left-1/2 top-1/2 h-px w-px opacity-0" onClick={() => { setPhase("open"); cacheWheelRect(); }} aria-label="Open radial controls" />
+      {/* Keyboard-only entry point (Tab + Enter/Space) for the wheel — real
+          users open it with the long-press gesture below. pointer-events-none
+          keeps this off mouse/touch hit-testing: it's dead center of the
+          whole screen, and Chromium's touch-target adjustment was snapping
+          taps several pixels away onto this invisible 1px button instead of
+          the canvas underneath it. Keyboard activation doesn't go through
+          hit-testing, so it's unaffected. */}
+      <button type="button" className="pointer-events-none absolute left-1/2 top-1/2 h-px w-px opacity-0" onClick={() => { setPhase("open"); cacheWheelRect(); }} aria-label="Open radial controls" />
           <button type="button" className="mobile-radial-wheel__backdrop absolute inset-0" aria-label="Close radial controls" onClick={dismiss} />
           <div
             ref={wheelRef}
@@ -1254,7 +1261,8 @@ function DesktopRadialWheel({
 
   return (
     <div ref={layerRef} data-phase={phase} className="desktop-radial-layer pointer-events-none fixed inset-0 z-[70]">
-        <button type="button" className="pointer-events-auto absolute left-1/2 top-1/2 h-px w-px opacity-0" onClick={() => setPhase("open")} aria-label="Open radial controls" />
+        {/* Keyboard-only entry point — see the mobile variant's comment above. */}
+        <button type="button" className="pointer-events-none absolute left-1/2 top-1/2 h-px w-px opacity-0" onClick={() => setPhase("open")} aria-label="Open radial controls" />
         <button type="button" className="mobile-radial-wheel__backdrop absolute inset-0" aria-label="Close radial controls" onClick={() => { setPhase("idle"); setEditing(false); }} />
         <div
           ref={wheelRef}

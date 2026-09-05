@@ -97,12 +97,12 @@ export default function EffectsRegistry() {
   return (
     <>
       <Helmet>
-        <title>108 GPU Glitch Effects · Ether-MOSH Effect Registry</title>
-        <meta name="description" content="Explore all 108 Ether-MOSH effects with visual examples, plain-language descriptions, parameter ranges, and the GLSL source that runs each effect." />
+        <title>{`${registry.length} GPU Glitch Effects · Ether-MOSH Effect Registry`}</title>
+        <meta name="description" content={`Explore all ${registry.length} Ether-MOSH effects with visual examples, plain-language descriptions, parameter ranges, and the GLSL source that runs each effect.`} />
         <meta name="keywords" content="glitch effects, GPU effects, GLSL shaders, pixel sorting, datamosh, halftone, moire, audio reactive visuals, Ether-MOSH" />
         <link rel="canonical" href="https://ether-mosh.online/effects" />
         <meta name="robots" content="index,follow,max-image-preview:large" />
-        <meta property="og:title" content="108 GPU Glitch Effects · Ether-MOSH" />
+        <meta property="og:title" content={`${registry.length} GPU Glitch Effects · Ether-MOSH`} />
         <meta property="og:description" content="A visual, searchable registry of every Ether-MOSH effect, parameter, and shader." />
         <meta property="og:type" content="website" />
         <meta property="og:url" content="https://ether-mosh.online/effects" />
@@ -190,7 +190,7 @@ export default function EffectsRegistry() {
         </section>
 
         <footer className="effect-registry-footer">
-          <span>108 effects / 5 categories / one GPU</span>
+          <span>{registry.length} effects / 5 categories / one GPU</span>
           <Link to="/news">Learn the effects in News + Updates <ArrowUpRight aria-hidden="true" /></Link>
         </footer>
       </main>
