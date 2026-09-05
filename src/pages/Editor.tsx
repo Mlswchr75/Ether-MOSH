@@ -133,6 +133,7 @@ export default function Editor() {
   const systemAudioEnabled = useStore(s => s.systemAudioEnabled);
   const setSystemAudioEnabled = useStore(s => s.setSystemAudioEnabled);
   const trackEnabled = useStore(s => s.trackEnabled);
+  const radialMenuOpen = useStore(s => s.radialMenuOpen);
   const isPerformanceMode = useStore(s => s.isPerformanceMode);
   const setPerformanceMode = useStore(s => s.setPerformanceMode);
   const desktopPortraitMode = useStore(s => s.desktopPortraitMode);
@@ -655,23 +656,38 @@ export default function Editor() {
     return () => window.clearTimeout(id);
   }, [hasSource]);
 
-  // Nudge toward turning on real audio reactivity (mic or device-audio
-  // routing) — persistently, not once. A visitor who dismisses this the
-  // first time (or just misses it) is otherwise never reminded again for
-  // the rest of the session, and "react to sound" is easy to not notice is
-  // even possible until it's pointed out more than once. Keeps re-showing
-  // on an interval for as long as neither source is on; stops for good the
-  // moment one actually is (the effect re-runs on that dependency change
-  // and returns early, clearing whatever nudge timer was in flight).
+  /* Nudge toward turning on real audio reactivity — but only while the menu
+     that answers it is open.
+
+     This used to fire on a three-minute timer regardless of what the visitor
+     was doing, and the card had no auto-expire, so it sat in the corner of
+     the canvas until it was explicitly answered. That is a box interrupting
+     someone mid-composition to advertise a feature, over and over, which is
+     the opposite of helpful.
+
+     Tying it to the radial menu makes it a prompt instead of an interruption:
+     it appears when the visitor has already opened the controls — the moment
+     they are looking for something to change — and the mic toggle is right
+     there in the same menu. Close the menu and it goes away.
+
+     Also now waits on the theme track. Someone playing a MOSH track already
+     has the visuals moving to sound; telling them to turn on the mic reads as
+     the app not noticing what it is doing. */
   useEffect(() => {
-    if (!hasSource || micEnabled || systemAudioEnabled) return;
-    const NUDGE_INTERVAL_MS = 3 * 60 * 1000;
+    if (!hasSource) return;
+    if (micEnabled || systemAudioEnabled || trackEnabled) return;
+    if (!radialMenuOpen) { setShowMicNudge(false); return; }
+
+    // Short first beat so it lands while the menu is still open, then an
+    // occasional repeat for as long as it stays open and silent.
+    const FIRST_MS = 1_200;
+    const REPEAT_MS = 25_000;
     let timer = window.setTimeout(function fire() {
       setShowMicNudge(true);
-      timer = window.setTimeout(fire, NUDGE_INTERVAL_MS);
-    }, 20_000);
-    return () => window.clearTimeout(timer);
-  }, [hasSource, micEnabled, systemAudioEnabled]);
+      timer = window.setTimeout(fire, REPEAT_MS);
+    }, FIRST_MS);
+    return () => { window.clearTimeout(timer); setShowMicNudge(false); };
+  }, [hasSource, micEnabled, systemAudioEnabled, trackEnabled, radialMenuOpen]);
 
   // If someone has been looking at an active visual for a full minute with
   // no audio source at all, point them to the music trigger. This is a

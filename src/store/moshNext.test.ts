@@ -91,4 +91,43 @@ describe("moshNext", () => {
     useStore.getState().undo();
     expect(useStore.getState().layers.map(layer => layer.effectId)).toEqual(before);
   });
+
+  /* Every layer must be reachable by moshing through, at every depth.
+
+     A role is not one layer: the director doubles accent, finish and form to
+     build anything past the four-part sentence. moshNext used to take the
+     first unlocked layer in a role every time, so the cursor cycled grade →
+     form → accent → finish and came back to the same four layers forever —
+     a doubled role's siblings could never be rerolled at all. Half a NUCLEAR
+     stack and nearly half an INTERDIMENSIONAL one sat frozen on screen while
+     the rest kept changing. */
+  it.each(["savage", "nuclear", "interdimensional"] as const)(
+    "eventually rerolls every layer of a %s stack, doubled roles included",
+    (intensity) => {
+      useStore.setState({
+        layers: [], selectedLayerId: null, past: [], future: [],
+        currentLook: null, currentBrief: null,
+        recentFormEffects: [], recentOtherEffects: [], recentLooks: [],
+        selectedRole: null, selectedRoleLayers: {}, roleCursor: "grade",
+      });
+      useStore.getState().mosh(intensity);
+      const start = useStore.getState().layers;
+      const original = new Map(start.map(layer => [layer.id, layer.effectId]));
+      const rerolled = new Set<string>();
+
+      // Generous, but far short of "forever" — the point is that no layer is
+      // permanently unreachable, and in practice one or two passes cover it.
+      for (let tap = 0; tap < 24; tap++) {
+        useStore.getState().moshNext();
+        for (const layer of useStore.getState().layers) {
+          if (original.get(layer.id) !== undefined && original.get(layer.id) !== layer.effectId) {
+            rerolled.add(layer.id);
+          }
+        }
+      }
+
+      const stuck = start.filter(layer => !rerolled.has(layer.id)).map(layer => layer.effectId);
+      expect(stuck, `never rerolled: ${stuck.join(", ")}`).toEqual([]);
+    },
+  );
 });
