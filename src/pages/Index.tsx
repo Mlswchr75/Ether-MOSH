@@ -294,7 +294,8 @@ const Index = () => {
                   type="button"
                   onClick={(e) => { e.stopPropagation(); openPicker(); }}
                   aria-label="Upload an image"
-                  className="source-mode-action"
+                  className="source-mode-action title-mode-cycle title-mode-cycle--upload"
+                  data-cycle-label="UPLOAD"
                 >
                   <Upload aria-hidden="true" />
                   <span className="split-action-label" data-label="UPLOAD">UPLOAD</span>
@@ -304,7 +305,8 @@ const Index = () => {
                   type="button"
                   onClick={handleGoLive}
                   aria-label="Go live with your camera"
-                  className="source-mode-action"
+                  className="source-mode-action title-mode-cycle title-mode-cycle--camera"
+                  data-cycle-label="CAMERA"
                 >
                   <Video aria-hidden="true" />
                   <span className="split-action-label" data-label="CAMERA">CAMERA</span>
@@ -347,7 +349,8 @@ const Index = () => {
                 type="button"
                 onClick={(e) => { e.stopPropagation(); navigate("/forge"); }}
                 aria-label="Open Forge mode"
-                className="forge-mode-action mosh-target"
+                className="forge-mode-action title-mode-cycle title-mode-cycle--forge"
+                data-cycle-label="FORGE"
               >
                 <ForgePatternMark />
                 <span className="split-action-label" data-label="FORGE">FORGE</span>
@@ -366,7 +369,7 @@ const Index = () => {
                 scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
               }}
               aria-label="Scroll up to explore live visuals"
-              className="split-direction split-direction--explore mosh-target"
+              className="split-direction split-direction--explore"
             >
               scroll up to explore <span className="info-hint-arrow" aria-hidden="true">↑</span>
             </motion.button>

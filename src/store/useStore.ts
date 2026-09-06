@@ -22,6 +22,7 @@ import {
   type Role,
 } from "@/engine/artDirector";
 import { recencyPenalty } from "@/engine/compose";
+import { rememberStack } from "@/engine/compositionVariety";
 import { generateSeed, rngFromSeed } from "@/engine/seed";
 import { presetToUrl, type PresetPayload } from "@/engine/presetUrl";
 import {
@@ -359,6 +360,8 @@ type State = {
   /** Recently-used look ids. Rotating the art direction — not just the
    *  effects — is what keeps consecutive moshes from reading the same. */
   recentLooks: string[];
+  /** Recent complete combinations, newest first; never persisted as a preset. */
+  recentStacks: string[][];
   /** The art direction the current stack was composed under. */
   currentLook: { id: string; name: string; blurb: string } | null;
   /** Latest content analysis, for the UI to show what the director saw. */
@@ -683,6 +686,7 @@ export const useStore = create<State & Actions>((set, get) => ({
   recentFormEffects: [],
   recentOtherEffects: [],
   recentLooks: [],
+  recentStacks: [],
   currentLook: null,
   currentBrief: null,
   plannedMosh: null,
@@ -927,7 +931,9 @@ export const useStore = create<State & Actions>((set, get) => ({
     const dramatic = options?.dramatic === true;
     const inten = dramatic ? "interdimensional" : (intensity ?? s.intensity);
     const brief = briefFrom(analyzeSource(s.videoElement ?? s.imageElement ?? s.glCanvas));
-    const prepared = !resetMemory && !dramatic && s.plannedMosh?.intensity === inten && briefDistance(s.plannedMosh.brief, brief) < 0.16
+    const prepared = !resetMemory && !dramatic && s.plannedMosh?.intensity === inten
+      && !s.plannedMosh.composition.layers.some(candidate => s.layers.some(layer => layer.locked && layer.effectId === candidate.effectId))
+      && briefDistance(s.plannedMosh.brief, brief) < 0.16
       ? s.plannedMosh : null;
     const seed = prepared?.seed ?? generateSeed();
     const rand = rngFromSeed(seed);
@@ -936,6 +942,7 @@ export const useStore = create<State & Actions>((set, get) => ({
     const previousForm = resetMemory ? [] : s.recentFormEffects;
     const previousOther = resetMemory ? [] : s.recentOtherEffects;
     const previousLooks = resetMemory ? [] : s.recentLooks;
+    const previousStacks = resetMemory ? [] : s.recentStacks;
     const currentUnlockedEffects = dramatic ? s.layers.filter(l => !l.locked).map(l => l.effectId) : [];
     const composition = prepared?.composition ?? compose(brief, rand, {
       roleCount: rollRoleCount(rand, ROLE_COUNT[inten]),
@@ -947,6 +954,7 @@ export const useStore = create<State & Actions>((set, get) => ({
       // gap that made the two shuffle noticeably differently.
       lookPenalty: recencyPenalty(dramatic && s.currentLook ? [s.currentLook.id] : previousLooks, []),
       effectPenalty: recencyPenalty(previousForm, previousOther),
+      recentStacks: previousStacks,
       previousLookId: s.currentLook?.id,
       // A locked layer's effect id is a real hard constraint, not a
       // preference — the director must never reach for it since it's
@@ -980,6 +988,7 @@ export const useStore = create<State & Actions>((set, get) => ({
     const nextForm = [...formIds, ...previousForm].slice(0, RECENT_FORM_MEMORY);
     const nextOther = [...otherIds, ...previousOther].slice(0, RECENT_OTHER_MEMORY);
     const nextLooks = [composition.look.id, ...previousLooks].slice(0, LOOK_MEMORY);
+    const nextStacks = rememberStack(previousStacks, layers.map(layer => layer.effectId));
     const plannedMosh = {
       seed: nextSeed, intensity: inten, brief,
       composition: compose(brief, nextRand, {
@@ -987,6 +996,7 @@ export const useStore = create<State & Actions>((set, get) => ({
         wildness: rollWildness(nextRand, WILD_FLOOR[inten]),
         lookPenalty: recencyPenalty(nextLooks, []),
         effectPenalty: recencyPenalty(nextForm, nextOther),
+        recentStacks: nextStacks,
         previousLookId: composition.look.id,
         avoidEffects: locked.map(l => l.effectId),
       }),
@@ -1001,6 +1011,7 @@ export const useStore = create<State & Actions>((set, get) => ({
       recentFormEffects: nextForm,
       recentOtherEffects: nextOther,
       recentLooks: nextLooks,
+      recentStacks: nextStacks,
       currentLook: {
         id: composition.look.id,
         name: composition.look.name,
@@ -1047,6 +1058,7 @@ export const useStore = create<State & Actions>((set, get) => ({
       wildness: rollWildness(rand, WILD_FLOOR[inten]),
       lookPenalty: recencyPenalty(s.recentLooks, []),
       effectPenalty: recencyPenalty(s.recentFormEffects, s.recentOtherEffects),
+      recentStacks: s.recentStacks,
       previousLookId: s.currentLook?.id,
       avoidEffects: locked.map(l => l.effectId),
       tileSafe: s.forge.seamless,
@@ -1099,6 +1111,7 @@ export const useStore = create<State & Actions>((set, get) => ({
       recentFormEffects: [...formIds, ...s.recentFormEffects].slice(0, RECENT_FORM_MEMORY),
       recentOtherEffects: [...otherIds, ...s.recentOtherEffects].slice(0, RECENT_OTHER_MEMORY),
       recentLooks: [composition.look.id, ...s.recentLooks].slice(0, LOOK_MEMORY),
+      recentStacks: rememberStack(s.recentStacks, layers.map(layer => layer.effectId)),
       currentLook: {
         id: composition.look.id,
         name: composition.look.name,
