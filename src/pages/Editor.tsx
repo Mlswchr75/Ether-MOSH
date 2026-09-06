@@ -1226,8 +1226,19 @@ export default function Editor() {
       const t = e.target as HTMLElement | null;
       const inField = !!(t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable));
 
+      // Cmd/Ctrl+Shift+K — enter Lottie Sticker Mode and capture the
+      // currently selected Lottie/GIF outputs. This must be checked before
+      // the command palette's Cmd/Ctrl+K chord below.
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === "k" || e.key === "K")) {
+        e.preventDefault();
+        if (e.repeat) return;
+        useStore.getState().setStickerMode(true);
+        window.dispatchEvent(new CustomEvent("mosh:capture-lottie-sticker"));
+        return;
+      }
+
       // Cmd/Ctrl+K — palette (works even when palette open via toggle? we close instead)
-      if ((e.ctrlKey || e.metaKey) && (e.key === "k" || e.key === "K")) {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === "k" || e.key === "K")) {
         e.preventDefault();
         setPaletteOpen(p => !p);
         return;
@@ -1237,16 +1248,20 @@ export default function Editor() {
       // remain the universal MOSH action even immediately after one of those
       // controls was focused.
       //
-      // Shift+Space is repurposed here specifically: rather than undo (its
-      // meaning everywhere else), it asks StickerCapture to throw away the
-      // sticker's current crop lock and propose a fresh framing/border/
-      // structural shape — repeatable indefinitely, since the point is
-      // shopping through candidates before committing to a capture.
+      // Cmd/Ctrl+Shift+Space is the deliberate sticker reshaper. Shift+Space
+      // remains the radical stack reset even while a sticker checkbox or
+      // select has focus; plain Space remains a normal mosh.
       if (e.code === "Space" && useStore.getState().stickerMode) {
+        if ((e.metaKey || e.ctrlKey) && !e.shiftKey) return;
         e.preventDefault();
         if (e.repeat) return;
-        if (e.shiftKey) window.dispatchEvent(new CustomEvent("mosh:reroll-sticker-shape"));
-        else crossfadeLayers(mosh, MOSH_FADE_MS);
+        if ((e.metaKey || e.ctrlKey) && e.shiftKey) {
+          window.dispatchEvent(new CustomEvent("mosh:reroll-sticker-shape"));
+        } else if (e.shiftKey) {
+          crossfadeLayers(() => useStore.getState().mosh(undefined, { resetMemory: true, dramatic: true }), MOSH_FADE_MS);
+        } else {
+          crossfadeLayers(mosh, MOSH_FADE_MS);
+        }
         return;
       }
 
@@ -1302,11 +1317,13 @@ export default function Editor() {
       }
 
       // Space is the keyboard equivalent of the MOSH button. Shift+Space
-      // walks one step back through the same visual history.
+      // forgets the recent Art Director history and deliberately jumps to
+      // a maximum-range stack that avoids the current unlocked effects.
       if (e.code === "Space") {
+        if (e.metaKey || e.ctrlKey) return;
         e.preventDefault();
         if (e.repeat) return;
-        if (e.shiftKey) undo();
+        if (e.shiftKey) crossfadeLayers(() => useStore.getState().mosh(undefined, { resetMemory: true, dramatic: true }), MOSH_FADE_MS);
         else crossfadeLayers(mosh, MOSH_FADE_MS);
         return;
       }
@@ -1329,20 +1346,6 @@ export default function Editor() {
         window.dispatchEvent(new CustomEvent("mosh:make-sticker"));
         return;
       }
-      // Shift+K => jump straight into Lottie Sticker Mode and capture,
-      // without needing scissors mode open or the Lottie checkbox already
-      // ticked first. Opens the sticker panel (so the preview/checkbox are
-      // visibly on) via the store directly, then hands off to
-      // StickerCapture's own listener (always-mounted, same event-bridge
-      // pattern as "mosh:make-sticker" above) for the actual capture.
-      if (e.shiftKey && (e.key === "k" || e.key === "K")) {
-        e.preventDefault();
-        if (e.repeat) return;
-        useStore.getState().setStickerMode(true);
-        window.dispatchEvent(new CustomEvent("mosh:capture-lottie-sticker"));
-        return;
-      }
-
       // M => mic toggle
       if (!e.shiftKey && (e.key === "m" || e.key === "M")) {
         e.preventDefault();
@@ -1857,6 +1860,8 @@ export default function Editor() {
           loadDroppedImage(file);
         }}
         onPointerDown={(e) => {
+          const target = e.target instanceof Element ? e.target : null;
+          if (target?.closest("button, a, input, textarea, select, label, summary, [role='button'], [role='slider'], [data-sticker-controls]")) return;
           // Cmd/Ctrl-click → ripple (Performance Mode only)
           if (useStore.getState().isPerformanceMode && (e.metaKey || e.ctrlKey)) {
             e.preventDefault();

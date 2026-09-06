@@ -726,7 +726,13 @@ export type LottieStickerBackground = "black" | "white";
  * synthesized organic mask or the genuine-alpha crop — can share one
  * preview renderer.
  */
-export function drawLottieStickerPreview(ctx: CanvasRenderingContext2D, frame: ImageData, background: LottieStickerBackground, time: number) {
+export function drawLottieStickerPreview(
+  ctx: CanvasRenderingContext2D,
+  frame: ImageData,
+  background: LottieStickerBackground,
+  time: number,
+  coverage = 1,
+) {
   const { width, height } = ctx.canvas;
   const base = background === "black" ? 5 : 246;
   ctx.clearRect(0, 0, width, height);
@@ -740,9 +746,17 @@ export function drawLottieStickerPreview(ctx: CanvasRenderingContext2D, frame: I
     gradient.addColorStop(1, `rgba(${base},${base},${base},0)`);
     ctx.fillStyle = gradient; ctx.fillRect(0, 0, width, height);
   }
-  const work = document.createElement("canvas"); work.width = width; work.height = height;
+  const work = document.createElement("canvas"); work.width = frame.width; work.height = frame.height;
   work.getContext("2d")?.putImageData(frame, 0, 0);
-  ctx.drawImage(work, 0, 0);
+  const safeCoverage = clamp(coverage, .5, 1);
+  // This is a visualizer preview, not the export bitmap: cover the display
+  // so the source crop's rectangular limits fall beyond the viewport. The
+  // screen becomes the only hard frame and every visible interior boundary
+  // is produced by the organic alpha itself.
+  const scale = Math.max(width / Math.max(1, frame.width), height / Math.max(1, frame.height)) * safeCoverage;
+  const drawWidth = frame.width * scale;
+  const drawHeight = frame.height * scale;
+  ctx.drawImage(work, (width - drawWidth) / 2, (height - drawHeight) / 2, drawWidth, drawHeight);
 }
 
 export async function encodeStickerFramesForLottie(frames: ImageData[]) {

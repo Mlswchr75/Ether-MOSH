@@ -793,7 +793,13 @@ export function GlCanvas() {
         // above it (HotTriggers etc.) is a separate element that receives
         // the click first.
         onClick={["forge", "motif"].includes(sourceMode)
-          ? () => crossfadeLayers(() => useStore.getState().forgeMosh(), MOSH_FADE_MS)
+          ? () => {
+              // In Sticker Studio the canvas is a preview, not a MOSH pad.
+              // Shape changes are explicit via Cmd/Ctrl+Shift+Space, so an
+              // ordinary preview/menu tap cannot silently replace the stack.
+              if (useStore.getState().stickerMode) return;
+              crossfadeLayers(() => useStore.getState().forgeMosh(), MOSH_FADE_MS);
+            }
           : undefined}
       />
 

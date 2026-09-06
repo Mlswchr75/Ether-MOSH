@@ -78,6 +78,13 @@ const RECENT_FORM_MEMORY = 5;
 const RECENT_OTHER_MEMORY = 10;
 const LOOK_MEMORY = 5;
 
+export type MoshOptions = {
+  /** Forget the rolling Art Director history before composing this stack. */
+  resetMemory?: boolean;
+  /** Use the maximum composition range and hard-avoid the current unlocked FX. */
+  dramatic?: boolean;
+};
+
 /**
  * How many parts of the composition each intensity centres on.
  *
@@ -408,7 +415,7 @@ type Actions = {
   rerollRole: (role?: Role, layerId?: string) => RoleRoll | null;
   addRole: (role: Role) => RoleRoll | null;
 
-  mosh: (intensity?: Intensity) => void;
+  mosh: (intensity?: Intensity, options?: MoshOptions) => void;
   /**
    * The Forge/Motif equivalent of mosh() — one tap, one coordinated shuffle
    * of everything Forge owns (generator, seed, palette, kaleidoscope) *and*
@@ -914,16 +921,22 @@ export const useStore = create<State & Actions>((set, get) => ({
     };
   }),
 
-  mosh: (intensity) => set(s => {
+  mosh: (intensity, options) => set(s => {
     if (s.captureLocked) return s;
-    const inten = intensity ?? s.intensity;
+    const resetMemory = options?.resetMemory === true;
+    const dramatic = options?.dramatic === true;
+    const inten = dramatic ? "interdimensional" : (intensity ?? s.intensity);
     const brief = briefFrom(analyzeSource(s.videoElement ?? s.imageElement ?? s.glCanvas));
-    const prepared = s.plannedMosh?.intensity === inten && briefDistance(s.plannedMosh.brief, brief) < 0.16
+    const prepared = !resetMemory && !dramatic && s.plannedMosh?.intensity === inten && briefDistance(s.plannedMosh.brief, brief) < 0.16
       ? s.plannedMosh : null;
     const seed = prepared?.seed ?? generateSeed();
     const rand = rngFromSeed(seed);
 
     const locked = s.layers.filter(l => l.locked);
+    const previousForm = resetMemory ? [] : s.recentFormEffects;
+    const previousOther = resetMemory ? [] : s.recentOtherEffects;
+    const previousLooks = resetMemory ? [] : s.recentLooks;
+    const currentUnlockedEffects = dramatic ? s.layers.filter(l => !l.locked).map(l => l.effectId) : [];
     const composition = prepared?.composition ?? compose(brief, rand, {
       roleCount: rollRoleCount(rand, ROLE_COUNT[inten]),
       chaos: CHAOS[inten],
@@ -932,13 +945,13 @@ export const useStore = create<State & Actions>((set, get) => ({
       // memory Journey mode uses (see recencyPenalty in compose.ts) rather
       // than regular moshing's old fixed-window hard-avoid, which is the
       // gap that made the two shuffle noticeably differently.
-      lookPenalty: recencyPenalty(s.recentLooks, []),
-      effectPenalty: recencyPenalty(s.recentFormEffects, s.recentOtherEffects),
+      lookPenalty: recencyPenalty(dramatic && s.currentLook ? [s.currentLook.id] : previousLooks, []),
+      effectPenalty: recencyPenalty(previousForm, previousOther),
       previousLookId: s.currentLook?.id,
       // A locked layer's effect id is a real hard constraint, not a
       // preference — the director must never reach for it since it's
       // already pinned in a fixed slot.
-      avoidEffects: locked.map(l => l.effectId),
+      avoidEffects: [...locked.map(l => l.effectId), ...currentUnlockedEffects],
     });
 
     const fresh: Layer[] = composition.layers.map(cl => {
@@ -964,9 +977,9 @@ export const useStore = create<State & Actions>((set, get) => ({
     const paletteIdx = chooseArtDirectedPalette(brief, rand, s.forge.paletteIdx);
     const nextSeed = generateSeed();
     const nextRand = rngFromSeed(nextSeed);
-    const nextForm = [...formIds, ...s.recentFormEffects].slice(0, RECENT_FORM_MEMORY);
-    const nextOther = [...otherIds, ...s.recentOtherEffects].slice(0, RECENT_OTHER_MEMORY);
-    const nextLooks = [composition.look.id, ...s.recentLooks].slice(0, LOOK_MEMORY);
+    const nextForm = [...formIds, ...previousForm].slice(0, RECENT_FORM_MEMORY);
+    const nextOther = [...otherIds, ...previousOther].slice(0, RECENT_OTHER_MEMORY);
+    const nextLooks = [composition.look.id, ...previousLooks].slice(0, LOOK_MEMORY);
     const plannedMosh = {
       seed: nextSeed, intensity: inten, brief,
       composition: compose(brief, nextRand, {
@@ -985,9 +998,9 @@ export const useStore = create<State & Actions>((set, get) => ({
       seed,
       // Most-recent-first, same ordering recencyPenalty expects (see its
       // own doc: index 0 gets the strongest suppression, decaying outward).
-      recentFormEffects: [...formIds, ...s.recentFormEffects].slice(0, RECENT_FORM_MEMORY),
-      recentOtherEffects: [...otherIds, ...s.recentOtherEffects].slice(0, RECENT_OTHER_MEMORY),
-      recentLooks: [composition.look.id, ...s.recentLooks].slice(0, LOOK_MEMORY),
+      recentFormEffects: nextForm,
+      recentOtherEffects: nextOther,
+      recentLooks: nextLooks,
       currentLook: {
         id: composition.look.id,
         name: composition.look.name,
