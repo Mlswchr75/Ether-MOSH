@@ -7,15 +7,19 @@ import { requestCameraStream, defaultFacing, type CameraError } from "@/hooks/us
 import { loadImageFile } from "@/lib/sourceLoader";
 import { sanitizeImageDeck } from "@/lib/photoDeck";
 
-/** Matches the title screen's Upload / Video / Flame trio — same icons, same
- *  primary-vs-accent coloring — so this reads as the same instrument
- *  reappearing in the editor's corner rather than a different control. */
+/** Mirrors the title screen's two source families: the user's own source
+ *  (Upload / Camera) and generated source (Forge / Motif). The renderer still
+ *  keeps each concrete mode separate; the grouping is the shared navigation
+ *  model rather than a new state layer. */
 const MODE_META: Record<SourceMode, { label: string; icon: typeof Upload; tint: "primary" | "accent" }> = {
   upload: { label: "Upload", icon: Upload, tint: "primary" },
   camera: { label: "Camera", icon: Video, tint: "accent" },
   forge: { label: "Forge", icon: Flame, tint: "accent" },
   motif: { label: "Motif", icon: Sparkles, tint: "accent" },
 };
+
+const PROVIDED_SOURCE_MODES: SourceMode[] = ["upload", "camera"];
+const GENERATED_SOURCE_MODES: SourceMode[] = ["forge", "motif"];
 
 const CAMERA_ERR: Record<CameraError, string> = {
   permission: "Camera blocked — allow it in your browser and try again",
@@ -34,12 +38,12 @@ type Props = {
 };
 
 /**
- * Which source feeds the renderer — upload, camera, or forge. Always three
- * separate buttons (not a collapsed dropdown) so it reads as the title
- * screen's own trio persisting into the editor, not a settings menu.
+ * Which source feeds the renderer. Upload and Camera share one compact source
+ * capsule; Forge and Motif share a generated-source capsule. Every concrete
+ * mode remains one tap away, preserving the existing renderer contracts.
  * Idle-fades with the rest of the chrome (`.ui-chrome`) and hides fully
  * whenever the rest of the menu does (`hidden`) — U/L/Y keyboard shortcuts
- * (see Editor.tsx's onKey) reach the same three modes without needing this
+ * (see Editor.tsx's onKey) reach the primary modes without needing this
  * visible at all.
  */
 export function SourceModeToggle({ hidden = false }: Props) {
@@ -182,49 +186,58 @@ export function SourceModeToggle({ hidden = false }: Props) {
     uploadHoldTimerRef.current = null;
   };
 
+  const renderModeButton = (m: SourceMode) => {
+    const meta = MODE_META[m];
+    const Icon = meta.icon;
+    const active = sourceMode === m;
+    const isPrimary = meta.tint === "primary";
+    const busy = m === "camera" && starting;
+
+    return (
+      <button
+        key={m}
+        type="button"
+        onClick={() => { if (m === "upload" && uploadHeldRef.current) return; void pick(m); }}
+        onPointerDown={m === "upload" ? startUploadHold : undefined}
+        onPointerUp={m === "upload" ? endUploadHold : undefined}
+        onPointerLeave={m === "upload" ? endUploadHold : undefined}
+        onPointerCancel={m === "upload" ? endUploadHold : undefined}
+        aria-label={`${meta.label}${active ? " (active)" : ""}`}
+        aria-pressed={active}
+        title={m === "upload" ? "Upload — hold for photo deck" : meta.label}
+        disabled={busy}
+        className="relative flex h-10 w-10 items-center justify-center rounded-full border bg-background/30 backdrop-blur-[2px] transition hover:scale-105 disabled:opacity-60 disabled:hover:scale-100"
+        style={{
+          borderColor: isPrimary
+            ? `hsl(var(--primary) / ${active ? 0.9 : 0.5})`
+            : `hsl(var(--accent) / ${active ? 0.9 : 0.5})`,
+          color: isPrimary ? "hsl(var(--primary))" : "hsl(var(--accent))",
+          boxShadow: active
+            ? `0 0 22px hsl(var(${isPrimary ? "--primary" : "--accent"}) / 0.55)`
+            : `0 0 10px hsl(var(${isPrimary ? "--primary" : "--accent"}) / 0.25)`,
+        }}
+      >
+        <Icon className="h-4 w-4" strokeWidth={1.5} aria-hidden="true" />
+        {active && (
+          <span
+            className="pointer-events-none absolute inset-0 rounded-full ring-1 animate-pulse-soft"
+            style={{ boxShadow: `inset 0 0 12px hsl(var(${isPrimary ? "--primary" : "--accent"}) / 0.3)` }}
+          />
+        )}
+      </button>
+    );
+  };
+
   return (
     <>
-    {!hidden && <div className="ui-chrome pointer-events-auto absolute top-3 left-3 z-40 flex items-center gap-2.5 safe-top safe-left">
-      {(Object.keys(MODE_META) as SourceMode[]).map((m) => {
-        const meta = MODE_META[m];
-        const Icon = meta.icon;
-        const active = sourceMode === m;
-        const isPrimary = meta.tint === "primary";
-        const busy = m === "camera" && starting;
-        return (
-          <button
-            key={m}
-            type="button"
-            onClick={() => { if (m === "upload" && uploadHeldRef.current) return; void pick(m); }}
-            onPointerDown={m === "upload" ? startUploadHold : undefined}
-            onPointerUp={m === "upload" ? endUploadHold : undefined}
-            onPointerLeave={m === "upload" ? endUploadHold : undefined}
-            onPointerCancel={m === "upload" ? endUploadHold : undefined}
-            aria-label={`${meta.label}${active ? " (active)" : ""}`}
-            aria-pressed={active}
-            title={m === "upload" ? "Upload — hold for photo deck" : meta.label}
-            disabled={busy}
-            className="relative flex h-10 w-10 items-center justify-center rounded-full border bg-background/30 backdrop-blur-[2px] transition hover:scale-105 disabled:opacity-60 disabled:hover:scale-100"
-            style={{
-              borderColor: isPrimary
-                ? `hsl(var(--primary) / ${active ? 0.9 : 0.5})`
-                : `hsl(var(--accent) / ${active ? 0.9 : 0.5})`,
-              color: isPrimary ? "hsl(var(--primary))" : "hsl(var(--accent))",
-              boxShadow: active
-                ? `0 0 22px hsl(var(${isPrimary ? "--primary" : "--accent"}) / 0.55)`
-                : `0 0 10px hsl(var(${isPrimary ? "--primary" : "--accent"}) / 0.25)`,
-            }}
-          >
-            <Icon className="h-4 w-4" strokeWidth={1.5} aria-hidden="true" />
-            {active && (
-              <span
-                className="pointer-events-none absolute inset-0 rounded-full ring-1 animate-pulse-soft"
-                style={{ boxShadow: `inset 0 0 12px hsl(var(${isPrimary ? "--primary" : "--accent"}) / 0.3)` }}
-              />
-            )}
-          </button>
-        );
-      })}
+    {!hidden && <div className="ui-chrome pointer-events-auto absolute top-3 left-3 z-40 flex items-center gap-2 safe-top safe-left">
+      <div role="group" aria-label="Your source — upload or camera" className="flex items-center gap-1 rounded-full border border-[hsl(var(--primary))]/25 bg-black/20 p-1 shadow-[0_0_18px_hsl(var(--primary)/0.08)] backdrop-blur-sm">
+        {PROVIDED_SOURCE_MODES.map(renderModeButton)}
+      </div>
+      <span className="h-px w-3 bg-gradient-to-r from-[hsl(var(--primary))]/45 to-[hsl(var(--accent))]/45" aria-hidden="true" />
+      <div role="group" aria-label="Generated source — forge or motif" className="flex items-center gap-1 rounded-full border border-[hsl(var(--accent))]/25 bg-black/20 p-1 shadow-[0_0_18px_hsl(var(--accent)/0.08)] backdrop-blur-sm">
+        {GENERATED_SOURCE_MODES.map(renderModeButton)}
+      </div>
 
       <input
         ref={fileRef}
