@@ -76,24 +76,58 @@ const ANALYZE_TOOL = {
   },
 } as const;
 
-// Google's OpenAI-compatible endpoint for the Gemini API — same request/response
-// shape (including tool calling) as the old Lovable AI gateway call, so this is a
-// drop-in swap: different base URL and bearer key, identical body shape below.
-const GEMINI_OPENAI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
+// Every provider below speaks the same OpenAI-compatible chat-completions shape
+// (messages, tools, tool_choice, Authorization: Bearer) — this is what makes
+// swapping providers a config change, not a rewrite.
+type ProviderId = "openrouter" | "groq" | "gemini";
 
-// Google retires model aliases on its own schedule, and a retired one fails at
-// call time rather than at deploy time — gemini-2.5-pro, pinned here originally,
-// now 404s for any account created after it closed to new users. Reading the id
-// from the environment makes the next retirement a secret change instead of a
-// code change, a redeploy and a release.
-const GEMINI_MODEL = Deno.env.get("GEMINI_MODEL") ?? "gemini-3.1-pro-preview";
+const PROVIDERS: Record<ProviderId, { endpoint: string; apiKeyEnv: string; defaultModel?: string }> = {
+  // Free, no card required. "openrouter/free" is OpenRouter's own auto-router
+  // (launched Feb 2026): it picks whichever currently-free model supports
+  // vision + tool calling + structured output, and keeps working as individual
+  // free models rotate out from under it — the actual fix for the failure mode
+  // below (a pinned model id retiring with no warning), not just a deferral of it.
+  // Rate limit is tight (20 req/min, 200/day) but ample for this feature's volume.
+  openrouter: {
+    endpoint: "https://openrouter.ai/api/v1/chat/completions",
+    apiKeyEnv: "OPENROUTER_API_KEY",
+    defaultModel: "openrouter/free",
+  },
+  // Free, no card, much higher throughput than OpenRouter's free tier — but its
+  // free vision-capable model is a named preview, which can retire the same way
+  // gemini-2.5-pro did below. No default model here on purpose: check
+  // https://console.groq.com/docs/models for a current vision + tool-calling
+  // model and set AI_MODEL explicitly rather than trusting a name pinned in code.
+  groq: {
+    endpoint: "https://api.groq.com/openai/v1/chat/completions",
+    apiKeyEnv: "GROQ_API_KEY",
+  },
+  // Requires a billed Google Cloud project for real quota (see README) — kept
+  // as a documented upgrade path, not the default, until that's set up.
+  gemini: {
+    endpoint: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+    apiKeyEnv: "GEMINI_API_KEY",
+    // Google retires model aliases on its own schedule, and a retired one fails
+    // at call time rather than deploy time — gemini-2.5-pro, pinned here
+    // originally, now 404s for any account created after it closed to new users.
+    defaultModel: "gemini-3.1-pro-preview",
+  },
+};
+
+const AI_PROVIDER = (Deno.env.get("AI_PROVIDER") ?? "openrouter") as ProviderId;
+const PROVIDER = PROVIDERS[AI_PROVIDER];
+if (!PROVIDER) {
+  throw new Error(`Unknown AI_PROVIDER "${AI_PROVIDER}" — expected one of ${Object.keys(PROVIDERS).join(", ")}`);
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
-    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
-    if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY not configured");
+    const apiKey = Deno.env.get(PROVIDER.apiKeyEnv);
+    if (!apiKey) throw new Error(`${PROVIDER.apiKeyEnv} not configured`);
+    const model = Deno.env.get("AI_MODEL") ?? PROVIDER.defaultModel;
+    if (!model) throw new Error(`AI_MODEL must be set for provider "${AI_PROVIDER}" (it has no default)`);
 
     const { rowId, ownerToken } = await req.json();
     if (!rowId || !ownerToken) {
@@ -127,14 +161,14 @@ Deno.serve(async (req) => {
     const { data: pub } = admin.storage.from("forge-uploads").getPublicUrl(row.storage_path);
     const imageUrl = pub.publicUrl;
 
-    const resp = await fetch(GEMINI_OPENAI_ENDPOINT, {
+    const resp = await fetch(PROVIDER.endpoint, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${GEMINI_API_KEY}`,
+        Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: GEMINI_MODEL,
+        model,
         messages: [
           {
             role: "system",
@@ -161,7 +195,7 @@ Deno.serve(async (req) => {
       // an exhausted per-minute cap says "wait", but `limit: 0` says the model
       // has no quota on this plan at all and waiting will never help.
       const t = await resp.text();
-      console.error("Gemini API error", resp.status, GEMINI_MODEL, t);
+      console.error("AI provider error", AI_PROVIDER, resp.status, model, t);
 
       if (resp.status === 429) {
         return new Response(JSON.stringify({ error: "Rate limited, please retry shortly." }), {
@@ -171,7 +205,7 @@ Deno.serve(async (req) => {
       }
       await admin
         .from("pattern_forge_uploads")
-        .update({ status: "failed", error: `gemini ${resp.status} (${GEMINI_MODEL})` })
+        .update({ status: "failed", error: `${AI_PROVIDER} ${resp.status} (${model})` })
         .eq("id", rowId);
       return new Response(JSON.stringify({ error: "AI analysis error" }), {
         status: 502,

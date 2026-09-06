@@ -39,20 +39,34 @@ these migrations apply cleanly in order and reproduce the full schema.
   - `PAYMENTS_LIVE_WEBHOOK_SECRET` / `PAYMENTS_SANDBOX_WEBHOOK_SECRET` — signing secrets from your Stripe webhook endpoint config
   - `PAYMENTS_ALLOWED_ORIGINS` — comma-separated checkout origins; defaults to `https://ether-mosh.online`
   - `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` — provided automatically by Supabase's edge runtime, no action needed
-- `forge-analyze` — AI artwork analysis for Pattern Forge. Calls Google's
-  Gemini API directly (via its OpenAI-compatible endpoint) instead of any
-  site-builder AI gateway. Needs:
-  - `GEMINI_API_KEY` — your own Gemini API key, from https://aistudio.google.com/apikey.
-    Set it on the Supabase project, never as a `VITE_` variable — anything with that
-    prefix is compiled into the browser bundle and readable by anyone.
-  - `GEMINI_MODEL` — optional; overrides the model id. Defaults to
-    `gemini-3.1-pro-preview`. Google retires model aliases on its own schedule and a
-    retired id fails at call time, not deploy time, so this exists to let a swap be a
-    secret change rather than a release. Check which ids your key can actually reach
-    at https://ai.dev/rate-limit — a `429` naming `limit: 0` means the model has no
-    quota on your plan at all (waiting will not help; either enable billing or pick a
-    model your tier includes), whereas an exhausted per-minute cap really is worth a
-    retry.
+- `forge-analyze` — AI artwork analysis for Pattern Forge. Calls one of three
+  interchangeable providers directly (no site-builder AI gateway) — they all
+  speak the same OpenAI-compatible chat-completions shape, so switching is a
+  secret change, not a code change:
+  - `AI_PROVIDER` — `openrouter` (default), `groq`, or `gemini`.
+  - `AI_MODEL` — optional; overrides the provider's default model id.
+  - Per-provider API key (set only the one matching `AI_PROVIDER`), never as a
+    `VITE_` variable — anything with that prefix is compiled into the browser
+    bundle and readable by anyone:
+    - `OPENROUTER_API_KEY` (default provider) — free, no card, from
+      https://openrouter.ai/keys. Uses `openrouter/free`, OpenRouter's own
+      auto-router (launched Feb 2026): it picks whichever currently-free model
+      supports vision + tool calling + structured output and keeps working as
+      individual free models rotate out, rather than pinning one name in code.
+      Rate limit is 20 req/min / 200 req/day — fine for this feature's volume.
+    - `GROQ_API_KEY` — free, no card, much higher throughput. No default
+      model: check https://console.groq.com/docs/models for a current vision +
+      tool-calling model and set `AI_MODEL` explicitly — Groq's free vision
+      model is a named preview with the same retirement risk described below.
+    - `GEMINI_API_KEY` — from https://aistudio.google.com/apikey. Defaults to
+      `gemini-3.1-pro-preview`. Requires a **billed** Google Cloud project for
+      real quota — a `429` naming `limit: 0` at
+      https://ai.dev/rate-limit means the model has no quota on your plan at
+      all and waiting will not help, whereas an exhausted per-minute cap is
+      worth a retry. Google also retires model aliases on its own schedule
+      (`gemini-2.5-pro`, pinned here originally, 404s for any account created
+      after it closed to new users) — that's exactly the failure `AI_MODEL`
+      exists to make a secret change instead of a redeploy.
 - `forge-delete` — unchanged, no external dependency.
 
 None of these functions need `LOVABLE_API_KEY`. (The MCP server integration
