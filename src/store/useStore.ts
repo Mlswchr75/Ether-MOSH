@@ -14,6 +14,7 @@ import {
   compose,
   composeRoleLayer,
   poolForRole,
+  rollRoleCount,
   rollWildness,
   type FrameBrief,
   type Composition,
@@ -41,7 +42,7 @@ import { DEFAULT_TILE_UNIFORMS, type TileMode, type TileUniforms } from "@/engin
 import { extractPalette } from "@/engine/imagePalette";
 import { BIOME_LABELS, biomeAccentHex } from "@/engine/imagePalette";
 import { upscaleImage } from "@/engine/upscaler";
-import { trackPlayer } from "@/engine/trackPlayer";
+import { trackPlayer, type UploadedTrack } from "@/engine/trackPlayer";
 import {
   loadAudioInputPreference,
   saveAudioInputPreference,
@@ -78,39 +79,25 @@ const RECENT_OTHER_MEMORY = 10;
 const LOOK_MEMORY = 5;
 
 /**
- * How many parts of the composition each intensity fills.
- * 2 = grade + finish (a straight remaster), 4 = the full sentence.
+ * How many parts of the composition each intensity centres on.
+ *
+ * 2 = grade + finish (a straight remaster), 4 = the full sentence. These are
+ * centres, not fixed depths — rollRoleCount jitters a layer either side of
+ * them per mosh, so two rolls at one setting can differ in depth as well as in
+ * content.
+ *
+ * SAVAGE is the default and now centres on the full four-part sentence rather
+ * than three. Three layers meant the default stack was routinely a grade, a
+ * warp and a glow with no accent at all — the corruption/signature role, which
+ * is the one most people are actually pressing the button for, was the part
+ * being dropped.
  */
 const ROLE_COUNT: Record<Intensity, number> = {
   mild: 2,
-  savage: 3,
+  savage: 4,
   nuclear: 5,
   interdimensional: 7,
 };
-
-/**
- * How far a rolled layer count may drift from ROLE_COUNT's base, per
- * intensity. 0 for mild keeps its "the shot back, not reinvented" promise
- * exact — every other tier gets natural depth variety (3 one tap, 4 the
- * next) instead of a metronomic fixed stack size at every tap.
- */
-const ROLE_COUNT_JITTER: Record<Intensity, number> = {
-  mild: 0,
-  // Savage is the app's default intensity and the one several tests treat
-  // as a known, stable 3-role composition (grade/form/finish) — jittering
-  // it would make those tests flaky rather than wrong. Nuclear and
-  // interdimensional are where "wilder = more variety" already lives.
-  savage: 0,
-  nuclear: 1,
-  interdimensional: 1,
-};
-
-function rollRoleCount(inten: Intensity, rand: () => number): number {
-  const jitter = ROLE_COUNT_JITTER[inten];
-  if (!jitter) return ROLE_COUNT[inten];
-  const delta = Math.floor(rand() * (jitter * 2 + 1)) - jitter; // -jitter..+jitter
-  return Math.max(1, ROLE_COUNT[inten] + delta);
-}
 
 /**
  * How far the director may break its own grammar at each intensity.
@@ -121,10 +108,15 @@ function rollRoleCount(inten: Intensity, rand: () => number): number {
  *
  * interdimensional used to be identical to nuclear; depth and chaos are what
  * now make it a different setting rather than a different word.
+ *
+ * Raised across the board (bar MILD, whose 0 is a guarantee callers rely on).
+ * A rule-break fires on a role at chaos x 0.5, so the old SAVAGE reached
+ * outside a role shelf on roughly one slot in thirteen — rare enough that most
+ * sessions never saw one at the default setting.
  */
 const CHAOS: Record<Intensity, number> = {
   mild: 0,
-  savage: 0.22,
+  savage: 0.25,
   nuclear: 0.45,
   interdimensional: 0.7,
 };
@@ -225,12 +217,56 @@ type State = {
   /** Theme-track playback, mutually exclusive with mic/system audio. */
   trackEnabled: boolean;
   trackTitle: string;
+  /**
+   * Audio files the visitor loaded themselves, this session.
+   *
+   * Session-scoped on purpose: an upload becomes an object URL, which is
+   * alive only for as long as this document is. Persisting the *list* across
+   * reloads would leave rows pointing at revoked blobs — a menu full of
+   * tracks that error when tapped. Actually surviving a reload means storing
+   * the audio itself (IndexedDB), which is its own piece of work.
+   */
+  uploadedTracks: UploadedTrack[];
+  /**
+   * Whether the radial trigger menu is open.
+   *
+   * Lives in the store rather than inside the wheel because it gates
+   * behaviour outside the wheel — the audio nudge only fires while the menu
+   * the visitor would use to answer it is actually on screen.
+   */
+  radialMenuOpen: boolean;
   trackArtist: string;
   micSensitivity: number;
   /** Global reactivity multiplier — scales mic/device-audio sensitivity and
    *  audio-mapped modulator strength across every mode. 1 = no-op (the exact
    *  behavior before this field existed). */
   sensitivity: number;
+  /**
+   * Master fader over the whole effect stack, 0..1.5.
+   *
+   * Every layer keeps its own opacity — the director sets those per role, and
+   * they are what make a stack read as composed rather than as four things at
+   * the same volume. This scales all of them together, so the mix the director
+   * built survives while the amount of it on screen becomes something you can
+   * hold and move. 1 is a no-op.
+   *
+   * Above 1 the loud layers saturate first (opacity clamps at 1) and the quiet
+   * ones keep climbing, which is what a master gain is supposed to do: push
+   * the stack toward flat-out rather than uniformly brighter.
+   */
+  stackIntensity: number;
+  /**
+   * How much of the master fader is handed to the room, 0..1.
+   *
+   * 0 leaves it exactly where it is parked. Above 0 the overall audio envelope
+   * (with the beat putting an edge on transients) modulates the master
+   * *around* its setting rather than on top of it — see masterGain — so
+   * turning this up trades a fixed level for a moving one at the same centre
+   * instead of just making everything louder.
+   *
+   * Needs a live audio source; with reactivity off it does nothing.
+   */
+  stackIntensityReactive: number;
   /** Shared config for every export path — see ExportSettings' own doc. */
   exportSettings: ExportSettings;
   isPerformanceMode: boolean;
@@ -397,9 +433,13 @@ type Actions = {
   setAudioInputDevice: (deviceId: string | null, label?: string | null) => void;
   setAudioInputChannel: (channel: AudioInputChannel) => void;
   setTrackEnabled: (b: boolean) => void;
+  addUploadedTrack: (track: UploadedTrack) => void;
+  setRadialMenuOpen: (open: boolean) => void;
   setTrackMeta: (title: string, artist: string) => void;
   setMicSensitivity: (v: number) => void;
   setSensitivity: (v: number) => void;
+  setStackIntensity: (v: number) => void;
+  setStackIntensityReactive: (v: number) => void;
   setExportSettings: (patch: Partial<ExportSettings>) => void;
   setPerformanceMode: (b: boolean) => void;
   togglePerformanceMode: () => void;
@@ -592,10 +632,14 @@ export const useStore = create<State & Actions>((set, get) => ({
   audioInputDeviceLabel: storedAudioInput.label,
   audioInputChannel: storedAudioInput.channel,
   trackEnabled: false,
+  uploadedTracks: [],
+  radialMenuOpen: false,
   trackTitle: trackPlayer.title,
   trackArtist: trackPlayer.artist,
   micSensitivity: 1,
   sensitivity: 1,
+  stackIntensity: 1,
+  stackIntensityReactive: 0,
   exportSettings: loadExportSettings(),
   isPerformanceMode: false,
   desktopPortraitMode: false,
@@ -876,7 +920,7 @@ export const useStore = create<State & Actions>((set, get) => ({
 
     const locked = s.layers.filter(l => l.locked);
     const composition = prepared?.composition ?? compose(brief, rand, {
-      roleCount: rollRoleCount(inten, rand),
+      roleCount: rollRoleCount(rand, ROLE_COUNT[inten]),
       chaos: CHAOS[inten],
       wildness: rollWildness(rand, WILD_FLOOR[inten]),
       // Soft, decaying suppression instead of a hard exclude — the same
@@ -921,7 +965,7 @@ export const useStore = create<State & Actions>((set, get) => ({
     const plannedMosh = {
       seed: nextSeed, intensity: inten, brief,
       composition: compose(brief, nextRand, {
-        roleCount: rollRoleCount(inten, nextRand), chaos: CHAOS[inten],
+        roleCount: rollRoleCount(nextRand, ROLE_COUNT[inten]), chaos: CHAOS[inten],
         wildness: rollWildness(nextRand, WILD_FLOOR[inten]),
         lookPenalty: recencyPenalty(nextLooks, []),
         effectPenalty: recencyPenalty(nextForm, nextOther),
@@ -961,14 +1005,15 @@ export const useStore = create<State & Actions>((set, get) => ({
    * generator/seed/kaleidoscope reroll (previously only randomiseForge()),
    * plus an effect-stack reshuffle that shares its palette choice.
    *
-   * Seamless mode is the one place this still defers to Forge's own
-   * composer (composeForgeLayers) for the effect stack: compose() — the
-   * general Art Director — has no concept of tile-safety (see
-   * tileSafety.ts / forgeCompose.ts's own seamless-pool filtering), so
-   * routing seamless mode's stack through it risks picking effects that
-   * don't tile. Giving the Art Director real tile-safety awareness is its
-   * own piece of work, not this one — the generator/seed/palette/
-   * kaleidoscope reroll below still applies in seamless mode either way.
+   * Seamless mode now goes through the same director as everything else.
+   * It used to be the one mode that didn't: compose() had no concept of
+   * tile-safety, so seamless deferred to Forge's own composer, which fills
+   * roles from the tile-safe pool but has no look, no brief and no named
+   * intent. That left the mode the pattern work actually ships from as the
+   * only one with no art direction at all. compose() now takes `tileSafe`,
+   * which draws from the seamless look deck, confines every pick to effects
+   * that survive a repeat, and suppresses region masks (see its own note on
+   * why masks can't be filtered safe).
    */
   forgeMosh: (intensity) => set(s => {
     if (s.captureLocked) return s;
@@ -978,14 +1023,15 @@ export const useStore = create<State & Actions>((set, get) => ({
     const rand = rngFromSeed(seed);
     const locked = s.layers.filter(l => l.locked);
 
-    const composition = s.forge.seamless ? null : compose(brief, rand, {
-      roleCount: rollRoleCount(inten, rand),
+    const composition = compose(brief, rand, {
+      roleCount: rollRoleCount(rand, ROLE_COUNT[inten]),
       chaos: CHAOS[inten],
       wildness: rollWildness(rand, WILD_FLOOR[inten]),
       lookPenalty: recencyPenalty(s.recentLooks, []),
       effectPenalty: recencyPenalty(s.recentFormEffects, s.recentOtherEffects),
       previousLookId: s.currentLook?.id,
       avoidEffects: locked.map(l => l.effectId),
+      tileSafe: s.forge.seamless,
     });
     // One palette choice shared by the effect stack's grade and the
     // generator's own colors, rather than each half rolling its own and
@@ -1005,20 +1051,6 @@ export const useStore = create<State & Actions>((set, get) => ({
       transitionFromSeed: generatorChanged ? s.forge.seed : null,
       transitionFromPaletteIdx: generatorChanged ? s.forge.paletteIdx : null,
     };
-
-    if (!composition) {
-      // Seamless: same tile-safe composer randomiseForge() already used,
-      // just folded into this one coordinated action instead of a second
-      // separate tap target.
-      const stack = composeForgeLayers(nextForge);
-      nextForge.stack = stack;
-      return {
-        ...s,
-        past: pushPast(s), future: [],
-        forge: nextForge,
-        ...(["forge", "motif"].includes(s.sourceMode) ? { layers: stack } : {}),
-      };
-    }
 
     const fresh: Layer[] = composition.layers.map(cl => {
       const def = EFFECTS_BY_ID[cl.effectId];
@@ -1193,7 +1225,28 @@ export const useStore = create<State & Actions>((set, get) => ({
     const role = nextAvailableRole(s.layers, s.roleCursor, { includeCurrent: true });
     if (!role) return null;
     if (role !== s.roleCursor) set({ roleCursor: role });
-    const layerId = groupLayersByRole(s.layers)[role].find(layer => !layer.locked)?.id;
+    /* Continue from whichever sibling this role rolled last, rather than
+       always taking the first.
+
+       A role is not one layer. The director doubles accent, finish and form
+       to build anything deeper than the four-part sentence, so a 7-layer
+       stack holds three roles twice over. Taking `.find(unlocked)` every
+       time meant each doubled role was represented forever by its first
+       layer: the cursor visits grade, form, accent, finish and comes back
+       around to the same four layers, so the siblings could never be reached
+       no matter how long you moshed through. Half a NUCLEAR stack and nearly
+       half an INTERDIMENSIONAL one sat frozen while the rest rerolled.
+
+       Resuming after the last one rolled walks the whole group across
+       successive passes: accent's first layer this time round, its second
+       the next, wrapping when the group runs out. */
+    const group = groupLayersByRole(s.layers)[role];
+    const lastId = s.selectedRoleLayers[role];
+    const lastIdx = lastId ? group.findIndex(layer => layer.id === lastId) : -1;
+    const layerId = (
+      group.slice(lastIdx + 1).find(layer => !layer.locked)
+      ?? group.find(layer => !layer.locked)
+    )?.id;
     if (!layerId) return null;
     return get().rerollRole(role, layerId);
   },
@@ -1214,6 +1267,11 @@ export const useStore = create<State & Actions>((set, get) => ({
     selectedRole: null,
     selectedRoleLayers: {},
     roleCursor: "grade",
+    /* Tiling is a whole extra render pass that outlives the stack, so a
+       cleared stack with mirror tiling still on leaves the frame folded into
+       a seamed 2x2 grid — visibly "an effect that won't go away", which is
+       exactly what this button exists to answer. Nothing else ever reset it. */
+    tileMode: "none" as const,
   })),
 
   reset: () => set(s => ({ ...s, past: pushPast(s), future: [], layers: [], ...resetRoleSelection([]) })),
@@ -1244,6 +1302,13 @@ export const useStore = create<State & Actions>((set, get) => ({
     });
     return { audioInputChannel: channel };
   }),
+  addUploadedTrack: (track) => set(s => (
+    // Re-uploading the same file replaces its row rather than stacking a
+    // duplicate: the old object URL is dead to us either way, and two rows
+    // with one name is a menu bug, not a feature.
+    { uploadedTracks: [track, ...s.uploadedTracks.filter(t => t.title !== track.title)] }
+  )),
+  setRadialMenuOpen: (open) => set(s => s.radialMenuOpen === open ? s : { radialMenuOpen: open }),
   setTrackEnabled: (b) => {
     if (b) {
       trackPlayer.play().then(() => {
@@ -1261,6 +1326,8 @@ export const useStore = create<State & Actions>((set, get) => ({
   setTrackMeta: (title, artist) => set({ trackTitle: title, trackArtist: artist }),
   setMicSensitivity: (v) => set({ micSensitivity: v }),
   setSensitivity: (v) => set({ sensitivity: v }),
+  setStackIntensity: (v) => set({ stackIntensity: Math.max(0, Math.min(1.5, v)) }),
+  setStackIntensityReactive: (v) => set({ stackIntensityReactive: Math.max(0, Math.min(1, v)) }),
   setExportSettings: (patch) => set(s => {
     const next = { ...s.exportSettings, ...patch };
     try { localStorage.setItem(EXPORT_SETTINGS_KEY, JSON.stringify(next)); } catch {}

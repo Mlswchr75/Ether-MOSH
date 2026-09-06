@@ -7,8 +7,8 @@
  * instead of special-casing eight directions keeps the scroll maths to one
  * line and lets the sprocket holes stay glued to the strip's long edges.
  */
-import { useEffect, useRef } from "react";
-import { sizedSrc, type DemoFrame } from "@/data/demoReel";
+import { useEffect, useRef, useState } from "react";
+import { isFrameDead, sizedSrc, type DemoFrame } from "@/data/demoReel";
 import type { ReelPhase, ReelPlan } from "./useReelDirector";
 
 /** Frame box in px. The track length is derived from this, not measured. */
@@ -24,6 +24,8 @@ type Props = {
   plan: ReelPlan;
   phase: ReelPhase;
   onSelect: (src: string, productUrl: string) => void;
+  /** Reports a frame the browser could not paint, so later reels skip it. */
+  onFrameError: (src: string) => void;
 };
 
 const phaseClass: Record<ReelPhase, string> = {
@@ -33,8 +35,17 @@ const phaseClass: Record<ReelPhase, string> = {
   out: "reel-glitch-out",
 };
 
-export const MoshReel = ({ plan, phase, onSelect }: Props) => {
+export const MoshReel = ({ plan, phase, onSelect, onFrameError }: Props) => {
   const trackRef = useRef<HTMLDivElement>(null);
+  // A frame that fails is hidden where it stands rather than removed: the
+  // track's length is derived from the frame count, not measured, so dropping
+  // a box mid-flight would desync the wrap and jump the whole strip. It goes
+  // invisible instead, and `liveFrames` keeps it out of the next reel.
+  // Seeded from the module-level record so a url that already failed on an
+  // earlier reel never gets a second chance to flash a broken box.
+  const [broken, setBroken] = useState<ReadonlySet<string>>(
+    () => new Set(plan.frames.filter((f) => isFrameDead(f.src)).map((f) => f.src)),
+  );
   // Frames are meant to be clicked, and a target crossing the screen at
   // 200px/s is a target you miss. Pointing at the reel stops it.
   const paused = useRef(false);
@@ -101,19 +112,28 @@ export const MoshReel = ({ plan, phase, onSelect }: Props) => {
         onBlurCapture={() => { paused.current = false; }}
       >
         <div ref={trackRef} className="flex" style={{ gap: FRAME_GAP, willChange: "transform" }}>
-          {strip.map((frame, i) => (
+          {strip.map((frame, i) => {
+            // The strip repeats the same frames, so one bad url has to take
+            // every copy of itself with it.
+            const dead = broken.has(frame.src);
+            return (
             <button
               key={`${frame.src}-${i}`}
               type="button"
               // Frames repeat, so only the first cycle is reachable by keyboard
-              // and announced — the rest are the same products again.
-              tabIndex={i < frames.length ? 0 : -1}
-              aria-hidden={i >= frames.length}
+              // and announced — the rest are the same products again. A frame
+              // with no picture is out of the tab order in every cycle.
+              tabIndex={i < frames.length && !dead ? 0 : -1}
+              aria-hidden={i >= frames.length || dead}
+              // `pointer-events-none` only stops a pointer. A frame with no
+              // picture has nothing to hand the instrument, so it refuses
+              // every route in — keyboard activation included.
+              disabled={dead}
               onClick={(e) => {
                 e.stopPropagation();
                 onSelect(frame.src, frame.productUrl);
               }}
-              className="reel-frame pointer-events-auto shrink-0"
+              className={`reel-frame shrink-0 ${dead ? "pointer-events-none invisible" : "pointer-events-auto"}`}
               style={{ width: FRAME_W, height: FRAME_H }}
               title={`Mosh "${frame.label}"`}
             >
@@ -128,11 +148,16 @@ export const MoshReel = ({ plan, phase, onSelect }: Props) => {
                 loading="eager"
                 decoding="async"
                 draggable={false}
+                onError={() => {
+                  onFrameError(frame.src);
+                  setBroken((prev) => (prev.has(frame.src) ? prev : new Set(prev).add(frame.src)));
+                }}
                 className="h-full w-full object-cover"
               />
               <span className="reel-frame-label">{frame.label}</span>
             </button>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>

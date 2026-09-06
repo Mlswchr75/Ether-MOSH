@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { X, Sparkles, HelpCircle, EyeOff, Gauge, Glasses } from "lucide-react";
+import { X, Sparkles, HelpCircle, EyeOff, Gauge, Glasses, Sliders, Activity } from "lucide-react";
 import { toast } from "sonner";
 import { useStore } from "@/store/useStore";
 import { ExportSettingsPanel } from "./ExportSettingsPanel";
@@ -56,6 +56,10 @@ export function AccountSettingsOverlay({
   const setHelpModeEnabled = useStore(s => s.setHelpModeEnabled);
   const sensitivity = useStore(s => s.sensitivity);
   const setSensitivity = useStore(s => s.setSensitivity);
+  const stackIntensity = useStore(s => s.stackIntensity);
+  const setStackIntensity = useStore(s => s.setStackIntensity);
+  const stackReactive = useStore(s => s.stackIntensityReactive);
+  const setStackReactive = useStore(s => s.setStackIntensityReactive);
   const proHeldRef = useRef(false);
   const proHoldTimerRef = useRef<number | null>(null);
   const [xrUiOverride, setXrUiOverride] = useState<XrUiOverride>(() =>
@@ -235,6 +239,43 @@ export function AccountSettingsOverlay({
                       </button>
                     )}
                   </div>
+                </div>
+
+                <div className="rounded-md border border-white/10 bg-white/[0.03] p-3">
+                  <div className="mb-1.5 flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.14em] text-white/80">
+                    <span className="flex items-center gap-2"><Sliders className="h-4 w-4" strokeWidth={1.5} />Stack master</span>
+                    <em className="not-italic text-[hsl(var(--accent))]">{Math.round(stackIntensity * 100)}%</em>
+                  </div>
+                  <input
+                    type="range" min={0} max={1.5} step={0.01} value={stackIntensity}
+                    onChange={(event) => setStackIntensity(+event.target.value)}
+                    aria-label="Stack master"
+                    className="slider-hair w-full"
+                  />
+                  <div className="mt-1.5 flex items-center justify-between">
+                    <p className="max-w-[75%] font-mono text-[9px] leading-tight text-white/45">
+                      One fader over every layer at once. Each effect keeps its own strength — this scales the whole stack together, so the mix stays and only the amount of it moves. 100% changes nothing.
+                    </p>
+                    {stackIntensity !== 1 && (
+                      <button type="button" onClick={() => setStackIntensity(1)} className="shrink-0 font-mono text-[9px] uppercase tracking-[0.1em] text-white/50 hover:text-[hsl(var(--accent))]">
+                        reset
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="mt-3 mb-1.5 flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.14em] text-white/80">
+                    <span className="flex items-center gap-2"><Activity className="h-4 w-4" strokeWidth={1.5} />Hand it to the room</span>
+                    <em className="not-italic text-[hsl(var(--accent))]">{stackReactive === 0 ? "off" : `${Math.round(stackReactive * 100)}%`}</em>
+                  </div>
+                  <input
+                    type="range" min={0} max={1} step={0.01} value={stackReactive}
+                    onChange={(event) => setStackReactive(+event.target.value)}
+                    aria-label="Stack master reactivity"
+                    className="slider-hair w-full"
+                  />
+                  <p className="mt-1.5 font-mono text-[9px] leading-tight text-white/45">
+                    How much of that fader the audio and the touch surface get to move, around wherever you parked it. Needs a live source.
+                  </p>
                 </div>
               </section>
             </div>

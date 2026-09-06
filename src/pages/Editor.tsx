@@ -133,6 +133,7 @@ export default function Editor() {
   const systemAudioEnabled = useStore(s => s.systemAudioEnabled);
   const setSystemAudioEnabled = useStore(s => s.setSystemAudioEnabled);
   const trackEnabled = useStore(s => s.trackEnabled);
+  const radialMenuOpen = useStore(s => s.radialMenuOpen);
   const isPerformanceMode = useStore(s => s.isPerformanceMode);
   const setPerformanceMode = useStore(s => s.setPerformanceMode);
   const desktopPortraitMode = useStore(s => s.desktopPortraitMode);
@@ -655,23 +656,38 @@ export default function Editor() {
     return () => window.clearTimeout(id);
   }, [hasSource]);
 
-  // Nudge toward turning on real audio reactivity (mic or device-audio
-  // routing) — persistently, not once. A visitor who dismisses this the
-  // first time (or just misses it) is otherwise never reminded again for
-  // the rest of the session, and "react to sound" is easy to not notice is
-  // even possible until it's pointed out more than once. Keeps re-showing
-  // on an interval for as long as neither source is on; stops for good the
-  // moment one actually is (the effect re-runs on that dependency change
-  // and returns early, clearing whatever nudge timer was in flight).
+  /* Nudge toward turning on real audio reactivity — but only while the menu
+     that answers it is open.
+
+     This used to fire on a three-minute timer regardless of what the visitor
+     was doing, and the card had no auto-expire, so it sat in the corner of
+     the canvas until it was explicitly answered. That is a box interrupting
+     someone mid-composition to advertise a feature, over and over, which is
+     the opposite of helpful.
+
+     Tying it to the radial menu makes it a prompt instead of an interruption:
+     it appears when the visitor has already opened the controls — the moment
+     they are looking for something to change — and the mic toggle is right
+     there in the same menu. Close the menu and it goes away.
+
+     Also now waits on the theme track. Someone playing a MOSH track already
+     has the visuals moving to sound; telling them to turn on the mic reads as
+     the app not noticing what it is doing. */
   useEffect(() => {
-    if (!hasSource || micEnabled || systemAudioEnabled) return;
-    const NUDGE_INTERVAL_MS = 3 * 60 * 1000;
+    if (!hasSource) return;
+    if (micEnabled || systemAudioEnabled || trackEnabled) return;
+    if (!radialMenuOpen) { setShowMicNudge(false); return; }
+
+    // Short first beat so it lands while the menu is still open, then an
+    // occasional repeat for as long as it stays open and silent.
+    const FIRST_MS = 1_200;
+    const REPEAT_MS = 25_000;
     let timer = window.setTimeout(function fire() {
       setShowMicNudge(true);
-      timer = window.setTimeout(fire, NUDGE_INTERVAL_MS);
-    }, 20_000);
-    return () => window.clearTimeout(timer);
-  }, [hasSource, micEnabled, systemAudioEnabled]);
+      timer = window.setTimeout(fire, REPEAT_MS);
+    }, FIRST_MS);
+    return () => { window.clearTimeout(timer); setShowMicNudge(false); };
+  }, [hasSource, micEnabled, systemAudioEnabled, trackEnabled, radialMenuOpen]);
 
   // If someone has been looking at an active visual for a full minute with
   // no audio source at all, point them to the music trigger. This is a
@@ -1540,41 +1556,80 @@ export default function Editor() {
     return () => window.removeEventListener("aegis:toggle-ui", onToggleUI);
   }, []);
 
-  // Three-finger tap on the visualizer is the touch counterpart to C. It is
-  // intentionally scoped to the canvas and ignores UI controls so it cannot
-  // steal ordinary multi-touch interactions from the editor chrome.
+  // Three-finger tap on the visualizer is the touch counterpart to Shift+G
+  // (3-second GIF). Intentionally scoped to the canvas and ignores UI
+  // controls so it cannot steal ordinary multi-touch interactions from the
+  // editor chrome. A genuine tap only — down plus a quick, near-still
+  // release — so a deliberate three-finger hold or drag can't misfire a
+  // capture the way firing on touchdown alone would.
   useEffect(() => {
     const el = canvasContainerRef.current;
     if (!el) return;
-    const activeTouches = new Set<number>();
-    let fired = false;
+    type Point = { x: number; y: number };
+    const points = new Map<number, Point>();
+    let start: Point[] = [];
+    let startedAt = 0;
+    let maxTravel = 0;
+    let invalid = false;
+    let handled = false;
     const isCanvasTap = (target: EventTarget | null) =>
       !(target instanceof HTMLElement) || !target.closest("button, a, input, textarea, [role='slider'], [data-no-longpress]");
     const onDown = (e: PointerEvent) => {
       if (e.pointerType !== "touch" || !isCanvasTap(e.target)) return;
-      activeTouches.add(e.pointerId);
-      if (activeTouches.size !== 3 || fired) return;
-      fired = true;
-      e.preventDefault();
-      try { (navigator as any).vibrate?.(10); } catch {}
-      takeScreenshot();
+      points.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (points.size === 3) {
+        start = [...points.values()].map(p => ({ ...p }));
+        startedAt = performance.now();
+        maxTravel = 0;
+        invalid = false;
+        handled = false;
+      } else if (points.size > 3) {
+        // A fourth finger means this was never a clean three-finger tap.
+        invalid = true;
+      }
+    };
+    const onMove = (e: PointerEvent) => {
+      const p = points.get(e.pointerId);
+      if (!p) return;
+      p.x = e.clientX;
+      p.y = e.clientY;
+      if (!start.length || start.length !== points.size) return;
+      const now = [...points.values()];
+      for (let i = 0; i < now.length; i++) {
+        maxTravel = Math.max(maxTravel, Math.hypot(now[i].x - start[i].x, now[i].y - start[i].y));
+      }
     };
     const onEnd = (e: PointerEvent) => {
-      activeTouches.delete(e.pointerId);
-      if (activeTouches.size === 0) fired = false;
+      if (!points.has(e.pointerId)) return;
+      if (!handled && !invalid && points.size === 3 && start.length === 3) {
+        const elapsed = performance.now() - startedAt;
+        if (elapsed <= 420 && maxTravel <= 20) {
+          handled = true;
+          try { (navigator as any).vibrate?.(10); } catch {}
+          captureGif(3);
+        }
+      }
+      points.delete(e.pointerId);
+      if (points.size === 0) {
+        start = [];
+        invalid = false;
+        handled = false;
+      }
     };
-    el.addEventListener("pointerdown", onDown, { passive: false });
+    el.addEventListener("pointerdown", onDown, { passive: true });
+    window.addEventListener("pointermove", onMove, { passive: true });
     window.addEventListener("pointerup", onEnd, { passive: true });
     window.addEventListener("pointercancel", onEnd, { passive: true });
     return () => {
       el.removeEventListener("pointerdown", onDown);
+      window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onEnd);
       window.removeEventListener("pointercancel", onEnd);
     };
-  }, [takeScreenshot]);
+  }, [captureGif]);
 
   // Touch-first performance navigation. One-finger horizontal swipes walk the
-  // undo/redo timeline; two-finger tap still toggles Smart Freeze. At the
+  // undo/redo timeline; two-finger tap takes a screenshot. At the
   // newest point, swiping forward creates a fresh Mosh instead of going dead.
   useEffect(() => {
     const el = canvasContainerRef.current;
@@ -1599,7 +1654,7 @@ export default function Editor() {
         invalid = false;
         handled = false;
       } else if (points.size > 2) {
-        // Three fingers belong to screenshot capture, never to this gesture.
+        // Three fingers belong to the GIF-capture gesture, never to this one.
         invalid = true;
       }
     };
@@ -1638,7 +1693,7 @@ export default function Editor() {
           }
         } else if (count === 2 && elapsed <= 420 && maxTravel <= 20) {
           try { (navigator as any).vibrate?.(10); } catch {}
-          toggleSmartFreeze();
+          takeScreenshot();
         }
       }
       points.delete(e.pointerId);
@@ -1658,7 +1713,7 @@ export default function Editor() {
       window.removeEventListener("pointerup", onEnd);
       window.removeEventListener("pointercancel", onEnd);
     };
-  }, [toggleSmartFreeze]);
+  }, [takeScreenshot]);
 
   // Desktop: holding bare Shift summons the centered Hot Trigger wheel
   // instantly; releasing dismisses it. In Pro Mode the chrome follows too. A true hold,
@@ -1784,7 +1839,7 @@ export default function Editor() {
         <meta name="description" content="Stack GPU effects, map audio to parameters, and perform live in the MOSH visual editor." />
         <link rel="canonical" href="https://ether-mosh.online/edit" />
         <meta property="og:title" content="MOSH Editor — Real-time visual instrument" />
-        <meta property="og:description" content="Stack 108 GPU effects, sync to audio, export stills and video." />
+        <meta property="og:description" content={`Stack ${PUBLIC_EFFECTS.length} GPU effects, sync to audio, export stills and video.`} />
         <meta property="og:url" content="https://ether-mosh.online/edit" />
       </Helmet>
       <h1 className="sr-only">MOSH Editor</h1>

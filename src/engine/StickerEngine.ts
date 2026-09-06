@@ -1,5 +1,5 @@
 import UPNG from 'upng-js';
-import { segmentationEngine, type MaskResult } from './SegmentationEngine';
+import { segmentationEngine, type MaskResult, type SegmentableSource } from './SegmentationEngine';
 
 export interface StickerScore {
   value: number;       // 0–1 overall sticker-worthiness
@@ -106,12 +106,12 @@ class StickerEngine {
     return { value: saturation * 0.5 + complexity * 0.5, saturation, complexity };
   }
 
-  async refreshBestMask(video: HTMLVideoElement): Promise<void> {
+  async refreshBestMask(source: SegmentableSource): Promise<void> {
     if (this.busy || !segmentationEngine.isTapReady()) return;
     this.busy = true;
     try {
-      const pts = segmentationEngine.analyzeSaliency(video, 3);
-      const regions = await segmentationEngine.segmentMultiPoint(video, pts);
+      const pts = segmentationEngine.analyzeSaliency(source, 3);
+      const regions = await segmentationEngine.segmentMultiPoint(source, pts);
       if (regions.length) {
         this.bestMask = regions.reduce((best, r) => {
           const ca = r.data.reduce((s, v) => s + (v > 0.4 ? 1 : 0), 0);

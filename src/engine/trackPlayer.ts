@@ -25,6 +25,15 @@ export const DEFAULT_TRACK_ARTIST = "Aesthetic Rebellion";
 export type ShowcaseTrack = { id: string; url: string; title: string; artist: string };
 
 /**
+ * One audio file the visitor loaded themselves.
+ *
+ * `url` is always an object URL, so this is only meaningful for the lifetime
+ * of the document that created it — see the store's `uploadedTracks` for why
+ * that shape is deliberate rather than a shortcut.
+ */
+export type UploadedTrack = { id: string; url: string; title: string };
+
+/**
  * The showcase library — every track offered from the theme-track panel's
  * showcase list, not just the one bundled default.
  *
