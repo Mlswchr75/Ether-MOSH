@@ -43,12 +43,12 @@ these migrations apply cleanly in order and reproduce the full schema.
   interchangeable providers directly (no site-builder AI gateway) — they all
   speak the same OpenAI-compatible chat-completions shape, so switching is a
   secret change, not a code change:
-  - `AI_PROVIDER` — `openrouter` (default), `groq`, or `gemini`.
+  - `AI_PROVIDER` — `gemini` (default), `openrouter`, or `groq`.
   - `AI_MODEL` — optional; overrides the provider's default model id.
   - Per-provider API key (set only the one matching `AI_PROVIDER`), never as a
     `VITE_` variable — anything with that prefix is compiled into the browser
     bundle and readable by anyone:
-    - `OPENROUTER_API_KEY` (default provider) — free, no card, from
+    - `OPENROUTER_API_KEY` — free, no card, from
       https://openrouter.ai/keys. Uses `openrouter/free`, OpenRouter's own
       auto-router (launched Feb 2026): it picks whichever currently-free model
       supports vision + tool calling + structured output and keeps working as
@@ -58,15 +58,24 @@ these migrations apply cleanly in order and reproduce the full schema.
       model: check https://console.groq.com/docs/models for a current vision +
       tool-calling model and set `AI_MODEL` explicitly — Groq's free vision
       model is a named preview with the same retirement risk described below.
-    - `GEMINI_API_KEY` — from https://aistudio.google.com/apikey. Defaults to
-      `gemini-3.1-pro-preview`. Requires a **billed** Google Cloud project for
-      real quota — a `429` naming `limit: 0` at
-      https://ai.dev/rate-limit means the model has no quota on your plan at
-      all and waiting will not help, whereas an exhausted per-minute cap is
-      worth a retry. Google also retires model aliases on its own schedule
-      (`gemini-2.5-pro`, pinned here originally, 404s for any account created
-      after it closed to new users) — that's exactly the failure `AI_MODEL`
-      exists to make a secret change instead of a redeploy.
+    - `GEMINI_API_KEY` (default provider) — free, no card, from
+      https://aistudio.google.com/apikey. Defaults to `gemini-3.6-flash`,
+      verified against this function's exact request (vision + forced tool
+      call) on a free key. Which model you pick is the whole game here: the
+      **pro** line needs a billed Google Cloud project, and asks for one by
+      answering `429` with `limit: 0` — no quota at all rather than an
+      exhausted one, so retrying can never succeed. The **flash** line is free.
+      Check what your own key reaches at https://ai.dev/rate-limit. Google also
+      retires model aliases on its own schedule (`gemini-2.5-pro`, pinned here
+      originally, and `gemini-2.5-flash` both 404 for any account created after
+      they closed to new users) — that's exactly the failure `AI_MODEL` exists
+      to make a secret change instead of a redeploy.
+  Images are read from storage and sent inline as a `data:` uri, never as a
+  url. Gemini's OpenAI-compatible endpoint refuses a remote `image_url` with a
+  bare `400 INVALID_ARGUMENT`, and every OpenAI-shaped endpoint accepts a data
+  uri, so any provider added here should keep doing it this way. SVG uploads
+  are rejected up front (vector does not rasterise model-side) and raw files
+  over 12 MB are too, since inline bytes ride inside the JSON request body.
 - `forge-delete` — unchanged, no external dependency.
 
 None of these functions need `LOVABLE_API_KEY`. (The MCP server integration
