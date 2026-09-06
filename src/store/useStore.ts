@@ -1561,11 +1561,10 @@ export const useStore = create<State & Actions>((set, get) => ({
       ...resetRoleSelection(layers),
     };
   }),
-  // Bare `set({ layers })` — no undo push, no seed regen, no role-selection
-  // reset. Exists for the Journey crossfade driver (Editor.tsx), which needs
-  // to write interpolated opacities to the store every animation frame
-  // without spamming undo history; the transition's *end* still calls
-  // moshDirected() once for the real bookkeeping.
+  // Bare canonical replacement with no undo push, seed regen, or selection
+  // reset. Kept for low-level restoration/tests. Visual crossfades deliberately
+  // do not call this: their temporary layers live in layerCrossfade.ts so the
+  // editor controls always reflect the real stack.
   setLayersRaw: (layers) => set({ layers }),
 
   moshStorm: (ids) => set(s => {
