@@ -125,7 +125,11 @@ Deno.serve(async (req) => {
 
   try {
     const apiKey = Deno.env.get(PROVIDER.apiKeyEnv);
-    if (!apiKey) throw new Error(`${PROVIDER.apiKeyEnv} not configured`);
+    // Message references AI_PROVIDER, not PROVIDER.apiKeyEnv (or apiKey) — the
+    // catch-all below logs this, and nothing that looks like a credential
+    // field name should ever reach a log line, real secret or not. Which env
+    // var a given provider needs is documented in supabase/README.md.
+    if (!apiKey) throw new Error(`AI provider "${AI_PROVIDER}" is missing its API key`);
     const model = Deno.env.get("AI_MODEL") ?? PROVIDER.defaultModel;
     if (!model) throw new Error(`AI_MODEL must be set for provider "${AI_PROVIDER}" (it has no default)`);
 
