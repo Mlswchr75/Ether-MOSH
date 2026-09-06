@@ -98,4 +98,27 @@ describe("radial hot-trigger holds", () => {
     fireEvent.click(screen.getByRole("button", { name: "Canvas: square — switch to landscape" }));
     expect(useStore.getState().desktopCanvasAspect).toBe("landscape");
   });
+
+  it("opens the complete song library with Command+Shift and marks the current song", () => {
+    useStore.setState({ trackEnabled: false, trackTitle: "Miyazaki Demo", uploadedTracks: [] });
+    render(
+      <HotTriggers
+        isRecording={false}
+        onToggleRecord={() => {}}
+        onScreenshot={() => {}}
+        onFreeze={() => {}}
+        onGif={() => {}}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open radial controls" }));
+    fireEvent.click(screen.getByRole("button", { name: "Play a random MOSH track" }), {
+      metaKey: true,
+      shiftKey: true,
+    });
+
+    expect(screen.getByRole("menu", { name: "Track options" })).toBeTruthy();
+    expect(screen.getByText("23 songs")).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Miyazaki Demo" }).getAttribute("aria-current")).toBe("true");
+  });
 });

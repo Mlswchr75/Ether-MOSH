@@ -315,20 +315,23 @@ function TrackTrigger({ delay, showNudge, onNudgeDismiss }: { delay: number; sho
         type="button"
         aria-label={trackEnabled ? `Pause ${trackTitle}` : "Play a random MOSH track"}
         aria-pressed={trackEnabled}
-        title={trackEnabled ? `Pause · ${trackTitle} — shift-click to pick a track` : "Play a random track — shift-click to pick"}
+        title={trackEnabled ? `Pause · ${trackTitle} — Command+Shift-click to choose a song` : "Play a random song + moment — Command+Shift-click to choose"}
         data-active={trackEnabled || undefined}
         data-tint=""
         data-no-longpress
         className="hot-trigger"
         style={{ animationDelay: `${delay}ms`, ["--ht-tint" as string]: "262 68% 72%" }}
-        /* Shift opens the picker instead of toggling. The caret below already
+        /* Command+Shift opens the picker instead of toggling. The caret below already
            opens it, but it is a 20px target tucked in a corner of another
            button — fine to discover once, tedious to hit every time you want
-           a specific track. Shift-click is the same escalation convention the
-           rest of the app uses for "the considered version of this action",
-           and it leaves the plain tap doing exactly what it always did. */
+           a specific track. Ctrl+Shift mirrors the gesture off macOS, and a
+           plain tap still toggles randomized playback exactly as before. */
         onClick={(event) => {
-          if (event.shiftKey) { setOpen(true); return; }
+          if (event.shiftKey && (event.metaKey || event.ctrlKey)) {
+            event.stopPropagation();
+            setOpen(true);
+            return;
+          }
           if (trackEnabled) setTrackEnabled(false); else startRandomTrack();
         }}
       >
@@ -356,16 +359,22 @@ function TrackTrigger({ delay, showNudge, onNudgeDismiss }: { delay: number; sho
 
       {open && (
         <div
-          className="panel-in-3d absolute right-full top-0 z-50 mr-2 w-52 rounded-sm border border-[hsl(var(--border-default))] bg-black/85 p-2.5 backdrop-blur-md"
-          role="menu"
-          aria-label="Track options"
+          className="absolute left-1/2 top-1/2 z-50 w-64 -translate-x-1/2 -translate-y-1/2 sm:left-auto sm:right-full sm:mr-2 sm:translate-x-0"
           onPointerDown={(e) => e.stopPropagation()}
         >
+          <div
+            className="panel-in-3d max-h-[82dvh] w-full overflow-y-auto rounded-sm border border-[hsl(var(--border-default))] bg-black/85 p-2.5 backdrop-blur-md [scrollbar-width:thin]"
+            role="menu"
+            aria-label="Track options"
+          >
           <div className="overflow-hidden whitespace-nowrap font-mono text-[10px] uppercase tracking-[0.16em] text-[hsl(var(--text-secondary))]">
             now playing
           </div>
           <div className="mt-0.5 truncate text-[12px] font-semibold text-[hsl(var(--text-primary))]" title={trackTitle}>
             {trackTitle}
+          </div>
+          <div className="mt-1 font-mono text-[8px] uppercase tracking-[0.14em] text-[hsl(var(--text-tertiary))]">
+            cmd + shift + song trigger opens this library
           </div>
 
           {/* Bigger, obviously-tappable transport row — the small text
@@ -419,7 +428,8 @@ function TrackTrigger({ delay, showNudge, onNudgeDismiss }: { delay: number; sho
                     type="button"
                     role="menuitem"
                     data-no-longpress
-                    data-active={trackEnabled && trackTitle === t.title || undefined}
+                    data-active={trackTitle === t.title || undefined}
+                    aria-current={trackTitle === t.title ? "true" : undefined}
                     onClick={async () => {
                       setOpen(false);
                       try {
@@ -435,7 +445,7 @@ function TrackTrigger({ delay, showNudge, onNudgeDismiss }: { delay: number; sho
                         toast.error(`"${t.title}" is no longer loaded — add the file again`);
                       }
                     }}
-                    className="flex w-full items-center gap-2 rounded-sm border border-transparent px-2 py-1.5 text-left font-mono text-[10px] uppercase tracking-[0.1em] text-[hsl(var(--text-secondary))] transition hover:border-[hsl(var(--accent))] hover:text-[hsl(var(--accent))] data-[active]:border-[hsl(var(--accent))]/40 data-[active]:text-[hsl(var(--accent))]"
+                    className="flex w-full items-center gap-2 rounded-sm border border-transparent px-2 py-1.5 text-left font-mono text-[10px] uppercase tracking-[0.1em] text-[hsl(var(--text-secondary))] transition hover:border-[hsl(var(--accent))] hover:text-[hsl(var(--accent))] data-[active]:!border-[#5dff9b]/50 data-[active]:!text-[#5dff9b]"
                   >
                     <Upload className="h-3 w-3 shrink-0" strokeWidth={1.5} />
                     <span className="truncate">{t.title}</span>
@@ -445,19 +455,21 @@ function TrackTrigger({ delay, showNudge, onNudgeDismiss }: { delay: number; sho
             </>
           )}
 
-          <div className="mt-2.5 mb-1 font-mono text-[9px] uppercase tracking-[0.18em] text-[hsl(var(--text-tertiary))]">
-            showcase
+          <div className="mt-2.5 mb-1 flex items-center justify-between font-mono text-[9px] uppercase tracking-[0.18em] text-[hsl(var(--text-tertiary))]">
+            <span>showcase</span>
+            <span>{SHOWCASE_TRACKS.length} songs</span>
           </div>
-          <div className="flex flex-col gap-0.5">
+          <div className="flex max-h-[min(42dvh,22rem)] flex-col gap-0.5 overflow-y-auto overscroll-contain pr-1 [scrollbar-width:thin]">
             {SHOWCASE_TRACKS.map((t) => (
               <button
                 key={t.id}
                 type="button"
                 role="menuitem"
                 data-no-longpress
-                data-active={trackEnabled && trackTitle === t.title || undefined}
+                data-active={trackTitle === t.title || undefined}
+                aria-current={trackTitle === t.title ? "true" : undefined}
                 onClick={() => { setOpen(false); runTrackAction(() => trackPlayer.useShowcaseTrack(t.id)); }}
-                className="flex w-full items-center gap-2 rounded-sm border border-transparent px-2 py-1.5 text-left font-mono text-[10px] uppercase tracking-[0.1em] text-[hsl(var(--text-secondary))] transition hover:border-[hsl(var(--accent))] hover:text-[hsl(var(--accent))] data-[active]:border-[hsl(var(--accent))]/40 data-[active]:text-[hsl(var(--accent))]"
+                className="flex w-full items-center gap-2 rounded-sm border border-transparent px-2 py-1.5 text-left font-mono text-[10px] uppercase tracking-[0.1em] text-[hsl(var(--text-secondary))] transition hover:border-[hsl(var(--accent))] hover:text-[hsl(var(--accent))] data-[active]:!border-[#5dff9b]/50 data-[active]:!text-[#5dff9b]"
               >
                 <Music2 className="h-3 w-3 shrink-0" strokeWidth={1.5} />
                 <span className="truncate">{t.title}</span>
@@ -526,6 +538,7 @@ function TrackTrigger({ delay, showNudge, onNudgeDismiss }: { delay: number; sho
               }
             }}
           />
+          </div>
         </div>
       )}
     </div>

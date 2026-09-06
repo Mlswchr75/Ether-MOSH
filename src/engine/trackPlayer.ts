@@ -23,6 +23,57 @@ export const DEFAULT_TRACK_TITLE = "Miyazaki Demo";
 export const DEFAULT_TRACK_ARTIST = "Aesthetic Rebellion";
 
 export type ShowcaseTrack = { id: string; url: string; title: string; artist: string };
+export type TrackCue = {
+  at: number;
+  label: "drop" | "break" | "transition" | "peak" | "pulse";
+};
+
+/**
+ * Hand-saved drop-in points derived from local waveform + spectral-change
+ * analysis of every bundled showcase song. Keeping these in source control
+ * makes random starts repeatable, reviewable, and independent of a network
+ * analysis service. See scripts/analyze-track-cues.py to regenerate them.
+ */
+export const TRACK_CUES: Record<string, readonly TrackCue[]> = {
+  "theme": [{ at: 25.0, label: "drop" }, { at: 91.5, label: "transition" }, { at: 191.5, label: "drop" }, { at: 283.5, label: "break" }, { at: 302.5, label: "transition" }],
+  "blackbox-psalm": [{ at: 27.0, label: "drop" }, { at: 62.5, label: "pulse" }, { at: 88.0, label: "transition" }, { at: 117.0, label: "break" }, { at: 152.0, label: "break" }],
+  "corrupted-ivory": [{ at: 11.5, label: "drop" }, { at: 59.5, label: "transition" }, { at: 63.0, label: "transition" }, { at: 98.5, label: "transition" }, { at: 130.0, label: "break" }],
+  "cybernetic-metamorphosis": [{ at: 15.0, label: "drop" }, { at: 54.0, label: "drop" }, { at: 85.5, label: "drop" }, { at: 116.5, label: "drop" }, { at: 144.5, label: "break" }],
+  "iron-lament": [{ at: 23.5, label: "drop" }, { at: 59.5, label: "break" }, { at: 83.5, label: "drop" }, { at: 131.5, label: "transition" }, { at: 155.5, label: "break" }],
+  "iron-liturgy-reimagined": [{ at: 33.5, label: "transition" }, { at: 48.5, label: "drop" }, { at: 65.5, label: "drop" }, { at: 91.5, label: "break" }, { at: 127.0, label: "drop" }],
+  "iron-lullaby": [{ at: 11.0, label: "transition" }, { at: 56.0, label: "break" }, { at: 84.0, label: "drop" }, { at: 119.0, label: "transition" }, { at: 155.5, label: "break" }],
+  "iron-requiem": [{ at: 26.0, label: "drop" }, { at: 53.5, label: "transition" }, { at: 96.5, label: "drop" }, { at: 131.0, label: "transition" }, { at: 143.0, label: "break" }],
+  "iron-waltz": [{ at: 8.5, label: "pulse" }, { at: 62.0, label: "transition" }, { at: 95.5, label: "drop" }, { at: 119.5, label: "transition" }, { at: 156.0, label: "break" }],
+  "ivory-protocol": [{ at: 33.0, label: "drop" }, { at: 48.5, label: "drop" }, { at: 80.0, label: "transition" }, { at: 112.0, label: "transition" }, { at: 143.0, label: "transition" }],
+  "jitterbug": [{ at: 27.5, label: "transition" }, { at: 50.0, label: "pulse" }, { at: 112.0, label: "drop" }, { at: 150.0, label: "pulse" }, { at: 188.5, label: "transition" }],
+  "long-desired": [{ at: 9.5, label: "drop" }, { at: 59.0, label: "transition" }, { at: 99.0, label: "drop" }, { at: 138.0, label: "drop" }, { at: 177.5, label: "drop" }],
+  "mechanical-requiem-guitar-cover": [{ at: 23.0, label: "break" }, { at: 37.5, label: "pulse" }, { at: 85.0, label: "drop" }, { at: 102.5, label: "transition" }],
+  "mechanical-requiem": [{ at: 26.0, label: "drop" }, { at: 66.5, label: "transition" }, { at: 85.5, label: "drop" }, { at: 116.0, label: "transition" }, { at: 154.0, label: "break" }],
+  "motor-spit": [{ at: 29.5, label: "drop" }, { at: 54.5, label: "transition" }, { at: 99.5, label: "transition" }, { at: 120.5, label: "transition" }, { at: 142.5, label: "pulse" }],
+  "plex-on-em": [{ at: 17.5, label: "transition" }, { at: 56.5, label: "transition" }, { at: 116.5, label: "break" }, { at: 122.0, label: "drop" }, { at: 190.0, label: "break" }],
+  "restitude": [{ at: 15.0, label: "transition" }, { at: 67.5, label: "transition" }, { at: 88.0, label: "break" }, { at: 137.5, label: "break" }, { at: 164.0, label: "break" }],
+  "retro-clay-bouncehouse": [{ at: 26.5, label: "drop" }, { at: 55.5, label: "transition" }, { at: 87.0, label: "drop" }, { at: 120.5, label: "transition" }, { at: 148.0, label: "break" }],
+  "synthetic-requiem": [{ at: 27.0, label: "drop" }, { at: 55.5, label: "drop" }, { at: 82.5, label: "transition" }, { at: 134.5, label: "break" }, { at: 161.5, label: "break" }],
+  "terminal-decay": [{ at: 18.0, label: "drop" }, { at: 54.0, label: "drop" }, { at: 72.0, label: "drop" }, { at: 120.0, label: "drop" }, { at: 161.5, label: "transition" }],
+  "cold-rite": [{ at: 27.0, label: "transition" }, { at: 41.0, label: "drop" }, { at: 87.0, label: "transition" }, { at: 111.0, label: "pulse" }, { at: 166.5, label: "break" }],
+  "silent-steppe": [{ at: 24.0, label: "drop" }, { at: 42.0, label: "drop" }, { at: 82.5, label: "transition" }, { at: 103.5, label: "transition" }, { at: 155.0, label: "transition" }],
+  "still-point": [{ at: 8.0, label: "transition" }, { at: 44.0, label: "transition" }, { at: 87.0, label: "drop" }, { at: 106.0, label: "transition" }, { at: 167.0, label: "pulse" }],
+};
+
+/** Selects a saved cue and avoids replaying the immediately previous cue. */
+export function pickTrackCue(
+  trackId: string,
+  random: () => number = Math.random,
+  previousAt?: number,
+): TrackCue | undefined {
+  const cues = TRACK_CUES[trackId] ?? [];
+  const choices = cues.length > 1 && previousAt !== undefined
+    ? cues.filter(cue => cue.at !== previousAt)
+    : cues;
+  if (!choices.length) return undefined;
+  const index = Math.min(choices.length - 1, Math.max(0, Math.floor(random() * choices.length)));
+  return choices[index];
+}
 
 /**
  * One audio file the visitor loaded themselves.
@@ -118,6 +169,8 @@ class TrackPlayer {
   private freqData: Uint8Array | null = null;
   private envelope = 0;
   private peak = 0.05;
+  private cueRequest = 0;
+  private lastCueByTrack = new Map<string, number>();
   /** True once playback has actually started at least once — distinguishes
    *  the very first play() (start from the top) from every later entry into
    *  a mode (jump to a fresh point). */
@@ -233,7 +286,8 @@ class TrackPlayer {
 
   /** Swap the active track (e.g. a user-uploaded file). Keeps playing through
    *  the swap if it was already playing. */
-  async setSource(url: string, title: string, artist = "") {
+  async setSource(url: string, title: string, artist = "", cueAt?: number) {
+    const cueRequest = ++this.cueRequest;
     this.url = url;
     this.title = title;
     this.artist = artist;
@@ -241,7 +295,10 @@ class TrackPlayer {
     const wasPlaying = this.enabled;
     // lgtm[js/xss-through-dom] -- always a local blob: object URL or the
     // hardcoded DEFAULT_TRACK_URL; see assertSafeTrackUrl's doc comment.
-    if (this.el) this.el.src = assertSafeTrackUrl(url);
+    if (this.el) {
+      this.el.src = assertSafeTrackUrl(url);
+      if (cueAt !== undefined) this.applyCueWhenReady(cueAt, cueRequest);
+    }
     this.updateMediaSessionMetadata();
     if (wasPlaying) await this.play();
   }
@@ -255,7 +312,30 @@ class TrackPlayer {
   async useShowcaseTrack(id: string) {
     const t = SHOWCASE_TRACKS.find(x => x.id === id);
     if (!t) return;
-    await this.setSource(t.url, t.title, t.artist);
+    await this.setShowcaseSourceAtCue(t);
+    await this.play();
+  }
+
+  private async setShowcaseSourceAtCue(track: ShowcaseTrack) {
+    const cue = pickTrackCue(track.id, Math.random, this.lastCueByTrack.get(track.id));
+    if (cue) this.lastCueByTrack.set(track.id, cue.at);
+    await this.setSource(track.url, track.title, track.artist, cue?.at);
+  }
+
+  /** Seek as soon as metadata permits without delaying the user-gesture-bound
+   * play() call. A request token prevents a slow previous source from seeking
+   * a newly-selected song when its loadedmetadata event eventually arrives. */
+  private applyCueWhenReady(at: number, request: number) {
+    const el = this.el;
+    if (!el) return;
+    const apply = () => {
+      if (request !== this.cueRequest || el !== this.el) return;
+      const end = Number.isFinite(el.duration) ? Math.max(0, el.duration - 1) : at;
+      try { el.currentTime = Math.min(at, end); } catch {}
+      this.fadeTo(this.volume, 0.6, 0.0001);
+    };
+    if (el.readyState >= 1) apply();
+    else el.addEventListener("loadedmetadata", apply, { once: true });
   }
 
   /** Index of the current track within SHOWCASE_TRACKS, or -1 if the active
@@ -271,7 +351,7 @@ class TrackPlayer {
     if (!SHOWCASE_TRACKS.length) return;
     const i = this.showcaseIndex();
     const t = SHOWCASE_TRACKS[i === -1 ? 0 : (i + 1) % SHOWCASE_TRACKS.length];
-    await this.setSource(t.url, t.title, t.artist);
+    await this.setShowcaseSourceAtCue(t);
     await this.play();
   }
 
@@ -281,7 +361,7 @@ class TrackPlayer {
     if (!SHOWCASE_TRACKS.length) return;
     const i = this.showcaseIndex();
     const t = SHOWCASE_TRACKS[i === -1 ? SHOWCASE_TRACKS.length - 1 : (i - 1 + SHOWCASE_TRACKS.length) % SHOWCASE_TRACKS.length];
-    await this.setSource(t.url, t.title, t.artist);
+    await this.setShowcaseSourceAtCue(t);
     await this.play();
   }
 
@@ -291,7 +371,7 @@ class TrackPlayer {
     if (!SHOWCASE_TRACKS.length) return;
     if (SHOWCASE_TRACKS.length === 1) {
       const only = SHOWCASE_TRACKS[0];
-      await this.setSource(only.url, only.title, only.artist);
+      await this.setShowcaseSourceAtCue(only);
       await this.play();
       return;
     }
@@ -299,7 +379,7 @@ class TrackPlayer {
     let idx = i;
     while (idx === i) idx = Math.floor(Math.random() * SHOWCASE_TRACKS.length);
     const t = SHOWCASE_TRACKS[idx];
-    await this.setSource(t.url, t.title, t.artist);
+    await this.setShowcaseSourceAtCue(t);
     await this.play();
   }
 
@@ -324,7 +404,7 @@ class TrackPlayer {
       : SHOWCASE_TRACKS;
     const t = pool[Math.floor(Math.random() * pool.length)];
     writeLastVisitTrackId(t.id);
-    await this.setSource(t.url, t.title, t.artist);
+    await this.setShowcaseSourceAtCue(t);
     await this.play();
   }
 
@@ -338,6 +418,14 @@ class TrackPlayer {
    * fade the gain back in so the cut isn't audible as a pop.
    */
   seekToRandomSensiblePoint() {
+    const current = SHOWCASE_TRACKS[this.showcaseIndex()];
+    if (current && this.el) {
+      const cue = pickTrackCue(current.id, Math.random, this.lastCueByTrack.get(current.id));
+      if (!cue) return;
+      this.lastCueByTrack.set(current.id, cue.at);
+      this.applyCueWhenReady(cue.at, this.cueRequest);
+      return;
+    }
     const d = this.duration();
     if (!d || !this.el) return;
     const start = d * 0.05;
@@ -444,6 +532,8 @@ class TrackPlayer {
    *  rebuilds the AudioContext from scratch. */
   dispose() {
     this.pause();
+    this.cueRequest++;
+    this.lastCueByTrack.clear();
     this.everPlayed = false;
     if (this.el) { try { this.el.src = ""; } catch {} }
     this.el = null;
