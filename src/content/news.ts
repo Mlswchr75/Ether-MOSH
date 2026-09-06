@@ -965,6 +965,76 @@ export const NEWS_ARTICLES: NewsArticle[] = [
       { question: "Can I animate RGB Shift safely for projection?", answer: "Yes, if you move Angle or Amount slowly, keep essential information unshifted, provide a calmer alternate state, and test the full-size output for flash and contrast risks." },
     ],
   },
+  {
+    slug: "make-the-oil-slick-effect-pass-a-sheen-inspection",
+    subjectKind: "effect",
+    effectId: "oilSlick",
+    effectName: "Oil Slick",
+    category: "Color Science",
+    title: "Make the Oil Slick Effect Pass a Sheen Inspection",
+    dek: "A practical inquiry into animated iridescence, thin-film optics, and why the Frequency control has turned your portrait into a municipal rainbow incident.",
+    description: "Learn how the Oil Slick effect creates animated iridescent color and how to set Ether-MOSH Amount and Frequency for print, patterns, motion, projection, and optics education.",
+    publishedAt: "2026-09-06T08:00:00-07:00",
+    readMinutes: 6,
+    image: "/news/oil-slick-sheen-inspection.jpg",
+    imageAlt: "Fictional museum officials inspecting a luminous Oil Slick effect flowing across a black laboratory basin in violet, cyan, amber, and magenta bands",
+    imageCaption: "The fictional Office of Chromatic Runoff confirms the basin contains no petroleum, only a shader with an alarming Frequency setting.",
+    keywords: ["oil slick effect", "iridescent effect", "thin-film interference", "Ether-MOSH Oil Slick", "animated rainbow shader", "projection visuals", "color science tutorial"],
+    tldr: "Ether-MOSH Oil Slick maps each pixel's luminance through three offset cosine color bands, then blends the animated iridescence over the source. Amount controls the mix; Frequency sets how tightly colors repeat across tonal values. It is a stylized GPU effect, not a physical thin-film simulation or spill detector. Find it under Color Chaos and start around 0.45 Amount, 6 Frequency.",
+    satireDisclosure: "The inspection office, officials, basin, and hearing are fictional. The thin-film optics, environmental caution, Ether-MOSH controls, shader behavior, settings, and production advice are factual and sourced.",
+    dispatch: [
+      "At 08:03, the fictional Office of Chromatic Runoff impounded a portrait after its cheek developed six unauthorized rainbow bands and began reflecting magenta onto government furniture.",
+      "Chief Sheen Inspector Marla Phase—an invented civil servant with a real clipboard and no jurisdiction over fragment shaders—ordered the image held until Amount came below 0.50. Frequency immediately requested counsel. No petroleum was found because this is software, but the hoodie advertisement somehow cleared security.",
+    ],
+    explanation: [
+      "Real oil-film and soap-bubble colors come from thin-film interference. Light reflects from the film's upper and lower boundaries; the reflected waves can reinforce or cancel one another. Film thickness, wavelength, refractive index, and viewing angle all affect the result, which is why real iridescence changes as the surface or observer moves.",
+      "Thin films also became precision optical tools. In a 1939 Physical Review paper, Katharine B. Blodgett described using interference in carefully built monomolecular films to reduce reflection from glass. The same broad wave principle can make a puddle look loud or an optical coating look almost absent, although the materials and engineering are emphatically not interchangeable.",
+      "Ether-MOSH does not trace reflected rays or solve those physical variables. Its Oil Slick shader measures each source pixel's luminance, combines it with low-frequency spatial noise and animation time, and feeds that value through three cosine channels offset by 120 degrees. Frequency packs more color cycles into the tonal range. The renderer doubles the visible Amount before the shader, so 0 stays neutral, 0.50 reaches the shader's full declared blend, and higher values deliberately amplify the color treatment. The resemblance is intentional. The mechanism is digital stylization.",
+    ],
+    steps: [
+      "Open MOSH, load a portrait, sculpture, macro texture, liquid surface, or high-contrast clip, then open the FX panel and add Oil Slick from Color Chaos.",
+      "Set Amount to 0.45 and Frequency to 6. Look for separated light, middle, and dark regions before touching anything else.",
+      "Lower Frequency toward 3 for broad color continents, or raise it toward 10 for tighter bands. Stop when facial features, product edges, or architectural lines still carry the composition.",
+      "Adjust Amount between 0.30 and 0.65. Stack Bloom lightly for projection or Film Grain for stills, but keep captions, controls, safety information, and logos outside the effected layer.",
+      "Export a print still or record one calm loop. Test pattern seams, vector traces, captions, projector brightness, LED processing, and any rapid cuts at final size; provide a static or lower-intensity alternate when motion or saturated contrast may be uncomfortable.",
+    ],
+    parameters: [
+      { control: "Amount", purpose: "Blends, then amplifies, the animated color treatment over the source", low: "0–0.25 restrained tint", high: "0.70–1 amplified color", sweetSpot: "0.45" },
+      { control: "Frequency", purpose: "Sets the number of color cycles across source luminance", low: "1–4 broad bands", high: "12–20 dense banding", sweetSpot: "6" },
+      { control: "Source luminance", purpose: "Supplies the tonal map that organizes the bands", low: "Flat lighting makes broad fields", high: "Strong tonal edges make distinct contours", sweetSpot: "Readable highlights and shadows" },
+    ],
+    uses: [
+      { title: "Print + editorial", body: "Freeze a frame with two or three dominant color regions, inspect saturated gradients at 100%, and soft-proof the final stock. The monitor's luminous cyan may return from CMYK looking like it attended a budget meeting." },
+      { title: "Pattern + textiles", body: "Apply Oil Slick to one motif before building the repeat, then inspect a 3×3 proof. Broad Frequency settings make useful flowing rhythm; dense bands can turn every seam into a tiny unauthorized rainbow barcode." },
+      { title: "Vector + Lottie", body: "Trace only the largest tonal-band boundaries into a limited vector palette, or use a short Oil Slick raster loop behind real vector type. Do not convert every shimmering pixel into a path unless file-size revenge is part of the brief." },
+      { title: "Projection + venue", body: "Use sculpture, dancers, fabric, or architecture with clear light-dark structure. Keep the shader's built-in drift calm, avoid rapidly toggling Amount, preserve a static cue, and run flash-risk checks on the actual display." },
+      { title: "Museum + education", body: "Compare a soap-film or documented coating demonstration with the MOSH output, then identify the missing physical variables. If a real rainbow sheen appears on outdoor water, treat it as possible pollution—not free source material—and follow local reporting guidance." },
+    ],
+    quote: "The color was not leaking from the image. It was being reassigned by luminance in three equally dramatic phases.",
+    quoteAttribution: "Marla Phase, fictional chief sheen inspector and reluctant shader witness",
+    downloadHref: "/news/downloads/oil-slick-field-card.md",
+    product: {
+      name: "Chameleon Prism Hoodie — Iridescent AOP Color-Shift Pullover",
+      href: "https://aestheticrebellion.store/products/chameleon-prism-hoodie",
+      copy: "Mandatory commercial interference fringe: Aesthetic Rebellion's currently listed Chameleon Prism Hoodie carries an iridescent cellular print, not a magic color-shifting coating, because even the product page has agreed to distinguish optics from a convincing pattern. Buying it will not improve Amount, Frequency, or municipal water quality. It will make your torso look like the shader won the zoning hearing, so capitalism has approved this interruption.",
+    },
+    sources: [
+      { label: "OpenStax — Interference in Thin Films", href: "https://openstax.org/books/university-physics-volume-3/pages/3-4-interference-in-thin-films", note: "Authoritative physics overview of reflected-wave interference, film thickness, wavelength, refractive index, and optical applications." },
+      { label: "Katharine B. Blodgett — Physical Review (1939)", href: "https://journals.aps.org/pr/abstract/10.1103/PhysRev.55.391", note: "Primary paper on using interference in controlled monomolecular films to extinguish reflection from glass." },
+      { label: "Harvard SEAS — Thin-film interference", href: "https://capasso.seas.harvard.edu/publications/thin-film-interference-lossy-ultra-thin-layers", note: "Authoritative optics overview and publication record for thin-film interference and its modern coating applications." },
+      { label: "US EPA — Harmful quantity of discharged oil", href: "https://www.epa.gov/oil-spills-prevention-and-preparedness-regulations/what-harmful-quantity-discharged-oil", note: "Current U.S. guidance explaining that a visible oil film or sheen can trigger reporting requirements." },
+      { label: "W3C — Understanding Three Flashes or Below Threshold", href: "https://www.w3.org/WAI/WCAG22/Understanding/three-flashes-or-below-threshold", note: "Accessibility guidance for rapidly changing high-contrast display content." },
+      { label: "Ether-MOSH Oil Slick registry entry", href: "/effects#oilSlick", note: "Current public effect, Color Chaos category, Amount and Frequency ranges, defaults, and GLSL source." },
+      { label: "Duotone field report", href: "/news/make-the-duotone-effect-pick-a-side", note: "Related guide to luminance-driven color mapping and production-safe palette decisions." },
+    ],
+    relatedEffects: ["holoShine", "prismDispersion", "duotone", "bloom"],
+    faqs: [
+      { question: "What does the Oil Slick effect do in Ether-MOSH?", answer: "It converts source luminance into animated, noise-shaped cosine color bands and blends them over the original image, creating a flowing iridescent look in real time." },
+      { question: "Is the Oil Slick effect a physical thin-film simulation?", answer: "No. It does not model film thickness, refractive index, wavelength, reflection phase, or viewing angle. It is a GPU stylization inspired by the colors associated with thin-film interference." },
+      { question: "Where is Oil Slick, and what settings should I start with?", answer: "Open the FX panel, choose Color Chaos, and add Oil Slick. Start at 0.45 Amount and 6 Frequency, then tune Frequency to the source's tonal structure." },
+      { question: "Can I use Oil Slick for print and projection?", answer: "Yes. For print, freeze and soft-proof a legible frame. For projection, use slow visual changes, keep essential information outside the effect, test the real display, and provide a calmer alternate state." },
+    ],
+  },
 ];
 
 export const NEWS_ARTICLES_BY_SLUG = new Map(NEWS_ARTICLES.map((article) => [article.slug, article]));
@@ -1027,5 +1097,9 @@ export const NEWS_LOOK_EXAMPLES_BY_SLUG: Record<string, [NewsLookExample, NewsLo
   "make-the-rgb-shift-effect-split-before-it-gets-a-lawyer": [
     { scene: "Centered studio portrait", settings: "Amount 0.18 · Angle 0.25", result: "The face stays legible while hair, shoulders, and the far cheek pick up crisp red and blue outlines that widen toward the outside of the frame." },
     { scene: "Brutalist concrete facade", settings: "Amount 0.35 · Angle 1.40", result: "Window frames split into colored radial rails, hard corners carry a violet rim, and the center remains comparatively stable as the outer structure pulls apart." },
+  ],
+  "make-the-oil-slick-effect-pass-a-sheen-inspection": [
+    { scene: "Side-lit portrait", settings: "Amount 0.45 · Frequency 6", result: "Broad violet, cyan, amber, and magenta bands follow the face's highlight-to-shadow transitions while eyes and silhouette remain readable." },
+    { scene: "Black glass and folded metallic fabric", settings: "Amount 0.70 · Frequency 12", result: "Tight iridescent contours ripple through reflections and creases, with deep black regions acting as visual rests between saturated bands." },
   ],
 };

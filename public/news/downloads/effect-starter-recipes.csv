@@ -13,3 +13,4 @@ ASCII Collapse,Data Corruption,Amount,0.70,Cell,12,Duotone + CRT,"cover art; tex
 Solarize,Color,Amount,0.35,Pivot,0.52,Posterize + Film Grain,"editorial; textiles; projection; darkroom education"
 Thermal,Color Chaos,Mix,0.35,Range,0.40,CRT + Bloom,"editorial; patterns; venue visuals; infrared education"
 RGB Shift,Color Chaos,Amount,0.18,Angle,0.25,Jitter + Bloom,"editorial; patterns; vector/Lottie; venue visuals; optics education"
+Oil Slick,Color Chaos,Amount,0.45,Frequency,6,Bloom + Film Grain,"editorial; patterns; vector/Lottie; projection; optics education"

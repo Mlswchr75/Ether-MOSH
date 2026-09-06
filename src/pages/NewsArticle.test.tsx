@@ -52,12 +52,12 @@ describe("NewsArticle", () => {
     expect(screen.getByText("3 core controls")).toBeTruthy();
   });
 
-  it("publishes fourteen unique reports including seven September effects and two modes", () => {
-    expect(NEWS_ARTICLES).toHaveLength(14);
-    expect(new Set(NEWS_ARTICLES.map(article => article.slug)).size).toBe(14);
+  it("publishes fifteen unique reports including eight September effects and two modes", () => {
+    expect(NEWS_ARTICLES).toHaveLength(15);
+    expect(new Set(NEWS_ARTICLES.map(article => article.slug)).size).toBe(15);
     expect(NEWS_ARTICLES.find(article => article.effectId === "kaleidoscope")?.steps).toHaveLength(5);
-    expect(NEWS_ARTICLES.filter(article => ["kaleidoscope", "posterize", "duotone", "asciiCollapse", "solarize", "thermal", "rgbShift"].includes(article.effectId ?? "")))
-      .toHaveLength(7);
+    expect(NEWS_ARTICLES.filter(article => ["kaleidoscope", "posterize", "duotone", "asciiCollapse", "solarize", "thermal", "rgbShift", "oilSlick"].includes(article.effectId ?? "")))
+      .toHaveLength(8);
     expect(NEWS_ARTICLES.filter(article => article.subjectKind === "mode").map(article => article.effectName))
       .toEqual(["Forge Mode", "Pattern / Motif Mode"]);
   });
@@ -84,8 +84,8 @@ describe("NewsArticle", () => {
     expect(container.querySelectorAll(".news-look-examples article")).toHaveLength(2);
   });
 
-  it("keeps the six recent reports answer-first and release-complete", () => {
-    const batch = NEWS_ARTICLES.filter(article => ["posterize", "duotone", "asciiCollapse", "solarize", "thermal", "rgbShift"].includes(article.effectId ?? ""));
+  it("keeps the seven recent reports answer-first and release-complete", () => {
+    const batch = NEWS_ARTICLES.filter(article => ["posterize", "duotone", "asciiCollapse", "solarize", "thermal", "rgbShift", "oilSlick"].includes(article.effectId ?? ""));
     for (const article of batch) {
       const answerWords = article.tldr.trim().split(/\s+/).length;
       expect(answerWords, `${article.slug} direct answer`).toBeGreaterThanOrEqual(40);
@@ -157,5 +157,18 @@ describe("NewsArticle", () => {
       .toBe("https://aestheticrebellion.store/products/brushstroke-riot-sweatshirt");
     expect(screen.getByRole("link", { name: "Download .md" }).getAttribute("href"))
       .toBe("/news/downloads/rgb-shift-field-card.md");
+  });
+
+  it("renders Oil Slick controls, physical distinction, download, and live product link", () => {
+    renderArticle("make-the-oil-slick-effect-pass-a-sheen-inspection");
+
+    expect(screen.getByRole("heading", { name: "Make the Oil Slick Effect Pass a Sheen Inspection" })).toBeTruthy();
+    expect(screen.getByText("Amount")).toBeTruthy();
+    expect(screen.getByText("Frequency")).toBeTruthy();
+    expect(screen.getAllByText(/not a physical thin-film simulation/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByRole("link", { name: /View the thing we interrupted science for/i }).getAttribute("href"))
+      .toBe("https://aestheticrebellion.store/products/chameleon-prism-hoodie");
+    expect(screen.getByRole("link", { name: "Download .md" }).getAttribute("href"))
+      .toBe("/news/downloads/oil-slick-field-card.md");
   });
 });
