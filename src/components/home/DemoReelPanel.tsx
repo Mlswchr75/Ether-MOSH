@@ -9,7 +9,6 @@ import { isFrameDead, loadDemoFrames, markFrameDead, shuffle, sizedSrc, type Dem
 import { MoshReel } from "./MoshReel";
 import { AmbientGlitch } from "./AmbientGlitch";
 import { useReelDirector } from "./useReelDirector";
-import { JourneyPortalInterlude } from "@/components/journey/PortalShapeGallery";
 
 type Props = {
   onSelect: (src: string, productUrl: string) => void;
@@ -60,7 +59,7 @@ export const DemoReelPanel = ({ onSelect }: Props) => {
   // so a frame that cannot paint is dropped outright instead of hidden.
   const [dead, setDead] = useState<ReadonlySet<string>>(() => new Set());
 
-  return (<>
+  return (
     <section
       ref={panelRef}
       aria-label="Demo frames from the Aesthetic Rebellion catalogue"
@@ -119,6 +118,5 @@ export const DemoReelPanel = ({ onSelect }: Props) => {
         ↑ back to the instrument
       </div>
     </section>
-    <JourneyPortalInterlude variant="reel" className="demo-reel-portals" />
-  </>);
+  );
 };
