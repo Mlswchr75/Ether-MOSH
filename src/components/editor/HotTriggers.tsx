@@ -145,7 +145,7 @@ const TRIGGER_LABELS: Record<string, string> = {
   "forge-palette": "Forge settings — colour is directed automatically",
   "motif-maestro": "Motif Maestro controls",
   "switch-camera": "Switch camera",
-  "desktop-portrait": "Portrait view",
+  "desktop-portrait": "Canvas shape",
 };
 
 const ORDER_KEY = "cathedral_hot_trigger_order_v2";
@@ -1543,8 +1543,8 @@ export function HotTriggers({
   const setVideoSource = useStore(s => s.setVideoSource);
   const clearVideoSource = useStore(s => s.clearVideoSource);
   const [flipBusy, setFlipBusy] = useState(false);
-  const desktopPortraitMode = useStore(s => s.desktopPortraitMode);
-  const toggleDesktopPortraitMode = useStore(s => s.toggleDesktopPortraitMode);
+  const desktopCanvasAspect = useStore(s => s.desktopCanvasAspect);
+  const cycleDesktopCanvasAspect = useStore(s => s.cycleDesktopCanvasAspect);
 
   const stickerMode = useStore(s => s.stickerMode);
   const setStickerMode = useStore(s => s.setStickerMode);
@@ -2218,21 +2218,26 @@ export function HotTriggers({
         <SwitchCamera className="h-4 w-4" strokeWidth={1.5} />
       </HotBtn>
     ),
-    // Desktop-only — a phone solves this by physically rotating, but a
-    // desktop browser window has no equivalent, so wide "cover" framing was
-    // routinely cropping the top/bottom off portrait-oriented sources.
+    // Desktop-only — cycle the same stage between the viewport, a fitted 9:16
+    // portrait, and a fitted 1:1 square without spending another wheel slot.
     "desktop-portrait": !isTouchScreen && (
       <HotBtn
         key="desktop-portrait"
         delay={0}
-        label={desktopPortraitMode ? "Exit portrait view" : "Portrait view — for tall images"}
-        active={desktopPortraitMode}
-        onClick={toggleDesktopPortraitMode}
+        label={desktopCanvasAspect === "landscape"
+          ? "Canvas: landscape — switch to portrait"
+          : desktopCanvasAspect === "portrait"
+            ? "Canvas: portrait — switch to square"
+            : "Canvas: square — switch to landscape"}
+        active={desktopCanvasAspect !== "landscape"}
+        onClick={cycleDesktopCanvasAspect}
         tint="46 90% 62%"
       >
-        {desktopPortraitMode
-          ? <RectangleHorizontal className="h-4 w-4" strokeWidth={1.5} />
-          : <RectangleVertical className="h-4 w-4" strokeWidth={1.5} />}
+        {desktopCanvasAspect === "landscape"
+          ? <RectangleVertical className="h-4 w-4" strokeWidth={1.5} />
+          : desktopCanvasAspect === "portrait"
+            ? <Square className="h-4 w-4" strokeWidth={1.5} />
+            : <RectangleHorizontal className="h-4 w-4" strokeWidth={1.5} />}
       </HotBtn>
     ),
     // Was its own wheel trigger ("Support MOSH") — now the loud, animated

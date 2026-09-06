@@ -168,6 +168,14 @@ export type ExportSettings = {
   shareQuality: number;
 };
 
+export type DesktopCanvasAspect = "landscape" | "portrait" | "square";
+
+export function nextDesktopCanvasAspect(aspect: DesktopCanvasAspect): DesktopCanvasAspect {
+  if (aspect === "landscape") return "portrait";
+  if (aspect === "portrait") return "square";
+  return "landscape";
+}
+
 const EXPORT_SETTINGS_KEY = "cathedral_export_settings_v1";
 
 const DEFAULT_EXPORT_SETTINGS: ExportSettings = {
@@ -271,13 +279,10 @@ type State = {
   exportSettings: ExportSettings;
   isPerformanceMode: boolean;
   showMetersInPerformance: boolean;
-  /** Desktop-only: constrains the canvas stage to a tall (9:16) box instead
-   *  of filling the full landscape viewport width. Mobile never needs this —
-   *  rotating the device already gets a portrait frame — but a desktop
-   *  browser window has no equivalent, so wide "cover" framing was
-   *  routinely cropping the top/bottom off portrait-oriented sources.
-   *  Ignored on touch/coarse-pointer devices (see Editor.tsx). */
-  desktopPortraitMode: boolean;
+  /** Desktop-only canvas shape. Landscape fills the viewport, portrait uses
+   *  a fitted 9:16 stage, and square uses a fitted 1:1 stage. Mobile keeps
+   *  following the physical device viewport (see Editor.tsx). */
+  desktopCanvasAspect: DesktopCanvasAspect;
   /** Selective black-crush + neon-boost grade applied in the finisher, on
    *  top of whatever effect stack is running. */
   darkModeOn: boolean;
@@ -443,8 +448,8 @@ type Actions = {
   setExportSettings: (patch: Partial<ExportSettings>) => void;
   setPerformanceMode: (b: boolean) => void;
   togglePerformanceMode: () => void;
-  setDesktopPortraitMode: (b: boolean) => void;
-  toggleDesktopPortraitMode: () => void;
+  setDesktopCanvasAspect: (aspect: DesktopCanvasAspect) => void;
+  cycleDesktopCanvasAspect: () => void;
   setDarkMode: (b: boolean) => void;
   toggleDarkMode: () => void;
   setCaptureLocked: (b: boolean) => void;
@@ -642,7 +647,7 @@ export const useStore = create<State & Actions>((set, get) => ({
   stackIntensityReactive: 0,
   exportSettings: loadExportSettings(),
   isPerformanceMode: false,
-  desktopPortraitMode: false,
+  desktopCanvasAspect: "landscape",
   darkModeOn: false,
   captureLocked: false,
   showMetersInPerformance: typeof localStorage !== "undefined" && localStorage.getItem("cathedral_meters_in_perf") === "1",
@@ -1335,8 +1340,10 @@ export const useStore = create<State & Actions>((set, get) => ({
   }),
   setPerformanceMode: (b) => set({ isPerformanceMode: b }),
   togglePerformanceMode: () => set(s => ({ isPerformanceMode: !s.isPerformanceMode })),
-  setDesktopPortraitMode: (b) => set({ desktopPortraitMode: b }),
-  toggleDesktopPortraitMode: () => set(s => ({ desktopPortraitMode: !s.desktopPortraitMode })),
+  setDesktopCanvasAspect: (desktopCanvasAspect) => set({ desktopCanvasAspect }),
+  cycleDesktopCanvasAspect: () => set(s => ({
+    desktopCanvasAspect: nextDesktopCanvasAspect(s.desktopCanvasAspect),
+  })),
   setDarkMode: (b) => set({ darkModeOn: b }),
   toggleDarkMode: () => set(s => ({ darkModeOn: !s.darkModeOn })),
   setCaptureLocked: (b) => set({ captureLocked: b }),
