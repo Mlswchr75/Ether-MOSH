@@ -118,7 +118,7 @@ describe("radial hot-trigger holds", () => {
     });
 
     expect(screen.getByRole("menu", { name: "Track options" })).toBeTruthy();
-    expect(screen.getByText("23 songs")).toBeTruthy();
+    expect(screen.getByText("32 songs")).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: "Miyazaki Demo" }).getAttribute("aria-current")).toBe("true");
   });
 });

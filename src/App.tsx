@@ -50,6 +50,9 @@ const App = () => (
             <Route path="/" element={<Index />} />
             <Route path="/edit" element={<Editor />} />
             <Route path="/forge" element={<ForgeRedirect />} />
+            {/* Radio is the editor with the chrome down and a rotation running —
+                see useRadioBroadcast for why it is not its own page. */}
+            <Route path="/radio" element={<Editor />} />
             <Route path="/install" element={<Install />} />
             <Route path="/terms" element={<Terms />} />
             <Route path="/privacy" element={<Privacy />} />

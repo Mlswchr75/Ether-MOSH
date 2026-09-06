@@ -5,6 +5,8 @@ describe("mobile runtime policy", () => {
   it("recognizes visual routes", () => {
     expect(isVisualRoute("/edit")).toBe(true);
     expect(isVisualRoute("/forge")).toBe(true);
+    // A station holds the screen awake for as long as it is on the air.
+    expect(isVisualRoute("/radio")).toBe(true);
     expect(isVisualRoute("/pricing")).toBe(false);
   });
 

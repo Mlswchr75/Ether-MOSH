@@ -1,7 +1,8 @@
 export type MobileSessionState = { pathname: string; visible: boolean; fullscreen: boolean };
 
 export function isVisualRoute(pathname: string): boolean {
-  return pathname === "/edit" || pathname === "/forge" || pathname.startsWith("/edit/");
+  return pathname === "/edit" || pathname === "/forge" || pathname === "/radio"
+    || pathname.startsWith("/edit/");
 }
 
 export function shouldMaintainSession(state: MobileSessionState): boolean {
