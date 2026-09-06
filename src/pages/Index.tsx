@@ -263,7 +263,7 @@ const Index = () => {
         <BioFlicker />
 
         <div className="title-word-field pointer-events-none absolute inset-0 z-[2]">
-          <GlitchWordField exclude="DROP AN IMAGE" />
+          <GlitchWordField exclude="UPLOAD" />
         </div>
 
         <div className="title-split-grid absolute inset-0 z-10">
@@ -288,7 +288,7 @@ const Index = () => {
               transition={{ duration: 0.6, delay: 0.16, ease: EASE_SNAP }}
               className="split-pane-content"
             >
-              <h2 id="source-side-title" className="split-side-title side-reactive" data-text="DROP AN IMAGE">DROP AN IMAGE</h2>
+              <h2 id="source-side-title" className="split-side-title side-reactive" data-text="UPLOAD">UPLOAD</h2>
               <div className="source-mode-console mosh-target" role="group" aria-label="Choose your source">
                 <button
                   type="button"
@@ -342,7 +342,7 @@ const Index = () => {
               transition={{ duration: 0.6, delay: 0.24, ease: EASE_SNAP }}
               className="split-pane-content"
             >
-              <h2 id="forge-side-title" className="split-side-title side-reactive" data-text="FORGE AN IMAGE">FORGE AN IMAGE</h2>
+              <h2 id="forge-side-title" className="split-side-title side-reactive" data-text="GENERATE">GENERATE</h2>
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); navigate("/forge"); }}
