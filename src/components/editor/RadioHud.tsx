@@ -7,6 +7,7 @@ import { radioLink } from "@/lib/radioLinks";
 import { hasOwnLink, trackLink } from "@/engine/radio";
 import { RadioLibrary, FavoriteSong } from "./RadioLibrary";
 import { RadioShareTag } from "./RadioShareToast";
+import { MinimizeButton, useMinimized } from "./Minimize";
 
 const clock = (seconds: number) => !Number.isFinite(seconds) || seconds < 0 ? "0:00" : `${Math.floor(seconds / 60)}:${Math.floor(seconds % 60).toString().padStart(2, "0")}`;
 export function RadioHud({ radio, onOpenControls }: { radio: RadioBroadcast; onOpenControls: () => void }) {
@@ -17,6 +18,7 @@ export function RadioHud({ radio, onOpenControls }: { radio: RadioBroadcast; onO
   const [dim, setDim] = useState(false);
   const [volume, setVolume] = useState(trackPlayer.volume);
   const library = useRadioLibrary();
+  const plateMin = useMinimized("panel.radioPlate");
   useEffect(() => {
     if (open) { setDim(false); return; }
     let id = window.setTimeout(() => setDim(true), 12_000);
@@ -41,7 +43,8 @@ export function RadioHud({ radio, onOpenControls }: { radio: RadioBroadcast; onO
   const labels = { playing: "On air", paused: "Paused", blocked: "Tap to listen", loading: "Loading song…", offline: "Reconnecting…" };
   return <section aria-label="MOSH Radio player" className="pointer-events-auto absolute bottom-[max(1rem,env(safe-area-inset-bottom))] left-4 z-40 w-[min(25rem,calc(100vw-2rem))] max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain rounded-2xl border border-white/20 bg-[#090510]/95 text-white shadow-2xl backdrop-blur-lg transition-opacity" style={{ opacity: dim && !open ? 0.78 : 1 }} onPointerDown={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
     <div className="px-4 pt-3">
-      <div className="flex items-center justify-between gap-2"><p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-200">MOSH Radio{radio.config.station !== "all" ? ` · ${radio.config.station}` : ""}</p><RadioShareTag url={radioLink({ station: radio.config.station })} title="MOSH Radio"/></div>
+      <div className="flex items-center justify-between gap-2"><p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-200">MOSH Radio{radio.config.station !== "all" ? ` · ${radio.config.station}` : ""}</p><div className="flex items-center gap-1.5"><RadioShareTag url={radioLink({ station: radio.config.station })} title="MOSH Radio"/><MinimizeButton minimized={plateMin.minimized} onToggle={plateMin.toggle} label="the radio player"/></div></div>
+      {!plateMin.minimized && <>
       <p role="status" className="text-xs text-white/60">{labels[status]}</p>
       <div className="mt-1 flex items-center gap-2"><h2 className="min-w-0 flex-1 break-words text-lg font-semibold leading-snug">{nowPlaying
         /* The share tag beside this sends people to the station; this sends
@@ -60,8 +63,9 @@ export function RadioHud({ radio, onOpenControls }: { radio: RadioBroadcast; onO
       </div>
       {upNext && <div className="mt-1 flex items-center gap-2"><button type="button" onClick={() => setOpen(true)} className="min-h-10 min-w-0 flex-1 truncate text-left text-xs text-white/60">Next · {upNext.title}</button><RadioShareTag url={radioLink({ track: upNext })} title={upNext.title}/></div>}
       <div className="flex items-center justify-between gap-2 py-2"><button type="button" onClick={() => setOpen(v => !v)} aria-expanded={open} className="inline-flex min-h-10 items-center gap-2 rounded-full border border-white/20 px-3 text-sm"><ListMusic size={16}/>{open ? "Close library" : `Queue & library · ${radio.queue.length}`}</button><button type="button" onClick={onOpenControls} className="inline-flex min-h-10 items-center gap-1.5 px-2 text-sm text-cyan-200"><Sliders size={15}/> Controls</button></div>
+      </>}
     </div>
-    {open && <RadioLibrary radio={radio} library={library}/>}
+    {open && !plateMin.minimized && <RadioLibrary radio={radio} library={library}/>}
     <div className="h-0.5 w-full bg-white/10"><div ref={barRef} className="h-full w-full origin-left bg-gradient-to-r from-cyan-300 to-pink-400" style={{ transform: "scaleX(0)" }}/></div>
   </section>;
 }

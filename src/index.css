@@ -779,6 +779,31 @@
     flex: 1; height: 1px;
     background: linear-gradient(to right, hsl(195 100% 65% / 0.55), transparent);
   }
+  /* One minimize affordance, used by every panel, overlay and popup menu in
+     the instrument — see components/editor/Minimize.tsx for why it is shared
+     rather than reimplemented per panel. */
+  .mosh-minimize {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 22px; height: 22px;
+    border-radius: 999px;
+    border: 1px solid hsl(var(--border-default));
+    color: hsl(var(--text-secondary));
+    background: hsl(240 20% 4% / .6);
+    transition: color .15s ease, border-color .15s ease, background-color .15s ease, transform .15s ease;
+  }
+  .mosh-minimize:hover,
+  .mosh-minimize:focus-visible {
+    color: hsl(var(--accent));
+    border-color: hsl(var(--accent) / .5);
+    background: hsl(var(--accent) / .1);
+  }
+  /* Collapsed: the chevron points the other way, so the control states which
+     direction it will move rather than what it currently is. */
+  .mosh-minimize.is-minimized svg { transform: rotate(-90deg); }
+  .mosh-minimize svg { transition: transform .18s ease; }
+
   .section-header .badge {
     font-family: 'JetBrains Mono', ui-monospace, monospace;
     font-size: 9px;

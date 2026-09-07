@@ -1,3 +1,4 @@
+import { MinimizeButton, useMinimized } from "./Minimize";
 import { Mic, MonitorSpeaker } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { toggleSystemAudio } from "@/engine/systemAudio";
@@ -17,6 +18,7 @@ type Props = {
  */
 export function AudioSourcePicker({ onClose, className = "" }: Props) {
   const setMicEnabled = useStore(s => s.setMicEnabled);
+  const { minimized, toggle } = useMinimized("menu.audioSource", { persist: false });
   return (
     <div
       data-audio-source-picker
@@ -24,6 +26,11 @@ export function AudioSourcePicker({ onClose, className = "" }: Props) {
       role="menu"
       aria-label="Choose audio source"
     >
+      <div className="mb-1 flex items-center justify-between gap-2 px-0.5">
+        <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-[hsl(var(--accent))]">audio source</span>
+        <MinimizeButton minimized={minimized} onToggle={toggle} label="the audio source menu" variant="minus" />
+      </div>
+      {!minimized && <>
       <button
         type="button"
         onClick={() => { setMicEnabled(true); onClose(); }}
@@ -50,6 +57,7 @@ export function AudioSourcePicker({ onClose, className = "" }: Props) {
       </button>
       <div className="my-1 h-px bg-white/10" />
       <AudioInputControls compact />
+      </>}
     </div>
   );
 }

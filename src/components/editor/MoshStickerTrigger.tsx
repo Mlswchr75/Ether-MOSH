@@ -4,6 +4,7 @@
  * stack like a light switch — independent of the menu, and present in every
  * SourceMode since it lives in HotTriggers' always-mounted rail.
  */
+import { MinimizeButton, useMinimized } from "./Minimize";
 import { useEffect, useRef, useState } from "react";
 import { Power, Sticker, Square, Upload, Video, X } from "lucide-react";
 import { requestCameraStream } from "@/hooks/useCamera";
@@ -27,6 +28,7 @@ export function MoshStickerTrigger({ delay, variant = "trigger" }: { delay: numb
   const [elapsed, setElapsed] = useState(0);
   const wrapRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const stickerMin = useMinimized("menu.sticker", { persist: false });
   const videoPreviewRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<ClipRecorder | null>(null);
@@ -162,6 +164,11 @@ export function MoshStickerTrigger({ delay, variant = "trigger" }: { delay: numb
           aria-label="Add mosh sticker"
           onPointerDown={(e) => e.stopPropagation()}
         >
+          <div className="mb-1 flex items-center justify-between gap-2 px-0.5">
+            <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-[hsl(var(--accent))]">sticker</span>
+            <MinimizeButton minimized={stickerMin.minimized} onToggle={stickerMin.toggle} label="the sticker menu" variant="minus" />
+          </div>
+          {!stickerMin.minimized && <>
           <button
             type="button"
             role="menuitem"
@@ -187,6 +194,7 @@ export function MoshStickerTrigger({ delay, variant = "trigger" }: { delay: numb
             hidden
             onChange={onFileChange}
           />
+          </>}
         </div>
       )}
 

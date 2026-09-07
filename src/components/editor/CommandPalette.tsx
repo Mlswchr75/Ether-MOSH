@@ -1,3 +1,4 @@
+import { MinimizeButton, useMinimized } from "./Minimize";
 import { Command } from "cmdk";
 import { useEffect, useMemo } from "react";
 import { useStore } from "@/store/useStore";
@@ -27,6 +28,7 @@ type Props = {
 
 export function CommandPalette(props: Props) {
   const { open, onClose } = props;
+  const paletteMin = useMinimized("overlay.commandPalette", { persist: false });
   const addLayer = useStore(s => s.addLayer);
   const removeTopLayer = useStore(s => s.removeTopLayer);
   const clearLayers = useStore(s => s.clearLayers);
@@ -68,7 +70,11 @@ export function CommandPalette(props: Props) {
         className="glass-modal mt-[25vh] w-[600px] max-w-[92vw]"
         style={{ animation: "cmdkRise 140ms ease-out both" }}
       >
-        <Command label="Command Palette" loop className="flex max-h-[480px] flex-col">
+        <div className="flex items-center justify-between gap-2 px-3 pt-2">
+          <span className="font-mono text-[9px] uppercase tracking-[0.24em] text-[hsl(var(--text-tertiary))]">command palette</span>
+          <MinimizeButton minimized={paletteMin.minimized} onToggle={paletteMin.toggle} label="the command palette" />
+        </div>
+        <Command label="Command Palette" loop className={`flex max-h-[480px] flex-col ${paletteMin.minimized ? "hidden" : ""}`}>
           <Command.Input
             autoFocus
             placeholder="Type a command…"
