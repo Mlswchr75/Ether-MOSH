@@ -388,6 +388,17 @@ const Index = () => {
             ether-mosh / v0.1
           </div>
           <div className="title-neutral-nav pointer-events-auto flex items-center gap-4">
+            {/* Radio first, and the only item carrying a live dot — it is the
+                one link here that goes somewhere already running rather than
+                somewhere you have to start. */}
+            <Link
+              to="/radio"
+              onClick={(e) => e.stopPropagation()}
+              className="title-radio-link font-mono text-xs uppercase tracking-[0.2em] transition"
+            >
+              <span className="title-radio-dot" aria-hidden="true" />
+              radio →
+            </Link>
             <Link
               to="/news"
               onClick={(e) => e.stopPropagation()}
@@ -429,6 +440,8 @@ const Index = () => {
           className="pointer-events-auto absolute bottom-6 left-0 right-0 z-20 flex flex-col items-center gap-3"
         >
           <nav aria-label="Footer" className="flex flex-wrap items-center justify-center gap-4 font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/60">
+            <Link to="/radio" onClick={(e) => e.stopPropagation()} className="hover:text-accent transition">radio</Link>
+            <span aria-hidden className="text-foreground/30">·</span>
             <Link to="/pricing" onClick={(e) => e.stopPropagation()} className="hover:text-accent transition">pricing</Link>
             <span aria-hidden className="text-foreground/30">·</span>
             <Link to="/news" onClick={(e) => e.stopPropagation()} className="hover:text-accent transition">news + updates</Link>

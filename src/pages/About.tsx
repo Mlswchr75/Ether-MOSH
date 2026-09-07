@@ -126,7 +126,7 @@ const About = () => (
           LinkedIn
         </a>
         <a
-          href="https://soundcloud.com/aestheticrebel"
+          href="https://soundcloud.com/dyles-mavis"
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex items-center gap-2 rounded border border-accent/40 bg-accent/5 px-4 py-2 font-mono text-xs uppercase tracking-[0.2em] text-accent hover:bg-accent/10 transition"
