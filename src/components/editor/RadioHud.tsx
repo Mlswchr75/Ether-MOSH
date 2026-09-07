@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { Pause, Play, SkipForward, Sliders } from "lucide-react";
+import { ArrowUpRight, Pause, Play, SkipForward, Sliders } from "lucide-react";
 import { trackPlayer, type ShowcaseTrack } from "@/engine/trackPlayer";
+import { hasOwnLink, trackLink } from "@/engine/radio";
 
 const clock = (seconds: number) => {
   if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
@@ -116,7 +117,21 @@ export function RadioHud({
           </div>
         </div>
 
-        <div className="mt-2 truncate text-[17px] font-semibold leading-tight text-white">{nowPlaying.title}</div>
+        {/* The title is the way out. A station nobody can follow is a
+            screensaver — this is the one moment a listener's interest in the
+            artist is at its peak, and it costs a click to spend it well.
+            target=_blank deliberately: navigating away would take the
+            broadcast down with it. */}
+        <a
+          href={trackLink(nowPlaying)}
+          target="_blank"
+          rel="noreferrer noopener"
+          title={hasOwnLink(nowPlaying) ? `Open "${nowPlaying.title}" on SoundCloud` : "Open the artist on SoundCloud"}
+          className="radio-plate-title mt-2 flex items-baseline gap-1.5 text-[17px] font-semibold leading-tight text-white transition-colors"
+        >
+          <span className="truncate">{nowPlaying.title}</span>
+          <ArrowUpRight size={13} className="shrink-0 opacity-45" aria-hidden />
+        </a>
         <div className="flex items-baseline justify-between gap-3">
           <span className="truncate text-[11px] text-white/55">{nowPlaying.artist || "Aesthetic Rebellion"}</span>
           <span ref={timeRef} className="shrink-0 font-mono text-[10px] tabular-nums text-white/40">0:00</span>

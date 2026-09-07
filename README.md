@@ -54,8 +54,10 @@ It's been a visual sketchbook, a texture generator, a source of finished artwork
 
 `/radio` — Forge generating visuals endlessly, Journey directing them against
 the music, and a rotation of the library underneath both, unattended, for as
-long as the tab is open. `?station=<tag>` narrows it to one channel;
-`?hud=0` strips the ident for a clean capture.
+long as the tab is open. `?station=catalog` plays the curated set,
+`?station=unreleased` the later drops, and `?hud=0` strips the ident for a
+clean capture. The now-playing card's title links out to SoundCloud, so the
+wall is a way in rather than a dead end.
 
 Adding a song is: drop the mp3 in `public/audio/`, run `npm run audio:sync -- --emit`,
 paste the row it prints into `SHOWCASE_TRACKS`, then

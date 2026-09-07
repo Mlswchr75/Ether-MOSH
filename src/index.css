@@ -1617,6 +1617,8 @@
     animation: title-radio-tally 2.4s ease-in-out infinite;
   }
   @keyframes title-radio-tally { 0%, 100% { opacity: 1; } 50% { opacity: .28; } }
+  .radio-plate-title:hover { color: hsl(var(--accent)); }
+  .radio-plate-title:hover svg { opacity: 1; }
   @media (prefers-reduced-motion: reduce) { .title-radio-dot { animation: none; } }
   .title-product-copy {
     top: 62px;

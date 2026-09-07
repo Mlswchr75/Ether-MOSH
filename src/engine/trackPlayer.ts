@@ -22,14 +22,25 @@ export const DEFAULT_TRACK_URL = "/audio/theme.mp3";
 export const DEFAULT_TRACK_TITLE = "Miyazaki Demo";
 export const DEFAULT_TRACK_ARTIST = "Aesthetic Rebellion";
 
+/**
+ * Where a listener goes when a track makes them want more.
+ *
+ * A station that plays for six hours and offers no way to follow the artist is
+ * a nice screensaver. This is the difference between a wall and a funnel.
+ */
+export const ARTIST_SOUNDCLOUD_URL = "https://soundcloud.com/dyles-mavis";
+
 export type ShowcaseTrack = {
   id: string;
   url: string;
   title: string;
   artist: string;
-  /** Free-form station tags. Radio (`/radio?station=flow`) filters the rotation
-   *  on these — see docs/RADIO_MODE.md for the Google Flow ingest workflow. */
+  /** Free-form station tags. Radio (`/radio?station=catalog`) filters the
+   *  rotation on these — see docs/RADIO_MODE.md. */
   tags?: readonly string[];
+  /** This track's own page, when it has one. Absent means the now-playing card
+   *  links to the artist profile instead — always somewhere, never nowhere. */
+  soundcloudUrl?: string;
 };
 export type TrackCue = {
   at: number;
@@ -117,29 +128,29 @@ export type UploadedTrack = { id: string; url: string; title: string };
  * HotTriggers.tsx renders this list directly.
  */
 export const SHOWCASE_TRACKS: ShowcaseTrack[] = [
-  { id: "theme", url: DEFAULT_TRACK_URL, title: DEFAULT_TRACK_TITLE, artist: DEFAULT_TRACK_ARTIST },
-  { id: "blackbox-psalm", url: "/audio/Blackbox Psalm.mp3", title: "Blackbox Psalm", artist: "MOSH" },
-  { id: "corrupted-ivory", url: "/audio/Corrupted Ivory.mp3", title: "Corrupted Ivory", artist: "MOSH" },
-  { id: "cybernetic-metamorphosis", url: "/audio/Cybernetic Metamorphosis.mp3", title: "Cybernetic Metamorphosis", artist: "MOSH" },
-  { id: "iron-lament", url: "/audio/Iron Lament.mp3", title: "Iron Lament", artist: "MOSH" },
-  { id: "iron-liturgy-reimagined", url: "/audio/Iron Liturgy (Reimagined).mp3", title: "Iron Liturgy (Reimagined)", artist: "MOSH" },
-  { id: "iron-lullaby", url: "/audio/Iron Lullaby.mp3", title: "Iron Lullaby", artist: "MOSH" },
-  { id: "iron-requiem", url: "/audio/Iron Requiem.mp3", title: "Iron Requiem", artist: "MOSH" },
-  { id: "iron-waltz", url: "/audio/Iron Waltz.mp3", title: "Iron Waltz", artist: "MOSH" },
-  { id: "ivory-protocol", url: "/audio/Ivory Protocol.mp3", title: "Ivory Protocol", artist: "MOSH" },
-  { id: "jitterbug", url: "/audio/Jitterbug.mp3", title: "Jitterbug", artist: "MOSH" },
-  { id: "long-desired", url: "/audio/Long Desired.mp3", title: "Long Desired", artist: "MOSH" },
-  { id: "mechanical-requiem-guitar-cover", url: "/audio/Mechanical Requiem (Guitar Cover) (Cover).mp3", title: "Mechanical Requiem — Guitar Cover", artist: "MOSH" },
-  { id: "mechanical-requiem", url: "/audio/Mechanical Requiem.mp3", title: "Mechanical Requiem", artist: "MOSH" },
-  { id: "motor-spit", url: "/audio/Motor Spit.mp3", title: "Motor Spit", artist: "MOSH" },
-  { id: "plex-on-em", url: "/audio/Plex On Em.mp3", title: "Plex On Em", artist: "MOSH" },
-  { id: "restitude", url: "/audio/Restitude.mp3", title: "Restitude", artist: "MOSH" },
-  { id: "retro-clay-bouncehouse", url: "/audio/Retro Clay Bouncehouse.mp3", title: "Retro Clay Bouncehouse", artist: "MOSH" },
-  { id: "synthetic-requiem", url: "/audio/Synthetic Requiem.mp3", title: "Synthetic Requiem", artist: "MOSH" },
-  { id: "terminal-decay", url: "/audio/Terminal Decay.mp3", title: "Terminal Decay", artist: "MOSH" },
-  { id: "cold-rite", url: "/audio/The Cold Rite.mp3", title: "The Cold Rite", artist: "MOSH" },
-  { id: "silent-steppe", url: "/audio/The Silent Steppe.mp3", title: "The Silent Steppe", artist: "MOSH" },
-  { id: "still-point", url: "/audio/The Still Point.mp3", title: "The Still Point", artist: "MOSH" },
+  { id: "theme", url: DEFAULT_TRACK_URL, title: DEFAULT_TRACK_TITLE, artist: DEFAULT_TRACK_ARTIST, tags: ["catalog"] },
+  { id: "blackbox-psalm", url: "/audio/Blackbox Psalm.mp3", title: "Blackbox Psalm", artist: "MOSH" , tags: ["catalog"] },
+  { id: "corrupted-ivory", url: "/audio/Corrupted Ivory.mp3", title: "Corrupted Ivory", artist: "MOSH" , tags: ["catalog"] },
+  { id: "cybernetic-metamorphosis", url: "/audio/Cybernetic Metamorphosis.mp3", title: "Cybernetic Metamorphosis", artist: "MOSH" , tags: ["catalog"] },
+  { id: "iron-lament", url: "/audio/Iron Lament.mp3", title: "Iron Lament", artist: "MOSH" , tags: ["catalog"] },
+  { id: "iron-liturgy-reimagined", url: "/audio/Iron Liturgy (Reimagined).mp3", title: "Iron Liturgy (Reimagined)", artist: "MOSH" , tags: ["catalog"] },
+  { id: "iron-lullaby", url: "/audio/Iron Lullaby.mp3", title: "Iron Lullaby", artist: "MOSH" , tags: ["catalog"] },
+  { id: "iron-requiem", url: "/audio/Iron Requiem.mp3", title: "Iron Requiem", artist: "MOSH" , tags: ["catalog"] },
+  { id: "iron-waltz", url: "/audio/Iron Waltz.mp3", title: "Iron Waltz", artist: "MOSH" , tags: ["catalog"] },
+  { id: "ivory-protocol", url: "/audio/Ivory Protocol.mp3", title: "Ivory Protocol", artist: "MOSH" , tags: ["catalog"] },
+  { id: "jitterbug", url: "/audio/Jitterbug.mp3", title: "Jitterbug", artist: "MOSH" , tags: ["catalog"] },
+  { id: "long-desired", url: "/audio/Long Desired.mp3", title: "Long Desired", artist: "MOSH" , tags: ["catalog"] },
+  { id: "mechanical-requiem-guitar-cover", url: "/audio/Mechanical Requiem (Guitar Cover) (Cover).mp3", title: "Mechanical Requiem — Guitar Cover", artist: "MOSH" , tags: ["catalog"] },
+  { id: "mechanical-requiem", url: "/audio/Mechanical Requiem.mp3", title: "Mechanical Requiem", artist: "MOSH" , tags: ["catalog"] },
+  { id: "motor-spit", url: "/audio/Motor Spit.mp3", title: "Motor Spit", artist: "MOSH" , tags: ["catalog"] },
+  { id: "plex-on-em", url: "/audio/Plex On Em.mp3", title: "Plex On Em", artist: "MOSH" , tags: ["catalog"] },
+  { id: "restitude", url: "/audio/Restitude.mp3", title: "Restitude", artist: "MOSH" , tags: ["catalog"] },
+  { id: "retro-clay-bouncehouse", url: "/audio/Retro Clay Bouncehouse.mp3", title: "Retro Clay Bouncehouse", artist: "MOSH" , tags: ["catalog"] },
+  { id: "synthetic-requiem", url: "/audio/Synthetic Requiem.mp3", title: "Synthetic Requiem", artist: "MOSH" , tags: ["catalog"] },
+  { id: "terminal-decay", url: "/audio/Terminal Decay.mp3", title: "Terminal Decay", artist: "MOSH" , tags: ["catalog"] },
+  { id: "cold-rite", url: "/audio/The Cold Rite.mp3", title: "The Cold Rite", artist: "MOSH" , tags: ["catalog"] },
+  { id: "silent-steppe", url: "/audio/The Silent Steppe.mp3", title: "The Silent Steppe", artist: "MOSH" , tags: ["catalog"] },
+  { id: "still-point", url: "/audio/The Still Point.mp3", title: "The Still Point", artist: "MOSH" , tags: ["catalog"] },
   /* Later drops. These sat unregistered in public/audio for a while — they play
      from the top rather than from a saved cue because scripts/analyze-track-cues.py
      hasn't been run over them yet, which Radio wants anyway. Tag anything that

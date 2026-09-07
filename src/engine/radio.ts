@@ -19,7 +19,7 @@
  * it that touches the player lives in radioSession.ts.
  */
 
-import { SHOWCASE_TRACKS, type ShowcaseTrack } from "./trackPlayer";
+import { ARTIST_SOUNDCLOUD_URL, SHOWCASE_TRACKS, type ShowcaseTrack } from "./trackPlayer";
 
 export const RADIO_PARAM = "radio";
 export const RADIO_PATH = "/radio";
@@ -109,6 +109,25 @@ export function availableStations(library: readonly ShowcaseTrack[] = SHOWCASE_T
   const seen = new Set<string>();
   for (const track of library) for (const tag of track.tags ?? []) seen.add(tag.toLowerCase());
   return [ALL_STATION, ...[...seen].sort()];
+}
+
+/**
+ * Where the now-playing card points.
+ *
+ * Falls back to the artist profile rather than rendering nothing when a track
+ * has no page of its own. A dead-end card is the failure mode worth avoiding:
+ * the listener's interest is at its peak exactly while the song is playing,
+ * and "no link on this one" spends that moment on nothing. The profile is
+ * always a useful destination even when the specific track isn't there.
+ */
+export function trackLink(track: Pick<ShowcaseTrack, "soundcloudUrl">): string {
+  const own = track.soundcloudUrl?.trim();
+  return own || ARTIST_SOUNDCLOUD_URL;
+}
+
+/** True when the link goes to this exact track rather than the profile. */
+export function hasOwnLink(track: Pick<ShowcaseTrack, "soundcloudUrl">): boolean {
+  return !!track.soundcloudUrl?.trim();
 }
 
 export type RadioRotation = {
