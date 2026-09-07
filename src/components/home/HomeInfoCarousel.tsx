@@ -128,7 +128,7 @@ export const HomeInfoCarousel = ({ onReturnToInstrument }: HomeInfoCarouselProps
 
         {active === 1 && <div className="home-info-editorial">
           <div><p className="home-info-kicker">About the instrument</p><h2>Ether-MOSH makes<br/><span>sound visible.</span></h2></div>
-          <div className="home-info-prose"><strong>Ether-MOSH is an audiovisual performance instrument for the exact moment a track stops being something you hear and becomes somewhere you are.</strong><p>It turns audio, images, video, cameras, patterns, and live decisions into responsive motion. Every frame can react. Every performance can mutate. The machine brings speed; a human still decides what matters.</p><div className="home-info-link-row"><Link to="/edit">Open the instrument <ArrowUpRight/></Link><Link to="/effects">Explore all {PUBLIC_EFFECTS.length} effects <ArrowUpRight/></Link></div></div>
+          <div className="home-info-prose"><strong>Ether-MOSH is an audiovisual performance instrument for the exact moment a track stops being something you hear and becomes somewhere you are.</strong><p>It turns audio, images, video, cameras, patterns, and live decisions into responsive motion. Every frame can react. Every performance can mutate. The machine brings speed; a human still decides what matters.</p><div className="home-info-link-row"><Link to="/edit">Open the instrument <ArrowUpRight/></Link><Link to="/radio">Tune in to MOSH Radio <ArrowUpRight/></Link><Link to="/effects">Explore all {PUBLIC_EFFECTS.length} effects <ArrowUpRight/></Link></div></div>
         </div>}
 
         {active === 2 && <div className="home-info-offerings">

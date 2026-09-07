@@ -1605,6 +1605,19 @@
   }
   .title-neutral-header > div:first-child { position: absolute; top: 24px; left: 20px; }
   .title-neutral-nav { position: absolute; top: 23px; left: 50%; transform: translateX(-50%); white-space: nowrap; }
+  /* The radio link is the only nav item pointing at something already
+     running, so it carries the same live dot the brand mark uses — a
+     broadcast tally, not decoration. */
+  .title-radio-link { display: inline-flex; align-items: center; gap: 6px; color: hsl(var(--accent)); }
+  .title-radio-link:hover { color: hsl(var(--primary)); }
+  .title-radio-dot {
+    width: 6px; height: 6px; border-radius: 999px; flex: none;
+    background: hsl(var(--primary));
+    box-shadow: 0 0 10px hsl(var(--primary));
+    animation: title-radio-tally 2.4s ease-in-out infinite;
+  }
+  @keyframes title-radio-tally { 0%, 100% { opacity: 1; } 50% { opacity: .28; } }
+  @media (prefers-reduced-motion: reduce) { .title-radio-dot { animation: none; } }
   .title-product-copy {
     top: 62px;
     left: 50%;
@@ -2079,7 +2092,9 @@
     }
     .title-neutral-header { padding-inline: 16px; }
     .title-neutral-header > div:first-child { top: 16px; left: 16px; font-size: 8px; letter-spacing: .18em; }
-    .title-neutral-nav { top: 42px; gap: 10px; }
+    .title-neutral-nav { top: 42px; gap: 8px; }
+    .title-radio-dot { width: 4px; height: 4px; }
+    .title-radio-link { gap: 4px; }
     .title-neutral-nav a,
     .title-neutral-nav button { font-size: 7px; letter-spacing: .13em; }
     .title-product-copy {

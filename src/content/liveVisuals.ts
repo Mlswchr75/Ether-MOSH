@@ -9,7 +9,7 @@ export const liveVisualOfferings = [
 
 export const liveVisualSocials = [
   ["Instagram", "https://instagram.com/aestheticrebellion"], ["X / Twitter", "https://twitter.com/aestheticrebel"],
-  ["SoundCloud", "https://soundcloud.com/aestheticrebel"], ["GitHub", "https://github.com/Mlswchr75"],
+  ["SoundCloud", "https://soundcloud.com/dyles-mavis"], ["GitHub", "https://github.com/Mlswchr75"],
   ["LinkedIn", "https://linkedin.com/in/myleswhitcher"], ["Reddit", "https://www.reddit.com/user/Emotional-Goat1086/"],
   ["Pinterest", "https://www.pinterest.com/aestheticrebellion/"], ["Telegram", "https://t.me/dylesmavis"],
 ] as const;

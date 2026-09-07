@@ -22,7 +22,15 @@ export const DEFAULT_TRACK_URL = "/audio/theme.mp3";
 export const DEFAULT_TRACK_TITLE = "Miyazaki Demo";
 export const DEFAULT_TRACK_ARTIST = "Aesthetic Rebellion";
 
-export type ShowcaseTrack = { id: string; url: string; title: string; artist: string };
+export type ShowcaseTrack = {
+  id: string;
+  url: string;
+  title: string;
+  artist: string;
+  /** Free-form station tags. Radio (`/radio?station=flow`) filters the rotation
+   *  on these — see docs/RADIO_MODE.md for the Google Flow ingest workflow. */
+  tags?: readonly string[];
+};
 export type TrackCue = {
   at: number;
   label: "drop" | "break" | "transition" | "peak" | "pulse";
@@ -58,6 +66,15 @@ export const TRACK_CUES: Record<string, readonly TrackCue[]> = {
   "cold-rite": [{ at: 27.0, label: "transition" }, { at: 41.0, label: "drop" }, { at: 87.0, label: "transition" }, { at: 111.0, label: "pulse" }, { at: 166.5, label: "break" }],
   "silent-steppe": [{ at: 24.0, label: "drop" }, { at: 42.0, label: "drop" }, { at: 82.5, label: "transition" }, { at: 103.5, label: "transition" }, { at: 155.0, label: "transition" }],
   "still-point": [{ at: 8.0, label: "transition" }, { at: 44.0, label: "transition" }, { at: 87.0, label: "drop" }, { at: 106.0, label: "transition" }, { at: 167.0, label: "pulse" }],
+  "clockwork-berserk": [{ at: 19.5, label: "pulse" }, { at: 55.5, label: "drop" }, { at: 72.0, label: "drop" }, { at: 107.5, label: "break" }, { at: 167.5, label: "break" }],
+  "ghost-in-the-ivory": [{ at: 26.0, label: "drop" }, { at: 39.0, label: "transition" }, { at: 83.0, label: "drop" }, { at: 113.0, label: "transition" }, { at: 135.5, label: "break" }],
+  "half-time-dubstep-drop": [{ at: 19.0, label: "drop" }, { at: 48.0, label: "break" }, { at: 91.0, label: "drop" }, { at: 128.0, label: "drop" }, { at: 146.5, label: "drop" }],
+  "hearth-and-ghost-frequency": [{ at: 22.0, label: "pulse" }, { at: 44.5, label: "drop" }, { at: 72.0, label: "break" }, { at: 115.0, label: "drop" }, { at: 146.0, label: "break" }],
+  "honey-and-satellite": [{ at: 29.5, label: "transition" }, { at: 41.5, label: "transition" }, { at: 84.5, label: "drop" }, { at: 125.5, label: "transition" }, { at: 137.5, label: "transition" }],
+  "instrumental-version": [{ at: 15.5, label: "drop" }, { at: 47.0, label: "drop" }, { at: 78.0, label: "transition" }, { at: 105.0, label: "drop" }, { at: 143.5, label: "drop" }],
+  "forgotten-district": [{ at: 30.5, label: "drop" }, { at: 68.5, label: "drop" }, { at: 84.0, label: "pulse" }, { at: 123.5, label: "drop" }, { at: 166.0, label: "break" }],
+  "puppeteers-soliloquy": [{ at: 35.0, label: "transition" }, { at: 49.0, label: "drop" }, { at: 83.5, label: "break" }, { at: 131.0, label: "break" }, { at: 167.5, label: "break" }],
+  "unresolved-metamorphosis": [{ at: 24.0, label: "drop" }, { at: 66.0, label: "drop" }, { at: 86.0, label: "transition" }, { at: 109.0, label: "transition" }],
 };
 
 /** Selects a saved cue and avoids replaying the immediately previous cue. */
@@ -123,6 +140,25 @@ export const SHOWCASE_TRACKS: ShowcaseTrack[] = [
   { id: "cold-rite", url: "/audio/The Cold Rite.mp3", title: "The Cold Rite", artist: "MOSH" },
   { id: "silent-steppe", url: "/audio/The Silent Steppe.mp3", title: "The Silent Steppe", artist: "MOSH" },
   { id: "still-point", url: "/audio/The Still Point.mp3", title: "The Still Point", artist: "MOSH" },
+  /* Later drops. These sat unregistered in public/audio for a while — they play
+     from the top rather than from a saved cue because scripts/analyze-track-cues.py
+     hasn't been run over them yet, which Radio wants anyway. Tag anything that
+     comes out of Google Flow with "flow" so `/radio?station=flow` finds it. */
+  { id: "clockwork-berserk", url: "/audio/Clockwork Berserk (Take 2).mp3", title: "Clockwork Berserk", artist: "MOSH", tags: ["unreleased"] },
+  { id: "ghost-in-the-ivory", url: "/audio/Ghost in the Ivory.mp3", title: "Ghost in the Ivory", artist: "MOSH", tags: ["unreleased"] },
+  { id: "half-time-dubstep-drop", url: "/audio/Half-Time Dubstep Drop Extension.mp3", title: "Half-Time Dubstep Drop", artist: "MOSH", tags: ["unreleased"] },
+  { id: "hearth-and-ghost-frequency", url: "/audio/Hearth & Ghost Frequency (Take 2).mp3", title: "Hearth & Ghost Frequency", artist: "MOSH", tags: ["unreleased"] },
+  { id: "honey-and-satellite", url: "/audio/Honey & Satellite (Take 1).mp3", title: "Honey & Satellite", artist: "MOSH", tags: ["unreleased"] },
+  { id: "instrumental-version", url: "/audio/Instrumental Version.mp3", title: "Instrumental Version", artist: "MOSH", tags: ["unreleased"] },
+  { id: "forgotten-district", url: "/audio/The Forgotten District (Take 2).mp3", title: "The Forgotten District", artist: "MOSH", tags: ["unreleased"] },
+  { id: "puppeteers-soliloquy", url: "/audio/The Puppeteer's Soliloquy (Take 1).mp3", title: "The Puppeteer's Soliloquy", artist: "MOSH", tags: ["unreleased"] },
+  /* "Together Again.mp3" is deliberately absent: the file is an AAC/M4A that
+     was renamed .mp3, and its stream fails to decode cleanly (ffmpeg rejects
+     it outright). Chrome sniffs the container and would probably play it;
+     Safari and Firefox are far less forgiving, and a station cannot afford a
+     track that plays on one machine and stalls on another. Re-encode it to a
+     real mp3 and add a row here to put it back. */
+  { id: "unresolved-metamorphosis", url: "/audio/Unresolved Metamorphosis (Take 1).mp3", title: "Unresolved Metamorphosis", artist: "MOSH", tags: ["unreleased"] },
 ];
 
 /**
@@ -175,6 +211,8 @@ class TrackPlayer {
    *  the very first play() (start from the top) from every later entry into
    *  a mode (jump to a fresh point). */
   private everPlayed = false;
+  /** Registered by setAutoAdvance (radio mode); null the rest of the time. */
+  private endedHandler: (() => void) | null = null;
 
   enabled = false;
   volume = 0.75;
@@ -306,6 +344,56 @@ class TrackPlayer {
   /** Restore the bundled default track. */
   async useDefaultTrack() {
     await this.setSource(DEFAULT_TRACK_URL, DEFAULT_TRACK_TITLE, DEFAULT_TRACK_ARTIST);
+  }
+
+  /**
+   * Radio's hand on the transport.
+   *
+   * The element loops by design everywhere else in MOSH — one theme track
+   * under a session that has no idea how long it will last. A radio station
+   * is the opposite: the whole point is that the song *ends* and another one
+   * starts, forever. Handing over a handler swaps looping for an `ended`
+   * callback; handing over null puts the loop back exactly as it was, so the
+   * editor's ordinary theme-track behaviour survives leaving radio mode.
+   */
+  setAutoAdvance(handler: (() => void) | null) {
+    this.ensure();
+    const el = this.el;
+    if (!el) return;
+    if (this.endedHandler) {
+      el.removeEventListener("ended", this.endedHandler);
+      this.endedHandler = null;
+    }
+    el.loop = !handler;
+    if (!handler) return;
+    const fn = () => handler();
+    this.endedHandler = fn;
+    el.addEventListener("ended", fn);
+  }
+
+  /**
+   * Play a track from its first second rather than from a saved drop-in cue.
+   *
+   * Every other entry point deliberately drops into the middle of a song —
+   * a visualiser wants the interesting part immediately. Radio is the one
+   * place that wants the whole arrangement, intro included, because the
+   * listener is going to be there for the next four minutes either way.
+   */
+  async playTrackFromStart(track: ShowcaseTrack) {
+    await this.setSource(track.url, track.title, track.artist, 0);
+    await this.play();
+  }
+
+  /** Playhead in seconds — Radio's stall watchdog compares this across ticks. */
+  position(): number {
+    const t = this.el?.currentTime;
+    return typeof t === "number" && Number.isFinite(t) ? t : 0;
+  }
+
+  /** True while the element is genuinely rolling (not paused, not ended). */
+  isRolling(): boolean {
+    const el = this.el;
+    return !!el && !el.paused && !el.ended;
   }
 
   /** Load one of the bundled showcase tracks (see SHOWCASE_TRACKS) by id. */
@@ -535,7 +623,11 @@ class TrackPlayer {
     this.cueRequest++;
     this.lastCueByTrack.clear();
     this.everPlayed = false;
-    if (this.el) { try { this.el.src = ""; } catch {} }
+    if (this.el) {
+      if (this.endedHandler) { this.el.removeEventListener("ended", this.endedHandler); }
+      try { this.el.src = ""; } catch {}
+    }
+    this.endedHandler = null;
     this.el = null;
     if (this.ctx) { try { this.ctx.close(); } catch {} }
     this.ctx = null;

@@ -86,6 +86,8 @@ const GlCanvas = lazy(async () => {
   return { default: module.GlCanvas };
 });
 import { CastStageButton } from "@/components/editor/CastStageButton";
+import { RadioGesturePrompt, RadioHud, RadioWelcome } from "@/components/editor/RadioHud";
+import { useRadioBroadcast } from "@/hooks/useRadioBroadcast";
 
 const LEGACY_HOT_TRIGGERS_KEY = "cathedral_legacy_hot_triggers_launchpad_v1";
 
@@ -884,6 +886,13 @@ export default function Editor() {
     }
     setJourneyOn(true);
   }, [isForge, journeyOn, paywall]);
+
+  /* Radio — /radio (or /edit?radio=1). Forge draws, Journey directs, and the
+     rotation below keeps a song under both of them forever. It asks for
+     Journey through toggleJourney rather than setJourneyOn so the station is
+     gated exactly like Journey is everywhere else. */
+  const radio = useRadioBroadcast({ journeyOn, requestJourney: toggleJourney });
+  const [radioWelcome, setRadioWelcome] = useState(true);
 
   // Forge gets one five-minute, session-persistent Journey preview. The clock
   // follows active Journey time and is paused as soon as the director stops.
@@ -1928,6 +1937,24 @@ export default function Editor() {
         {freezeFrame && <FrozenFrame frame={freezeFrame} />}
         {!hasSource && !isOverlay && <StartCameraOverlay />}
         <SystemAudioHud visible={systemAudioEnabled && !isOverlay} />
+        {radio.config.active && radio.config.hud && (
+          <>
+            <RadioHud
+              station={radio.config.station}
+              nowPlaying={radio.nowPlaying}
+              upNext={radio.upNext}
+              paused={radio.paused}
+              onSkip={radio.skip}
+              onTogglePlay={radio.togglePlay}
+              /* Radio opens in performance mode, which hides every control.
+                 This is the way back to the full rig without leaving the
+                 station — the music keeps playing through the transition. */
+              onOpenControls={exitPerf}
+            />
+            {radioWelcome && isPerformanceMode && <RadioWelcome onDismiss={() => setRadioWelcome(false)} />}
+          </>
+        )}
+        {radio.config.active && radio.needsGesture && <RadioGesturePrompt onStart={radio.start} />}
         {hasSource && !isForge && !isMotif && !isOverlay && (
           <QuadrantSurface onTogglePerf={togglePerf} onTune={focusTune} />
         )}

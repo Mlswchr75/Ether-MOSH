@@ -1,16 +1,22 @@
 #!/usr/bin/env python3
 """Derive repeatable musical drop-in cues from the bundled showcase MP3s.
 
-Uses macOS afconvert plus NumPy so the analysis stays local and does not need
-an external service. The output is a TypeScript-ready cue map; review it and
-commit the selected timestamps to trackPlayer.ts.
+Decodes with macOS afconvert, or with ffmpeg where afconvert does not exist
+(Linux, CI, a container), plus NumPy — so the analysis stays local and does
+not need an external service. The output is a TypeScript-ready cue map;
+review it and commit the selected timestamps to trackPlayer.ts.
+
+    python3 scripts/analyze-track-cues.py             # the whole library
+    python3 scripts/analyze-track-cues.py new-song    # just these ids
 """
 
 from __future__ import annotations
 
 import math
 import re
+import shutil
 import subprocess
+import sys
 import tempfile
 import wave
 from pathlib import Path
@@ -34,9 +40,25 @@ def showcase_tracks() -> list[tuple[str, Path]]:
     ]]
 
 
+def decoder_command(path: Path, destination: Path) -> list[str]:
+    """afconvert on a Mac, ffmpeg anywhere else. Same 8kHz mono 16-bit WAV
+    either way, so cues generated on one machine match the other."""
+    if shutil.which("afconvert"):
+        return ["afconvert", "-f", "WAVE", "-d", f"LEI16@{SAMPLE_RATE}", "-c", "1", str(path), str(destination)]
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        try:
+            import imageio_ffmpeg  # optional, ships a static binary
+            ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
+        except Exception:
+            raise SystemExit("Need afconvert (macOS) or ffmpeg on PATH to decode audio")
+    return [ffmpeg, "-v", "quiet", "-y", "-i", str(path), "-ac", "1", "-ar", str(SAMPLE_RATE),
+            "-c:a", "pcm_s16le", str(destination)]
+
+
 def decode_mono(path: Path, destination: Path) -> None:
     subprocess.run(
-        ["afconvert", "-f", "WAVE", "-d", f"LEI16@{SAMPLE_RATE}", "-c", "1", str(path), str(destination)],
+        decoder_command(path, destination),
         check=True,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
@@ -127,8 +149,11 @@ def analyze(path: Path) -> tuple[float, list[tuple[float, str]]]:
 
 
 def main() -> None:
+    wanted = set(sys.argv[1:])
     print("export const TRACK_CUES = {")
     for track_id, path in showcase_tracks():
+        if wanted and track_id not in wanted:
+            continue
         duration, cues = analyze(path)
         encoded = ", ".join(f'{{ at: {at:.1f}, label: "{label}" }}' for at, label in cues)
         print(f'  "{track_id}": [{encoded}], // {duration:.1f}s')
