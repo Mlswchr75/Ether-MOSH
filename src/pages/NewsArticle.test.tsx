@@ -2,7 +2,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { HelmetProvider } from "react-helmet-async";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
-import { NEWS_ARTICLES } from "@/content/news";
+import { NEWS_ARTICLES, NEWS_LOOK_EXAMPLES_BY_SLUG } from "@/content/news";
 import NewsArticle from "./NewsArticle";
 
 afterEach(cleanup);
@@ -34,6 +34,16 @@ describe("NewsArticle", () => {
     expect(disclosure!.compareDocumentPosition(copy!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
+  it("starts each article at the top after index navigation", () => {
+    document.documentElement.scrollTop = 640;
+    document.body.scrollTop = 640;
+
+    renderArticle("make-the-rgb-shift-effect-split-before-it-gets-a-lawyer");
+
+    expect(document.documentElement.scrollTop).toBe(0);
+    expect(document.body.scrollTop).toBe(0);
+  });
+
   it("renders mode reports without requiring an effect registry entry", () => {
     renderArticle("forge-mode-already-started-the-fight");
 
@@ -42,18 +52,40 @@ describe("NewsArticle", () => {
     expect(screen.getByText("3 core controls")).toBeTruthy();
   });
 
-  it("publishes eleven unique reports including four September effects and two modes", () => {
-    expect(NEWS_ARTICLES).toHaveLength(11);
-    expect(new Set(NEWS_ARTICLES.map(article => article.slug)).size).toBe(11);
+  it("publishes fifteen unique reports including eight September effects and two modes", () => {
+    expect(NEWS_ARTICLES).toHaveLength(15);
+    expect(new Set(NEWS_ARTICLES.map(article => article.slug)).size).toBe(15);
     expect(NEWS_ARTICLES.find(article => article.effectId === "kaleidoscope")?.steps).toHaveLength(5);
-    expect(NEWS_ARTICLES.filter(article => ["posterize", "duotone", "asciiCollapse"].includes(article.effectId ?? "")))
-      .toHaveLength(3);
+    expect(NEWS_ARTICLES.filter(article => ["kaleidoscope", "posterize", "duotone", "asciiCollapse", "solarize", "thermal", "rgbShift", "oilSlick"].includes(article.effectId ?? "")))
+      .toHaveLength(8);
     expect(NEWS_ARTICLES.filter(article => article.subjectKind === "mode").map(article => article.effectName))
       .toEqual(["Forge Mode", "Pattern / Motif Mode"]);
   });
 
-  it("keeps the three new reports answer-first and release-complete", () => {
-    const batch = NEWS_ARTICLES.filter(article => ["posterize", "duotone", "asciiCollapse"].includes(article.effectId ?? ""));
+  it("gives every existing report two concrete visual-result examples", () => {
+    expect(Object.keys(NEWS_LOOK_EXAMPLES_BY_SLUG)).toHaveLength(NEWS_ARTICLES.length);
+    for (const article of NEWS_ARTICLES) {
+      const examples = NEWS_LOOK_EXAMPLES_BY_SLUG[article.slug];
+      expect(examples, article.slug).toHaveLength(2);
+      for (const example of examples) {
+        expect(example.scene.length).toBeGreaterThan(4);
+        expect(example.settings.length).toBeGreaterThan(8);
+        expect(example.result.length).toBeGreaterThan(40);
+      }
+    }
+  });
+
+  it("renders the two examples inside each article without adding another route", () => {
+    const { container } = renderArticle("break-the-keyframes-before-lunch");
+
+    expect(screen.getByRole("heading", { name: "What it actually looks like" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Dancer crossing frame" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Fast camera pan" })).toBeTruthy();
+    expect(container.querySelectorAll(".news-look-examples article")).toHaveLength(2);
+  });
+
+  it("keeps the seven recent reports answer-first and release-complete", () => {
+    const batch = NEWS_ARTICLES.filter(article => ["posterize", "duotone", "asciiCollapse", "solarize", "thermal", "rgbShift", "oilSlick"].includes(article.effectId ?? ""));
     for (const article of batch) {
       const answerWords = article.tldr.trim().split(/\s+/).length;
       expect(answerWords, `${article.slug} direct answer`).toBeGreaterThanOrEqual(40);
@@ -86,5 +118,57 @@ describe("NewsArticle", () => {
       .toBe("https://aestheticrebellion.store/products/radial-kaleidoscope-aloha-shirt");
     expect(screen.getByRole("link", { name: "Download .md" }).getAttribute("href"))
       .toBe("/news/downloads/kaleidoscope-field-card.md");
+  });
+
+  it("renders Solarize controls, technical distinction, download, and live product link", () => {
+    renderArticle("make-the-solarize-effect-expose-itself");
+
+    expect(screen.getByRole("heading", { name: "Make the Solarize Effect Expose Itself" })).toBeTruthy();
+    expect(screen.getByText("Amount")).toBeTruthy();
+    expect(screen.getByText("Pivot")).toBeTruthy();
+    expect(screen.getAllByText(/per-channel threshold shader/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByRole("link", { name: /View the thing we interrupted science for/i }).getAttribute("href"))
+      .toBe("https://aestheticrebellion.store/products/boundless-bleeds-uv-arm-sleeves");
+    expect(screen.getByRole("link", { name: "Download .md" }).getAttribute("href"))
+      .toBe("/news/downloads/solarize-field-card.md");
+  });
+
+  it("renders Thermal controls, RGB-versus-infrared distinction, download, and live product link", () => {
+    renderArticle("make-the-thermal-effect-admit-it-cannot-feel-heat");
+
+    expect(screen.getByRole("heading", { name: "Make the Thermal Effect Admit It Cannot Feel Heat" })).toBeTruthy();
+    expect(screen.getByText("Mix")).toBeTruthy();
+    expect(screen.getByText("Range")).toBeTruthy();
+    expect(screen.getAllByText(/detects no infrared radiation/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByRole("link", { name: /View the thing we interrupted science for/i }).getAttribute("href"))
+      .toBe("https://aestheticrebellion.store/products/color-splash-warmup-hoodie");
+    expect(screen.getByRole("link", { name: "Download .md" }).getAttribute("href"))
+      .toBe("/news/downloads/thermal-field-card.md");
+  });
+
+  it("renders RGB Shift controls, optical distinction, download, and live product link", () => {
+    renderArticle("make-the-rgb-shift-effect-split-before-it-gets-a-lawyer");
+
+    expect(screen.getByRole("heading", { name: "Make the RGB Shift Effect Split Before It Gets a Lawyer" })).toBeTruthy();
+    expect(screen.getByText("Amount")).toBeTruthy();
+    expect(screen.getByText("Angle")).toBeTruthy();
+    expect(screen.getAllByText(/without simulating a physical lens/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByRole("link", { name: /View the thing we interrupted science for/i }).getAttribute("href"))
+      .toBe("https://aestheticrebellion.store/products/brushstroke-riot-sweatshirt");
+    expect(screen.getByRole("link", { name: "Download .md" }).getAttribute("href"))
+      .toBe("/news/downloads/rgb-shift-field-card.md");
+  });
+
+  it("renders Oil Slick controls, physical distinction, download, and live product link", () => {
+    renderArticle("make-the-oil-slick-effect-pass-a-sheen-inspection");
+
+    expect(screen.getByRole("heading", { name: "Make the Oil Slick Effect Pass a Sheen Inspection" })).toBeTruthy();
+    expect(screen.getByText("Amount")).toBeTruthy();
+    expect(screen.getByText("Frequency")).toBeTruthy();
+    expect(screen.getAllByText(/not a physical thin-film simulation/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByRole("link", { name: /View the thing we interrupted science for/i }).getAttribute("href"))
+      .toBe("https://aestheticrebellion.store/products/chameleon-prism-hoodie");
+    expect(screen.getByRole("link", { name: "Download .md" }).getAttribute("href"))
+      .toBe("/news/downloads/oil-slick-field-card.md");
   });
 });

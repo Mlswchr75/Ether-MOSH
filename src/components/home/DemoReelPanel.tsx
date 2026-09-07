@@ -5,11 +5,10 @@
  * their own before they can play with the thing.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { loadDemoFrames, shuffle, sizedSrc, type DemoFrame } from "@/data/demoReel";
+import { isFrameDead, loadDemoFrames, markFrameDead, shuffle, sizedSrc, type DemoFrame } from "@/data/demoReel";
 import { MoshReel } from "./MoshReel";
 import { AmbientGlitch } from "./AmbientGlitch";
 import { useReelDirector } from "./useReelDirector";
-import { JourneyPortalInterlude } from "@/components/journey/PortalShapeGallery";
 
 type Props = {
   onSelect: (src: string, productUrl: string) => void;
@@ -51,9 +50,16 @@ export const DemoReelPanel = ({ onSelect }: Props) => {
 
   const { plan, phase } = useReelDirector(pool, visible && !reduced);
 
-  const stills = useMemo(() => (reduced ? shuffle(pool).slice(0, STILLS) : []), [reduced, pool]);
+  const stills = useMemo(
+    () => (reduced ? shuffle(pool.filter((f) => !isFrameDead(f.src))).slice(0, STILLS) : []),
+    [reduced, pool],
+  );
 
-  return (<>
+  // The still grid is laid out by CSS rather than by a derived track length,
+  // so a frame that cannot paint is dropped outright instead of hidden.
+  const [dead, setDead] = useState<ReadonlySet<string>>(() => new Set());
+
+  return (
     <section
       ref={panelRef}
       aria-label="Demo frames from the Aesthetic Rebellion catalogue"
@@ -62,11 +68,11 @@ export const DemoReelPanel = ({ onSelect }: Props) => {
       <div className="pointer-events-none absolute inset-0 scanline opacity-40" />
       <AmbientGlitch active={visible && !reduced} />
 
-      {plan && <MoshReel plan={plan} phase={phase} onSelect={onSelect} />}
+      {plan && <MoshReel plan={plan} phase={phase} onSelect={onSelect} onFrameError={markFrameDead} />}
 
       {reduced && (
         <div className="absolute inset-0 z-10 grid grid-cols-2 content-center gap-3 overflow-y-auto p-8 sm:grid-cols-4 lg:grid-cols-6">
-          {stills.map((frame) => (
+          {stills.filter((frame) => !dead.has(frame.src)).map((frame) => (
             <button
               key={frame.src}
               type="button"
@@ -78,6 +84,10 @@ export const DemoReelPanel = ({ onSelect }: Props) => {
                 src={sizedSrc(frame.src, 320)}
                 alt={frame.label}
                 loading="lazy"
+                onError={() => {
+                  markFrameDead(frame.src);
+                  setDead((prev) => (prev.has(frame.src) ? prev : new Set(prev).add(frame.src)));
+                }}
                 className="h-full w-full object-cover"
               />
               <span className="reel-frame-label">{frame.label}</span>
@@ -108,6 +118,5 @@ export const DemoReelPanel = ({ onSelect }: Props) => {
         ↑ back to the instrument
       </div>
     </section>
-    <JourneyPortalInterlude variant="reel" className="demo-reel-portals" />
-  </>);
+  );
 };

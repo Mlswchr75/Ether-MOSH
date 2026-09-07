@@ -1,4 +1,4 @@
-import { Mic, MicOff, Circle, Square, Sparkles, Scissors, Snowflake, Camera, Shuffle, Star, Play, Pencil, Trash2, X, Film, Lock, Share2, Compass, Maximize2, Minimize2, SwitchCamera, Eraser, Link2, Upload, Music, Music2, Shuffle as ShuffleIcon, Undo2, Redo2, ChevronDown, MonitorSpeaker, Heart, GripVertical, RotateCcw, SkipBack, SkipForward, Palette, RectangleVertical, RectangleHorizontal } from "lucide-react";
+import { Mic, MicOff, Circle, Square, Sparkles, Scissors, Snowflake, Camera, Shuffle, Star, Play, Pencil, Trash2, X, Film, Lock, Share2, Compass, Maximize2, Minimize2, SwitchCamera, Eraser, Link2, Upload, Music, Music2, Shuffle as ShuffleIcon, Undo2, Redo2, ChevronDown, MonitorSpeaker, Heart, GripVertical, RotateCcw, SkipBack, SkipForward, Palette, RectangleVertical, RectangleHorizontal, Moon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { useStore } from "@/store/useStore";
@@ -125,7 +125,7 @@ const DEFAULT_AUTO_MOSH_SEC = 15;
  * trigger's settings overlay instead (see AccountSettingsOverlay.tsx), so
  * none of them need a ring slot of their own any more. */
 const DEFAULT_ORDER = [
-  "mosh", "undo", "redo", "journey", "auto-mosh", "clear-fx",
+  "mosh", "undo", "redo", "journey", "auto-mosh", "clear-fx", "dark-mode",
   "audio", "theme-track", "freeze",
   "capture", "gif", "share", "favorites",
   "sticker-mode",
@@ -137,6 +137,7 @@ const TRIGGER_LABELS: Record<string, string> = {
   home: "Back to start", undo: "Undo", redo: "Redo",
   "source-upload": "Upload source", "source-camera": "Live camera", "source-forge": "Forge source", "source-motif": "Motif Maestro", account: "Settings",
   mosh: "Mosh", "auto-mosh": "Auto-Mosh", "clear-fx": "Clear FX", journey: "Journey",
+  "dark-mode": "Dark Mode — crush light to black, push color to neon",
   audio: "Audio (mic / device / beat sync)",
   freeze: "Freeze", capture: "Capture — tap for a still, hold to record", gif: "GIF loop", share: "Share",
   "sticker-mode": "Sticker Studio",
@@ -144,7 +145,7 @@ const TRIGGER_LABELS: Record<string, string> = {
   "forge-palette": "Forge settings — colour is directed automatically",
   "motif-maestro": "Motif Maestro controls",
   "switch-camera": "Switch camera",
-  "desktop-portrait": "Portrait view",
+  "desktop-portrait": "Canvas shape",
 };
 
 const ORDER_KEY = "cathedral_hot_trigger_order_v2";
@@ -282,6 +283,8 @@ function TrackTrigger({ delay, showNudge, onNudgeDismiss }: { delay: number; sho
   const trackTitle = useStore(s => s.trackTitle);
   const setTrackEnabled = useStore(s => s.setTrackEnabled);
   const setTrackMeta = useStore(s => s.setTrackMeta);
+  const uploadedTracks = useStore(s => s.uploadedTracks);
+  const addUploadedTrack = useStore(s => s.addUploadedTrack);
   const [open, setOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -312,13 +315,25 @@ function TrackTrigger({ delay, showNudge, onNudgeDismiss }: { delay: number; sho
         type="button"
         aria-label={trackEnabled ? `Pause ${trackTitle}` : "Play a random MOSH track"}
         aria-pressed={trackEnabled}
-        title={trackEnabled ? `Pause · ${trackTitle}` : "Play a random track"}
+        title={trackEnabled ? `Pause · ${trackTitle} — Command+Shift-click to choose a song` : "Play a random song + moment — Command+Shift-click to choose"}
         data-active={trackEnabled || undefined}
         data-tint=""
         data-no-longpress
         className="hot-trigger"
         style={{ animationDelay: `${delay}ms`, ["--ht-tint" as string]: "262 68% 72%" }}
-        onClick={() => trackEnabled ? setTrackEnabled(false) : startRandomTrack()}
+        /* Command+Shift opens the picker instead of toggling. The caret below already
+           opens it, but it is a 20px target tucked in a corner of another
+           button — fine to discover once, tedious to hit every time you want
+           a specific track. Ctrl+Shift mirrors the gesture off macOS, and a
+           plain tap still toggles randomized playback exactly as before. */
+        onClick={(event) => {
+          if (event.shiftKey && (event.metaKey || event.ctrlKey)) {
+            event.stopPropagation();
+            setOpen(true);
+            return;
+          }
+          if (trackEnabled) setTrackEnabled(false); else startRandomTrack();
+        }}
       >
         <span className="hot-trigger__glitch" aria-hidden>
           {trackEnabled ? <Music className="h-4 w-4" strokeWidth={1.5} /> : <Music2 className="h-4 w-4" strokeWidth={1.5} />}
@@ -344,16 +359,22 @@ function TrackTrigger({ delay, showNudge, onNudgeDismiss }: { delay: number; sho
 
       {open && (
         <div
-          className="panel-in-3d absolute right-full top-0 z-50 mr-2 w-52 rounded-sm border border-[hsl(var(--border-default))] bg-black/85 p-2.5 backdrop-blur-md"
-          role="menu"
-          aria-label="Track options"
+          className="absolute left-1/2 top-1/2 z-50 w-64 -translate-x-1/2 -translate-y-1/2 sm:left-auto sm:right-full sm:mr-2 sm:translate-x-0"
           onPointerDown={(e) => e.stopPropagation()}
         >
+          <div
+            className="panel-in-3d max-h-[82dvh] w-full overflow-y-auto rounded-sm border border-[hsl(var(--border-default))] bg-black/85 p-2.5 backdrop-blur-md [scrollbar-width:thin]"
+            role="menu"
+            aria-label="Track options"
+          >
           <div className="overflow-hidden whitespace-nowrap font-mono text-[10px] uppercase tracking-[0.16em] text-[hsl(var(--text-secondary))]">
             now playing
           </div>
           <div className="mt-0.5 truncate text-[12px] font-semibold text-[hsl(var(--text-primary))]" title={trackTitle}>
             {trackTitle}
+          </div>
+          <div className="mt-1 font-mono text-[8px] uppercase tracking-[0.14em] text-[hsl(var(--text-tertiary))]">
+            cmd + shift + song trigger opens this library
           </div>
 
           {/* Bigger, obviously-tappable transport row — the small text
@@ -395,19 +416,60 @@ function TrackTrigger({ delay, showNudge, onNudgeDismiss }: { delay: number; sho
             </button>
           </div>
 
-          <div className="mt-2.5 mb-1 font-mono text-[9px] uppercase tracking-[0.18em] text-[hsl(var(--text-tertiary))]">
-            showcase
+          {uploadedTracks.length > 0 && (
+            <>
+              <div className="mt-2.5 mb-1 font-mono text-[9px] uppercase tracking-[0.18em] text-[hsl(var(--text-tertiary))]">
+                yours
+              </div>
+              <div className="flex flex-col gap-0.5">
+                {uploadedTracks.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    role="menuitem"
+                    data-no-longpress
+                    data-active={trackTitle === t.title || undefined}
+                    aria-current={trackTitle === t.title ? "true" : undefined}
+                    onClick={async () => {
+                      setOpen(false);
+                      try {
+                        await trackPlayer.setSource(t.url, t.title, "");
+                        setTrackMeta(t.title, "");
+                        setTrackEnabled(true);
+                      } catch (err) {
+                        // An object URL dies with the document that made it,
+                        // and Safari can drop one earlier under memory
+                        // pressure. Say so rather than failing silently on a
+                        // row that looks perfectly fine.
+                        console.error("[track] uploaded track no longer available:", err);
+                        toast.error(`"${t.title}" is no longer loaded — add the file again`);
+                      }
+                    }}
+                    className="flex w-full items-center gap-2 rounded-sm border border-transparent px-2 py-1.5 text-left font-mono text-[10px] uppercase tracking-[0.1em] text-[hsl(var(--text-secondary))] transition hover:border-[hsl(var(--accent))] hover:text-[hsl(var(--accent))] data-[active]:!border-[#5dff9b]/50 data-[active]:!text-[#5dff9b]"
+                  >
+                    <Upload className="h-3 w-3 shrink-0" strokeWidth={1.5} />
+                    <span className="truncate">{t.title}</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+
+          <div className="mt-2.5 mb-1 flex items-center justify-between font-mono text-[9px] uppercase tracking-[0.18em] text-[hsl(var(--text-tertiary))]">
+            <span>showcase</span>
+            <span>{SHOWCASE_TRACKS.length} songs</span>
           </div>
-          <div className="flex flex-col gap-0.5">
+          <div className="flex max-h-[min(42dvh,22rem)] flex-col gap-0.5 overflow-y-auto overscroll-contain pr-1 [scrollbar-width:thin]">
             {SHOWCASE_TRACKS.map((t) => (
               <button
                 key={t.id}
                 type="button"
                 role="menuitem"
                 data-no-longpress
-                data-active={trackEnabled && trackTitle === t.title || undefined}
+                data-active={trackTitle === t.title || undefined}
+                aria-current={trackTitle === t.title ? "true" : undefined}
                 onClick={() => { setOpen(false); runTrackAction(() => trackPlayer.useShowcaseTrack(t.id)); }}
-                className="flex w-full items-center gap-2 rounded-sm border border-transparent px-2 py-1.5 text-left font-mono text-[10px] uppercase tracking-[0.1em] text-[hsl(var(--text-secondary))] transition hover:border-[hsl(var(--accent))] hover:text-[hsl(var(--accent))] data-[active]:border-[hsl(var(--accent))]/40 data-[active]:text-[hsl(var(--accent))]"
+                className="flex w-full items-center gap-2 rounded-sm border border-transparent px-2 py-1.5 text-left font-mono text-[10px] uppercase tracking-[0.1em] text-[hsl(var(--text-secondary))] transition hover:border-[hsl(var(--accent))] hover:text-[hsl(var(--accent))] data-[active]:!border-[#5dff9b]/50 data-[active]:!text-[#5dff9b]"
               >
                 <Music2 className="h-3 w-3 shrink-0" strokeWidth={1.5} />
                 <span className="truncate">{t.title}</span>
@@ -464,6 +526,10 @@ function TrackTrigger({ delay, showNudge, onNudgeDismiss }: { delay: number; sho
                 await trackPlayer.setSource(url, name, "");
                 setTrackMeta(name, "");
                 setTrackEnabled(true);
+                // Keep it in the picker. Without this an upload was playable
+                // exactly once — switching to a showcase track and back meant
+                // re-browsing for a file already loaded in this session.
+                addUploadedTrack({ id: `upload:${name}`, url, title: name });
                 setOpen(false);
               } catch (err) {
                 console.error("[track] failed to load audio file:", err);
@@ -472,6 +538,7 @@ function TrackTrigger({ delay, showNudge, onNudgeDismiss }: { delay: number; sho
               }
             }}
           />
+          </div>
         </div>
       )}
     </div>
@@ -756,7 +823,15 @@ function MobileRadialWheel({
     layer.dataset.phase = phase;
     openRef.current = phase === "open";
     wheelRef.current?.setAttribute("aria-hidden", phase === "open" ? "false" : "true");
+    // Published so the audio nudge can fire only while the menu that answers
+    // it is actually on screen (see Editor's nudge effect).
+    useStore.getState().setRadialMenuOpen(phase === "open");
   };
+
+  // A menu that stops existing is not open. setPhase is imperative here (it
+  // writes straight to the DOM rather than through state), so nothing else
+  // would clear this on unmount.
+  useEffect(() => () => useStore.getState().setRadialMenuOpen(false), []);
 
   const select = (id: string | null) => {
     if (highlightRef.current === id) return;
@@ -977,7 +1052,14 @@ function MobileRadialWheel({
 
   return (
     <div ref={layerRef} data-phase="idle" className="mobile-radial-layer pointer-events-none absolute inset-0 z-[70]">
-      <button type="button" className="pointer-events-auto absolute left-1/2 top-1/2 h-px w-px opacity-0" onClick={() => { setPhase("open"); cacheWheelRect(); }} aria-label="Open radial controls" />
+      {/* Keyboard-only entry point (Tab + Enter/Space) for the wheel — real
+          users open it with the long-press gesture below. pointer-events-none
+          keeps this off mouse/touch hit-testing: it's dead center of the
+          whole screen, and Chromium's touch-target adjustment was snapping
+          taps several pixels away onto this invisible 1px button instead of
+          the canvas underneath it. Keyboard activation doesn't go through
+          hit-testing, so it's unaffected. */}
+      <button type="button" className="pointer-events-none absolute left-1/2 top-1/2 h-px w-px opacity-0" onClick={() => { setPhase("open"); cacheWheelRect(); }} aria-label="Open radial controls" />
           <button type="button" className="mobile-radial-wheel__backdrop absolute inset-0" aria-label="Close radial controls" onClick={dismiss} />
           <div
             ref={wheelRef}
@@ -1072,6 +1154,12 @@ function DesktopRadialWheel({
   onMosh: () => void;
 }) {
   const [phase, setPhase] = useState<"idle" | "armed" | "open">("idle");
+  // Same signal the mobile wheel publishes, so the nudge behaves identically
+  // on both. Cleared on unmount — a menu that stops existing is not open.
+  useEffect(() => {
+    useStore.getState().setRadialMenuOpen(phase === "open");
+  }, [phase]);
+  useEffect(() => () => useStore.getState().setRadialMenuOpen(false), []);
   const [editing, setEditing] = useState(false);
   const [highlighted, setHighlighted] = useState<string | null>(null);
   const [center, setCenter] = useState({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
@@ -1253,7 +1341,8 @@ function DesktopRadialWheel({
 
   return (
     <div ref={layerRef} data-phase={phase} className="desktop-radial-layer pointer-events-none fixed inset-0 z-[70]">
-        <button type="button" className="pointer-events-auto absolute left-1/2 top-1/2 h-px w-px opacity-0" onClick={() => setPhase("open")} aria-label="Open radial controls" />
+        {/* Keyboard-only entry point — see the mobile variant's comment above. */}
+        <button type="button" className="pointer-events-none absolute left-1/2 top-1/2 h-px w-px opacity-0" onClick={() => setPhase("open")} aria-label="Open radial controls" />
         <button type="button" className="mobile-radial-wheel__backdrop absolute inset-0" aria-label="Close radial controls" onClick={() => { setPhase("idle"); setEditing(false); }} />
         <div
           ref={wheelRef}
@@ -1382,6 +1471,8 @@ export function HotTriggers({
   const shuffleSec = useStore(s => s.shuffleSec);
   const setShuffleSec = useStore(s => s.setShuffleSec);
   const sourceMode = useStore(s => s.sourceMode);
+  const darkModeOn = useStore(s => s.darkModeOn);
+  const toggleDarkMode = useStore(s => s.toggleDarkMode);
 
   const [pickerOpen, setPickerOpen] = useState(false);
   const [favOpen, setFavOpen] = useState(false);
@@ -1465,8 +1556,8 @@ export function HotTriggers({
   const setVideoSource = useStore(s => s.setVideoSource);
   const clearVideoSource = useStore(s => s.clearVideoSource);
   const [flipBusy, setFlipBusy] = useState(false);
-  const desktopPortraitMode = useStore(s => s.desktopPortraitMode);
-  const toggleDesktopPortraitMode = useStore(s => s.toggleDesktopPortraitMode);
+  const desktopCanvasAspect = useStore(s => s.desktopCanvasAspect);
+  const cycleDesktopCanvasAspect = useStore(s => s.cycleDesktopCanvasAspect);
 
   const stickerMode = useStore(s => s.stickerMode);
   const setStickerMode = useStore(s => s.setStickerMode);
@@ -1800,6 +1891,32 @@ export function HotTriggers({
         <span className="hot-trigger__ico"><Eraser className="h-4 w-4" strokeWidth={1.5} /></span>
       </button>
     ),
+    // Dark Mode — a finisher-level grade (see Renderer.ts) that crushes
+    // low-color/bright content toward true black while boosting whatever
+    // color survives, so the effect stack's neon reads against real black
+    // instead of mid-grey ambient light. Independent of the FX stack: it
+    // stays on across Mosh/undo/clear-fx like Journey does.
+    "dark-mode": (
+      <button
+        key="dark-mode"
+        type="button"
+        onClick={toggleDarkMode}
+        aria-label={darkModeOn ? "Dark Mode on" : "Dark Mode off"}
+        aria-pressed={darkModeOn || undefined}
+        title={darkModeOn ? "Dark Mode on — crushing light to black, pushing color to neon" : "Dark Mode — crush light to black, push color to neon"}
+        data-active={darkModeOn || undefined}
+        data-tint=""
+        data-no-longpress
+        className="hot-trigger relative"
+        style={{ ["--ht-tint" as string]: "280 20% 55%" }}
+      >
+        <span className="hot-trigger__glitch" aria-hidden><Moon className="h-4 w-4" strokeWidth={1.5} /></span>
+        <span className="hot-trigger__ico"><Moon className="h-4 w-4" strokeWidth={1.5} /></span>
+        {darkModeOn && (
+          <span className="pointer-events-none absolute inset-0 rounded-md ring-1 ring-[hsl(var(--accent))]/60 animate-pulse" />
+        )}
+      </button>
+    ),
     // Journey — Smart and Storm combined into one director. They were two
     // buttons doing halves of the same job: Smart chose what suited the
     // moment but never touched it again until the next switch; Storm never
@@ -2114,21 +2231,26 @@ export function HotTriggers({
         <SwitchCamera className="h-4 w-4" strokeWidth={1.5} />
       </HotBtn>
     ),
-    // Desktop-only — a phone solves this by physically rotating, but a
-    // desktop browser window has no equivalent, so wide "cover" framing was
-    // routinely cropping the top/bottom off portrait-oriented sources.
+    // Desktop-only — cycle the same stage between the viewport, a fitted 9:16
+    // portrait, and a fitted 1:1 square without spending another wheel slot.
     "desktop-portrait": !isTouchScreen && (
       <HotBtn
         key="desktop-portrait"
         delay={0}
-        label={desktopPortraitMode ? "Exit portrait view" : "Portrait view — for tall images"}
-        active={desktopPortraitMode}
-        onClick={toggleDesktopPortraitMode}
+        label={desktopCanvasAspect === "landscape"
+          ? "Canvas: landscape — switch to portrait"
+          : desktopCanvasAspect === "portrait"
+            ? "Canvas: portrait — switch to square"
+            : "Canvas: square — switch to landscape"}
+        active={desktopCanvasAspect !== "landscape"}
+        onClick={cycleDesktopCanvasAspect}
         tint="46 90% 62%"
       >
-        {desktopPortraitMode
-          ? <RectangleHorizontal className="h-4 w-4" strokeWidth={1.5} />
-          : <RectangleVertical className="h-4 w-4" strokeWidth={1.5} />}
+        {desktopCanvasAspect === "landscape"
+          ? <RectangleVertical className="h-4 w-4" strokeWidth={1.5} />
+          : desktopCanvasAspect === "portrait"
+            ? <Square className="h-4 w-4" strokeWidth={1.5} />
+            : <RectangleHorizontal className="h-4 w-4" strokeWidth={1.5} />}
       </HotBtn>
     ),
     // Was its own wheel trigger ("Support MOSH") — now the loud, animated

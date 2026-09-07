@@ -2,9 +2,10 @@ import { useCallback, useEffect, useRef, useState, type DragEvent } from 'react'
 import { Crosshair, Download, Film, ImagePlus, Layers3, Library, LoaderCircle, ScanLine, Sparkles, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { useStore } from '@/store/useStore';
+import { useProximityIdle } from '@/hooks/useProximityIdle';
 import { useOverlayStore } from '@/store/useOverlayStore';
 import { stickerEngine, type StickerScore } from '@/engine/StickerEngine';
-import { segmentationEngine, type MaskResult } from '@/engine/SegmentationEngine';
+import { segmentationEngine, type MaskResult, type SegmentableSource } from '@/engine/SegmentationEngine';
 import { OverlayStage } from '@/components/editor/OverlayStage';
 import { MoshStickerTrigger } from '@/components/editor/MoshStickerTrigger';
 import { OverlayImporter } from '@/components/editor/OverlayImporter';
@@ -39,12 +40,23 @@ function overlayUsesUrl(url: string): boolean {
   return useOverlayStore.getState().entities.some(entity => entity.asset.url === url);
 }
 
+/** Match the preview bitmap to the visualizer's aspect, capped for a cheap
+ * live redraw. The organic sticker frame is then composited inside this full
+ * display-sized surface, so its only straight boundary is the screen itself. */
+function previewStageFrameSize(source: HTMLCanvasElement, maxDimension: number) {
+  const aspect = source.width / Math.max(1, source.height);
+  return aspect >= 1
+    ? { width: maxDimension, height: Math.max(1, Math.round(maxDimension / aspect)) }
+    : { width: Math.max(1, Math.round(maxDimension * aspect)), height: maxDimension };
+}
+
 export function StickerCapture() {
   const stickerMode          = useStore(s => s.stickerMode);
   const isolationMode        = useStore(s => s.isolationMode);
   const setIsolationMode     = useStore(s => s.setIsolationMode);
   const glCanvas             = useStore(s => s.glCanvas);
   const video                = useStore(s => s.videoElement);
+  const image                = useStore(s => s.imageElement);
   const sourceMode           = useStore(s => s.sourceMode);
   // Only changes on a genuine mosh-stack reshuffle (mosh()/reroll-seed/
   // favorite/preset-load) — never on an audio-reactive param wiggle within
@@ -58,10 +70,17 @@ export function StickerCapture() {
 
   const [score, setScore]       = useState<StickerScore>({ value: 0, saturation: 0, complexity: 0 });
   const [flash, setFlash]       = useState(false);
+  /* The Sticker Studio panel sits over the top-right of a full-screen
+     visualiser. It steps out of the way when nobody is reaching for it, and
+     comes back only for a pointer that approaches it — never for a keystroke,
+     so the whole app stays drivable from the keyboard without ever putting
+     chrome back over the artwork. See useProximityIdle. */
+  const studioRef = useRef<HTMLElement>(null);
+  const studioHidden = useProximityIdle(studioRef);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [lottieMode, setLottieMode] = useState(false);
   const [lottieBackground, setLottieBackground] = useState<LottieStickerBackground>('black');
-  const [includeGif, setIncludeGif] = useState(false);
+  const [includeGif, setIncludeGif] = useState(true);
   const [loopSeconds, setLoopSeconds] = useState(2);
   const [outputLongEdge, setOutputLongEdge] = useState<720 | 1080>(720);
   const [lottieProgress, setLottieProgress] = useState(0);
@@ -85,26 +104,27 @@ export function StickerCapture() {
   const isPointerDown= useRef(false);
   const glRef        = useRef<HTMLCanvasElement | null>(null);
   const vidRef       = useRef<HTMLVideoElement | null>(null);
+  const imgRef       = useRef<HTMLImageElement | null>(null);
   const previewRef   = useRef<HTMLCanvasElement | null>(null);
   const focusRef     = useRef<OrganicFocus | undefined>(undefined);
   const alphaBoxRef  = useRef<ContentBox | undefined>(undefined);
   const isolationFocusRef = useRef<OrganicFocus | undefined>(undefined);
   const isolationRequestRef = useRef(0);
   // The crop window the live preview actually renders through — committed
-  // once per mosh stack (or per genuinely large content shift within one),
-  // then held fixed. `focusRef` above keeps re-analyzing every 8th frame so
+  // once per mosh stack, then held fixed. `focusRef` above keeps
+  // re-analyzing every 8th frame so
   // the mask's own alpha stays alive and audio-reactive, but bouncing THAT
   // fresh box straight into the crop every time is what was making the
   // preview's whole frame jump between different regions of the source
   // every few seconds — this decouples "what shape is inside the frame"
   // (kept live) from "where the frame itself is" (locked).
   const lockedBoxRef = useRef<ContentBox | undefined>(undefined);
-  const lastLockTimeRef = useRef(0);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [phase, _setPhase] = useState<Phase>('idle');
 
   useEffect(() => { glRef.current = glCanvas; }, [glCanvas]);
   useEffect(() => { vidRef.current = video; }, [video]);
+  useEffect(() => { imgRef.current = image; }, [image]);
   // A genuine-alpha capture only makes sense while the uploaded transparent
   // PNG is still the actual MOSH source — if the user switches to camera,
   // video, forge or any other source, the real-alpha path would otherwise
@@ -199,7 +219,8 @@ export function StickerCapture() {
         if (!alphaBoxRef.current || frame++ % 8 === 0) alphaBoxRef.current = analyzeRealAlphaBounds(source, alphaBoxRef.current);
         const box = alphaBoxRef.current;
         const { width, height } = contentFrameSize(box, maxDimension);
-        if (preview.width !== width || preview.height !== height) { preview.width = width; preview.height = height; }
+        const stage = previewStageFrameSize(source, maxDimension);
+        if (preview.width !== stage.width || preview.height !== stage.height) { preview.width = stage.width; preview.height = stage.height; }
         drawLottieStickerPreview(ctx, renderRealAlphaFrame(source, box, width, height), lottieBackground, now / 1000);
         return;
       }
@@ -209,24 +230,12 @@ export function StickerCapture() {
       }
       const focus = isolationFocusRef.current ?? focusRef.current;
       if (!focus) return;
-      // Commit the crop window once, then hold it — relock only when the
-      // content has drifted FAR from the locked box (a real compositional
-      // change, not audio-reactive jitter within the same stack) and only
-      // after a minimum dwell time, so a borderline reading right at the
-      // threshold can't flip-flop the lock back and forth every few frames.
+      // Commit the crop window once, then hold it until the user explicitly
+      // reshapes the sticker or a genuine moshSeed arrives. The alpha field
+      // keeps evolving inside that stable frame, but UI taps, audio motion,
+      // and threshold drift can no longer make the whole sticker jump.
       const freshBox: ContentBox = { left: focus.left, right: focus.right, top: focus.top, bottom: focus.bottom };
-      const locked = lockedBoxRef.current;
-      if (!locked) {
-        lockedBoxRef.current = freshBox;
-        lastLockTimeRef.current = now;
-      } else {
-        const drift = Math.abs(freshBox.left - locked.left) + Math.abs(freshBox.right - locked.right)
-          + Math.abs(freshBox.top - locked.top) + Math.abs(freshBox.bottom - locked.bottom);
-        if (drift > 0.35 && now - lastLockTimeRef.current > 2200) {
-          lockedBoxRef.current = freshBox;
-          lastLockTimeRef.current = now;
-        }
-      }
+      if (!lockedBoxRef.current) lockedBoxRef.current = freshBox;
       const lockedBox = lockedBoxRef.current ?? freshBox;
       if (!lockedBox) {
         raf = requestAnimationFrame(draw);
@@ -238,7 +247,8 @@ export function StickerCapture() {
       // thin or asymmetric shape actually previews as tall and thin, and
       // stays that size until the lock itself moves.
       const { width, height } = contentFrameSize(lockedBox, maxDimension);
-      if (preview.width !== width || preview.height !== height) { preview.width = width; preview.height = height; }
+      const stage = previewStageFrameSize(source, maxDimension);
+      if (preview.width !== stage.width || preview.height !== stage.height) { preview.width = stage.width; preview.height = stage.height; }
       // The mask's alpha still tracks the freshest analysis (kept alive,
       // audio-reactive) — only the crop window (left/right/top/bottom) is
       // pinned to the lock, exactly the "committed box + live field" split
@@ -251,6 +261,17 @@ export function StickerCapture() {
   }, [isolationMode, lottieBackground, lottieMode, stickerMode, tapPoint, transparentActive]);
 
   const setPhase = (p: Phase) => { phaseRef.current = p; _setPhase(p); };
+
+  /**
+   * Whatever the current source mode actually has: the live camera feed
+   * where there is one, the uploaded still where there isn't, and — in forge
+   * mode, which has neither — the rendered canvas itself, since the forge
+   * output *is* the picture there rather than a distinct clean layer under
+   * an FX stack. Keeps sticker capture working identically across every
+   * source mode instead of only camera.
+   */
+  const captureSource = (): SegmentableSource | null => vidRef.current ?? imgRef.current ?? glRef.current;
+
   const doFlash = () => { setFlash(true); setTimeout(() => setFlash(false), 150); };
 
   const publishSticker = useCallback((entry: StickerEntry) => {
@@ -294,11 +315,11 @@ export function StickerCapture() {
     const tick = () => {
       rafRef.current = requestAnimationFrame(tick);
       frameRef.current++;
-      const gl = glRef.current, vid = vidRef.current;
-      if (!gl) return;
+      const gl = glRef.current, src = captureSource();
+      if (!gl || !src) return;
 
       if (frameRef.current % 6 === 0) setScore(stickerEngine.scoreFrame(gl));
-      if (vid && frameRef.current % 90 === 0) stickerEngine.refreshBestMask(vid);
+      if (frameRef.current % 90 === 0) stickerEngine.refreshBestMask(src);
       if (phaseRef.current === 'recording') {
         const mask = stickerEngine.getBestMask();
         if (mask && recFrames.current.length < 30) {
@@ -312,6 +333,13 @@ export function StickerCapture() {
     return () => cancelAnimationFrame(rafRef.current);
   }, [stickerMode, finishRecording]);
 
+  // The actual capture — segmenting/cropping/compositing off the live
+  // render — now happens in OverlayVault's own "mosh:make-sticker" listener
+  // (resolveStickerSource reads glCanvas directly, which is already
+  // source-mode-agnostic since it's the final rendered frame regardless of
+  // upload/camera/forge/motif). This just supplies the tap feedback and
+  // fires the event; captureSource()/refreshBestMask below are still used
+  // by the hold-to-record animated path.
   const captureStatic = useCallback(async () => {
     const gl = glRef.current;
     if (!gl || phaseRef.current !== 'idle') return;
@@ -369,9 +397,10 @@ export function StickerCapture() {
     else toast.error("Drop an image file — ideally a transparent PNG");
   }, [handleTransparentUpload]);
 
-  const exportLottieSticker = useCallback(async () => {
+  const exportLottieSticker = useCallback(async (options?: { includeGif?: boolean }) => {
     const source = glRef.current;
     if (!source || phaseRef.current !== 'idle') return;
+    const exportGif = options?.includeGif ?? includeGif;
     setPhase('encoding'); setLottieProgress(0);
     notifyExportStarted('sticker');
     const toastId = toast.loading(transparentActive ? 'Capturing transparent-source loop…' : 'Capturing transparent Lottie loop…', { duration: 30_000 });
@@ -469,12 +498,12 @@ export function StickerCapture() {
       const asset = { id: `lottie-sticker-${id}`, name, kind: 'lottie-json' as const, url, mimeType: 'application/json', width, height, animated: true, createdAt: Date.now(), objectUrl: true };
       setLottieProgress(.86);
       downloadBlob(lottieBlob, `lottie-sticker-${id.slice(0, 8)}.json`);
-      if (includeGif) {
+      if (exportGif) {
         const gif = await encodeTransparentStickerGif(frames, fps);
         downloadBlob(gif, `lottie-sticker-${id.slice(0, 8)}.gif`);
       }
       setLottieProgress(1);
-      toast.success(`Transparent Lottie exported${includeGif ? ' with GIF' : ''}`, { id: toastId });
+      toast.success(`Transparent Lottie exported${exportGif ? ' with GIF' : ''}`, { id: toastId });
       void saveOverlayAsset(asset, lottieBlob).then(() => {
         toast.success('Lottie saved to Sticker Vault');
       }).catch(error => {
@@ -492,17 +521,22 @@ export function StickerCapture() {
     }
   }, [includeGif, isolationMode, loopSeconds, outputLongEdge, tapPoint, transparentActive]);
 
-  // Shift+K, handled globally in Editor.tsx (this component is always
+  // Cmd/Ctrl+Shift+K, handled globally in Editor.tsx (this component is always
   // mounted, same "always-listening" setup as "mosh:make-sticker" above) —
   // reveals the Lottie checkbox as on and captures immediately, without
   // needing scissors mode opened or the checkbox already ticked first.
   useEffect(() => {
-    const onShortcut = () => { setLottieMode(true); void exportLottieSticker(); };
+    const onShortcut = () => {
+      const enteringLottieMode = !lottieMode;
+      setLottieMode(true);
+      if (enteringLottieMode) setIncludeGif(true);
+      void exportLottieSticker({ includeGif: enteringLottieMode ? true : includeGif });
+    };
     window.addEventListener('mosh:capture-lottie-sticker', onShortcut);
     return () => window.removeEventListener('mosh:capture-lottie-sticker', onShortcut);
-  }, [exportLottieSticker]);
+  }, [exportLottieSticker, includeGif, lottieMode]);
 
-  // Shift+Space while in Sticker Mode, handled globally in Editor.tsx (same
+  // Cmd/Ctrl+Shift+Space while in Sticker Mode, handled globally in Editor.tsx (same
   // always-listening event-bridge pattern as the shortcuts above). Instead
   // of moshing the FX stack, this throws out the live preview's current
   // crop lock and re-reads the source fresh — a new proposed framing/
@@ -535,7 +569,6 @@ export function StickerCapture() {
     isolationFocusRef.current = isolated;
     const freshBox: ContentBox = { left: isolated.left, right: isolated.right, top: isolated.top, bottom: isolated.bottom };
     lockedBoxRef.current = freshBox;
-    lastLockTimeRef.current = performance.now();
     doFlash();
   }, [isolationMode, tapPoint, transparentActive]);
 
@@ -656,7 +689,17 @@ export function StickerCapture() {
         </div>
       )}
 
-      <section className="pointer-events-auto absolute right-3 top-14 z-[60] max-h-[calc(100dvh-5rem)] w-[min(92vw,21rem)] overflow-y-auto rounded-2xl border border-white/15 bg-black/90 p-3 shadow-2xl backdrop-blur-xl" aria-label="Sticker Studio">
+      <section
+        ref={studioRef}
+        /* Hidden visually rather than unmounted: the reveal zone is derived
+           from this element's own rect, and scroll position plus any
+           in-progress input inside it survive the round trip. */
+        data-idle-hidden={studioHidden || undefined}
+        data-sticker-controls
+        aria-hidden={studioHidden || undefined}
+        className={`absolute right-3 top-14 z-[60] max-h-[calc(100dvh-5rem)] w-[min(92vw,21rem)] overflow-y-auto rounded-2xl border border-white/15 bg-black/90 p-3 shadow-2xl backdrop-blur-xl transition-opacity duration-300 ${studioHidden ? "pointer-events-none opacity-0" : "pointer-events-auto opacity-100"}`}
+        aria-label="Sticker Studio"
+      >
         <div className="flex items-center justify-between gap-2">
           <div><p className="font-mono text-[9px] uppercase tracking-[0.2em] text-cyan-100">Sticker Studio</p><p className="mt-0.5 font-mono text-[6px] uppercase tracking-[0.1em] text-white/35">isolate · cut · animate · reuse</p></div>
           <button type="button" onClick={() => useStore.getState().setStickerMode(false)} aria-label="Close Sticker panel" className="rounded-full p-1 text-white/40 hover:bg-white/10 hover:text-white"><X size={11} /></button>
@@ -692,9 +735,22 @@ export function StickerCapture() {
         </div>
 
         <label className="mt-3 flex items-center gap-2 border-t border-white/10 pt-2 font-mono text-[8px] uppercase tracking-[0.14em] text-white/75">
-          <input type="checkbox" checked={lottieMode} onChange={event => setLottieMode(event.target.checked)} className="accent-violet-400" />
-          Animated Lottie {includeGif ? '+ GIF' : ''}
+          <input
+            type="checkbox"
+            checked={lottieMode}
+            onChange={event => {
+              const enabled = event.target.checked;
+              setLottieMode(enabled);
+              if (enabled) setIncludeGif(true);
+            }}
+            className="accent-violet-400"
+          />
+          Animated Lottie
         </label>
+        {lottieMode && <label className="mt-2 flex items-center gap-2 font-mono text-[8px] uppercase tracking-[0.14em] text-white/75">
+          <input type="checkbox" checked={includeGif} onChange={event => setIncludeGif(event.target.checked)} className="accent-violet-400" />
+          Transparent GIF
+        </label>}
         {lottieMode && <div className="mt-2 space-y-2 border-t border-white/10 pt-2">
           <input
             ref={fileInputRef}
@@ -733,7 +789,6 @@ export function StickerCapture() {
           </div>
           <label className="flex items-center justify-between font-mono text-[7px] uppercase tracking-[0.1em] text-white/45">Loop<select value={loopSeconds} onChange={event => setLoopSeconds(Number(event.target.value))} className="rounded border border-white/15 bg-black px-2 py-1 text-violet-100"><option value={1.5}>1.5 sec</option><option value={2}>2 sec</option><option value={3}>3 sec</option></select></label>
           <label className="flex items-center justify-between font-mono text-[7px] uppercase tracking-[0.1em] text-white/45">Master size<select value={outputLongEdge} onChange={event => setOutputLongEdge(Number(event.target.value) as 720 | 1080)} className="rounded border border-white/15 bg-black px-2 py-1 text-violet-100"><option value={720}>HD · 720px</option><option value={1080}>Master · 1080px</option></select></label>
-          <label className="flex items-center justify-between font-mono text-[7px] uppercase tracking-[0.1em] text-white/45"><span>Also export transparent GIF</span><input type="checkbox" checked={includeGif} onChange={event => setIncludeGif(event.target.checked)} className="accent-violet-400" /></label>
           <button
             type="button"
             disabled={phase === 'encoding'}
@@ -745,7 +800,7 @@ export function StickerCapture() {
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => { e.stopPropagation(); void exportLottieSticker(); }}
             className="flex w-full items-center justify-center gap-1.5 rounded-full border border-violet-300/35 bg-violet-400/10 px-3 py-2 font-mono text-[8px] uppercase tracking-[0.14em] text-violet-100 disabled:opacity-40"
-          >{phase === 'encoding' ? <LoaderCircle size={11} className="animate-spin" /> : <Film size={11} />} {phase === 'encoding' ? `Capturing ${Math.round(lottieProgress * 100)}%` : 'Export Transparent Lottie'}</button>
+          >{phase === 'encoding' ? <LoaderCircle size={11} className="animate-spin" /> : <Film size={11} />} {phase === 'encoding' ? `Capturing ${Math.round(lottieProgress * 100)}%` : includeGif ? 'Export Lottie + GIF' : 'Export Transparent Lottie'}</button>
           <p className="font-mono text-[6px] uppercase leading-relaxed tracking-[0.08em] text-white/25">
             {transparentActive
               ? "Living background is preview-only. Export preserves the source's real transparency straight through — every FX shape it."

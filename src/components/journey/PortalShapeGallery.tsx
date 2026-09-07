@@ -22,10 +22,10 @@ export function PortalShapeGallery({ className = "", limit = 12, start = 0 }: { 
   );
 }
 
-export function JourneyPortalInterlude({ variant = "wide", className = "" }: { variant?: "wide" | "compact" | "reel"; className?: string }) {
-  const count = variant === "compact" ? 3 : variant === "reel" ? 8 : 5;
+export function JourneyPortalInterlude({ variant = "wide", className = "" }: { variant?: "wide" | "compact" | "reel" | "carousel"; className?: string }) {
+  const count = variant === "compact" ? 3 : variant === "reel" ? 8 : variant === "carousel" ? 6 : 5;
   return (
-    <JourneyPortalProvider config={{ seed: variant === "reel" ? 0xD3A07E : 0x51A6A1, palette: variant === "compact" ? 4 : 1, intensity: .9, cadenceMs: 6_600 }}>
+    <JourneyPortalProvider config={{ seed: variant === "reel" || variant === "carousel" ? 0xD3A07E : 0x51A6A1, palette: variant === "compact" ? 4 : 1, intensity: .9, cadenceMs: 6_600 }}>
       <section className={`journey-interlude journey-interlude--${variant} ${className}`} aria-label="Live Forge Journey portal shapes">
         <PortalShapeGallery limit={count} />
       </section>

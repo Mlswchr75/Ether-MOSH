@@ -8,7 +8,7 @@
  * running timers.
  */
 import { useEffect, useRef, useState } from "react";
-import { shuffle, type DemoFrame } from "@/data/demoReel";
+import { liveFrames, shuffle, type DemoFrame } from "@/data/demoReel";
 
 /** How long the spawn and despawn glitches run, in ms. Matches the CSS. */
 export const GLITCH_IN_MS = 780;
@@ -105,7 +105,14 @@ export function useReelDirector(pool: readonly DemoFrame[], active: boolean) {
     };
 
     const spawn = () => {
-      const next = planReel(pool, nextId.current++);
+      // Filtered here rather than in the pool itself: a frame failing to load
+      // must not change `pool`'s identity, or this effect would re-run and
+      // tear down the very reel the broken frame is sitting in. Casting at
+      // spawn time means the next reel is clean and the current one is
+      // undisturbed.
+      const castable = liveFrames(pool);
+      if (castable.length === 0) return;
+      const next = planReel(castable, nextId.current++);
       setPlan(next);
       setPhase("in");
       at(GLITCH_IN_MS, () => {

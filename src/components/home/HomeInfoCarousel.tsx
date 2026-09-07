@@ -1,10 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUpRight } from "lucide-react";
 import { Link } from "react-router-dom";
 import { liveVisualKeywords, liveVisualOfferings, liveVisualSocials } from "@/content/liveVisuals";
 import { AmbientGlitch } from "./AmbientGlitch";
+import { PUBLIC_EFFECTS } from "@/engine/effects";
 
-const slideNames = ["Signal", "About", "Offerings", "Dyles", "Skills", "Contact", "News"] as const;
+const JourneyPortalInterlude = lazy(() =>
+  import("@/components/journey/PortalShapeGallery").then(module => ({ default: module.JourneyPortalInterlude })),
+);
+
+const slideNames = ["Signal", "About", "Offerings", "Dyles", "Skills", "Contact", "Portals", "News"] as const;
 
 type HomeInfoCarouselProps = {
   onReturnToInstrument: () => void;
@@ -123,7 +128,7 @@ export const HomeInfoCarousel = ({ onReturnToInstrument }: HomeInfoCarouselProps
 
         {active === 1 && <div className="home-info-editorial">
           <div><p className="home-info-kicker">About the instrument</p><h2>Ether-MOSH makes<br/><span>sound visible.</span></h2></div>
-          <div className="home-info-prose"><strong>Ether-MOSH is an audiovisual performance instrument for the exact moment a track stops being something you hear and becomes somewhere you are.</strong><p>It turns audio, images, video, cameras, patterns, and live decisions into responsive motion. Every frame can react. Every performance can mutate. The machine brings speed; a human still decides what matters.</p><div className="home-info-link-row"><Link to="/edit">Open the instrument <ArrowUpRight/></Link><Link to="/effects">Explore all 108 effects <ArrowUpRight/></Link></div></div>
+          <div className="home-info-prose"><strong>Ether-MOSH is an audiovisual performance instrument for the exact moment a track stops being something you hear and becomes somewhere you are.</strong><p>It turns audio, images, video, cameras, patterns, and live decisions into responsive motion. Every frame can react. Every performance can mutate. The machine brings speed; a human still decides what matters.</p><div className="home-info-link-row"><Link to="/edit">Open the instrument <ArrowUpRight/></Link><Link to="/radio">Tune in to MOSH Radio <ArrowUpRight/></Link><Link to="/effects">Explore all {PUBLIC_EFFECTS.length} effects <ArrowUpRight/></Link></div></div>
         </div>}
 
         {active === 2 && <div className="home-info-offerings">
@@ -149,9 +154,23 @@ export const HomeInfoCarousel = ({ onReturnToInstrument }: HomeInfoCarouselProps
           <div className="home-info-socials">{liveVisualSocials.slice(0, 5).map(([name, href]) => <a key={name} href={href} target="_blank" rel="noreferrer">{name}</a>)}</div>
         </div>}
 
-        {active === 6 && <div className="home-info-editorial home-info-editorial--news">
+        {active === 6 && <div className="home-info-portals">
+          <div className="home-info-portals-copy">
+            <p className="home-info-kicker">Portals / live Forge Journey</p>
+            <h2>Escape<br/><span>the frame.</span></h2>
+            <p>The living Forge Journey engine, rendered inside any shape you can draw. No rectangular player. No canned loop.</p>
+            <Link to="/journey-portals">Explore Journey Portals <ArrowUpRight/></Link>
+          </div>
+          <div className="home-info-portals-stage">
+            <Suspense fallback={<div className="home-info-portals-loading" aria-label="Loading live Forge Journey portals" />}>
+              <JourneyPortalInterlude variant="carousel" />
+            </Suspense>
+          </div>
+        </div>}
+
+        {active === 7 && <div className="home-info-editorial home-info-editorial--news">
           <div><p className="home-info-kicker">News + updates / effect school</p><h2>Bad signal.<br/><span>Good information.</span></h2></div>
-          <div className="home-info-prose"><strong>Real effect history, practical recipes, fake scandals, downloadable field cards, and exactly enough adult language to keep the documentation awake.</strong><p>Start with Pixel Sort, Halftone, and Moire—three sourced guides covering how each effect works, where it came from, how to find it in MOSH, and how to drag it out into print, patterns, projection, animation, education, and installations.</p><div className="home-info-link-row"><Link to="/news">Read News + Updates <ArrowUpRight/></Link><Link to="/effects">Browse the Effect Registry <ArrowUpRight/></Link></div></div>
+          <div className="home-info-prose"><strong>Real effect history, practical recipes, fake scandals, downloadable field cards, and exactly enough adult language to keep the documentation awake.</strong><p>Browse the growing field-report library for sourced effect history, exact MOSH settings, and practical routes into print, patterns, projection, animation, education, and installations.</p><div className="home-info-link-row"><Link to="/news">Read News + Updates <ArrowUpRight/></Link><Link to="/effects">Browse the Effect Registry <ArrowUpRight/></Link></div></div>
         </div>}
       </div>
 

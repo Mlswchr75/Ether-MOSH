@@ -16,7 +16,8 @@
     "security:artifacts": "node scripts/check-production-security.mjs",
     "security:signatures": "npm audit signatures",
     "security:check": "npm audit --audit-level=high && npm run typecheck && npm run build && npm run security:artifacts",
-    "audit:effects": "tsx scripts/effect-audit.ts"
+    "audit:effects": "tsx scripts/effect-audit.ts",
+    "audio:sync": "tsx scripts/sync-audio-library.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

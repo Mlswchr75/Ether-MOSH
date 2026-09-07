@@ -1,5 +1,6 @@
 import LegalLayout, { LegalH2 } from "@/components/LegalLayout";
 import { Github, Linkedin, Twitter, Instagram, Music } from "lucide-react";
+import { PUBLIC_EFFECTS } from "@/engine/effects";
 import { JourneyPortal, JourneyPortalProvider } from "@/components/journey/JourneyPortal";
 import { PortalShapeGallery } from "@/components/journey/PortalShapeGallery";
 import "./about.css";
@@ -63,7 +64,7 @@ const About = () => (
       <LegalH2>Endeavors</LegalH2>
       <p className="mt-2">
         <strong>Ether-MOSH (Audio-Reactive Visual Instrument)</strong><br />
-        A real-time, GPU-accelerated instrument for live performance and creative exploration. 108 effects.
+        A real-time, GPU-accelerated instrument for live performance and creative exploration. {PUBLIC_EFFECTS.length} effects.
         Beat-synced chaos. Built in the browser. Free to use.
       </p>
       <p className="mt-4">
@@ -125,7 +126,7 @@ const About = () => (
           LinkedIn
         </a>
         <a
-          href="https://soundcloud.com/aestheticrebel"
+          href="https://soundcloud.com/dyles-mavis"
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex items-center gap-2 rounded border border-accent/40 bg-accent/5 px-4 py-2 font-mono text-xs uppercase tracking-[0.2em] text-accent hover:bg-accent/10 transition"

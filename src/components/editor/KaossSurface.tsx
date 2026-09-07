@@ -36,6 +36,55 @@ type Pointer = {
 const HOLD_MS = 180;
 const SWIPE_MIN = 0.18; // fraction of viewport
 
+/**
+ * Fraction of the pad's inscribed radius reserved as a dead zone, centered
+ * where the HUD's note bubble/orb readouts sit. A press that *lands* here
+ * never triggers a hit — it isn't tracked at all, so a drag that starts in
+ * the dead zone and travels out doesn't retroactively engage either. Only
+ * where a gesture starts decides this; nothing here reads pointerType, so a
+ * mouse click and a touch tap resolve through the exact same math.
+ */
+export const KAOSS_DEAD_ZONE = 0.15;
+
+/** Normalized distance from pad center, 0 at center to 1 at the inscribed edge. */
+export function kaossDistance(x: number, y: number): number {
+  return Math.min(1, Math.hypot(x - 0.5, y - 0.5) / 0.5);
+}
+
+/** True once a point falls inside the reserved center dead zone. */
+export function inKaossDeadZone(x: number, y: number): boolean {
+  return kaossDistance(x, y) < KAOSS_DEAD_ZONE;
+}
+
+/** Angle from center in degrees, 0 = up (12 o'clock), increasing clockwise. */
+export function kaossAngle(x: number, y: number): number {
+  const deg = (Math.atan2(x - 0.5, 0.5 - y) * 180) / Math.PI;
+  return ((deg % 360) + 360) % 360;
+}
+
+/**
+ * How hard a hit lands, scaled by how far past the dead zone it is — 0 right
+ * at the dead-zone edge, 1 at the pad's outer edge. This is the "distance
+ * scales intensity" half of position-influenced hits: a tap near the middle
+ * is a glancing touch, one out at the rim hits at full force.
+ */
+export function kaossDistanceIntensity(distance: number): number {
+  const span = 1 - KAOSS_DEAD_ZONE;
+  return Math.max(0, Math.min(1, (distance - KAOSS_DEAD_ZONE) / span));
+}
+
+/**
+ * Which vis-mode wedge an angle falls into — splits the pad into as many
+ * equal slices as there are vis modes, the "angle picks the effect" half of
+ * a position-influenced hit. This never changes the *current* vis mode
+ * (that's still cyclable via 2-finger tap / V); it only accents that one
+ * burst with the wedge's palette.
+ */
+export function kaossAngleModeIndex(angle: number, count: number): number {
+  if (count <= 0) return 0;
+  return Math.floor((angle / 360) * count) % count;
+}
+
 export function KaossSurface() {
   const enabled = useKaossStore(s => s.instrumentEnabled);
   const synthEnabled = useKaossStore(s => s.synthEnabled);
@@ -181,13 +230,23 @@ export function KaossSurface() {
     if (e.shiftKey || e.metaKey || e.ctrlKey) return;
     e.preventDefault();
     e.stopPropagation();
+
+    const { x, y } = localCoords(e);
+
+    // Center dead zone — a press that lands here never becomes a tracked
+    // pointer, so it can't trigger a hit or seed a drag/swipe either.
+    if (inKaossDeadZone(x, y)) return;
+
     // Ensure audio context on first gesture.
     if (synthEnabled) await kaossSynth.ensureCtx();
 
-    const { x, y } = localCoords(e);
+    const distance = kaossDistance(x, y);
+    const angle = kaossAngle(x, y);
+    const intensity = kaossDistanceIntensity(distance);
+
     const midi = quantize(x, scale, rootMidi, 3);
     const cutoff = 1 - y; // top = bright
-    const vel = 0.4 + (1 - y) * 0.5;
+    const vel = Math.min(1, 0.35 + (1 - y) * 0.35 + intensity * 0.3);
     const voice = kaossSynth.trigger(midi, cutoff, vel, true);
     const ptr: Pointer = {
       id: e.pointerId,
@@ -203,7 +262,7 @@ export function KaossSurface() {
 
     setOrb(x, y, true);
     setNoteLabel(noteName(midi));
-    overlay.spawnBurst(x, y, vel);
+    overlay.spawnBurst(x, y, vel, kaossAngleModeIndex(angle, VIS_MODES.length));
 
     // 2-finger tap → cycle vis mode
     if (pointersRef.current.size === 2) {
@@ -344,6 +403,14 @@ function KaossHud() {
 
   return (
     <>
+      {/* Center dead zone — reserved so a stray tap near the readouts can't
+          land a hit. Sized to match KAOSS_DEAD_ZONE exactly (diameter = 2x
+          the dead-zone radius, as a % of each axis). */}
+      <div
+        className="pointer-events-none absolute left-1/2 top-1/2 z-0 -translate-x-1/2 -translate-y-1/2 rounded-full border border-dashed border-white/10"
+        style={{ width: `${KAOSS_DEAD_ZONE * 200}%`, height: `${KAOSS_DEAD_ZONE * 200}%` }}
+      />
+
       {/* Top status strip */}
       <div className="pointer-events-none absolute top-2 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 rounded-sm bg-black/55 px-2.5 py-1 backdrop-blur-md border border-white/10">
         <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-[hsl(var(--accent))]">●</span>
@@ -421,11 +488,30 @@ function publish(level: number, xy: { x: number; y: number } | null, palette: So
   w.__aegisKaossActive = level > 0.01;
 }
 
+/** Linear-interpolates every channel of a palette toward an accent by `t` (0..1). */
+function blendPalette(base: SourcePalette, accent: SourcePalette, t: number): SourcePalette {
+  if (t <= 0) return base;
+  const lerp = (a: number, b: number) => a + (b - a) * t;
+  return {
+    bass: lerp(base.bass, accent.bass),
+    mid: lerp(base.mid, accent.mid),
+    treble: lerp(base.treble, accent.treble),
+    overall: lerp(base.overall, accent.overall),
+    beat: lerp(base.beat, accent.beat),
+  };
+}
+
 function useOverlay(enabled: boolean, visMode: string) {
   const levelRef = useRef(0);
   const targetRef = useRef(0);
   const xyRef = useRef<{ x: number; y: number }>({ x: 0.5, y: 0.5 });
   const paletteRef = useRef<SourcePalette>(visSourcePalette(visMode));
+  // The angle-picked accent for the most recent hit, and how much of it is
+  // still bleeding into the published palette — decays back to the base
+  // vis-mode palette between hits instead of a tap permanently recoloring it.
+  const accentPaletteRef = useRef<SourcePalette>(paletteRef.current);
+  const accentLevelRef = useRef(0);
+  const accentTargetRef = useRef(0);
 
   useEffect(() => { paletteRef.current = visSourcePalette(visMode); }, [visMode]);
 
@@ -433,6 +519,8 @@ function useOverlay(enabled: boolean, visMode: string) {
     if (!enabled) {
       levelRef.current = 0;
       targetRef.current = 0;
+      accentLevelRef.current = 0;
+      accentTargetRef.current = 0;
       publish(0, null, paletteRef.current);
       return;
     }
@@ -444,7 +532,17 @@ function useOverlay(enabled: boolean, visMode: string) {
       const next = cur + (t - cur) * 0.18;
       levelRef.current = next;
       targetRef.current = Math.max(0, t - 0.012); // gentle decay
-      publish(next, xyRef.current, paletteRef.current);
+
+      // Same smoothing for the angle accent, decaying a touch faster so the
+      // wedge's color reads as a per-hit flavor, not a lingering mode switch.
+      const accentCur = accentLevelRef.current;
+      const accentT = accentTargetRef.current;
+      const accentNext = accentCur + (accentT - accentCur) * 0.18;
+      accentLevelRef.current = accentNext;
+      accentTargetRef.current = Math.max(0, accentT - 0.02);
+
+      const palette = blendPalette(paletteRef.current, accentPaletteRef.current, accentNext * 0.6);
+      publish(next, xyRef.current, palette);
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
@@ -462,10 +560,14 @@ function useOverlay(enabled: boolean, visMode: string) {
   };
 
   return {
-    spawnBurst: (x: number, y: number, vel: number) => {
+    spawnBurst: (x: number, y: number, vel: number, accentModeIndex?: number) => {
       xyRef.current = { x, y };
       targetRef.current = Math.min(1, targetRef.current + 0.5 + vel * 0.5);
       bumpRipple(0.6 + vel * 0.4);
+      if (accentModeIndex != null) {
+        accentPaletteRef.current = visSourcePalette(VIS_MODES[accentModeIndex]?.id ?? visMode);
+        accentTargetRef.current = Math.min(1, accentTargetRef.current + 0.6 + vel * 0.4);
+      }
     },
     spawnTrail: (x: number, y: number) => {
       xyRef.current = { x, y };

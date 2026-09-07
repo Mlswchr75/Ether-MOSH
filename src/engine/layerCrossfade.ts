@@ -197,14 +197,41 @@ function makeBoundaryLayer(recipe: RevealRecipe): Layer {
  * scene change itself reads as a bleed/glitch rather than a clean dissolve.
  *
  * A single module-level animation slot means one crossfade cleanly
- * supersedes another regardless of what triggered either — Journey firing
- * mid-tap, or two rapid manual taps, both just restart the fade from
- * wherever it currently is rather than fighting or stacking.
+ * supersedes another regardless of what triggered either. Before a new
+ * commit runs, an interrupted fade settles to its real target stack. The
+ * temporary outgoing/incoming/boundary layers must never become input to the
+ * next mosh (or its undo snapshot), otherwise rapid taps compound whole
+ * transition stacks and leave the oldest layers apparently frozen.
  */
 let fadeRaf: number | null = null;
+/**
+ * Render-only transition stack.
+ *
+ * This must never be written to `useStore.layers`. That array is the user's
+ * editable source of truth and drives LayerStack/ParamDock. Putting outgoing,
+ * incoming and boundary layers there made the controls claim that faded-out
+ * effects were still applied during every Auto-Mosh. It also let a paused rAF
+ * leave that lie on screen until animation resumed.
+ *
+ * GlCanvas reads this override directly on each render frame. Every other
+ * consumer continues to see the exact post-mosh stack immediately.
+ */
+let fadeRenderLayers: Layer[] | null = null;
+
+export function getLayerCrossfadeLayers(): Layer[] | null {
+  return fadeRenderLayers;
+}
+
+function settleLayerCrossfade() {
+  if (fadeRaf != null) {
+    cancelAnimationFrame(fadeRaf);
+    fadeRaf = null;
+  }
+  fadeRenderLayers = null;
+}
 
 export function crossfadeLayers(commit: () => void, durationMs: number) {
-  if (fadeRaf != null) { cancelAnimationFrame(fadeRaf); fadeRaf = null; }
+  settleLayerCrossfade();
 
   const before = useStore.getState().layers.filter(l => !l.locked);
 
@@ -248,15 +275,15 @@ export function crossfadeLayers(commit: () => void, durationMs: number) {
         : { ...boundary.region!, scale: eased * 0.95 },
     };
 
-    useStore.getState().setLayersRaw([...lockedAfter, ...fadingOut, ...fadingIn, boundaryNow]);
+    fadeRenderLayers = [...lockedAfter, ...fadingOut, ...fadingIn, boundaryNow];
     if (t < 1) {
       fadeRaf = requestAnimationFrame(tick);
     } else {
       fadeRaf = null;
-      // Restore the exact post-commit array (drops the now-invisible
-      // outgoing layers and the transient boundary layer, instead of
-      // leaving them sitting at opacity 0 or a stale region).
-      useStore.getState().setLayersRaw(after);
+      // The canonical store already contains `after`; dropping this override
+      // removes outgoing and boundary layers from rendering without ever
+      // exposing them to the editor controls.
+      fadeRenderLayers = null;
     }
   };
   // Synchronous first call, not the first rAF frame — so the very first
@@ -266,5 +293,5 @@ export function crossfadeLayers(commit: () => void, durationMs: number) {
 }
 
 export function cancelLayerCrossfade() {
-  if (fadeRaf != null) { cancelAnimationFrame(fadeRaf); fadeRaf = null; }
+  settleLayerCrossfade();
 }

@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useStore } from "@/store/useStore";
+import { NEUTRAL_STATS, adaptiveVibrance } from "@/engine/artDirector";
+import { defaultAudioMap, masterDrive, masterGain } from "@/engine/audioMapping";
 import { overlayFromUrl } from "@/lib/overlayMode";
 import { MoshRenderer, type RenderLayer } from "@/engine/Renderer";
 import { evalModulator } from "@/engine/modulators";
@@ -18,7 +20,7 @@ import { toast } from "sonner";
 import { vrMode } from "@/engine/vrMode";
 import { VrButton } from "./VrButton";
 import { cursorFx } from "@/engine/cursorFx";
-import { crossfadeLayers, MOSH_FADE_MS } from "@/engine/layerCrossfade";
+import { crossfadeLayers, getLayerCrossfadeLayers, MOSH_FADE_MS } from "@/engine/layerCrossfade";
 
 /** Matches JourneyDirector's default sampleMs — the cadence its AudioFeatures
  *  computation was designed for, not an arbitrary choice. */
@@ -38,35 +40,13 @@ const FORGE_AUDIO_FEATURES_INTERVAL_MS = 110;
  *  colors, or composition. */
 const FORGE_SOURCE_SIZE = (typeof navigator !== "undefined" && (navigator.hardwareConcurrency || 4) <= 4) ? 384 : 512;
 
-/**
- * Heuristic default audio map for any unmapped param. When the mic is on,
- * EVERY layer breathes — no manual wiring required. Users can still override
- * per-param via the "~" tilde control to set explicit `audioMaps`.
- */
-type DefaultMap = { source: "bass" | "mid" | "treble" | "overall" | "beat"; amount: number; smoothing: number };
-function defaultAudioMap(key: string): DefaultMap {
-  const k = key.toLowerCase();
-  // Punchy / kick-driven params
-  if (/(amount|intensity|strength|power|drive|gain|mix)/.test(k))
-    return { source: "bass", amount: 0.55, smoothing: 0.25 };
-  // Beat-snappy structural shifts
-  if (/(scale|size|zoom|radius|thick|width|count|density|stripes|cells|blocks|tiles|grid|repeat)/.test(k))
-    return { source: "beat", amount: 0.35, smoothing: 0.05 };
-  // Color / hue → treble shimmer
-  if (/(hue|color|tint|saturat|chroma|rainbow|spectrum|prism)/.test(k))
-    return { source: "treble", amount: 0.45, smoothing: 0.4 };
-  // Spatial distortion → mid energy
-  if (/(shift|offset|displace|warp|distort|skew|twist|swirl|wave|wobble|bend|pinch|spread|split|spacing|angle)/.test(k))
-    return { source: "mid", amount: 0.4, smoothing: 0.3 };
-  // Time / motion / speed → overall envelope
-  if (/(speed|rate|time|phase|frequency|tempo|flow|drift)/.test(k))
-    return { source: "overall", amount: 0.3, smoothing: 0.5 };
-  // Threshold / cutoff / detail → bass
-  if (/(threshold|cutoff|edge|detail|noise|grain)/.test(k))
-    return { source: "bass", amount: 0.4, smoothing: 0.3 };
-  // Default — gentle overall pulse so nothing is ever fully static
-  return { source: "overall", amount: 0.25, smoothing: 0.5 };
-}
+/** Shares the per-param smoothing map, so it needs a key no layer/param pair
+ *  can collide with — layer ids are uuids and param keys never contain ":". */
+const MASTER_SMOOTH_KEY = "__master";
+/** Slower than any single param's filter. The master moves the entire stack at
+ *  once, so the same responsiveness that reads as liveliness on one param
+ *  reads as the whole picture flickering here. */
+const MASTER_SMOOTH_ALPHA = 0.09;
 
 
 export function GlCanvas() {
@@ -83,6 +63,9 @@ export function GlCanvas() {
   const showBeforeAfterRef = useRef(useStore.getState().showBeforeAfter);
   /** Global reactivity multiplier (Sensitivity hot trigger) — 1 = no-op. */
   const sensitivityRef = useRef(useStore.getState().sensitivity);
+  const stackIntensityRef = useRef(useStore.getState().stackIntensity);
+  const stackReactiveRef = useRef(useStore.getState().stackIntensityReactive);
+  const briefRef = useRef(useStore.getState().currentBrief);
   const isVideoSourceRef = useRef(!!useStore.getState().videoElement);
   const sourceModeRef = useRef(useStore.getState().sourceMode);
   const forgeRef = useRef(useStore.getState().forge);
@@ -107,7 +90,6 @@ export function GlCanvas() {
   const videoElement = useStore(s => s.videoElement);
   const sourceMode = useStore(s => s.sourceMode);
   const forgeSeamless = useStore(s => s.forge.seamless);
-  const randomiseForge = useStore(s => s.randomiseForge);
   const cameraFacing = useStore(s => s.cameraFacing);
   const showBeforeAfter = useStore(s => s.showBeforeAfter);
   const beforeAfterSplit = useStore(s => s.beforeAfterSplit);
@@ -197,15 +179,38 @@ export function GlCanvas() {
       cursorFx.moveAmbient(`ptr-${e.pointerId}`, uv.x, uv.y);
     };
     const onUp = (e: PointerEvent) => cursorFx.release(`ptr-${e.pointerId}`);
+    /* Per-pointer end events are not guaranteed. Alt-tabbing mid-drag, an OS
+       gesture stealing the touch, a context menu, or the pointer leaving the
+       document all end the interaction without a pointerup, stranding the
+       point at full strength on that part of the frame for the rest of the
+       session — and because these layers are appended after the stack, no
+       amount of moshing clears one. These are the coarse "input is gone"
+       signals a browser does reliably send. */
+    const releaseAll = () => cursorFx.releaseAll();
+    const onVisibility = () => { if (document.hidden) cursorFx.releaseAll(); };
+    const onPointerOut = (e: PointerEvent) => {
+      // relatedTarget null means the pointer left the document, not just
+      // moved between elements inside it.
+      if (!e.relatedTarget) cursorFx.releaseAll();
+    };
     window.addEventListener("pointerdown", onDown, { capture: true, passive: true });
     window.addEventListener("pointermove", onMove, { capture: true, passive: true });
     window.addEventListener("pointerup", onUp, { capture: true, passive: true });
     window.addEventListener("pointercancel", onUp, { capture: true, passive: true });
+    window.addEventListener("blur", releaseAll);
+    window.addEventListener("pointerout", onPointerOut, { capture: true, passive: true });
+    document.addEventListener("visibilitychange", onVisibility);
     return () => {
       window.removeEventListener("pointerdown", onDown, { capture: true });
       window.removeEventListener("pointermove", onMove, { capture: true });
       window.removeEventListener("pointerup", onUp, { capture: true });
       window.removeEventListener("pointercancel", onUp, { capture: true });
+      window.removeEventListener("blur", releaseAll);
+      window.removeEventListener("pointerout", onPointerOut, { capture: true });
+      document.removeEventListener("visibilitychange", onVisibility);
+      // Unmounting is teardown: there is no next frame to run a fade on, and
+      // a point surviving into the next mount is exactly the stuck-effect bug.
+      cursorFx.clear();
     };
   }, []);
 
@@ -454,6 +459,9 @@ export function GlCanvas() {
     layersRef.current = state.layers;
     showBeforeAfterRef.current = state.showBeforeAfter;
     sensitivityRef.current = state.sensitivity;
+    stackIntensityRef.current = state.stackIntensity;
+    stackReactiveRef.current = state.stackIntensityReactive;
+    briefRef.current = state.currentBrief;
     isVideoSourceRef.current = !!state.videoElement;
     sourceModeRef.current = state.sourceMode;
     forgeRef.current = state.forge;
@@ -596,7 +604,41 @@ export function GlCanvas() {
 
       const audioSmooth = audioSmoothRef.current;
       const reactiveOn = mic.enabled || kaossActive;
-      const renderLayers: RenderLayer[] = layersRef.current.map(l => {
+
+      /* Master gain over the whole stack.
+
+         Every layer keeps the opacity the director gave it — that per-role mix
+         is what makes a stack read as composed rather than as four things at
+         one volume — and this scales all of them together, so the composition
+         survives while the amount of it on screen becomes a single thing you
+         can hold. At 1 with no reactivity it is exactly a no-op.
+
+         Smoothed on the same rolling filter every audio-mapped param uses, so
+         a reactive master breathes with the room instead of stepping frame to
+         frame on raw envelope noise. */
+      let master = stackIntensityRef.current;
+      if (reactiveOn && stackReactiveRef.current > 0) {
+        /* Read from `sources`, not from the mic directly: `sources` is the
+           merged truth every param mapping already listens to, so the Kaoss
+           touch surface drives the master too — motion and sound, not just
+           sound. */
+        const drive = masterDrive({
+          bass: sources.bass ?? 0,
+          mid: sources.mid ?? 0,
+          treble: sources.treble ?? 0,
+          overall: sources.overall ?? 0,
+          beat: sources.beat ?? 0,
+        });
+        const prev = audioSmooth.get(MASTER_SMOOTH_KEY) ?? drive;
+        const smoothed = prev + (drive - prev) * MASTER_SMOOTH_ALPHA;
+        audioSmooth.set(MASTER_SMOOTH_KEY, smoothed);
+        master = masterGain(master, stackReactiveRef.current, smoothed * sensitivityRef.current);
+      }
+      // Transition layers are a render-only overlay. The canonical store must
+      // remain the exact editable stack so LayerStack and ParamDock never list
+      // faded-out effects as active during Auto-Mosh.
+      const visibleStack = getLayerCrossfadeLayers() ?? layersRef.current;
+      const renderLayers: RenderLayer[] = visibleStack.map(l => {
         const params: Record<string, number> = {};
         const def = EFFECTS_BY_ID[l.effectId];
         for (const k of Object.keys(l.params)) {
@@ -626,7 +668,10 @@ export function GlCanvas() {
           }
           params[k] = v;
         }
-        let opacity = l.opacity;
+        // Clamped, not just scaled: past 1 the loud layers saturate and the
+        // quiet ones keep climbing, which is what pushes a stack toward
+        // flat-out rather than uniformly brighter.
+        let opacity = Math.max(0, Math.min(1, l.opacity * master));
         if (showBeforeAfterRef.current) opacity = 0;
         return {
           id: l.id,
@@ -658,6 +703,13 @@ export function GlCanvas() {
       if (sourceModeRef.current === "forge" || sourceModeRef.current === "motif") moshScore = Math.max(moshScore, 0.55);
       rendererRef.current?.setHdrIntensity(moshScore);
       rendererRef.current?.setHdr(moshScore);
+      /* Spend the vibrance lift where there is something to gain. The uniform
+         had no setter at all until now, so every frame got the same fixed
+         push — too little for a washed-out source and enough to clip an
+         already-vivid one. currentBrief is measured per mosh; before the first
+         one, fall back to the neutral reading rather than to nothing. */
+      rendererRef.current?.setVibrance(adaptiveVibrance(briefRef.current?.saturation ?? NEUTRAL_STATS.saturation));
+      rendererRef.current?.setDarkMode(useStore.getState().darkModeOn);
       // Re-applied per frame rather than once at setup: the renderer is
       // recreated on context loss, and a silently un-keyed overlay paints a
       // black rectangle over the user's whole scene.
@@ -745,7 +797,13 @@ export function GlCanvas() {
         // above it (HotTriggers etc.) is a separate element that receives
         // the click first.
         onClick={["forge", "motif"].includes(sourceMode)
-          ? () => crossfadeLayers(() => useStore.getState().forgeMosh(), MOSH_FADE_MS)
+          ? () => {
+              // In Sticker Studio the canvas is a preview, not a MOSH pad.
+              // Shape changes are explicit via Cmd/Ctrl+Shift+Space, so an
+              // ordinary preview/menu tap cannot silently replace the stack.
+              if (useStore.getState().stickerMode) return;
+              crossfadeLayers(() => useStore.getState().forgeMosh(), MOSH_FADE_MS);
+            }
           : undefined}
       />
 

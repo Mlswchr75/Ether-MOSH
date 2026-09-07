@@ -86,6 +86,8 @@ const GlCanvas = lazy(async () => {
   return { default: module.GlCanvas };
 });
 import { CastStageButton } from "@/components/editor/CastStageButton";
+import { RadioGesturePrompt, RadioHud, RadioWelcome } from "@/components/editor/RadioHud";
+import { useRadioBroadcast } from "@/hooks/useRadioBroadcast";
 
 const LEGACY_HOT_TRIGGERS_KEY = "cathedral_legacy_hot_triggers_launchpad_v1";
 
@@ -133,9 +135,10 @@ export default function Editor() {
   const systemAudioEnabled = useStore(s => s.systemAudioEnabled);
   const setSystemAudioEnabled = useStore(s => s.setSystemAudioEnabled);
   const trackEnabled = useStore(s => s.trackEnabled);
+  const radialMenuOpen = useStore(s => s.radialMenuOpen);
   const isPerformanceMode = useStore(s => s.isPerformanceMode);
   const setPerformanceMode = useStore(s => s.setPerformanceMode);
-  const desktopPortraitMode = useStore(s => s.desktopPortraitMode);
+  const desktopCanvasAspect = useStore(s => s.desktopCanvasAspect);
   const proModeEnabled = useStore(s => s.proModeEnabled);
   const helpModeEnabled = useStore(s => s.helpModeEnabled);
   const [helpCaption, setHelpCaption] = useState<{ text: string; x: number; y: number } | null>(null);
@@ -655,23 +658,38 @@ export default function Editor() {
     return () => window.clearTimeout(id);
   }, [hasSource]);
 
-  // Nudge toward turning on real audio reactivity (mic or device-audio
-  // routing) — persistently, not once. A visitor who dismisses this the
-  // first time (or just misses it) is otherwise never reminded again for
-  // the rest of the session, and "react to sound" is easy to not notice is
-  // even possible until it's pointed out more than once. Keeps re-showing
-  // on an interval for as long as neither source is on; stops for good the
-  // moment one actually is (the effect re-runs on that dependency change
-  // and returns early, clearing whatever nudge timer was in flight).
+  /* Nudge toward turning on real audio reactivity — but only while the menu
+     that answers it is open.
+
+     This used to fire on a three-minute timer regardless of what the visitor
+     was doing, and the card had no auto-expire, so it sat in the corner of
+     the canvas until it was explicitly answered. That is a box interrupting
+     someone mid-composition to advertise a feature, over and over, which is
+     the opposite of helpful.
+
+     Tying it to the radial menu makes it a prompt instead of an interruption:
+     it appears when the visitor has already opened the controls — the moment
+     they are looking for something to change — and the mic toggle is right
+     there in the same menu. Close the menu and it goes away.
+
+     Also now waits on the theme track. Someone playing a MOSH track already
+     has the visuals moving to sound; telling them to turn on the mic reads as
+     the app not noticing what it is doing. */
   useEffect(() => {
-    if (!hasSource || micEnabled || systemAudioEnabled) return;
-    const NUDGE_INTERVAL_MS = 3 * 60 * 1000;
+    if (!hasSource) return;
+    if (micEnabled || systemAudioEnabled || trackEnabled) return;
+    if (!radialMenuOpen) { setShowMicNudge(false); return; }
+
+    // Short first beat so it lands while the menu is still open, then an
+    // occasional repeat for as long as it stays open and silent.
+    const FIRST_MS = 1_200;
+    const REPEAT_MS = 25_000;
     let timer = window.setTimeout(function fire() {
       setShowMicNudge(true);
-      timer = window.setTimeout(fire, NUDGE_INTERVAL_MS);
-    }, 20_000);
-    return () => window.clearTimeout(timer);
-  }, [hasSource, micEnabled, systemAudioEnabled]);
+      timer = window.setTimeout(fire, REPEAT_MS);
+    }, FIRST_MS);
+    return () => { window.clearTimeout(timer); setShowMicNudge(false); };
+  }, [hasSource, micEnabled, systemAudioEnabled, trackEnabled, radialMenuOpen]);
 
   // If someone has been looking at an active visual for a full minute with
   // no audio source at all, point them to the music trigger. This is a
@@ -868,6 +886,13 @@ export default function Editor() {
     }
     setJourneyOn(true);
   }, [isForge, journeyOn, paywall]);
+
+  /* Radio — /radio (or /edit?radio=1). Forge draws, Journey directs, and the
+     rotation below keeps a song under both of them forever. It asks for
+     Journey through toggleJourney rather than setJourneyOn so the station is
+     gated exactly like Journey is everywhere else. */
+  const radio = useRadioBroadcast({ journeyOn, requestJourney: toggleJourney });
+  const [radioWelcome, setRadioWelcome] = useState(true);
 
   // Forge gets one five-minute, session-persistent Journey preview. The clock
   // follows active Journey time and is paused as soon as the director stops.
@@ -1210,8 +1235,19 @@ export default function Editor() {
       const t = e.target as HTMLElement | null;
       const inField = !!(t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable));
 
+      // Cmd/Ctrl+Shift+K — enter Lottie Sticker Mode and capture the
+      // currently selected Lottie/GIF outputs. This must be checked before
+      // the command palette's Cmd/Ctrl+K chord below.
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === "k" || e.key === "K")) {
+        e.preventDefault();
+        if (e.repeat) return;
+        useStore.getState().setStickerMode(true);
+        window.dispatchEvent(new CustomEvent("mosh:capture-lottie-sticker"));
+        return;
+      }
+
       // Cmd/Ctrl+K — palette (works even when palette open via toggle? we close instead)
-      if ((e.ctrlKey || e.metaKey) && (e.key === "k" || e.key === "K")) {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === "k" || e.key === "K")) {
         e.preventDefault();
         setPaletteOpen(p => !p);
         return;
@@ -1221,16 +1257,20 @@ export default function Editor() {
       // remain the universal MOSH action even immediately after one of those
       // controls was focused.
       //
-      // Shift+Space is repurposed here specifically: rather than undo (its
-      // meaning everywhere else), it asks StickerCapture to throw away the
-      // sticker's current crop lock and propose a fresh framing/border/
-      // structural shape — repeatable indefinitely, since the point is
-      // shopping through candidates before committing to a capture.
+      // Cmd/Ctrl+Shift+Space is the deliberate sticker reshaper. Shift+Space
+      // remains the radical stack reset even while a sticker checkbox or
+      // select has focus; plain Space remains a normal mosh.
       if (e.code === "Space" && useStore.getState().stickerMode) {
+        if ((e.metaKey || e.ctrlKey) && !e.shiftKey) return;
         e.preventDefault();
         if (e.repeat) return;
-        if (e.shiftKey) window.dispatchEvent(new CustomEvent("mosh:reroll-sticker-shape"));
-        else crossfadeLayers(mosh, MOSH_FADE_MS);
+        if ((e.metaKey || e.ctrlKey) && e.shiftKey) {
+          window.dispatchEvent(new CustomEvent("mosh:reroll-sticker-shape"));
+        } else if (e.shiftKey) {
+          crossfadeLayers(() => useStore.getState().mosh(undefined, { resetMemory: true, dramatic: true }), MOSH_FADE_MS);
+        } else {
+          crossfadeLayers(mosh, MOSH_FADE_MS);
+        }
         return;
       }
 
@@ -1286,11 +1326,14 @@ export default function Editor() {
       }
 
       // Space is the keyboard equivalent of the MOSH button. Shift+Space
-      // walks one step back through the same visual history.
+      // forgets the recent Art Director history and deliberately jumps to
+      // a maximum-range stack that avoids the current unlocked effects.
+      if (e.code === "Space" && radio.config.active && !e.shiftKey) { e.preventDefault(); radio.togglePlay(); return; }
       if (e.code === "Space") {
+        if (e.metaKey || e.ctrlKey) return;
         e.preventDefault();
         if (e.repeat) return;
-        if (e.shiftKey) undo();
+        if (e.shiftKey) crossfadeLayers(() => useStore.getState().mosh(undefined, { resetMemory: true, dramatic: true }), MOSH_FADE_MS);
         else crossfadeLayers(mosh, MOSH_FADE_MS);
         return;
       }
@@ -1313,20 +1356,6 @@ export default function Editor() {
         window.dispatchEvent(new CustomEvent("mosh:make-sticker"));
         return;
       }
-      // Shift+K => jump straight into Lottie Sticker Mode and capture,
-      // without needing scissors mode open or the Lottie checkbox already
-      // ticked first. Opens the sticker panel (so the preview/checkbox are
-      // visibly on) via the store directly, then hands off to
-      // StickerCapture's own listener (always-mounted, same event-bridge
-      // pattern as "mosh:make-sticker" above) for the actual capture.
-      if (e.shiftKey && (e.key === "k" || e.key === "K")) {
-        e.preventDefault();
-        if (e.repeat) return;
-        useStore.getState().setStickerMode(true);
-        window.dispatchEvent(new CustomEvent("mosh:capture-lottie-sticker"));
-        return;
-      }
-
       // M => mic toggle
       if (!e.shiftKey && (e.key === "m" || e.key === "M")) {
         e.preventDefault();
@@ -1439,9 +1468,9 @@ export default function Editor() {
       // instead. Works regardless of whether the track panel is open, and
       // always ends up playing (matching an ordinary "next" button), so
       // these work as a real transport control, not just a picker shortcut.
-      if (!e.shiftKey && e.key === "[") { e.preventDefault(); runTrackAction(() => trackPlayer.prevShowcaseTrack()); return; }
-      if (!e.shiftKey && e.key === "]") { e.preventDefault(); runTrackAction(() => trackPlayer.nextShowcaseTrack()); return; }
-      if (!e.shiftKey && e.key === "\\") { e.preventDefault(); runTrackAction(() => trackPlayer.shuffleShowcaseTrack()); return; }
+      if (!e.shiftKey && e.key === "[") { e.preventDefault(); if (radio.config.active) radio.previous(); else runTrackAction(() => trackPlayer.prevShowcaseTrack()); return; }
+      if (!e.shiftKey && e.key === "]") { e.preventDefault(); if (radio.config.active) radio.skip(); else runTrackAction(() => trackPlayer.nextShowcaseTrack()); return; }
+      if (!e.shiftKey && e.key === "\\") { e.preventDefault(); if (radio.config.active) radio.shuffle(); else runTrackAction(() => trackPlayer.shuffleShowcaseTrack()); return; }
 
       // ————————————— Shift combos —————————————
       if (e.shiftKey && (e.key === "M" || e.key === "m")) { e.preventDefault(); crossfadeLayers(mosh, MOSH_FADE_MS); return; }
@@ -1540,41 +1569,80 @@ export default function Editor() {
     return () => window.removeEventListener("aegis:toggle-ui", onToggleUI);
   }, []);
 
-  // Three-finger tap on the visualizer is the touch counterpart to C. It is
-  // intentionally scoped to the canvas and ignores UI controls so it cannot
-  // steal ordinary multi-touch interactions from the editor chrome.
+  // Three-finger tap on the visualizer is the touch counterpart to Shift+G
+  // (3-second GIF). Intentionally scoped to the canvas and ignores UI
+  // controls so it cannot steal ordinary multi-touch interactions from the
+  // editor chrome. A genuine tap only — down plus a quick, near-still
+  // release — so a deliberate three-finger hold or drag can't misfire a
+  // capture the way firing on touchdown alone would.
   useEffect(() => {
     const el = canvasContainerRef.current;
     if (!el) return;
-    const activeTouches = new Set<number>();
-    let fired = false;
+    type Point = { x: number; y: number };
+    const points = new Map<number, Point>();
+    let start: Point[] = [];
+    let startedAt = 0;
+    let maxTravel = 0;
+    let invalid = false;
+    let handled = false;
     const isCanvasTap = (target: EventTarget | null) =>
       !(target instanceof HTMLElement) || !target.closest("button, a, input, textarea, [role='slider'], [data-no-longpress]");
     const onDown = (e: PointerEvent) => {
       if (e.pointerType !== "touch" || !isCanvasTap(e.target)) return;
-      activeTouches.add(e.pointerId);
-      if (activeTouches.size !== 3 || fired) return;
-      fired = true;
-      e.preventDefault();
-      try { (navigator as any).vibrate?.(10); } catch {}
-      takeScreenshot();
+      points.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (points.size === 3) {
+        start = [...points.values()].map(p => ({ ...p }));
+        startedAt = performance.now();
+        maxTravel = 0;
+        invalid = false;
+        handled = false;
+      } else if (points.size > 3) {
+        // A fourth finger means this was never a clean three-finger tap.
+        invalid = true;
+      }
+    };
+    const onMove = (e: PointerEvent) => {
+      const p = points.get(e.pointerId);
+      if (!p) return;
+      p.x = e.clientX;
+      p.y = e.clientY;
+      if (!start.length || start.length !== points.size) return;
+      const now = [...points.values()];
+      for (let i = 0; i < now.length; i++) {
+        maxTravel = Math.max(maxTravel, Math.hypot(now[i].x - start[i].x, now[i].y - start[i].y));
+      }
     };
     const onEnd = (e: PointerEvent) => {
-      activeTouches.delete(e.pointerId);
-      if (activeTouches.size === 0) fired = false;
+      if (!points.has(e.pointerId)) return;
+      if (!handled && !invalid && points.size === 3 && start.length === 3) {
+        const elapsed = performance.now() - startedAt;
+        if (elapsed <= 420 && maxTravel <= 20) {
+          handled = true;
+          try { (navigator as any).vibrate?.(10); } catch {}
+          captureGif(3);
+        }
+      }
+      points.delete(e.pointerId);
+      if (points.size === 0) {
+        start = [];
+        invalid = false;
+        handled = false;
+      }
     };
-    el.addEventListener("pointerdown", onDown, { passive: false });
+    el.addEventListener("pointerdown", onDown, { passive: true });
+    window.addEventListener("pointermove", onMove, { passive: true });
     window.addEventListener("pointerup", onEnd, { passive: true });
     window.addEventListener("pointercancel", onEnd, { passive: true });
     return () => {
       el.removeEventListener("pointerdown", onDown);
+      window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onEnd);
       window.removeEventListener("pointercancel", onEnd);
     };
-  }, [takeScreenshot]);
+  }, [captureGif]);
 
   // Touch-first performance navigation. One-finger horizontal swipes walk the
-  // undo/redo timeline; two-finger tap still toggles Smart Freeze. At the
+  // undo/redo timeline; two-finger tap takes a screenshot. At the
   // newest point, swiping forward creates a fresh Mosh instead of going dead.
   useEffect(() => {
     const el = canvasContainerRef.current;
@@ -1599,7 +1667,7 @@ export default function Editor() {
         invalid = false;
         handled = false;
       } else if (points.size > 2) {
-        // Three fingers belong to screenshot capture, never to this gesture.
+        // Three fingers belong to the GIF-capture gesture, never to this one.
         invalid = true;
       }
     };
@@ -1638,7 +1706,7 @@ export default function Editor() {
           }
         } else if (count === 2 && elapsed <= 420 && maxTravel <= 20) {
           try { (navigator as any).vibrate?.(10); } catch {}
-          toggleSmartFreeze();
+          takeScreenshot();
         }
       }
       points.delete(e.pointerId);
@@ -1658,7 +1726,7 @@ export default function Editor() {
       window.removeEventListener("pointerup", onEnd);
       window.removeEventListener("pointercancel", onEnd);
     };
-  }, [toggleSmartFreeze]);
+  }, [takeScreenshot]);
 
   // Desktop: holding bare Shift summons the centered Hot Trigger wheel
   // instantly; releasing dismisses it. In Pro Mode the chrome follows too. A true hold,
@@ -1784,7 +1852,7 @@ export default function Editor() {
         <meta name="description" content="Stack GPU effects, map audio to parameters, and perform live in the MOSH visual editor." />
         <link rel="canonical" href="https://ether-mosh.online/edit" />
         <meta property="og:title" content="MOSH Editor — Real-time visual instrument" />
-        <meta property="og:description" content="Stack 108 GPU effects, sync to audio, export stills and video." />
+        <meta property="og:description" content={`Stack ${PUBLIC_EFFECTS.length} GPU effects, sync to audio, export stills and video.`} />
         <meta property="og:url" content="https://ether-mosh.online/edit" />
       </Helmet>
       <h1 className="sr-only">MOSH Editor</h1>
@@ -1802,6 +1870,8 @@ export default function Editor() {
           loadDroppedImage(file);
         }}
         onPointerDown={(e) => {
+          const target = e.target instanceof Element ? e.target : null;
+          if (target?.closest("button, a, input, textarea, select, label, summary, [role='button'], [role='slider'], [data-sticker-controls]")) return;
           // Cmd/Ctrl-click → ripple (Performance Mode only)
           if (useStore.getState().isPerformanceMode && (e.metaKey || e.ctrlKey)) {
             e.preventDefault();
@@ -1840,12 +1910,14 @@ export default function Editor() {
           if (e.shiftKey) { e.preventDefault(); crossfadeLayers(mosh, MOSH_FADE_MS); }
         }}
         className={`relative bg-background select-none shrink-0 no-touch-scroll ${
-          desktopPortraitMode
+          desktopCanvasAspect === "portrait"
             // Height-driven 9:16 box instead of the usual full-width stage —
             // min() so a browser window too narrow for a full-height 9:16
             // box shrinks to fit its width instead of overflowing sideways.
             ? "self-center w-auto aspect-[9/16] h-[min(100dvh,calc(100vw*16/9))]"
-            : "w-full h-[100dvh]"
+            : desktopCanvasAspect === "square"
+              ? "self-center w-auto aspect-square h-[min(100dvh,100vw)]"
+              : "w-full h-[100dvh]"
         } ${isCameraLive ? "live-ring" : ""}`}
       >
         <div data-tap-fade-target className="absolute inset-0 opacity-100">
@@ -1866,6 +1938,13 @@ export default function Editor() {
         {freezeFrame && <FrozenFrame frame={freezeFrame} />}
         {!hasSource && !isOverlay && <StartCameraOverlay />}
         <SystemAudioHud visible={systemAudioEnabled && !isOverlay} />
+        {radio.config.active && radio.config.hud && (
+          <>
+            <RadioHud radio={radio} onOpenControls={exitPerf} />
+            {radioWelcome && isPerformanceMode && <RadioWelcome onDismiss={() => setRadioWelcome(false)} />}
+          </>
+        )}
+        {radio.config.active && radio.needsGesture && <RadioGesturePrompt onStart={radio.start} />}
         {hasSource && !isForge && !isMotif && !isOverlay && (
           <QuadrantSurface onTogglePerf={togglePerf} onTune={focusTune} />
         )}

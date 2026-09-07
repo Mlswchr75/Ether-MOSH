@@ -23,6 +23,10 @@ type ActivePoint = {
   /** Set the instant a point stops being driven (pointerup, or immediately
    *  for one-shot burst/chaos points) — drives the fade-out/decay curve. */
   releasedAt: number | null;
+  /** Last time this point was actually driven by a pointer event. A live
+   *  drag refreshes this every move; a point whose release event never
+   *  arrived stops being refreshed, which is what STALE_MS detects. */
+  lastDrivenAt: number;
   peakAmount: number;
   radius: number;
 };
@@ -39,43 +43,72 @@ const BURST_LIFE_MS = 420;
 const PREVIEW_LIFE_MS = 190;
 /** Hold-to-branch burst — longer and louder, its own "digital chaos" register. */
 const CHAOS_LIFE_MS = 640;
+/**
+ * How long a drag/hover point may go undriven before it releases itself.
+ *
+ * These points end on pointerup, pointercancel or pointerleave — and a browser
+ * does not always send one. Alt-tabbing mid-drag, a context menu, an OS
+ * gesture stealing the touch, or the component unmounting while a pointer is
+ * down all strand the point with `releasedAt: null`, and nothing in the decay
+ * path ever removes those: the effect stays anchored at full strength, on that
+ * part of the frame, for the rest of the session. Because these layers are
+ * appended after the stack rather than being part of it, no amount of moshing
+ * clears one — which is exactly how it reads as "one corner is permanently
+ * broken".
+ *
+ * Generous on purpose. A live drag refreshes lastDrivenAt on every pointermove,
+ * so this only fires on a point nothing is driving any more. Six seconds is
+ * far longer than a hand holds still mid-gesture, and the cost of being wrong
+ * is a fade-out that the next movement immediately re-arms.
+ */
+const STALE_MS = 6_000;
 
 class CursorFxManager {
   private points = new Map<string, ActivePoint>();
 
+  /* The driving methods take the same injectable clock getActiveLayers already
+   does. In the app both are performance.now() and nothing changes; keeping one
+   clock across the whole module is what makes the staleness rule mean
+   "undriven for six seconds" rather than "six seconds apart on two clocks
+   that happen to agree". */
+
   /** Start (or re-target) a drag-following point for an active touch/click. */
-  spawnAmbient(key: string, x: number, y: number) {
+  spawnAmbient(key: string, x: number, y: number, now = performance.now()) {
     const existing = this.points.get(key);
     if (existing && existing.kind === "ambient") {
       existing.targetX = x;
       existing.targetY = y;
       existing.releasedAt = null;
+      existing.lastDrivenAt = now;
       return;
     }
     this.points.set(key, {
       kind: "ambient",
       x, y, targetX: x, targetY: y,
-      bornAt: performance.now(),
+      bornAt: now,
       releasedAt: null,
+      lastDrivenAt: now,
       peakAmount: 0.5,
       radius: 0.15,
     });
   }
 
   /** A much quieter always-on point for mouse and hover-capable stylus input. */
-  hover(key: string, x: number, y: number) {
+  hover(key: string, x: number, y: number, now = performance.now()) {
     const existing = this.points.get(key);
     if (existing && existing.kind === "hover") {
       existing.targetX = x;
       existing.targetY = y;
       existing.releasedAt = null;
+      existing.lastDrivenAt = now;
       return;
     }
     this.points.set(key, {
       kind: "hover",
       x, y, targetX: x, targetY: y,
-      bornAt: performance.now(),
+      bornAt: now,
       releasedAt: null,
+      lastDrivenAt: now,
       peakAmount: 0.15,
       radius: 0.075,
     });
@@ -83,11 +116,12 @@ class CursorFxManager {
 
   /** Re-target an already-active ambient point (pointermove). No-op if the
    *  key isn't tracked or has already been released. */
-  moveAmbient(key: string, x: number, y: number) {
+  moveAmbient(key: string, x: number, y: number, now = performance.now()) {
     const p = this.points.get(key);
     if (p && (p.kind === "ambient" || p.kind === "hover") && p.releasedAt == null) {
       p.targetX = x;
       p.targetY = y;
+      p.lastDrivenAt = now;
     }
   }
 
@@ -97,13 +131,32 @@ class CursorFxManager {
     if (p && p.releasedAt == null) p.releasedAt = performance.now();
   }
 
+  /** Release every point that a pointer is still notionally driving.
+   *
+   *  For the moments a browser tells us the input is gone without sending a
+   *  per-pointer end event: window blur, tab hidden, the pointer leaving the
+   *  document. Fades them out properly rather than cutting, so this is safe to
+   *  call speculatively. */
+  releaseAll() {
+    const t = performance.now();
+    for (const p of this.points.values()) {
+      if (p.releasedAt == null) p.releasedAt = t;
+    }
+  }
+
+  /** Drop every point immediately, mid-fade included. For teardown, where
+   *  there is no next frame to run the fade on. */
+  clear() {
+    this.points.clear();
+  }
+
   /** One-shot burst — any tap/click, canvas or UI, that isn't a hold-branch. */
   burst(x: number, y: number) {
     const t = performance.now();
     this.points.set(`burst-${t}-${Math.random().toString(36).slice(2, 7)}`, {
       kind: "burst",
       x, y, targetX: x, targetY: y,
-      bornAt: t, releasedAt: t,
+      bornAt: t, releasedAt: t, lastDrivenAt: t,
       peakAmount: 0.85,
       radius: 0.11,
     });
@@ -115,7 +168,7 @@ class CursorFxManager {
     const t = performance.now();
     this.points.set(`preview-${t}`, {
       kind: "preview", x, y, targetX: x, targetY: y,
-      bornAt: t, releasedAt: t, peakAmount: 0.24, radius: 0.065,
+      bornAt: t, releasedAt: t, lastDrivenAt: t, peakAmount: 0.24, radius: 0.065,
     });
   }
 
@@ -125,7 +178,7 @@ class CursorFxManager {
     this.points.set(`chaos-${t}-${Math.random().toString(36).slice(2, 7)}`, {
       kind: "chaos",
       x, y, targetX: x, targetY: y,
-      bornAt: t, releasedAt: t,
+      bornAt: t, releasedAt: t, lastDrivenAt: t,
       peakAmount: 1.0,
       radius: 0.24,
     });
@@ -138,6 +191,12 @@ class CursorFxManager {
     const out: RenderLayer[] = [];
     for (const [key, p] of this.points) {
       if (p.kind === "ambient" || p.kind === "hover") {
+        /* Nothing has driven this for a long time, so its end event never
+           arrived — release it rather than letting it sit on the frame
+           forever. See STALE_MS. */
+        if (p.releasedAt == null && nowMs - p.lastDrivenAt > STALE_MS) {
+          p.releasedAt = nowMs;
+        }
         p.x += (p.targetX - p.x) * AMBIENT_EASE;
         p.y += (p.targetY - p.y) * AMBIENT_EASE;
         const age = nowMs - p.bornAt;

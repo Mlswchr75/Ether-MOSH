@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { rngFromSeed } from "./seed";
 import { EFFECTS_BY_ID, PUBLIC_EFFECTS } from "./effects";
+import { tileVerdict } from "./tileSafety";
 import {
   LOOKS,
+  MAX_ROLES,
+  VIBRANCE_MAX,
+  VIBRANCE_MIN,
+  adaptiveVibrance,
   NEUTRAL_STATS,
   ROLES,
   briefFrom,
@@ -16,6 +21,7 @@ import {
   paramsForRole,
   pickForRole,
   poolForRole,
+  rollRoleCount,
   statsFromPixels,
   strengthParamFor,
   type Look,
@@ -369,11 +375,17 @@ describe("content-awareness", () => {
     expect(grey).toBeGreaterThan(vivid);
   });
 
+  /* Averaged over enough rolls to actually measure the preference.
+     Restraint is one term among many in pickForRole's score, and cost per
+     mosh only separates the two briefs by a few percent — at 40 samples the
+     seeds moved the total more than the brief did, so this passed or failed
+     on which seeds happened to be listed rather than on whether the director
+     reads the picture. Several hundred is where the sign stops flipping. */
   it("spends less detail on a busy frame than on an empty one", () => {
     const cost = (b: typeof busyBrief, seed: string) =>
       compose(b, rngFromSeed(seed)).layers.reduce((a, l) => a + (craftOf(l.effectId)?.cost ?? 0), 0);
     let busy = 0, empty = 0;
-    for (let i = 0; i < 40; i++) {
+    for (let i = 0; i < 400; i++) {
       busy += cost(busyBrief, `bz-${i}`);
       empty += cost(greyBrief, `em-${i}`);
     }
@@ -604,5 +616,230 @@ describe("effect strength (Phase 5)", () => {
         }
       }
     });
+  });
+});
+
+describe("look curation coverage", () => {
+  const curatedIds = () => {
+    const ids = new Set<string>();
+    for (const look of LOOKS) for (const role of ROLES) for (const id of look.picks[role] ?? []) ids.add(id);
+    return ids;
+  };
+
+  /* The selection funnel, not the library, is what decides how much of MOSH a
+     user ever sees. A pick comes from the chosen look's own shortlist unless a
+     chaos roll breaks the grammar — and chaos is 0 at MILD — so an effect
+     filed in no look at all is, at the settings most people leave alone,
+     effectively unreachable. This is the check that keeps the library and what
+     the director can actually reach from drifting apart again. */
+  it("files every directable effect in at least one look", () => {
+    const curated = curatedIds();
+    const orphans = Object.keys(EFFECTS_BY_ID).filter(id => craftOf(id) && !curated.has(id));
+    expect(orphans, `effects no look can reach: ${orphans.join(", ")}`).toEqual([]);
+  });
+
+  it("never lists a pick that isn't a real effect", () => {
+    for (const look of LOOKS) {
+      for (const role of ROLES) {
+        for (const id of look.picks[role] ?? []) {
+          expect(EFFECTS_BY_ID[id], `${look.id}/${role}: unknown effect "${id}"`).toBeDefined();
+        }
+      }
+    }
+  });
+
+  /* A pick filed under the wrong role is silently dropped by pickForRole's
+     own CRAFT lookup, which reads as "this look keeps ignoring that effect"
+     rather than as the typo it is. */
+  it("never files a pick under a role it isn't crafted for", () => {
+    for (const look of LOOKS) {
+      for (const role of ROLES) {
+        for (const id of look.picks[role] ?? []) {
+          expect(craftOf(id)?.role, `${look.id}/${role}: "${id}"`).toBe(role);
+        }
+      }
+    }
+  });
+
+  /* Two or three picks per role meant the top of the ranking barely moved
+     between rolls, so consecutive moshes on one look cycled the same handful
+     of effects. Three is the floor; the deck averages well above it. */
+  it("gives every look a shortlist wide enough to vary", () => {
+    for (const look of LOOKS) {
+      for (const role of ROLES) {
+        expect((look.picks[role] ?? []).length, `${look.id}/${role}`).toBeGreaterThanOrEqual(3);
+      }
+    }
+  });
+});
+
+describe("rollRoleCount", () => {
+  const sample = (base: number, n = 4000) => {
+    const counts = new Map<number, number>();
+    for (let i = 0; i < n; i++) {
+      const rand = rngFromSeed(`rc-${base}-${i}`);
+      const v = rollRoleCount(rand, base);
+      counts.set(v, (counts.get(v) ?? 0) + 1);
+    }
+    return counts;
+  };
+
+  it("centres on the tier's own depth but reaches a layer either side", () => {
+    const counts = sample(4);
+    expect([...counts.keys()].sort((a, b) => a - b)).toEqual([3, 4, 5]);
+    // The centre stays the most likely outcome — this is jitter around a
+    // chosen depth, not a uniform roll that throws the setting away.
+    expect(counts.get(4)!).toBeGreaterThan(counts.get(3)!);
+    expect(counts.get(4)!).toBeGreaterThan(counts.get(5)!);
+  });
+
+  it("never composes a single-layer stack, however low the tier", () => {
+    for (const base of [1, 2]) {
+      for (const v of sample(base, 500).keys()) expect(v).toBeGreaterThanOrEqual(2);
+    }
+  });
+
+  it("never reaches past MAX_ROLES, however high the tier", () => {
+    for (const base of [MAX_ROLES - 1, MAX_ROLES, MAX_ROLES + 3]) {
+      for (const v of sample(base, 500).keys()) expect(v).toBeLessThanOrEqual(MAX_ROLES);
+    }
+  });
+
+  it("actually produces stacks of that depth", () => {
+    const brief = briefFrom(NEUTRAL_STATS);
+    for (const depth of [3, 4, 5]) {
+      const layers = compose(brief, rngFromSeed(`depth-${depth}`), { roleCount: depth }).layers;
+      expect(layers).toHaveLength(depth);
+    }
+  });
+});
+
+describe("adaptiveVibrance", () => {
+  /* The lift used to be a hardcoded 0.35 that nothing ever wrote to, so a grey
+     wall and a neon sign got the same push. */
+  it("spends the lift where there is room for it", () => {
+    expect(adaptiveVibrance(0)).toBeCloseTo(VIBRANCE_MAX);
+    expect(adaptiveVibrance(1)).toBeCloseTo(VIBRANCE_MIN);
+    expect(adaptiveVibrance(0.2)).toBeGreaterThan(adaptiveVibrance(0.8));
+  });
+
+  it("lifts a typical frame harder than the fixed value it replaces", () => {
+    expect(adaptiveVibrance(NEUTRAL_STATS.saturation)).toBeGreaterThan(0.35);
+  });
+
+  /* Pushing an already-vivid frame does not add range, it removes it: clipped
+     hues all resolve to the same flat block. */
+  it("holds back on a frame that is already vivid", () => {
+    expect(adaptiveVibrance(0.9)).toBeLessThan(0.35);
+  });
+
+  it("stays inside the finisher's own 0..1 uniform range for any input", () => {
+    for (const s of [-5, -0.1, 0, 0.5, 1, 1.4, 99, Number.NaN]) {
+      const v = adaptiveVibrance(s);
+      if (Number.isNaN(s)) continue;
+      expect(v).toBeGreaterThanOrEqual(0);
+      expect(v).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it("falls monotonically as the source gets more colourful", () => {
+    let previous = Infinity;
+    for (let s = 0; s <= 1.0001; s += 0.1) {
+      const v = adaptiveVibrance(s);
+      expect(v).toBeLessThan(previous);
+      previous = v;
+    }
+  });
+});
+
+describe("seamless composition", () => {
+  const brief = briefFrom(NEUTRAL_STATS);
+  const seamlessLooks = () => LOOKS.filter(l => l.seamless);
+
+  /* The contract the whole mode rests on: an effect that breaks the seam
+     ruins the tile outright, so it must be unreachable — not merely unlikely.
+     Swept at full wildness and full chaos, which is where every widening
+     mechanism (wide pick window, rule-breaks into other roles, thin-pool
+     fallbacks) is working hardest to reach outside the shortlist. */
+  it("never composes an effect that breaks the seam, at any depth or chaos", () => {
+    for (let i = 0; i < 300; i++) {
+      const layers = compose(brief, rngFromSeed(`tile-${i}`), {
+        roleCount: 2 + (i % (MAX_ROLES - 1)),
+        chaos: 1,
+        wildness: 1,
+        tileSafe: true,
+      }).layers;
+      expect(layers.length).toBeGreaterThan(0);
+      for (const layer of layers) {
+        expect(tileVerdict(layer.effectId).safe, `${layer.effectId} breaks the seam`).toBe(true);
+      }
+    }
+  });
+
+  /* A region mask is the one part of the grammar filtering cannot make safe:
+     radial has a centre, foreground/background read a depth proxy that means
+     nothing against a generated pattern, and the band modes are rolled with a
+     continuous scale and random phase. */
+  it("never masks a region when tiling", () => {
+    for (let i = 0; i < 200; i++) {
+      const layers = compose(brief, rngFromSeed(`region-${i}`), {
+        roleCount: MAX_ROLES, chaos: 1, wildness: 1, tileSafe: true,
+      }).layers;
+      for (const layer of layers) expect(layer.region ?? null).toBeNull();
+    }
+  });
+
+  it("draws only from the seamless deck when tiling, and never from it otherwise", () => {
+    for (let i = 0; i < 200; i++) {
+      expect(chooseLook(brief, rngFromSeed(`sl-${i}`), [], undefined, null, true).seamless).toBe(true);
+      expect(chooseLook(brief, rngFromSeed(`nl-${i}`), [], undefined, null, false).seamless).toBeFalsy();
+    }
+  });
+
+  it("builds every seamless look entirely from tile-safe effects", () => {
+    expect(seamlessLooks().length).toBeGreaterThan(0);
+    for (const look of seamlessLooks()) {
+      for (const role of ROLES) {
+        const picks = look.picks[role] ?? [];
+        // Enough to vary — the whole reason the main deck's shortlists were
+        // widened. A role with one or two picks barely moves between rolls.
+        expect(picks.length, `${look.id}/${role}`).toBeGreaterThanOrEqual(3);
+        for (const id of picks) {
+          expect(craftOf(id)?.role, `${look.id}/${role}: ${id}`).toBe(role);
+          expect(tileVerdict(id).safe, `${look.id}/${role}: ${id} breaks the seam`).toBe(true);
+        }
+      }
+    }
+  });
+
+  /* Same guarantee the main deck carries: nothing in the pool is unreachable.
+     Without this, widening the tile-safe pool later would silently leave the
+     new effects stranded, which is exactly the bug the main deck had. */
+  it("leaves no tile-safe effect unreachable in seamless mode", () => {
+    const curated = new Set<string>();
+    for (const look of seamlessLooks()) for (const role of ROLES) {
+      for (const id of look.picks[role] ?? []) curated.add(id);
+    }
+    const orphans = Object.keys(EFFECTS_BY_ID)
+      .filter(id => craftOf(id) && tileVerdict(id).safe && !curated.has(id));
+    expect(orphans, `tile-safe but in no seamless look: ${orphans.join(", ")}`).toEqual([]);
+  });
+
+  it("still fills every role it is asked for", () => {
+    for (const depth of [2, 3, 4, 5]) {
+      const layers = compose(brief, rngFromSeed(`depth-sl-${depth}`), {
+        roleCount: depth, tileSafe: true,
+      }).layers;
+      expect(layers).toHaveLength(depth);
+    }
+  });
+
+  it("leaves non-seamless composition untouched", () => {
+    // The seamless deck is additive: a normal roll must land exactly where it
+    // did before it existed, or this change silently re-grades every camera
+    // stack too.
+    const plain = compose(brief, rngFromSeed("parity"), { roleCount: 4, chaos: 0.25, wildness: 0.5 });
+    expect(plain.look.seamless).toBeFalsy();
+    expect(plain.layers.length).toBe(4);
   });
 });

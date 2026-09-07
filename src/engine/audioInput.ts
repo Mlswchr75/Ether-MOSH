@@ -102,22 +102,32 @@ export async function requestMicrophoneStream(
   const resolved = resolveRememberedAudioInput(devices, preference.deviceId, preference.label);
   // If enumeration itself was blocked, the remembered id is still worth trying.
   const preferredId = resolved.deviceId || preference.deviceId;
-  const raw: MediaTrackConstraints = {
+  // Disabling all three keeps Chromium off the Android "voice communication"
+  // capture path (and gives Safari the least exclusive recording session it
+  // can pick) — a plain mic capture with processing left on is what makes
+  // the OS reroute Bluetooth from its media (A2DP) profile to a phone-call
+  // one and pause whatever else is playing through it. Every attempt below,
+  // including every fallback, keeps this triple; only device/channel/rate
+  // hints are ever relaxed.
+  const noProcessing: MediaTrackConstraints = {
     echoCancellation: false,
     noiseSuppression: false,
     autoGainControl: false,
+  };
+  const raw: MediaTrackConstraints = {
+    ...noProcessing,
     channelCount: { ideal: 2 },
     sampleRate: { ideal: 48000 },
   };
 
   const attempts: Array<{ constraints: MediaStreamConstraints; preferred: boolean }> = preferredId ? [
     { constraints: { audio: { ...raw, deviceId: { exact: preferredId } }, video: false }, preferred: true },
-    { constraints: { audio: { deviceId: { exact: preferredId } }, video: false }, preferred: true },
+    { constraints: { audio: { ...noProcessing, deviceId: { exact: preferredId } }, video: false }, preferred: true },
     { constraints: { audio: raw, video: false }, preferred: false },
-    { constraints: { audio: true, video: false }, preferred: false },
+    { constraints: { audio: noProcessing, video: false }, preferred: false },
   ] : [
     { constraints: { audio: raw, video: false }, preferred: false },
-    { constraints: { audio: true, video: false }, preferred: false },
+    { constraints: { audio: noProcessing, video: false }, preferred: false },
   ];
 
   let lastError: unknown;

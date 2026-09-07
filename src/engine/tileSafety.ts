@@ -34,7 +34,24 @@ function body(def: EffectDef): string {
   return at >= 0 ? def.frag.slice(at) : def.frag;
 }
 
+/* Memoised, because the verdict is a pure function of a static shader body and
+   the classifier is not cheap: it runs a dozen regexes over multi-kilobyte
+   GLSL. That cost was invisible while this was called once per stack, but the
+   Art Director asks per role and again per candidate in the pick window —
+   about 1900 regex passes for a single seamless compose, which measured 6.9x
+   the cost of the same compose without tiling. EFFECTS is a module-level
+   constant, so a verdict can never go stale. */
+const verdicts = new Map<string, TileVerdict>();
+
 export function tileVerdict(effectId: string): TileVerdict {
+  const memo = verdicts.get(effectId);
+  if (memo) return memo;
+  const verdict = classify(effectId);
+  verdicts.set(effectId, verdict);
+  return verdict;
+}
+
+function classify(effectId: string): TileVerdict {
   const def = EFFECTS_BY_ID[effectId];
   if (!def) return { safe: false, reason: "unknown-effect" };
   const src = body(def);
@@ -64,9 +81,16 @@ export function tileVerdict(effectId: string): TileVerdict {
   return { safe: true };
 }
 
-/** Every effect that can appear in a seamless pattern. */
+/** Every effect that can appear in a seamless pattern.
+ *
+ *  The classification is memoised; the array is still copied per call, so
+ *  callers keep the fresh, own-it-outright list they had before there was a
+ *  cache. Copying ~60 strings is nothing next to the regex pass it replaces,
+ *  and handing out a shared mutable array to save it would be a trap. */
+let safeIds: readonly string[] | null = null;
 export function tileSafeEffects(): string[] {
-  return EFFECTS.filter(e => tileVerdict(e.id).safe).map(e => e.id);
+  if (!safeIds) safeIds = EFFECTS.filter(e => tileVerdict(e.id).safe).map(e => e.id);
+  return safeIds.slice();
 }
 
 export type SeamScore = {

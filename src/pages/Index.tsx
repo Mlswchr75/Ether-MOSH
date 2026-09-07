@@ -1,10 +1,11 @@
 import { Link, useNavigate } from "react-router-dom";
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Helmet } from "react-helmet-async";
-import { ChevronsUp, Flame, Upload, Video } from "lucide-react";
+import { Upload, Video } from "lucide-react";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
 import { useStore } from "@/store/useStore";
+import { PUBLIC_EFFECTS } from "@/engine/effects";
 import { loadImageFile, loadImageFromClipboard } from "@/lib/sourceLoader";
 import { haptic } from "@/hooks/useHaptics";
 import { defaultFacing, requestCameraStream } from "@/hooks/useCamera";
@@ -15,8 +16,8 @@ import { BioFlicker } from "@/components/home/BioFlicker";
 import { RebellionNudge } from "@/components/home/RebellionNudge";
 import { QuadrantDecor } from "@/components/home/QuadrantDecor";
 import { GlitchWordField, KEEP_OUT } from "@/components/home/GlitchWordField";
-import { HeroWord, HERO_ANCHOR } from "@/components/home/HeroWord";
 import { HomeInfoCarousel } from "@/components/home/HomeInfoCarousel";
+import { ForgePatternMark, ForgeTrace, MoshDivider, SourceTrace } from "@/components/home/TitleSplitScene";
 
 const DemoReelPanel = lazy(() =>
   import("@/components/home/DemoReelPanel").then(m => ({ default: m.DemoReelPanel })),
@@ -36,10 +37,6 @@ const Index = () => {
   const demoGateRef = useRef<HTMLDivElement>(null);
   const [dragOver, setDragOver] = useState(false);
   const [demoReady, setDemoReady] = useState(false);
-
-  // Whatever the hero is currently shouting. The word field takes it so the
-  // same word is never on screen twice.
-  const [heroWord, setHeroWord] = useState<string>(HERO_ANCHOR);
 
   // A random showcase track autoplays on the visitor's first tap/keypress —
   // browsers block audio before a real gesture regardless, so "on visit" in
@@ -231,10 +228,10 @@ const Index = () => {
     >
       <Helmet>
         <title>Ether-MOSH — Audio-Reactive Visual Instrument</title>
-        <meta name="description" content="Ether-MOSH is a browser-based audio-reactive visual instrument. Drop an image or go live with your camera, stack 108 GPU glitch effects, sync them to your music, and export stills or video — all processed locally in your browser." />
+        <meta name="description" content={`Ether-MOSH is a browser-based audio-reactive visual instrument. Drop an image or go live with your camera, stack ${PUBLIC_EFFECTS.length} GPU glitch effects, sync them to your music, and export stills or video — all processed locally in your browser.`} />
         <link rel="canonical" href="https://ether-mosh.online/" />
         <meta property="og:title" content="Ether-MOSH — Audio-Reactive Visual Instrument" />
-        <meta property="og:description" content="Drop an image and warp it in real time. 108 GPU effects, beat-synced chaos, in your browser." />
+        <meta property="og:description" content={`Drop an image and warp it in real time. ${PUBLIC_EFFECTS.length} GPU effects, beat-synced chaos, in your browser.`} />
         <meta property="og:url" content="https://ether-mosh.online/" />
       </Helmet>
       <h1 className="sr-only">Ether-MOSH — Real-time audio-reactive image and video glitch instrument</h1>
@@ -247,24 +244,9 @@ const Index = () => {
 
       {/* Middle story: the instrument itself. Demo reel remains below. */}
       <section className="relative h-screen w-screen shrink-0 snap-start overflow-hidden">
-      {/* Fullscreen moshing dropzone — using div so nested interactive elements are valid HTML */}
+      {/* The instrument's two entry philosophies: bring a source or forge one. */}
       <div
-        role="button"
-        tabIndex={0}
-        onPointerDown={(e) => { pressAt.current = { x: e.clientX, y: e.clientY }; }}
-        onClick={openPickerIfTap}
-        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") openPicker(); }}
-        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-        onDragLeave={() => setDragOver(false)}
-        onDrop={(e) => {
-          e.preventDefault(); setDragOver(false);
-          const f = e.dataTransfer.files?.[0];
-          if (f) loadFile(f);
-        }}
-        aria-label="Drop, paste, or click to upload an image"
-        className={`group absolute inset-0 block h-full w-full cursor-pointer overflow-hidden border-2 border-dashed transition-colors duration-300 ${
-          dragOver ? "border-primary" : "border-border/40 hover:border-primary/60"
-        }`}
+        className={`title-split-stage absolute inset-0 overflow-hidden border-2 border-dashed ${dragOver ? "is-dragging" : ""}`}
       >
         {/* Real-time moshing backdrop (canvas) — lazy-loaded after first paint */}
         <div className="pointer-events-none absolute inset-0">
@@ -280,94 +262,121 @@ const Index = () => {
         {/* Bio fragments flickering across the visualizer */}
         <BioFlicker />
 
-        {/* Text overlay — the page's single hero. Everything else on screen is
-            the word field, which places itself around this block. */}
-        <div className="pointer-events-none absolute inset-0 z-10">
-          <div className="absolute inset-0 flex flex-col items-center justify-center px-6 text-center">
-            {/* The keep-out is this inner cluster, which shrink-wraps its
-                contents — marking the full-bleed parent would reserve the
-                whole page and leave the field nowhere to land. */}
-            <div {...KEEP_OUT} className="flex flex-col items-center gap-6">
-              {/* Upload + camera — entrance via wrapper; CSS animations on the
-                  inner elements are independent */}
-              <motion.div
-                initial={{ scale: 0.55, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ type: "spring", stiffness: 260, damping: 22, delay: 0.15 }}
-                className="pointer-events-auto flex items-center gap-5"
-              >
+        <div className="title-word-field pointer-events-none absolute inset-0 z-[2]">
+          <GlitchWordField exclude="UPLOAD" />
+        </div>
+
+        <div className="title-split-grid absolute inset-0 z-10">
+          <section
+            className="title-split-pane title-split-pane--source"
+            aria-labelledby="source-side-title"
+            onPointerDown={(e) => { pressAt.current = { x: e.clientX, y: e.clientY }; }}
+            onClick={openPickerIfTap}
+            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={(e) => {
+              e.preventDefault(); setDragOver(false);
+              const f = e.dataTransfer.files?.[0];
+              if (f) void loadFile(f);
+            }}
+          >
+            <SourceTrace />
+            <motion.div
+              {...KEEP_OUT}
+              initial={{ x: -28, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              transition={{ duration: 0.6, delay: 0.16, ease: EASE_SNAP }}
+              className="split-pane-content"
+            >
+              <h2 id="source-side-title" className="split-side-title side-reactive" data-text="UPLOAD">UPLOAD</h2>
+              <div className="source-mode-console mosh-target" role="group" aria-label="Choose your source">
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); openPicker(); }}
                   aria-label="Upload an image"
-                  className="relative flex h-24 w-24 items-center justify-center rounded-full border border-primary/70 bg-background/30 text-primary backdrop-blur-[2px] animate-pulse-soft mosh-icon transition hover:scale-105"
-                  style={{
-                    boxShadow: "0 0 60px hsl(var(--primary) / 0.55), inset 0 0 24px hsl(var(--accent) / 0.25)",
-                  }}
+                  className="source-mode-action title-mode-cycle title-mode-cycle--upload"
+                  data-cycle-label="UPLOAD"
                 >
-                  <Upload className="h-10 w-10 mosh-glitch" aria-hidden="true" />
+                  <Upload aria-hidden="true" />
+                  <span className="split-action-label" data-label="UPLOAD">UPLOAD</span>
                 </button>
+                <span className="source-mode-divider" aria-hidden="true" />
                 <button
                   type="button"
                   onClick={handleGoLive}
                   aria-label="Go live with your camera"
-                  className="relative flex h-16 w-16 items-center justify-center rounded-full border border-accent/70 bg-background/30 text-accent backdrop-blur-[2px] transition hover:scale-105"
-                  style={{ boxShadow: "0 0 40px hsl(var(--accent) / 0.45)" }}
+                  className="source-mode-action title-mode-cycle title-mode-cycle--camera"
+                  data-cycle-label="CAMERA"
                 >
-                  <Video className="h-7 w-7" aria-hidden="true" />
+                  <Video aria-hidden="true" />
+                  <span className="split-action-label" data-label="CAMERA">CAMERA</span>
                 </button>
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); navigate("/forge"); }}
-                  aria-label="Open Forge mode"
-                  className="relative flex h-16 w-16 items-center justify-center rounded-full border border-accent/70 bg-background/30 text-accent backdrop-blur-[2px] transition hover:scale-105"
-                  style={{ boxShadow: "0 0 40px hsl(var(--accent) / 0.45)" }}
-                >
-                  <Flame className="h-7 w-7" aria-hidden="true" />
-                </button>
-              </motion.div>
+              </div>
+              <p className="split-side-meta side-reactive">click · drop · paste · jpg · png · svg</p>
+            </motion.div>
 
-              {/* Headline — wrapper handles entrance; HeroWord owns the swap
-                  and the RGB split beneath it */}
-              <motion.div
-                initial={{ y: 28, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ duration: 0.5, delay: 0.35, ease: EASE_SNAP }}
+            <motion.button
+              {...KEEP_OUT}
+              type="button"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.6, delay: 1.1 }}
+              onClick={(e) => {
+                e.stopPropagation();
+                scrollRef.current?.scrollTo({ top: scrollRef.current.clientHeight * 2, behavior: "smooth" });
+              }}
+              className="split-direction split-direction--demos mosh-target"
+            >
+              scroll down to see demos <span className="reel-hint-arrow inline-block" aria-hidden="true">↓</span>
+            </motion.button>
+          </section>
+
+          <section
+            className="title-split-pane title-split-pane--forge"
+            aria-labelledby="forge-side-title"
+            onClick={() => navigate("/forge")}
+          >
+            <ForgeTrace />
+            <motion.div
+              {...KEEP_OUT}
+              initial={{ x: 28, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              transition={{ duration: 0.6, delay: 0.24, ease: EASE_SNAP }}
+              className="split-pane-content"
+            >
+              <h2 id="forge-side-title" className="split-side-title side-reactive" data-text="GENERATE">GENERATE</h2>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); navigate("/forge"); }}
+                aria-label="Open Forge mode"
+                className="forge-mode-action title-mode-cycle title-mode-cycle--forge"
+                data-cycle-label="FORGE"
               >
-                <HeroWord onWordChange={setHeroWord} />
-              </motion.div>
+                <ForgePatternMark />
+                <span className="split-action-label" data-label="FORGE">FORGE</span>
+                <small>pattern generator</small>
+              </button>
+            </motion.div>
 
-              <motion.p
-                initial={{ y: 18, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                // This copy is what Lighthouse measures as the page's largest
-                // contentful paint. It used to sit at delay: 0.55 as part of
-                // the staggered cascade with everything else below — but that
-                // meant the LCP paint literally couldn't happen until over
-                // half a second after mount, no matter how fast the bundle
-                // loaded. It still fades in with its neighbors; it just isn't
-                // the one waiting in line for its turn anymore.
-                transition={{ duration: 0.4, delay: 0, ease: EASE_SNAP }}
-                className="max-w-xl font-mono text-xs uppercase tracking-[0.25em] text-foreground/70"
-              >
-                Ether-MOSH is a real-time, audio-reactive visual instrument. Load any image, stack 108 GPU effects, sync to your music, and export stills or video — all in your browser.
-              </motion.p>
-
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.4, delay: 0.75 }}
-                className="font-mono text-xs uppercase tracking-[0.35em] text-foreground/80"
-              >
-                click anywhere · drag · paste · jpg · png · svg
-              </motion.div>
-            </div>
-          </div>
-
-          {/* Every other word on screen. The field owns all of them so it can
-              guarantee they never overlap each other or the reserved UI. */}
-          <GlitchWordField exclude={heroWord} />
+            <motion.button
+              {...KEEP_OUT}
+              type="button"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.55, delay: 0.9 }}
+              onClick={(e) => {
+                e.stopPropagation();
+                scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+              }}
+              aria-label="Scroll up to explore live visuals"
+              className="split-direction split-direction--explore"
+            >
+              scroll up to explore <span className="info-hint-arrow" aria-hidden="true">↑</span>
+            </motion.button>
+          </section>
         </div>
+
+        <MoshDivider />
 
         {/* Top-left brand + install */}
         <motion.div
@@ -375,13 +384,24 @@ const Index = () => {
           initial={{ y: -32, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ duration: 0.55, delay: 0.2, ease: EASE_SNAP }}
-          className="pointer-events-none absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-5 pt-6"
+          className="title-neutral-header pointer-events-none absolute top-0 left-0 right-0 z-30 px-5 pt-6"
         >
           <div className="flex items-center gap-2 font-mono text-xs uppercase tracking-[0.25em] text-foreground/70">
             <span className="inline-block h-2 w-2 rounded-full bg-accent shadow-[0_0_12px_hsl(var(--accent))]" />
             ether-mosh / v0.1
           </div>
-          <div className="pointer-events-auto flex items-center gap-4">
+          <div className="title-neutral-nav pointer-events-auto flex items-center gap-4">
+            {/* Radio first, and the only item carrying a live dot — it is the
+                one link here that goes somewhere already running rather than
+                somewhere you have to start. */}
+            <Link
+              to="/radio"
+              onClick={(e) => e.stopPropagation()}
+              className="title-radio-link font-mono text-xs uppercase tracking-[0.2em] transition"
+            >
+              <span className="title-radio-dot" aria-hidden="true" />
+              radio →
+            </Link>
             <Link
               to="/news"
               onClick={(e) => e.stopPropagation()}
@@ -404,21 +424,15 @@ const Index = () => {
           </div>
         </motion.div>
 
-        {/* The title is the center of a two-direction entrance: demos below,
-            the public story / use cases / booking page above. */}
-        <motion.button
+        <motion.p
           {...KEEP_OUT}
-          type="button"
-          initial={{ opacity: 0, y: -8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.55, delay: 0.9 }}
-          onClick={(e) => { e.stopPropagation(); scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" }); }}
-          aria-label="Scroll up to explore live visuals"
-          className="info-hint pointer-events-auto absolute left-1/2 top-[4.5rem] z-20 -translate-x-1/2"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.45 }}
+          className="title-product-copy absolute z-30"
         >
-          <span className="info-hint-arrow" aria-hidden><ChevronsUp /></span>
-          <span className="info-hint-copy"><strong>Scroll up</strong><small>Explore live visuals</small></span>
-        </motion.button>
+          Ether-MOSH is a real-time, audio-reactive visual instrument. Load any image, stack {PUBLIC_EFFECTS.length} GPU effects, sync to your music, and export stills or video — all in your browser.
+        </motion.p>
 
         {/* Bottom credit */}
         <motion.div
@@ -429,6 +443,8 @@ const Index = () => {
           className="pointer-events-auto absolute bottom-6 left-0 right-0 z-20 flex flex-col items-center gap-3"
         >
           <nav aria-label="Footer" className="flex flex-wrap items-center justify-center gap-4 font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/60">
+            <Link to="/radio" onClick={(e) => e.stopPropagation()} className="hover:text-accent transition">radio</Link>
+            <span aria-hidden className="text-foreground/30">·</span>
             <Link to="/pricing" onClick={(e) => e.stopPropagation()} className="hover:text-accent transition">pricing</Link>
             <span aria-hidden className="text-foreground/30">·</span>
             <Link to="/news" onClick={(e) => e.stopPropagation()} className="hover:text-accent transition">news + updates</Link>
@@ -440,23 +456,6 @@ const Index = () => {
             <Link to="/privacy" onClick={(e) => e.stopPropagation()} className="hover:text-accent transition">privacy</Link>
           </nav>
         </motion.div>
-        {/* Points at the demo reel on the next panel. Loud enough to be taken
-            as an instruction, quiet enough to stay under the hero. */}
-        <motion.button
-          {...KEEP_OUT}
-          type="button"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.6, delay: 1.6 }}
-          onClick={(e) => {
-            e.stopPropagation();
-            scrollRef.current?.scrollTo({ top: scrollRef.current.clientHeight * 2, behavior: "smooth" });
-          }}
-          className="reel-hint pointer-events-auto absolute bottom-[4.5rem] left-1/2 z-20 -translate-x-1/2 whitespace-nowrap font-mono text-[11px] uppercase tracking-[0.3em] text-foreground/70 transition-colors hover:text-accent"
-        >
-          scroll to see demos <span className="reel-hint-arrow inline-block">↓</span>
-        </motion.button>
-
         <RebellionNudge />
         <AboutTrigger />
 

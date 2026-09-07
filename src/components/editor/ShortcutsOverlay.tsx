@@ -48,13 +48,15 @@ const SECTIONS: Section[] = [
       { keys: ["Shift", "G"], label: "GIF · 3s" },
       { keys: ["V"], label: "Share current frame" },
       { keys: ["K"], label: "Make Sticker · any source mode" },
+      { keys: ["⌘/Ctrl", "Shift", "K"], label: "Export Lottie + selected GIF" },
     ],
   },
   {
     name: "Live · time fx",
     rows: [
       { keys: ["Space"], label: "Mosh · randomize" },
-      { keys: ["Shift", "Space"], label: "Undo last Mosh" },
+      { keys: ["Shift", "Space"], label: "Reset memory · radical Mosh" },
+      { keys: ["⌘/Ctrl", "Shift", "Space"], label: "Reshape Lottie sticker" },
       { keys: ["Swipe right"], label: "Undo · visualizer" },
       { keys: ["Swipe left"], label: "Redo / fresh Mosh · visualizer" },
       { keys: ["Shift", "R"], label: "Reverse motion" },
