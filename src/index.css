@@ -1519,16 +1519,30 @@
   .split-side-radio {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 7px;
+    /* A 140x11 line of text is not a tap target. Lighthouse flags it (the
+       tap-target audit sits in the SEO category, which is what caught it),
+       and a thumb misses it — the same reason it went unfound in the first
+       place. The padding buys a real hit area; the hairline makes it read as
+       something you can press rather than as a caption. */
+    min-height: 34px;
     margin: 0;
-    color: hsl(var(--accent) / .78);
+    padding: 9px 16px;
+    border: 1px solid hsl(var(--accent) / .3);
+    border-radius: 999px;
+    color: hsl(var(--accent) / .82);
     font: 600 9px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
     letter-spacing: .28em;
     text-transform: uppercase;
-    transition: color .18s ease;
+    transition: color .18s ease, border-color .18s ease, background-color .18s ease;
   }
   .split-side-radio:hover,
-  .split-side-radio:focus-visible { color: hsl(var(--accent)); }
+  .split-side-radio:focus-visible {
+    color: hsl(var(--accent));
+    border-color: hsl(var(--accent) / .65);
+    background: hsl(var(--accent) / .08);
+  }
   .split-side-radio__dot {
     width: 5px;
     height: 5px;
@@ -2078,7 +2092,9 @@
     .source-mode-action svg { width: 27px; height: 27px; }
     .split-action-label { font-size: 11px; letter-spacing: .25em; text-indent: .25em; }
     .split-side-meta { font-size: 6px; letter-spacing: .2em; }
-    .split-side-radio { font-size: 8px; letter-spacing: .22em; gap: 6px; }
+    /* Phones are where this matters most: a thumb needs the height even when
+       the type stays small. */
+    .split-side-radio { font-size: 8px; letter-spacing: .22em; gap: 6px; min-height: 44px; padding: 12px 18px; }
     .split-side-radio__dot { width: 4px; height: 4px; }
     .forge-mode-action { width: 92px; height: 92px; gap: 5px; }
     .forge-pattern-mark { width: 48px; height: 38px; }
