@@ -5,10 +5,10 @@ import { RadioLibrary } from "@/components/editor/RadioLibrary";
 import { RadioShareTag } from "@/components/editor/RadioShareToast";
 import type { RadioHudProps } from "@/types/radio";
 
-export function RadioHud({ radio, trackPlayer, status, nowPlaying, upNext, onOpenControls }: RadioHudProps) {
+export function RadioHud({ radio, trackPlayer, status = "offline", nowPlaying, upNext, onOpenControls }: RadioHudProps) {
   const [open, setOpen] = useState(false);
   const [dim, setDim] = useState(false);
-  const [volume, setVolume] = useState(trackPlayer.volume);
+  const [volume, setVolume] = useState(trackPlayer?.volume ?? 0.8);
   const [isMinimized, setIsMinimized] = useState(false);
   const library = useRadioLibrary();
   const barRef = useRef<HTMLDivElement>(null);
@@ -45,7 +45,15 @@ export function RadioHud({ radio, trackPlayer, status, nowPlaying, upNext, onOpe
   }, []);
 
   const playing = status === "playing";
-  const labels = { playing: "On air", paused: "Paused", blocked: "Tap to listen", loading: "Loading song…", offline: "Reconnecting…" };
+  const labels: Record<string, string> = {
+    playing: "On air",
+    paused: "Paused",
+    blocked: "Tap to listen",
+    loading: "Loading song…",
+    offline: "Reconnecting…",
+  };
+
+  const stationName = radio?.config?.station && radio.config.station !== "all" ? ` · ${radio.config.station}` : "";
 
   if (isMinimized) {
     return (
@@ -74,7 +82,7 @@ export function RadioHud({ radio, trackPlayer, status, nowPlaying, upNext, onOpe
       <div className="px-4 pt-3">
         <div className="flex items-center justify-between gap-2">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-200">
-            MOSH Radio{radio.config.station !== "all" ? ` · ${radio.config.station}` : ""}
+            MOSH Radio{stationName}
           </p>
           <div className="flex items-center gap-1">
             <RadioShareTag url={typeof window !== "undefined" ? window.location.href : "/radio"} title="MOSH Radio" />
@@ -89,7 +97,7 @@ export function RadioHud({ radio, trackPlayer, status, nowPlaying, upNext, onOpe
             </button>
           </div>
         </div>
-        <p role="status" className="text-xs text-white/60">{labels[status]}</p>
+        <p role="status" className="text-xs text-white/60">{labels[status] ?? "Live"}</p>
         <div className="mt-1 flex items-center gap-2">
           <h2 className="min-w-0 flex-1 break-words text-lg font-semibold leading-snug">{nowPlaying?.title || "Tuning in…"}</h2>
           <Heart size={18} className="text-white/60" />
@@ -99,10 +107,10 @@ export function RadioHud({ radio, trackPlayer, status, nowPlaying, upNext, onOpe
           <span ref={timeRef} className="font-mono text-xs tabular-nums text-white/60">0:00</span>
         </div>
         <div className="mt-3 flex items-center gap-1">
-          <button type="button" disabled={!radio.history.length} onClick={radio.previous} aria-label="Previous radio song" className="flex h-11 w-10 items-center justify-center rounded-full hover:bg-white/10 disabled:opacity-30"><SkipBack size={19} /></button>
-          <button type="button" onClick={playing ? radio.togglePlay : radio.start} aria-label={playing ? "Pause the broadcast" : "Resume the broadcast"} className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-cyan-200/50 bg-cyan-200/10 text-cyan-200">{playing ? <Pause size={21} /> : <Play size={21} />}</button>
-          <button type="button" onClick={radio.skip} aria-label="Skip to the next track" className="flex h-11 w-10 items-center justify-center rounded-full hover:bg-white/10"><SkipForward size={19} /></button>
-          <label className="ml-1 flex min-w-0 flex-1 items-center gap-2"><Volume2 size={16} className="shrink-0 text-white/60" /><input type="range" min="0" max="1" step="0.01" value={volume} aria-label="Radio volume" className="h-10 w-full min-w-0 accent-cyan-200" onChange={e => { const value = Number(e.target.value); setVolume(value); trackPlayer.setVolume(value); }} /></label>
+          <button type="button" disabled={!radio?.history?.length} onClick={() => radio?.previous?.()} aria-label="Previous radio song" className="flex h-11 w-10 items-center justify-center rounded-full hover:bg-white/10 disabled:opacity-30"><SkipBack size={19} /></button>
+          <button type="button" onClick={() => (playing ? radio?.togglePlay?.() : radio?.start?.())} aria-label={playing ? "Pause the broadcast" : "Resume the broadcast"} className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-cyan-200/50 bg-cyan-200/10 text-cyan-200">{playing ? <Pause size={21} /> : <Play size={21} />}</button>
+          <button type="button" onClick={() => radio?.skip?.()} aria-label="Skip to the next track" className="flex h-11 w-10 items-center justify-center rounded-full hover:bg-white/10"><SkipForward size={19} /></button>
+          <label className="ml-1 flex min-w-0 flex-1 items-center gap-2"><Volume2 size={16} className="shrink-0 text-white/60" /><input type="range" min="0" max="1" step="0.01" value={volume} aria-label="Radio volume" className="h-10 w-full min-w-0 accent-cyan-200" onChange={e => { const value = Number(e.target.value); setVolume(value); trackPlayer?.setVolume?.(value); }} /></label>
           {nowPlaying && <RadioShareTag url={typeof window !== "undefined" ? window.location.href : "/radio"} title={nowPlaying.title} />}
         </div>
         {upNext && (
@@ -114,7 +122,7 @@ export function RadioHud({ radio, trackPlayer, status, nowPlaying, upNext, onOpe
           </div>
         )}
         <div className="flex items-center justify-between gap-2 py-2">
-          <button type="button" onClick={() => setOpen(v => !v)} aria-expanded={open} className="inline-flex min-h-10 items-center gap-2 rounded-full border border-white/20 px-3 text-sm"><ListMusic size={16} />{open ? "Close library" : `Queue & library · ${radio.queue.length}`}</button>
+          <button type="button" onClick={() => setOpen(v => !v)} aria-expanded={open} className="inline-flex min-h-10 items-center gap-2 rounded-full border border-white/20 px-3 text-sm"><ListMusic size={16} />{open ? "Close library" : `Queue & library · ${radio?.queue?.length ?? 0}`}</button>
           <button type="button" onClick={onOpenControls} className="inline-flex min-h-10 items-center gap-1.5 px-2 text-sm text-cyan-200"><Sliders size={15} /> Controls</button>
         </div>
       </div>
