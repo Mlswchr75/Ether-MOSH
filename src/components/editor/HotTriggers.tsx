@@ -246,10 +246,18 @@ function TrackNudgeToast({ onPlay, onDismiss }: { onPlay: () => void; onDismiss:
     return () => window.clearTimeout(t);
   }, [leaving, onDismiss]);
 
-  return (
+  return createPortal(
     <div
       role="status"
-      className={`absolute right-full mr-2 top-0 z-50 w-56 rounded-md border border-[hsl(var(--accent))]/40 bg-black/90 p-2.5 backdrop-blur-md panel-in-3d ${leaving ? "bg-glitch-pulse" : ""}`}
+      // Portaled to <body> and fixed, not anchored to the theme-track ring
+      // slot: that slot lives inside the radial wheel, which is
+      // visibility:hidden whenever the wheel itself is closed — this nudge
+      // is meant to appear unprompted while the user is just watching the
+      // visualizer. A plain `fixed` here (without the portal) still isn't
+      // viewport-relative: an ancestor further up the page tree establishes
+      // its own containing block for fixed descendants, so the toast landed
+      // thousands of pixels down the page instead of in the corner.
+      className={`fixed bottom-20 right-3 z-50 w-56 rounded-md border border-[hsl(var(--accent))]/40 bg-black/90 p-2.5 backdrop-blur-md panel-in-3d safe-bottom safe-right ${leaving ? "bg-glitch-pulse" : ""}`}
       style={leaving ? undefined : { animation: "panel-in 180ms ease-out both" }}
     >
       <div className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-[hsl(var(--accent))]">
@@ -274,11 +282,12 @@ function TrackNudgeToast({ onPlay, onDismiss }: { onPlay: () => void; onDismiss:
           Not now
         </button>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
-function TrackTrigger({ delay, showNudge, onNudgeDismiss }: { delay: number; showNudge?: boolean; onNudgeDismiss?: () => void }) {
+function TrackTrigger({ delay }: { delay: number }) {
   const trackEnabled = useStore(s => s.trackEnabled);
   const trackTitle = useStore(s => s.trackTitle);
   const setTrackEnabled = useStore(s => s.setTrackEnabled);
@@ -291,13 +300,16 @@ function TrackTrigger({ delay, showNudge, onNudgeDismiss }: { delay: number; sho
 
   const startRandomTrack = () => {
     runTrackAction(() => trackPlayer.shuffleShowcaseTrack());
-    onNudgeDismiss?.();
   };
 
   useEffect(() => {
     if (!open) return;
+    // Checks the attribute rather than wrapRef.contains(): the panel is
+    // portaled to <body> (see below) so it lands in a fixed, always
+    // on-screen spot regardless of where this trigger sits on the ring —
+    // real DOM containment no longer holds once it's outside wrapRef's tree.
     const close = (e: PointerEvent) => {
-      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
+      if (!(e.target as HTMLElement | null)?.closest?.("[data-shuffle-picker]")) setOpen(false);
     };
     window.addEventListener("pointerdown", close);
     return () => window.removeEventListener("pointerdown", close);
@@ -342,7 +354,6 @@ function TrackTrigger({ delay, showNudge, onNudgeDismiss }: { delay: number; sho
           {trackEnabled ? <Music className="h-4 w-4" strokeWidth={1.5} /> : <Music2 className="h-4 w-4" strokeWidth={1.5} />}
         </span>
       </button>
-      {showNudge && <TrackNudgeToast onPlay={startRandomTrack} onDismiss={() => onNudgeDismiss?.()} />}
       <button
         type="button"
         onPointerDown={(e) => e.stopPropagation()}
@@ -357,9 +368,15 @@ function TrackTrigger({ delay, showNudge, onNudgeDismiss }: { delay: number; sho
         <ShuffleIcon className="h-2 w-2" strokeWidth={2.5} />
       </button>
 
-      {open && (
+      {open && createPortal(
         <div
-          className="absolute left-1/2 top-1/2 z-50 w-64 -translate-x-1/2 -translate-y-1/2 sm:left-auto sm:right-full sm:mr-2 sm:translate-x-0"
+          data-shuffle-picker
+          // Fixed to a corner instead of anchored to this trigger's own ring
+          // slot (see forge-palette/motif-maestro for the same pattern): the
+          // ring can place this trigger anywhere in a circle nearly filling
+          // the viewport, and a slot in the lower arc left most of this
+          // library's song list rendered below the visible screen.
+          className="fixed left-3 top-14 z-50 w-64 safe-top safe-left"
           onPointerDown={(e) => e.stopPropagation()}
         >
           <div
@@ -539,7 +556,8 @@ function TrackTrigger({ delay, showNudge, onNudgeDismiss }: { delay: number; sho
             }}
           />
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
@@ -569,8 +587,12 @@ function AudioTrigger({ delay, onMicFlash }: { delay: number; onMicFlash?: (on: 
 
   useEffect(() => {
     if (!open) return;
+    // Checks the attribute rather than wrapRef.contains(): the panel itself
+    // is portaled to <body> (see below) so it can land in a fixed, always
+    // on-screen spot regardless of where this trigger sits on the ring —
+    // real DOM containment no longer holds once it's outside wrapRef's tree.
     const close = (e: PointerEvent) => {
-      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
+      if (!(e.target as HTMLElement | null)?.closest?.("[data-audio-source-picker]")) setOpen(false);
     };
     window.addEventListener("pointerdown", close, true);
     return () => window.removeEventListener("pointerdown", close, true);
@@ -623,10 +645,16 @@ function AudioTrigger({ delay, onMicFlash }: { delay: number; onMicFlash?: (on: 
         <ChevronDown className="h-3 w-3" strokeWidth={2.5} />
       </button>
 
-      {open && (
+      {open && createPortal(
         <div
           data-audio-source-picker
-          className="panel-in-3d absolute right-full top-0 z-50 mr-2 w-60 rounded-md border border-white/10 bg-black/85 p-2 backdrop-blur-md"
+          // Fixed to a corner instead of anchored to this trigger's own ring
+          // slot (see forge-palette/motif-maestro for the same pattern): the
+          // ring can place this trigger anywhere in a circle nearly filling
+          // the viewport, and a slot in the lower arc left this panel's BPM
+          // input and beat-sync toggle rendered below the visible screen
+          // with no way to reach them.
+          className="panel-in-3d fixed left-3 top-14 z-50 w-60 max-h-[70vh] overflow-y-auto rounded-md border border-white/10 bg-black/85 p-2 backdrop-blur-md safe-top safe-left"
           role="menu"
           aria-label="Audio options"
           onPointerDown={(e) => e.stopPropagation()}
@@ -681,7 +709,8 @@ function AudioTrigger({ delay, onMicFlash }: { delay: number; onMicFlash?: (on: 
               <Heart className="h-2.5 w-2.5" strokeWidth={1.5} /> tap
             </button>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
@@ -2018,7 +2047,7 @@ export function HotTriggers({
         <Scissors className="h-4 w-4" strokeWidth={1.5} />
       </HotBtn>
     ),
-    "theme-track": <TrackTrigger key="theme-track" delay={0} showNudge={showTrackNudge} onNudgeDismiss={onTrackNudgeDismiss} />,
+    "theme-track": <TrackTrigger key="theme-track" delay={0} />,
     "forge-palette": sourceMode === "forge" && (
       <div key="forge-palette" className="relative" data-forge-panel>
         <HotBtn
@@ -2089,11 +2118,16 @@ export function HotTriggers({
             </span>
           )}
         </button>
-        {favOpen && (
+        {favOpen && createPortal(
           <div
             ref={favPanelRef}
             data-fav-panel
-            className="absolute right-full mr-2 top-0 z-40 w-64 max-h-[70vh] overflow-y-auto rounded-md border border-white/10 bg-black/85 p-2 backdrop-blur-md panel-in-3d"
+            // Fixed to a corner instead of anchored to this trigger's own
+            // ring slot (see forge-palette/motif-maestro for the same
+            // pattern): the ring can place this trigger anywhere in a
+            // circle nearly filling the viewport, and a slot in the lower
+            // arc left most of this list rendered below the visible screen.
+            className="fixed left-3 top-14 z-40 w-64 max-h-[70vh] overflow-y-auto rounded-md border border-white/10 bg-black/85 p-2 backdrop-blur-md panel-in-3d safe-top safe-left"
           >
             <div className="flex items-center justify-between px-1 pb-1.5">
               <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-[hsl(var(--accent))]">★ favorites</span>
@@ -2208,7 +2242,8 @@ export function HotTriggers({
                 })}
               </ul>
             )}
-          </div>
+          </div>,
+          document.body,
         )}
       </div>
     ),
@@ -2359,6 +2394,12 @@ export function HotTriggers({
       />
     )}
     {settingsOverlay}
+    {showTrackNudge && (
+      <TrackNudgeToast
+        onPlay={() => { runTrackAction(() => trackPlayer.shuffleShowcaseTrack()); onTrackNudgeDismiss?.(); }}
+        onDismiss={() => onTrackNudgeDismiss?.()}
+      />
+    )}
     {showLegacyLaunchpad && (
     /* Vertically centered so the dock occupies the right edge evenly across
        desktop, tablet and phone aspect ratios. */
@@ -2503,9 +2544,13 @@ function GifButton({
         )}
       </button>
 
-      {open && !gifBusy && (
+      {open && !gifBusy && createPortal(
         <div
-          className="panel-in-3d absolute right-full top-0 z-50 mr-2 flex items-center gap-1 rounded-sm border border-[hsl(var(--border-default))] bg-black/85 p-1 backdrop-blur-md"
+          // Fixed to a corner instead of anchored to this trigger's own ring
+          // slot (see forge-palette/motif-maestro for the same pattern) —
+          // consistent with the other ring accessory panels even though
+          // this one is small enough to rarely clip on its own.
+          className="panel-in-3d fixed left-3 top-14 z-50 flex items-center gap-1 rounded-sm border border-[hsl(var(--border-default))] bg-black/85 p-1 backdrop-blur-md safe-top safe-left"
           role="menu"
           aria-label="GIF loop length"
           onPointerDown={(e) => e.stopPropagation()}
@@ -2522,7 +2567,8 @@ function GifButton({
               {sec}s
             </button>
           ))}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
