@@ -72,6 +72,20 @@ export function startRadioSession(options: RadioSessionOptions): RadioSession {
     return e?.name === "NotAllowedError" || /gesture|interact|not allowed/i.test(e?.message || "");
   };
 
+  /**
+   * "The play() request was interrupted by a new load request."
+   *
+   * Not a broken track — the opposite. It means a *newer* load already
+   * superseded this one, so the station is fine and something else is
+   * driving. Counting it as a failure is actively harmful: it burns a song
+   * out of the rotation and, in the worst case, chains one skip into the
+   * next. Swallow it and let whichever load won finish its job.
+   */
+  const isSupersededLoad = (err: unknown) => {
+    const e = err as { name?: string; message?: string } | null;
+    return e?.name === "AbortError" || /interrupted by a new load|interrupted by a call to pause/i.test(e?.message || "");
+  };
+
   const advance = async () => {
     if (stopped || advancing) return;
     advancing = true;
@@ -91,6 +105,7 @@ export function startRadioSession(options: RadioSessionOptions): RadioSession {
           options.onBlocked?.();
           return;
         }
+        if (isSupersededLoad(err)) return;
         console.error("[radio] track failed to start:", track.id, err);
         consecutiveFailures++;
         // A whole library that won't play (offline, storage gone) must not

@@ -49,6 +49,28 @@ Behaviour on arrival: source switches to Forge, performance mode goes on
 auto-shuffle is armed, the screen wake lock is held (`/radio` is a visual
 route in `mobileRuntime.ts`), and the rotation starts.
 
+### Driving it
+
+The station plate sits bottom-left and carries everything you need without
+leaving the wall:
+
+| Control | Does |
+|---|---|
+| ⏸ / ▶ | Pause and resume the broadcast |
+| ⏭ | Skip to the next track in the rotation |
+| **Controls** | Drops out of performance mode into the full editor rig — layers, FX, export, the lot — **with the station still playing** |
+| `Esc` | Same exit, from the keyboard |
+| Tap the canvas | Reshuffles Forge (unchanged from Forge mode) |
+
+The plate dims to 72% after twelve idle seconds and comes back on any pointer
+or key activity, so an unattended wall is mostly picture without the card ever
+becoming unreadable. `?hud=0` removes it outright.
+
+A one-line hint appears at the top on arrival and retires after eleven
+seconds. It exists because dropping straight into performance mode hides every
+control, which is correct for a wall and disorienting for a person who has
+just opened a link.
+
 **Journey is requested through the editor's own gate**, not around it. A
 supporter gets uninterrupted direction. Everyone else gets the same
 five-minute Forge Journey preview as anywhere else, after which the music
@@ -110,6 +132,13 @@ assertion exists to prevent. The sync script removes the tedium without
 weakening the property.
 
 ### Tags = stations
+
+**Nothing in the library is tagged `flow` today.** The nine songs registered
+alongside Radio are tagged `unreleased`, because which files came out of Flow
+versus anywhere else is not something the repo records — the mp3s carry no
+provenance. `?station=flow` therefore falls back to the whole library until
+those rows are tagged. Retagging is a one-word edit per row in
+`SHOWCASE_TRACKS`.
 
 `tags` on a track is what `?station=` filters on. Tag your Flow output
 `"flow"` and it gets its own channel. Anything goes: `festival`, `ambient`,

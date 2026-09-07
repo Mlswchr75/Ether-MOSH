@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import { useStore } from "@/store/useStore";
 import { radioFromUrl, resolveStation, type RadioConfig } from "@/engine/radio";
 import { startRadioSession, type RadioSession } from "@/engine/radioSession";
-import type { ShowcaseTrack } from "@/engine/trackPlayer";
+import { trackPlayer, type ShowcaseTrack } from "@/engine/trackPlayer";
 
 export type RadioBroadcast = {
   config: RadioConfig;
@@ -11,9 +11,12 @@ export type RadioBroadcast = {
   upNext: ShowcaseTrack | null;
   /** The browser wants a gesture before it will make sound. */
   needsGesture: boolean;
+  /** Deliberately paused by the listener (not stalled, not blocked). */
+  paused: boolean;
   /** Call from a real click/tap to start (or restart) the broadcast. */
   start: () => void;
   skip: () => void;
+  togglePlay: () => void;
 };
 
 /**
@@ -45,6 +48,7 @@ export function useRadioBroadcast(opts: {
   const [nowPlaying, setNowPlaying] = useState<ShowcaseTrack | null>(null);
   const [upNext, setUpNext] = useState<ShowcaseTrack | null>(null);
   const [needsGesture, setNeedsGesture] = useState(false);
+  const [paused, setPaused] = useState(false);
   const sessionRef = useRef<RadioSession | null>(null);
 
   // One-time arrival: Forge is the only source that can draw indefinitely
@@ -59,7 +63,6 @@ export function useRadioBroadcast(opts: {
     // viewer whose Journey preview has run out.
     if (store.shuffleSec == null) store.setShuffleSec(12);
     store.setPerformanceMode(true);
-    store.setTrackEnabled(true);
     return () => {
       useStore.getState().setPerformanceMode(false);
     };
@@ -78,8 +81,16 @@ export function useRadioBroadcast(opts: {
         setNowPlaying(track);
         setUpNext(next);
         setNeedsGesture(false);
+        setPaused(false);
         useStore.getState().setTrackMeta(track.title, track.artist);
-        useStore.getState().setTrackEnabled(true);
+        // Write the flags directly rather than through setTrackEnabled: that
+        // action calls trackPlayer.play() itself, on whatever source happens
+        // to be loaded. Racing our own setSource is what made the very first
+        // song abort with "play() interrupted by a new load request" — and
+        // the store answers that with an error toast, so the station opened
+        // on a skipped track and a red box. The audio is already rolling by
+        // the time this fires; the store only needs to agree.
+        useStore.setState({ trackEnabled: true, micEnabled: false, systemAudioEnabled: false });
       },
       onBlocked: () => setNeedsGesture(true),
     });
@@ -107,8 +118,23 @@ export function useRadioBroadcast(opts: {
   }, []);
 
   const skip = useCallback(() => {
+    setPaused(false);
     sessionRef.current?.skip();
   }, []);
 
-  return { config, nowPlaying, upNext, needsGesture, start, skip };
+  /** The station's own play/pause — the HUD button and the space bar. */
+  const togglePlay = useCallback(() => {
+    if (trackPlayer.isRolling()) {
+      trackPlayer.pause();
+      useStore.setState({ trackEnabled: false });
+      setPaused(true);
+      return;
+    }
+    setPaused(false);
+    trackPlayer.play()
+      .then(() => useStore.setState({ trackEnabled: true }))
+      .catch(() => setNeedsGesture(true));
+  }, []);
+
+  return { config, nowPlaying, upNext, needsGesture, paused, start, skip, togglePlay };
 }
