@@ -1,8 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Heart, ListMusic, Pause, Play, SkipBack, SkipForward, Sliders, Volume2, Minimize2, ChevronUp, Radio } from "lucide-react";
 import { useRadioLibrary } from "@/hooks/useRadioLibrary";
-import { radioLink } from "@/lib/radio";
-import { FavoriteSong } from "@/components/editor/FavoriteSong";
 import { RadioLibrary } from "@/components/editor/RadioLibrary";
 import { RadioShareTag } from "@/components/editor/RadioShareToast";
 import type { RadioHudProps } from "@/types/radio";
@@ -79,7 +77,7 @@ export function RadioHud({ radio, trackPlayer, status, nowPlaying, upNext, onOpe
             MOSH Radio{radio.config.station !== "all" ? ` · ${radio.config.station}` : ""}
           </p>
           <div className="flex items-center gap-1">
-            <RadioShareTag url={radioLink({ station: radio.config.station })} title="MOSH Radio" />
+            <RadioShareTag url={typeof window !== "undefined" ? window.location.href : "/radio"} title="MOSH Radio" />
             <button
               type="button"
               onClick={() => setIsMinimized(true)}
@@ -94,7 +92,7 @@ export function RadioHud({ radio, trackPlayer, status, nowPlaying, upNext, onOpe
         <p role="status" className="text-xs text-white/60">{labels[status]}</p>
         <div className="mt-1 flex items-center gap-2">
           <h2 className="min-w-0 flex-1 break-words text-lg font-semibold leading-snug">{nowPlaying?.title || "Tuning in…"}</h2>
-          {nowPlaying ? <FavoriteSong track={nowPlaying} library={library} /> : <Heart size={18} />}
+          <Heart size={18} className="text-white/60" />
         </div>
         <div className="mt-1 flex items-center justify-between gap-2">
           <span className="text-sm text-white/60">{nowPlaying?.artist || "MOSH"}</span>
@@ -105,9 +103,16 @@ export function RadioHud({ radio, trackPlayer, status, nowPlaying, upNext, onOpe
           <button type="button" onClick={playing ? radio.togglePlay : radio.start} aria-label={playing ? "Pause the broadcast" : "Resume the broadcast"} className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-cyan-200/50 bg-cyan-200/10 text-cyan-200">{playing ? <Pause size={21} /> : <Play size={21} />}</button>
           <button type="button" onClick={radio.skip} aria-label="Skip to the next track" className="flex h-11 w-10 items-center justify-center rounded-full hover:bg-white/10"><SkipForward size={19} /></button>
           <label className="ml-1 flex min-w-0 flex-1 items-center gap-2"><Volume2 size={16} className="shrink-0 text-white/60" /><input type="range" min="0" max="1" step="0.01" value={volume} aria-label="Radio volume" className="h-10 w-full min-w-0 accent-cyan-200" onChange={e => { const value = Number(e.target.value); setVolume(value); trackPlayer.setVolume(value); }} /></label>
-          {nowPlaying && <RadioShareTag url={radioLink({ track: nowPlaying })} title={nowPlaying.title} />}
+          {nowPlaying && <RadioShareTag url={typeof window !== "undefined" ? window.location.href : "/radio"} title={nowPlaying.title} />}
         </div>
-        {upNext && <div className="mt-1 flex items-center gap-2"><button type="button" onClick={() => setOpen(true)} className="min-h-10 min-w-0 flex-1 truncate text-left text-xs text-white/60">Next · {upNext.title}</button><RadioShareTag url={radioLink({ track: upNext })} title={upNext.title} /></div>}
+        {upNext && (
+          <div className="mt-1 flex items-center gap-2">
+            <button type="button" onClick={() => setOpen(true)} className="min-h-10 min-w-0 flex-1 truncate text-left text-xs text-white/60">
+              Next · {upNext.title}
+            </button>
+            <RadioShareTag url={typeof window !== "undefined" ? window.location.href : "/radio"} title={upNext.title} />
+          </div>
+        )}
         <div className="flex items-center justify-between gap-2 py-2">
           <button type="button" onClick={() => setOpen(v => !v)} aria-expanded={open} className="inline-flex min-h-10 items-center gap-2 rounded-full border border-white/20 px-3 text-sm"><ListMusic size={16} />{open ? "Close library" : `Queue & library · ${radio.queue.length}`}</button>
           <button type="button" onClick={onOpenControls} className="inline-flex min-h-10 items-center gap-1.5 px-2 text-sm text-cyan-200"><Sliders size={15} /> Controls</button>
