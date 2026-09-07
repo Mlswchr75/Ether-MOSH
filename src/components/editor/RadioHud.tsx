@@ -92,20 +92,37 @@ export function RadioHud({ radio, trackPlayer, status, nowPlaying, upNext, onOpe
           </div>
         </div>
         <p role="status" className="text-xs text-white/60">{labels[status]}</p>
-        <div className="mt-1 flex items-center gap-2"><h2 className="min-w-0 flex-1 break-words text-lg font-semibold leading-snug">{nowPlaying?.title || "Tuning in…"}</h2>{nowPlaying ? <FavoriteSong track={nowPlaying} library={library}/> : <Heart size={18}/>}</div>
-        <div className="mt-1 flex items-center justify-between gap-2"><span className="text-sm text-white/60">{nowPlaying?.artist || "MOSH"}</span><span ref={timeRef} className="font-mono text-xs tabular-nums text-white/60">0:00</span></div>
-        <div className="mt-3 flex items-center gap-1">
-          <button type="button" disabled={!radio.history.length} onClick={radio.previous} aria-label="Previous radio song" className="flex h-11 w-10 items-center justify-center rounded-full hover:bg-white/10 disabled:opacity-30"><SkipBack size={19}/></button>
-          <button type="button" onClick={playing ? radio.togglePlay : radio.start} aria-label={playing ? "Pause the broadcast" : "Resume the broadcast"} className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-cyan-200/50 bg-cyan-200/10 text-cyan-200">{playing ? <Pause size={21}/> : <Play size={21}/>}</button>
-          <button type="button" onClick={radio.skip} aria-label="Skip to the next track" className="flex h-11 w-10 items-center justify-center rounded-full hover:bg-white/10"><SkipForward size={19}/></button>
-          <label className="ml-1 flex min-w-0 flex-1 items-center gap-2"><Volume2 size={16} className="shrink-0 text-white/60"/><input type="range" min="0" max="1" step="0.01" value={volume} aria-label="Radio volume" className="h-10 w-full min-w-0 accent-cyan-200" onChange={e => { const value = Number(e.target.value); setVolume(value); trackPlayer.setVolume(value); }}/></label>
-          {nowPlaying && <RadioShareTag url={radioLink({ track: nowPlaying })} title={nowPlaying.title}/>}
+        <div className="mt-1 flex items-center gap-2">
+          <h2 className="min-w-0 flex-1 break-words text-lg font-semibold leading-snug">{nowPlaying?.title || "Tuning in…"}</h2>
+          {nowPlaying ? <FavoriteSong track={nowPlaying} library={library} /> : <Heart size={18} />}
         </div>
-        {upNext && <div className="mt-1 flex items-center gap-2"><button type="button" onClick={() => setOpen(true)} className="min-h-10 min-w-0 flex-1 truncate text-left text-xs text-white/60">Next · {upNext.title}</button><RadioShareTag url={radioLink({ track: upNext })} title={upNext.title}/></div>}
-        <div className="flex items-center justify-between gap-2 py-2"><button type="button" onClick={() => setOpen(v => !v)} aria-expanded={open} className="inline-flex min-h-10 items-center gap-2 rounded-full border border-white/20 px-3 text-sm"><ListMusic size={16}/>{open ? "Close library" : `Queue & library · ${radio.queue.length}`}</button><button type="button" onClick={onOpenControls} className="inline-flex min-h-10 items-center gap-1.5 px-2 text-sm text-cyan-200"><Sliders size={15}/> Controls</button></div>
+        <div className="mt-1 flex items-center justify-between gap-2">
+          <span className="text-sm text-white/60">{nowPlaying?.artist || "MOSH"}</span>
+          <span ref={timeRef} className="font-mono text-xs tabular-nums text-white/60">0:00</span>
+        </div>
+        <div className="mt-3 flex items-center gap-1">
+          <button type="button" disabled={!radio.history.length} onClick={radio.previous} aria-label="Previous radio song" className="flex h-11 w-10 items-center justify-center rounded-full hover:bg-white/10 disabled:opacity-30"><SkipBack size={19} /></button>
+          <button type="button" onClick={playing ? radio.togglePlay : radio.start} aria-label={playing ? "Pause the broadcast" : "Resume the broadcast"} className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-cyan-200/50 bg-cyan-200/10 text-cyan-200">{playing ? <Pause size={21} /> : <Play size={21} />}</button>
+          <button type="button" onClick={radio.skip} aria-label="Skip to the next track" className="flex h-11 w-10 items-center justify-center rounded-full hover:bg-white/10"><SkipForward size={19} /></button>
+          <label className="ml-1 flex min-w-0 flex-1 items-center gap-2"><Volume2 size={16} className="shrink-0 text-white/60" /><input type="range" min="0" max="1" step="0.01" value={volume} aria-label="Radio volume" className="h-10 w-full min-w-0 accent-cyan-200" onChange={e => { const value = Number(e.target.value); setVolume(value); trackPlayer.setVolume(value); }} /></label>
+          {nowPlaying && <RadioShareTag url={radioLink({ track: nowPlaying })} title={nowPlaying.title} />}
+        </div>
+        {upNext && <div className="mt-1 flex items-center gap-2"><button type="button" onClick={() => setOpen(true)} className="min-h-10 min-w-0 flex-1 truncate text-left text-xs text-white/60">Next · {upNext.title}</button><RadioShareTag url={radioLink({ track: upNext })} title={upNext.title} /></div>}
+        <div className="flex items-center justify-between gap-2 py-2">
+          <button type="button" onClick={() => setOpen(v => !v)} aria-expanded={open} className="inline-flex min-h-10 items-center gap-2 rounded-full border border-white/20 px-3 text-sm"><ListMusic size={16} />{open ? "Close library" : `Queue & library · ${radio.queue.length}`}</button>
+          <button type="button" onClick={onOpenControls} className="inline-flex min-h-10 items-center gap-1.5 px-2 text-sm text-cyan-200"><Sliders size={15} /> Controls</button>
+        </div>
       </div>
-      {open && <RadioLibrary radio={radio} library={library}/>}
-      <div className="h-0.5 w-full bg-white/10"><div ref={barRef} className="h-full w-full origin-left bg-gradient-to-r from-cyan-300 to-pink-400" style={{ transform: "scaleX(0)" }}/></div>
+      {open && <RadioLibrary radio={radio} library={library} />}
+      <div className="h-0.5 w-full bg-white/10"><div ref={barRef} className="h-full w-full origin-left bg-gradient-to-r from-cyan-300 to-pink-400" style={{ transform: "scaleX(0)" }} /></div>
     </section>
   );
+}
+
+export function RadioWelcome({ onDismiss }: { onDismiss: () => void }) {
+  return null;
+}
+
+export function RadioGesturePrompt({ onDismiss }: { onDismiss: () => void }) {
+  return null;
 }
