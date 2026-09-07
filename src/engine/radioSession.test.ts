@@ -27,6 +27,10 @@ const player = {
     player.rolling = true;
     player.pos = 0;
   }),
+  play: vi.fn(async () => { player.enabled = true; player.rolling = true; }),
+  pause: vi.fn(() => { player.enabled = false; player.rolling = false; }),
+  hasPlaybackError: () => false,
+  setRadioTransport: vi.fn(),
   position: () => player.pos,
   isRolling: () => player.rolling,
   setAutoAdvance: vi.fn((handler: (() => void) | null) => { player.autoAdvance = handler; }),
@@ -179,5 +183,62 @@ describe("radio session", () => {
       await settle();
     }
     expect(player.played).toHaveLength(seen);
+  });
+});
+
+
+describe("editable radio transport", () => {
+  it("plays a shared opener and follows the displayed edited queue", async () => {
+    let queue: ShowcaseTrack[] = [];
+    const session = startRadioSession({ tracks: LIBRARY, startWith: "b", onQueue: (_, q) => { queue = q; } });
+    await settle();
+    expect(session.current()?.id).toBe("b");
+    session.enqueue(LIBRARY[2], true);
+    expect(queue[0].id).toBe("c");
+    session.move(0, queue.length - 1);
+    const next = queue[0].id;
+    session.skip(); await settle();
+    expect(session.current()?.id).toBe(next);
+    session.stop();
+  });
+  it("honors playlist order and returns to the preceding song", async () => {
+    const session = startRadioSession({ tracks: LIBRARY, initialQueue: [LIBRARY[2], LIBRARY[0], LIBRARY[1]] });
+    await settle();
+    expect(session.current()?.id).toBe("c");
+    session.skip(); await settle();
+    expect(session.current()?.id).toBe("a");
+    session.previous(); await settle();
+    expect(session.current()?.id).toBe("c");
+    session.skip(); await settle();
+    expect(session.current()?.id).toBe("a");
+    session.stop();
+  });
+  it("pause/resume retains the playhead instead of restarting the song", async () => {
+    const session = startRadioSession({ tracks: LIBRARY }); await settle();
+    player.pos = 42;
+    session.pause(); session.resume(); await settle();
+    expect(player.pos).toBe(42);
+    expect(player.played).toHaveLength(1);
+    session.stop();
+  });
+  it("does not let a late rejected load change a newer selection", async () => {
+    let reject!: (e: Error) => void;
+    player.playTrackFromStart.mockImplementationOnce(() => new Promise<void>((_, r) => { reject = r; }));
+    const onBlocked = vi.fn();
+    const session = startRadioSession({ tracks: LIBRARY, onBlocked });
+    session.playNow(LIBRARY[2]); await settle();
+    reject(Object.assign(new Error("blocked old load"), { name: "NotAllowedError" })); await settle();
+    expect(session.current()?.id).toBe("c");
+    expect(onBlocked).not.toHaveBeenCalled();
+    session.stop();
+  });
+  it("backs off after library-wide failures and retries without spinning", async () => {
+    player.playTrackFromStart.mockRejectedValue(new Error("offline"));
+    const session = startRadioSession({ tracks: LIBRARY }); await settle();
+    expect(player.playTrackFromStart).toHaveBeenCalledTimes(LIBRARY.length);
+    player.playTrackFromStart.mockImplementation(async track => { player.played.push(track.id); player.enabled = true; player.rolling = true; });
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(player.played.length).toBeGreaterThan(0);
+    session.stop();
   });
 });

@@ -9,6 +9,18 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      radio_favorites: {
+        Row: { user_id: string; track_id: string; created_at: string };
+        Insert: { user_id: string; track_id: string; created_at?: string };
+        Update: { user_id?: string; track_id?: string; created_at?: string };
+        Relationships: [];
+      };
+      radio_playlists: {
+        Row: { id: string; user_id: string; name: string; track_ids: string[]; updated_at: string };
+        Insert: { id?: string; user_id: string; name: string; track_ids?: string[]; updated_at?: string };
+        Update: { id?: string; user_id?: string; name?: string; track_ids?: string[]; updated_at?: string };
+        Relationships: [];
+      };
       entitlements: {
         Row: {
           id: string;

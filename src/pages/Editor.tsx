@@ -1328,6 +1328,7 @@ export default function Editor() {
       // Space is the keyboard equivalent of the MOSH button. Shift+Space
       // forgets the recent Art Director history and deliberately jumps to
       // a maximum-range stack that avoids the current unlocked effects.
+      if (e.code === "Space" && radio.config.active && !e.shiftKey) { e.preventDefault(); radio.togglePlay(); return; }
       if (e.code === "Space") {
         if (e.metaKey || e.ctrlKey) return;
         e.preventDefault();
@@ -1467,9 +1468,9 @@ export default function Editor() {
       // instead. Works regardless of whether the track panel is open, and
       // always ends up playing (matching an ordinary "next" button), so
       // these work as a real transport control, not just a picker shortcut.
-      if (!e.shiftKey && e.key === "[") { e.preventDefault(); runTrackAction(() => trackPlayer.prevShowcaseTrack()); return; }
-      if (!e.shiftKey && e.key === "]") { e.preventDefault(); runTrackAction(() => trackPlayer.nextShowcaseTrack()); return; }
-      if (!e.shiftKey && e.key === "\\") { e.preventDefault(); runTrackAction(() => trackPlayer.shuffleShowcaseTrack()); return; }
+      if (!e.shiftKey && e.key === "[") { e.preventDefault(); if (radio.config.active) radio.previous(); else runTrackAction(() => trackPlayer.prevShowcaseTrack()); return; }
+      if (!e.shiftKey && e.key === "]") { e.preventDefault(); if (radio.config.active) radio.skip(); else runTrackAction(() => trackPlayer.nextShowcaseTrack()); return; }
+      if (!e.shiftKey && e.key === "\\") { e.preventDefault(); if (radio.config.active) radio.shuffle(); else runTrackAction(() => trackPlayer.shuffleShowcaseTrack()); return; }
 
       // ————————————— Shift combos —————————————
       if (e.shiftKey && (e.key === "M" || e.key === "m")) { e.preventDefault(); crossfadeLayers(mosh, MOSH_FADE_MS); return; }
@@ -1939,18 +1940,7 @@ export default function Editor() {
         <SystemAudioHud visible={systemAudioEnabled && !isOverlay} />
         {radio.config.active && radio.config.hud && (
           <>
-            <RadioHud
-              station={radio.config.station}
-              nowPlaying={radio.nowPlaying}
-              upNext={radio.upNext}
-              paused={radio.paused}
-              onSkip={radio.skip}
-              onTogglePlay={radio.togglePlay}
-              /* Radio opens in performance mode, which hides every control.
-                 This is the way back to the full rig without leaving the
-                 station — the music keeps playing through the transition. */
-              onOpenControls={exitPerf}
-            />
+            <RadioHud radio={radio} onOpenControls={exitPerf} />
             {radioWelcome && isPerformanceMode && <RadioWelcome onDismiss={() => setRadioWelcome(false)} />}
           </>
         )}

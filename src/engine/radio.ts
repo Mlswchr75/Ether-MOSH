@@ -118,6 +118,12 @@ export type RadioRotation = {
   peek: () => ShowcaseTrack;
   /** How many tracks are left before the deck reshuffles. */
   remaining: () => number;
+  snapshot: () => ShowcaseTrack[];
+  enqueue: (track: ShowcaseTrack, next?: boolean) => void;
+  move: (from: number, to: number) => void;
+  remove: (index: number) => void;
+  shuffle: () => void;
+  replace: (tracks: readonly ShowcaseTrack[]) => void;
 };
 
 function shuffled<T>(items: readonly T[], rand: () => number): T[] {
@@ -149,7 +155,7 @@ export function createRadioRotation(
   options: { rand?: () => number; startWith?: string } = {},
 ): RadioRotation {
   const rand = options.rand ?? Math.random;
-  const pool = [...tracks];
+  let pool = [...tracks];
   if (!pool.length) throw new Error("createRadioRotation needs at least one track");
 
   let deck: ShowcaseTrack[] = [];
@@ -163,6 +169,10 @@ export function createRadioRotation(
     // rand() from spinning here forever.
     for (let attempt = 0; attempt < 8 && last && fresh[0].id === last.id; attempt++) {
       fresh = shuffled(pool, rand);
+    }
+    if (last && fresh[0].id === last.id) {
+      const other = fresh.findIndex(t => t.id !== last!.id);
+      if (other > 0) [fresh[0], fresh[other]] = [fresh[other], fresh[0]];
     }
     deck = fresh;
   };
@@ -188,6 +198,24 @@ export function createRadioRotation(
     },
     remaining() {
       return deck.length;
+    },
+    snapshot() { ensure(); return [...deck]; },
+    enqueue(track, next = false) {
+      // Moving an existing request keeps the visible queue unambiguous.
+      deck = deck.filter(t => t.id !== track.id);
+      if (next) deck.unshift(track); else deck.push(track);
+    },
+    move(from, to) {
+      if (from < 0 || to < 0 || from >= deck.length || to >= deck.length) return;
+      const [track] = deck.splice(from, 1);
+      deck.splice(to, 0, track);
+    },
+    remove(index) { if (index >= 0 && index < deck.length) deck.splice(index, 1); },
+    shuffle() { ensure(); deck = shuffled(deck, rand); },
+    replace(items) {
+      if (!items.length) return;
+      pool = [...items];
+      deck = [...items];
     },
   };
 }

@@ -126,3 +126,24 @@ describe("createRadioRotation", () => {
     expect(() => createRadioRotation([])).toThrow();
   });
 });
+
+
+it("avoids a repeat even with an adversarial shuffle at the cycle boundary", () => {
+  let calls = 0;
+  const rotation = createRadioRotation(LIBRARY, { rand: () => ++calls <= 3 ? 0.999 : 0 });
+  let previous = "";
+  for (let i = 0; i < 24; i++) { const current = rotation.next().id; expect(current).not.toBe(previous); previous = current; }
+});
+
+it("queue edits keep each track once and expose a defensive snapshot", () => {
+  const rotation = createRadioRotation(LIBRARY, { startWith: "a" });
+  rotation.next();
+  rotation.enqueue(LIBRARY[2], true);
+  expect(rotation.peek().id).toBe("c");
+  expect(rotation.snapshot().filter(t => t.id === "c")).toHaveLength(1);
+  const copy = rotation.snapshot(); copy.length = 0;
+  expect(rotation.snapshot().length).toBeGreaterThan(0);
+  const removed = rotation.snapshot()[1].id;
+  rotation.remove(1);
+  expect(rotation.snapshot().map(t => t.id)).not.toContain(removed);
+});

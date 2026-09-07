@@ -1,12 +1,24 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { useLocation } from "react-router-dom";
 import { useStore } from "@/store/useStore";
 import { radioFromUrl, resolveStation, type RadioConfig } from "@/engine/radio";
-import { startRadioSession, type RadioSession } from "@/engine/radioSession";
+import { startRadioSession, type RadioSession, type RadioStatus } from "@/engine/radioSession";
+import { radioRequest } from "@/lib/radioLinks";
 import { trackPlayer, type ShowcaseTrack } from "@/engine/trackPlayer";
 
 export type RadioBroadcast = {
   config: RadioConfig;
+  queue: ShowcaseTrack[];
+  history: ShowcaseTrack[];
+  status: RadioStatus;
+  previous: () => void;
+  enqueue: (track: ShowcaseTrack, next?: boolean) => void;
+  move: (from: number, to: number) => void;
+  remove: (index: number) => void;
+  shuffle: () => void;
+  playNow: (track: ShowcaseTrack) => void;
+  playQueue: (tracks: readonly ShowcaseTrack[]) => void;
   nowPlaying: ShowcaseTrack | null;
   upNext: ShowcaseTrack | null;
   /** The browser wants a gesture before it will make sound. */
@@ -42,12 +54,17 @@ export function useRadioBroadcast(opts: {
   requestJourney: () => void;
 }): RadioBroadcast {
   const { journeyOn, requestJourney } = opts;
-  const config = useRef(radioFromUrl()).current;
+  const location = useLocation();
+  const href = new URL(location.pathname + location.search, window.location.origin).href;
+  const config = useMemo(() => radioFromUrl(href), [href]);
   const active = config.active;
 
   const [nowPlaying, setNowPlaying] = useState<ShowcaseTrack | null>(null);
   const [upNext, setUpNext] = useState<ShowcaseTrack | null>(null);
   const [needsGesture, setNeedsGesture] = useState(false);
+  const [queue, setQueue] = useState<ShowcaseTrack[]>([]);
+  const [history, setHistory] = useState<ShowcaseTrack[]>([]);
+  const [status, setStatus] = useState<RadioStatus>("loading");
   const [paused, setPaused] = useState(false);
   const sessionRef = useRef<RadioSession | null>(null);
 
@@ -75,8 +92,28 @@ export function useRadioBroadcast(opts: {
     if (station.fellBack && config.station !== station.id) {
       toast.message(`No tracks tagged "${config.station}" — playing everything`, { duration: 6_000 });
     }
+    const request = radioRequest(href);
+    const initialQueue = request.tracks.length
+      ? (request.track ? [request.track, ...request.tracks.filter(t => t.id !== request.track!.id)] : request.tracks)
+      : undefined;
+    const tracks = request.track && !station.tracks.some(t => t.id === request.track!.id)
+      ? [request.track, ...station.tracks] : station.tracks;
     const session = startRadioSession({
-      tracks: station.tracks,
+      tracks,
+      startWith: request.track?.id,
+      initialQueue,
+      onQueue: (track, upcoming, recent) => {
+        setNowPlaying(track);
+        setQueue(upcoming);
+        setUpNext(upcoming[0] ?? null);
+        setHistory(recent);
+      },
+      onStatus: value => {
+        setStatus(value);
+        setPaused(value === "paused");
+        setNeedsGesture(value === "blocked");
+        useStore.setState({ trackEnabled: value === "playing" });
+      },
       onTrack: (track, next) => {
         setNowPlaying(track);
         setUpNext(next);
@@ -98,8 +135,9 @@ export function useRadioBroadcast(opts: {
     return () => {
       session.stop();
       sessionRef.current = null;
+      useStore.setState({ trackEnabled: false });
     };
-  }, [active, config.station]);
+  }, [active, config.station, href]);
 
   // Journey is what makes the visuals a performance rather than a screensaver.
   // Requested once, through the editor's own gate.
@@ -122,19 +160,18 @@ export function useRadioBroadcast(opts: {
     sessionRef.current?.skip();
   }, []);
 
-  /** The station's own play/pause — the HUD button and the space bar. */
   const togglePlay = useCallback(() => {
-    if (trackPlayer.isRolling()) {
-      trackPlayer.pause();
-      useStore.setState({ trackEnabled: false });
-      setPaused(true);
-      return;
-    }
-    setPaused(false);
-    trackPlayer.play()
-      .then(() => useStore.setState({ trackEnabled: true }))
-      .catch(() => setNeedsGesture(true));
+    if (trackPlayer.isRolling()) sessionRef.current?.pause();
+    else sessionRef.current?.resume();
   }, []);
 
-  return { config, nowPlaying, upNext, needsGesture, paused, start, skip, togglePlay };
+  const previous = useCallback(() => sessionRef.current?.previous(), []);
+  const enqueue = useCallback((track: ShowcaseTrack, next?: boolean) => sessionRef.current?.enqueue(track, next), []);
+  const move = useCallback((from: number, to: number) => sessionRef.current?.move(from, to), []);
+  const remove = useCallback((index: number) => sessionRef.current?.remove(index), []);
+  const shuffle = useCallback(() => sessionRef.current?.shuffle(), []);
+  const playNow = useCallback((track: ShowcaseTrack) => sessionRef.current?.playNow(track), []);
+  const playQueue = useCallback((tracks: readonly ShowcaseTrack[]) => sessionRef.current?.playQueue(tracks), []);
+  return { config, nowPlaying, upNext, needsGesture, paused, status, queue, history,
+    start, skip, togglePlay, previous, enqueue, move, remove, shuffle, playNow, playQueue };
 }
