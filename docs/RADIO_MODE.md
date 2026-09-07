@@ -236,3 +236,30 @@ real WebGL pipeline, not a canvas animation. Budget an actual GPU.
 - **Track-aware Journey seeding** — Journey reacts to the audio but does not yet know the *song*; seeding Forge's palette per track id would give every song a recognisable visual signature.
 - **Now-playing to a stream overlay** — the HUD's state is already the right shape to post to an OBS text source or a Discord/Twitch bot.
 - **Recorded output** — `CanvasRecorder` already exists; a station that spits out a per-track music video while it broadcasts is a content pipeline, not a stream.
+
+## Radio library update (September 2026)
+
+- A new arrival selects a random song and a shuffled deck. `?track=<catalog-id>`
+  selects a referenced opener. `?queue=<comma-separated-ids>&name=<name>` plays
+  a shared snapshot in its supplied order. Unknown IDs are discarded.
+- Queue & library exposes every upcoming song, reorder arrows for touch and
+  keyboard, removal, play-next, enqueue, shuffle, search and recently played.
+  A saved playlist replaces the rotation pool; its first pass follows the
+  saved order and later passes shuffle. Previous/next, media keys and space
+  use the same radio transport.
+- Favorites and playlists are account-owned Supabase rows, with explicit
+  grants and ownership policies. Playlist creation, rename, song removal,
+  reordering and deletion report success only after the database responds.
+  Sharing exports catalog IDs in a link; it never makes private account rows
+  public. Shared playlists are snapshots, not live synchronized playlists.
+- Share tags appear on the station, current song, next song, all song rows,
+  queue and playlists. They open a small dismissible toast with clipboard,
+  social, email, device-supported native sharing and mobile SMS options.
+- AudioContext resume and HTMLAudioElement play start together inside a tap.
+  The timeout covers both. Browsers that refuse audible autoplay receive a
+  compact Tap to listen prompt. A failed file advances; a library-wide outage
+  retries with backoff; a late load cannot override a newer song or pause.
+
+Verification: radio rotation/session, playback race/autoplay and share-link
+regression suites; TypeScript build; production artifact checks; transactional
+Supabase ownership and anonymous-access tests with test writes rolled back.

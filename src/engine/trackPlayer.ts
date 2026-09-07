@@ -224,6 +224,9 @@ class TrackPlayer {
   private everPlayed = false;
   /** Registered by setAutoAdvance (radio mode); null the rest of the time. */
   private endedHandler: (() => void) | null = null;
+  private radioTransport: { play: () => void; next: () => void; previous: () => void; onPause: () => void } | null = null;
+
+  setRadioTransport(controls: typeof this.radioTransport) { this.radioTransport = controls; }
 
   enabled = false;
   volume = 0.75;
@@ -316,10 +319,10 @@ class TrackPlayer {
   private setupMediaSession() {
     if (typeof navigator === "undefined" || !("mediaSession" in navigator)) return;
     try {
-      navigator.mediaSession.setActionHandler("play", () => { this.play(); });
+      navigator.mediaSession.setActionHandler("play", () => { if (this.radioTransport) this.radioTransport.play(); else void this.play().catch(() => {}); });
       navigator.mediaSession.setActionHandler("pause", () => { this.pause(); });
-      navigator.mediaSession.setActionHandler("previoustrack", () => { this.prevShowcaseTrack(); });
-      navigator.mediaSession.setActionHandler("nexttrack", () => { this.nextShowcaseTrack(); });
+      navigator.mediaSession.setActionHandler("previoustrack", () => { if (this.radioTransport) this.radioTransport.previous(); else void this.prevShowcaseTrack().catch(() => {}); });
+      navigator.mediaSession.setActionHandler("nexttrack", () => { if (this.radioTransport) this.radioTransport.next(); else void this.nextShowcaseTrack().catch(() => {}); });
     } catch {
       // Some browsers implement the interface but throw on unsupported
       // actions (e.g. previoustrack/nexttrack) — play/pause still get set.
@@ -337,6 +340,8 @@ class TrackPlayer {
    *  the swap if it was already playing. */
   async setSource(url: string, title: string, artist = "", cueAt?: number) {
     const cueRequest = ++this.cueRequest;
+    this.playRequest++;
+    this.playInFlight = null;
     this.url = url;
     this.title = title;
     this.artist = artist;
@@ -391,8 +396,10 @@ class TrackPlayer {
    * listener is going to be there for the next four minutes either way.
    */
   async playTrackFromStart(track: ShowcaseTrack) {
-    await this.setSource(track.url, track.title, track.artist, 0);
-    await this.play();
+    const source = this.setSource(track.url, track.title, track.artist, 0);
+    // Call play synchronously in the tap, before yielding user activation.
+    const playback = this.play();
+    await Promise.all([source, playback]);
   }
 
   /** Playhead in seconds — Radio's stall watchdog compares this across ticks. */
@@ -406,6 +413,8 @@ class TrackPlayer {
     const el = this.el;
     return !!el && !el.paused && !el.ended;
   }
+
+  hasPlaybackError(): boolean { return !!this.el?.error; }
 
   /** Load one of the bundled showcase tracks (see SHOWCASE_TRACKS) by id. */
   async useShowcaseTrack(id: string) {
@@ -560,6 +569,7 @@ class TrackPlayer {
   }
 
   private playInFlight: Promise<void> | null = null;
+  private playRequest = 0;
 
   /**
    * Coalesces concurrent callers onto the same attempt instead of firing a
@@ -579,25 +589,38 @@ class TrackPlayer {
    */
   async play(): Promise<void> {
     if (this.playInFlight) return this.playInFlight;
-    this.playInFlight = this.doPlay().finally(() => { this.playInFlight = null; });
+    const request = ++this.playRequest;
+    this.playInFlight = this.doPlay(request).finally(() => {
+      if (request === this.playRequest) this.playInFlight = null;
+    });
     return this.playInFlight;
   }
 
-  private async doPlay(): Promise<void> {
+  private async doPlay(request: number): Promise<void> {
     this.ensure();
-    if (this.ctx?.state === "suspended") { try { await this.ctx.resume(); } catch {} }
+    // resume() may stay pending until a gesture. Start BOTH APIs inside the
+    // gesture and bound the whole attempt, including the AudioContext.
+    const context = this.ctx?.state === "suspended" ? this.ctx.resume() : Promise.resolve();
     // Belt-and-suspenders for the same hang: even a *single*, uncontested
     // el.play() call can fail to ever settle on some platforms. 6s is
     // generous for a local same-origin file — past that the browser isn't
     // going to resolve it on its own, so time out and let the caller's
     // existing error handling (toast + state reset) recover instead of
     // hanging forever.
-    await Promise.race([
-      this.el!.play(),
-      new Promise<never>((_, reject) => {
-        window.setTimeout(() => reject(new Error("track play() timed out")), 6_000);
-      }),
-    ]);
+    let timeout: number | undefined;
+    try {
+      await Promise.race([
+        Promise.all([context, this.el!.play()]),
+        new Promise<never>((_, reject) => {
+          timeout = window.setTimeout(() => {
+            reject(this.ctx?.state === "suspended"
+              ? new DOMException("Tap to enable audio", "NotAllowedError")
+              : new Error("track play() timed out"));
+          }, 6_000);
+        }),
+      ]);
+    } finally { window.clearTimeout(timeout); }
+    if (request !== this.playRequest) throw new DOMException("Playback superseded", "AbortError");
     this.enabled = true;
     this.everPlayed = true;
     if (!this.startedAt) this.startedAt = performance.now();
@@ -608,6 +631,8 @@ class TrackPlayer {
   }
 
   pause() {
+    this.playRequest++;
+    this.playInFlight = null;
     this.enabled = false;
     try { this.el?.pause(); } catch {}
     if (typeof navigator !== "undefined" && "mediaSession" in navigator) {
@@ -620,6 +645,7 @@ class TrackPlayer {
     this.onsets = [];
     this.detectedBpm = 0;
     this.startedAt = 0;
+    this.radioTransport?.onPause();
   }
 
   setVolume(v: number) {
