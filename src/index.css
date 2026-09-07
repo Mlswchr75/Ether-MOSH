@@ -1513,6 +1513,32 @@
     letter-spacing: .28em;
     text-transform: uppercase;
   }
+  /* Sits where the upload side's meta line sits, so the two panes stay
+     balanced — but it is a destination, not a caption, so it carries the
+     accent and the same live tally the brand mark uses. */
+  .split-side-radio {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    margin: 0;
+    color: hsl(var(--accent) / .78);
+    font: 600 9px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: .28em;
+    text-transform: uppercase;
+    transition: color .18s ease;
+  }
+  .split-side-radio:hover,
+  .split-side-radio:focus-visible { color: hsl(var(--accent)); }
+  .split-side-radio__dot {
+    width: 5px;
+    height: 5px;
+    flex: none;
+    border-radius: 999px;
+    background: hsl(var(--primary));
+    box-shadow: 0 0 8px hsl(var(--primary));
+    animation: title-radio-tally 2.4s ease-in-out infinite;
+  }
+  @media (prefers-reduced-motion: reduce) { .split-side-radio__dot { animation: none; } }
   .forge-mode-action {
     --side-color: 350 100% 62%;
     width: 138px;
@@ -2052,6 +2078,8 @@
     .source-mode-action svg { width: 27px; height: 27px; }
     .split-action-label { font-size: 11px; letter-spacing: .25em; text-indent: .25em; }
     .split-side-meta { font-size: 6px; letter-spacing: .2em; }
+    .split-side-radio { font-size: 8px; letter-spacing: .22em; gap: 6px; }
+    .split-side-radio__dot { width: 4px; height: 4px; }
     .forge-mode-action { width: 92px; height: 92px; gap: 5px; }
     .forge-pattern-mark { width: 48px; height: 38px; }
     .forge-mode-action small { font-size: 5px; }
