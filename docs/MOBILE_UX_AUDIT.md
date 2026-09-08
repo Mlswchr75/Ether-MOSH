@@ -200,3 +200,102 @@ All scoped to `canvasContainerRef` and ignore
 - Gestures that never fight each other, and always tell you which one won.
 - 60 fps while a WebGL scene is running underneath.
 
+---
+
+## 8. Research findings — what the literature and shipped apps say
+
+Gathered 2026-09-08. These are the constraints the new work is designed against.
+
+### Radial menu breadth and depth
+- **Breadth should not exceed 8 items per ring.** Research on pie-menu depth vs.
+  breadth found the two behave differently: *breadth* degrades both accuracy
+  and reaction time, while *depth* costs only reaction time. When accuracy
+  matters, go **deeper, not wider**.
+  ([Depth and Breadth of Pie Menus, IJHCI 37:2](https://www.tandfonline.com/doi/full/10.1080/10447318.2020.1809245))
+- 3–12 items is the practical ceiling; **6–8 slices gives the best accuracy and
+  efficiency** for gesture selection.
+  ([NN/g, Expandable Menus](https://www.nngroup.com/articles/expandable-menus/))
+- Marking menus turn the same layout into muscle memory: a directional *mark*
+  is on average **3.5× faster** than visually scanning and selecting, and
+  hierarchical marks ("zig-zag") extend that to nested menus.
+  ([Gesture-based Radial Menus](https://lmjabreu.com/post/gesture-based-radial-menus/))
+- Pie menus conventionally keep an **inactive dead zone at the centre** where
+  releasing cancels. Ether-MOSH inverts this — the centre is the MOSH hub —
+  which is a legitimate choice but means *cancel needs its own gesture*.
+- Zone/polygon menus break the 8-item ceiling by using **relative position as
+  well as direction**. That is the licence for a ring + radial-distance
+  hybrid, as long as the two hit-tests actually agree (see §6.3).
+
+> **Verdict for us:** 26 items across two rings is roughly 3× over the accuracy
+> budget. The answer is branching — a small top ring of *categories*, each
+> opening its own small ring — not more concentric rings.
+
+### Thumb zone and target size
+- The **bottom 25–40% of the screen** is the natural one-handed zone. Tap
+  accuracy there is ~**96%**, versus ~**61%** in the stretch zone, and
+  interactions are markedly faster.
+  ([Juno School](https://www.junoschool.org/article/thumb-zone-design-one-handed-use/),
+  [Parachute Design](https://parachutedesign.ca/blog/thumb-zone-ux/))
+- **44×44 px** is the WCAG 2.2 AAA target; average thumb contact is ~**72 px**
+  wide, so anything under 44 px is a miss waiting to happen.
+  ([UXPin](https://www.uxpin.com/studio/blog/responsive-design-touch-devices-key-considerations/))
+- ~**49%** of smartphone users navigate one-handed.
+
+> **Verdict for us:** a wheel hard-centred on the viewport puts half its
+> circumference in the stretch zone. Summon the wheel **at the gesture's own
+> centroid**, clamped to stay fully on screen — the finger is already in the
+> comfortable zone by definition, because that's where the user put it.
+
+### Compositing over a live WebGL canvas
+- `backdrop-filter` is GPU-composited but expensive on mobile Safari. The
+  specific rules that matter: **never animate the blur radius** (it re-triggers
+  compositing every frame and drops you to ≤30 fps), keep radius **under 20 px**
+  on large elements, and **don't stack more than 3–4** backdrop-filtered
+  elements in one viewport. Animate **opacity** instead.
+  ([Empire UI](https://empire-ui.com/blog/backdrop-filter-css),
+  [Graffino](https://graffino.com/til/how-to-fix-filter-blur-performance-issue-in-safari))
+
+> **Verdict for us:** the existing wheel already sets `backdrop-filter: none` on
+> its slot buttons — keep that discipline. The new surface gets **one**
+> backdrop-filtered element at most, static radius, and every transition is
+> `opacity`/`transform` only. The 78 infinite orbit animations currently
+> running on an open 26-slot wheel get budgeted down and disabled under
+> `prefers-reduced-motion`.
+
+### Haptics are not a reliable channel
+- The Vibration API is an Android/Chromium feature. Safari's support on
+  iOS is at best inconsistent and historically absent; the popular workaround
+  is a hack that layers hidden `<input type="checkbox" switch>` elements under
+  the UI.
+  ([caniuse](https://caniuse.com/mdn-api_navigator_vibrate),
+  [ios-vibrator-pro-max](https://github.com/samdenty/ios-vibrator-pro-max))
+
+> **Verdict for us:** every haptic must be paired with a visual confirmation
+> that carries the same information, or iPhone users get a silent, unlabelled
+> interface. Codify the buzz lengths into a named vocabulary instead of the
+> current scattered 3/4/10/12/15 ms magic numbers.
+
+### What shipped mobile VJ tools actually do
+- **TouchOSC / Bazik** put the parameters on the phone and the render
+  elsewhere — they dodge the problem rather than solve it.
+- **vizz.fm** runs in a browser tab and its headline feature is exactly the one
+  we already have: wiring frequency bands to parameters (bass → particle size,
+  treble → rotation). Ours goes further (per-param source × amount × smoothing)
+  but *only if you can reach it*.
+- **STAELLA** leans on touch + flick, MIDI knobs and gamepads on iPad — i.e.
+  it solved the parameter problem with external hardware.
+
+> **Verdict for us:** nobody has solved "full parameter control, on the glass,
+> without covering the art." That gap is the opportunity.
+
+### Design rules adopted from all of the above
+
+1. **≤8 items per ring.** Branch instead of widening.
+2. **Summon at the touch point**, clamped on-screen — never a fixed centre.
+3. **≥44 px targets**, with angular padding so neighbours don't overlap.
+4. **One hit-test.** Render geometry and hit geometry come from one function.
+5. **Opacity/transform transitions only.** No animated blur. One backdrop-filter.
+6. **Reduced-motion is a real path**, not an afterthought.
+7. **Every haptic has a visual twin.**
+8. **The art is never fully covered** — the wheel is a ring, and the value you
+   are changing reads in the middle of it, over the live frame.
