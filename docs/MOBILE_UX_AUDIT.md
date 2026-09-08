@@ -299,3 +299,82 @@ Gathered 2026-09-08. These are the constraints the new work is designed against.
 7. **Every haptic has a visual twin.**
 8. **The art is never fully covered** — the wheel is a ring, and the value you
    are changing reads in the middle of it, over the live frame.
+---
+
+## 9. What shipped against this audit
+
+### The Parameters Wheel — `ParamWheel.tsx`
+
+A second radial surface, summoned by **two-finger tap-and-hold** anywhere on
+the art, by the **T** key, or from the hot-trigger wheel's own **params** slot.
+It carries everything §4's menu rack held:
+
+| Ring | Contents |
+|---|---|
+| root | Tune · Add FX · Layers · Stack · Audio Map · Beat & Mic · Tiling |
+| Tune | the selected layer's parameters, each scrubbable |
+| Add FX | 4 categories → a paged ring of all 117 effects |
+| Layers | every layer; tap selects, the rim sets its opacity |
+| Stack | opacity, blend, hide, lock, reorder, duplicate, delete |
+| Audio Map | source × amount × smoothing for the engaged parameter |
+| Mod | 6 modulator types + speed / depth / offset |
+| Beat & Mic | beat sync, BPM, mic, device audio, sensitivity |
+
+**Two bands under one finger.** Inside the rim, a drag spins the ring — a
+personal orientation preference, remembered. Outside it, a drag scrubs: the
+engaged value if one is wired, otherwise the page. Scrub resolution falls off
+with radius (`precisionForRadius`), so the same gesture is a full sweep near
+the ring and a vernier out at the rim.
+
+**Focus ≠ engagement.** `highlight` is where attention is; `engagedId` is what
+the rim is wired to. Conflating them meant hovering a parameter armed the
+scrubber and Enter on a focused parameter disengaged it.
+
+**The art stays visible.** The whole surface drops to 42% opacity while a
+value is being swept — the single thing the old bottom rack could never do.
+
+### Fixes to the existing wheel
+
+- Layout and hit-testing now share `lib/wheelGeometry`, ending the fixed-112px
+  vs. fractional-radius drift (§6.3).
+- Triggers distribute across the two rings **by circumference**, not evenly,
+  lifting the tightest neighbour gap clear of a touch target (§6.4).
+- Touch targets floor at **44px**, up from 40.
+- The wheel sizes against the **safe area** (§6.10).
+- The 81 infinite slot animations **pause while steering** and don't run under
+  `prefers-reduced-motion` (§6.6).
+- A second finger mid-hold **cancels** the one-finger hold, so reaching for
+  the two-finger gesture no longer opens the wrong wheel.
+
+### Fixes elsewhere
+
+- The Pro-Mode two-finger toggle waited for the lift with a duration guard
+  instead of firing on `pointerdown` (§6, conflicts).
+- `ShortcutsOverlay` gained a Touch section and stopped claiming 3-finger tap
+  takes a screenshot (§5, documentation defects).
+- `navigator.vibrate`'s scattered magic numbers became a named vocabulary,
+  with `hapticsAvailable()` so surfaces can tell when they must carry the
+  message visually (§6.9).
+- `src/types/radio.ts` had never landed and `RadioGesturePrompt` declared
+  `onDismiss` while its only caller passed `onStart`. Both broke
+  `npm run typecheck`, and with it the security gate that runs it, on every
+  branch. Fixed here so this work can actually go green.
+
+### Deliberately not done
+
+**The hot-trigger wheel was not paginated.** 26 triggers is roughly 3× the
+accuracy budget from §8, and the principled answer is fewer per ring with
+branching. But that wheel is an approved, shipped design
+(`docs/design/mobile-radial-controls-approved.png`) with real muscle memory
+behind it, and restructuring it into four pages of seven is a change to make
+deliberately, not as a side effect of a bug fix. The density problem is
+mitigated (spacing, targets) rather than solved. It is the obvious next
+conversation.
+
+### Still open
+
+- No real-device pass yet. The touch paths are unit-tested; they have not been
+  under a thumb.
+- `engine/hotTriggerMobile.ts` still runs a document-wide MutationObserver for
+  a rail that is hidden by default (§6.8).
+- Rotation is remembered; the last-touched item is not (§6.7).
