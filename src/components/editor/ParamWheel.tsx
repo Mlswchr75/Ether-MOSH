@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "@/store/useStore";
 import { haptic, hapticsAvailable } from "@/hooks/useHaptics";
 import {
-  angleDelta, hitSlot, HUB_RADIUS, pointerAngle, precisionForRadius, slotOffset, wheelSlots,
+  angleDelta, hitSlot, HUB_RADIUS, pointerAngle, precisionForRadius, slotOffset,
+  unrotatePoint, wheelSlots,
 } from "@/lib/wheelGeometry";
 import {
   breadcrumb, clampAnchor, formatScalar, pageSlice, scalarFraction, scalarFromFraction,
@@ -56,12 +57,11 @@ export function ParamWheel() {
     ];
   }, [view]);
 
-  const slots = useMemo(
-    () => wheelSlots(items.length, { rotationDeg: rotationRef.current }),
-    // rotationRef is painted through CSS custom properties rather than state,
-    // so layout only needs recomputing when the item count changes.
-    [items.length],
-  );
+  // Built unrotated, deliberately. The ring's rotation is applied once, in
+  // CSS, on the container — baking it in here too would apply it twice, and
+  // rebuilding this on every frame of a spin would be wasted work besides.
+  // Pointer positions are rotated back before hit-testing instead.
+  const slots = useMemo(() => wheelSlots(items.length), [items.length]);
 
   const engaged = useMemo(() => {
     const found = items.find(item => item.id === highlight && item.scalar);
@@ -110,7 +110,18 @@ export function ParamWheel() {
   // live in Editor.tsx, which owns every canvas gesture; this component only
   // listens for the decision.
   useEffect(() => {
-    const onArm = () => setArmed(true);
+    // The armed preview is anchored too. Without this it rendered at the
+    // origin — a half-wheel in the top-left corner — because the anchor was
+    // only ever set at commit time.
+    const onArm = (event: Event) => {
+      const detail = (event as CustomEvent<WheelAnchor | undefined>).detail;
+      if (detail) {
+        const nextSize = wheelSizeFor(window.innerWidth, window.innerHeight);
+        setSize(nextSize);
+        setAnchor(clampAnchor(detail.x, detail.y, nextSize, window.innerWidth, window.innerHeight));
+      }
+      setArmed(true);
+    };
     const onDisarm = () => setArmed(false);
     const onOpen = (event: Event) => {
       const detail = (event as CustomEvent<WheelAnchor | undefined>).detail;
@@ -127,19 +138,16 @@ export function ParamWheel() {
     window.addEventListener("mosh:disarm-param-wheel", onDisarm);
     window.addEventListener("mosh:open-param-wheel", onOpen);
     window.addEventListener("mosh:toggle-param-wheel", onToggle);
-    window.addEventListener("mosh:close-param-wheel", onDisarm);
     return () => {
       window.removeEventListener("mosh:arm-param-wheel", onArm);
       window.removeEventListener("mosh:disarm-param-wheel", onDisarm);
       window.removeEventListener("mosh:open-param-wheel", onOpen);
       window.removeEventListener("mosh:toggle-param-wheel", onToggle);
-      window.removeEventListener("mosh:close-param-wheel", onDisarm);
     };
   }, [openAt, close]);
 
   useEffect(() => {
-    if (!open) return;
-    const onClose = () => close();
+    const onClose = () => { setArmed(false); if (open) close(); };
     window.addEventListener("mosh:close-param-wheel", onClose);
     return () => window.removeEventListener("mosh:close-param-wheel", onClose);
   }, [open, close]);
@@ -298,7 +306,8 @@ export function ParamWheel() {
   /** Mouse hover / drag-over preview, so the wheel is steerable as well as tappable. */
   const previewAt = (clientX: number, clientY: number) => {
     const { nx, ny } = localPoint(clientX, clientY);
-    const index = hitSlot(nx, ny, slots);
+    const point = unrotatePoint(nx, ny, rotationRef.current);
+    const index = hitSlot(point.x, point.y, slots);
     const item = index >= 0 ? items[index] : null;
     if (!item || item.id.startsWith("__")) return;
     setHighlight(current => {

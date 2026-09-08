@@ -89,7 +89,7 @@ export function useParamWheelTree(engagedKey: string | null): WheelTree {
           detail: def ? `${def.params.length} param${def.params.length === 1 ? "" : "s"}` : undefined },
         { id: "fx", label: "Add FX", glyph: "FX", branch: "fx" },
         { id: "layers", label: "Layers", glyph: "LYR", branch: "layers", detail: String(layers.length) },
-        { id: "stack", label: "Layer", glyph: "STK", branch: "stack", disabled: !layer },
+        { id: "stack", label: "Stack", glyph: "STK", branch: "stack", disabled: !layer },
         { id: "audio", label: "Audio Map", glyph: "AUD", branch: "audio", disabled: !engagedParam },
         { id: "beat", label: "Beat & Mic", glyph: "BPM", branch: "beat", active: beatEnabled || micEnabled },
         { id: "tile", label: "Tiling", glyph: "TIL", branch: "tile", active: tileMode !== "none" },
@@ -243,7 +243,7 @@ export function useParamWheelTree(engagedKey: string | null): WheelTree {
 
     // ── the selected layer itself ──────────────────────────────────────────
     tree.stack = {
-      id: "stack", title: def ? `Layer · ${def.name}` : "Layer", parent: "root",
+      id: "stack", title: def ? `Stack · ${def.name}` : "Stack", parent: "root",
       subtitle: layer ? "opacity, blend and stack order" : "no layer selected",
       items: layer
         ? [

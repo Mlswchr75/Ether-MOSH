@@ -1840,7 +1840,7 @@ export default function Editor() {
       holdMs: PARAM_WHEEL_HOLD_MS,
       armMs: PARAM_WHEEL_ARM_MS,
       jitterPx: 20,
-      onArm: () => window.dispatchEvent(new Event("mosh:arm-param-wheel")),
+      onArm: (centroid) => window.dispatchEvent(new CustomEvent("mosh:arm-param-wheel", { detail: centroid })),
       onCancel: () => window.dispatchEvent(new Event("mosh:disarm-param-wheel")),
       onCommit: (centroid) => {
         haptic("open");

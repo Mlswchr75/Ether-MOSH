@@ -14,7 +14,7 @@ import { crossfadeLayers, MOSH_FADE_MS } from "@/engine/layerCrossfade";
 import { cursorFx } from "@/engine/cursorFx";
 import { toast } from "sonner";
 import { clampRadialPoint, defaultRadialPoint, nearestRadialId, type RadialLayout } from "@/lib/radialLayout";
-import { fixedRingSlots, hitSlot, ringSpacingPx, type WheelSlot } from "@/lib/wheelGeometry";
+import { fixedRingSlots, hitSlot, ringSpacingPx, unrotatePoint, type WheelSlot } from "@/lib/wheelGeometry";
 import { gestureLock } from "@/engine/canvasGestures";
 import { validateAudioUpload } from "@/lib/mediaFileSafety";
 import { MoshVortexIcon, LiveFeedIcon, UploadBeamIcon, ForgeFlameIcon, MotifMandalaIcon, HomeBeaconIcon, AccountCrystalIcon } from "./HotTriggerIcons";
@@ -126,15 +126,6 @@ export const MOBILE_RING_RADII = [0.44, 0.315];
  *  a finger the user is deliberately steering across the ring. */
 const FLICK_TOLERANCE = 0.17;
 
-/** Undo the wheel's rotation so slot geometry can be built once and reused,
- *  instead of rebuilt on every frame of a spin. */
-function unrotate(nx: number, ny: number, rotationDeg: number) {
-  const radians = -rotationDeg * Math.PI / 180;
-  const cos = Math.cos(radians);
-  const sin = Math.sin(radians);
-  return { x: nx * cos - ny * sin, y: nx * sin + ny * cos };
-}
-
 /** Slot geometry only changes when the trigger count does, and steering asks
  *  for it on every pointermove — so build it once per count. */
 const slotCache = new Map<number, WheelSlot[]>();
@@ -168,7 +159,7 @@ export function radialTriggerAt(
   nx: number, ny: number, total: number, rotation = 0, tolerance?: number,
 ) {
   if (total <= 0) return -1;
-  const point = unrotate(nx, ny, rotation);
+  const point = unrotatePoint(nx, ny, rotation);
   return hitSlot(point.x, point.y, radialSlotsFor(total), tolerance);
 }
 

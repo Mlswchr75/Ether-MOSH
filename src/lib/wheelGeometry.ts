@@ -260,3 +260,20 @@ export function ringSpacingPx(radius: number, count: number, diameter: number): 
   if (count < 2) return Infinity;
   return 2 * radius * diameter * Math.sin(Math.PI / count);
 }
+
+/**
+ * Undo a wheel's rotation for a point in normalized wheel space.
+ *
+ * Both wheels apply their rotation in CSS, on the container. That means slot
+ * geometry can be built once and reused across a whole spin — but it also
+ * means a pointer position has to be rotated *back* before it is hit-tested
+ * against that unrotated geometry. Baking the rotation into the slots
+ * instead applies it twice: once in the layout, once again in CSS.
+ */
+export function unrotatePoint(nx: number, ny: number, rotationDeg: number): { x: number; y: number } {
+  if (!rotationDeg) return { x: nx, y: ny };
+  const radians = -rotationDeg * Math.PI / 180;
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+  return { x: nx * cos - ny * sin, y: nx * sin + ny * cos };
+}
