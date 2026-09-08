@@ -54,8 +54,7 @@ import { CameraMenu } from "@/components/editor/CameraMenu";
 import { StartCameraOverlay } from "@/components/editor/StartCameraOverlay";
 import { ForgeTapHint } from "@/components/editor/ForgeTapHint";
 import { SourceModeToggle } from "@/components/editor/SourceModeToggle";
-import { HotTriggers } from "@/components/editor/HotTriggers";
-import { MicNudgeToast } from "@/components/editor/MicNudgeToast";
+import { HotTriggers, RADIO_TRIGGERS } from "@/components/editor/HotTriggers";
 import { ActionConfirmation } from "@/components/editor/ActionConfirmation";
 import { showExportSuccessToast } from "@/components/editor/ExportShareToast";
 import { notifyExportStarted } from "@/components/editor/ExportRegisteredToast";
@@ -682,13 +681,22 @@ export default function Editor() {
 
     // Short first beat so it lands while the menu is still open, then an
     // occasional repeat for as long as it stays open and silent.
+    //
+    // It goes quiet again on its own. Living on the trigger there is nothing
+    // to dismiss, so without this it would simply glow for the rest of the
+    // session — and a hint that never stops is decoration, which is how a
+    // pulsing control stops meaning anything. A beat, then silence, then an
+    // occasional reminder, is the difference between an offer and nagging.
     const FIRST_MS = 1_200;
-    const REPEAT_MS = 25_000;
+    const VISIBLE_MS = 6_000;
+    const REPEAT_MS = 45_000;
+    let hide = 0;
     let timer = window.setTimeout(function fire() {
       setShowMicNudge(true);
+      hide = window.setTimeout(() => setShowMicNudge(false), VISIBLE_MS);
       timer = window.setTimeout(fire, REPEAT_MS);
     }, FIRST_MS);
-    return () => { window.clearTimeout(timer); setShowMicNudge(false); };
+    return () => { window.clearTimeout(timer); window.clearTimeout(hide); setShowMicNudge(false); };
   }, [hasSource, micEnabled, systemAudioEnabled, trackEnabled, radialMenuOpen]);
 
   // If someone has been looking at an active visual for a full minute with
@@ -1977,8 +1985,17 @@ export default function Editor() {
         {!isOverlay && (
           <HotTriggers
             visualizerRef={canvasContainerRef}
-            hidden={hideUI || isPerformanceMode}
+            /* Performance mode drops the DOM chrome, and a station is always in
+               it — which left `/radio` with no wheel at all, only the hidden XR
+               registry. That is right for a projector feed and wrong for a
+               station, where the wheel is the *only* control surface: the rack
+               is gone, so without it there is no capture, no share, no mic, no
+               way to change how the thing looks. The wheel stays, narrowed to
+               what a station can act on (see RADIO_TRIGGERS), and `&hud=0`
+               still gives a clean capture. */
+            hidden={hideUI || (isPerformanceMode && !radio.config.active)}
             showLegacyLaunchpad={legacyHotTriggers}
+            only={radio.config.active ? RADIO_TRIGGERS : undefined}
             isRecording={isRecording}
             onToggleRecord={toggleRecord}
             onScreenshot={takeScreenshot}
@@ -1993,6 +2010,7 @@ export default function Editor() {
             onMicFlash={(on) => setMicFlash({ on, key: performance.now() })}
             showTrackNudge={showTrackNudge}
             onTrackNudgeDismiss={() => setShowTrackNudge(false)}
+            showMicNudge={showMicNudge}
             journeyOn={journeyOn}
             journeyLocked={!paywall.isSupporter && !isForge}
             journeyPreview={isForge && !paywall.isSupporter}
@@ -2011,17 +2029,17 @@ export default function Editor() {
             }}
           />
         )}
-        {/* Standalone, not nested inside HotTriggers — the hot-trigger rail
-            now lives inside a press-and-hold radial wheel that's hidden by
-            default, which buried this prompt along with it and made it show
-            up unreliably. This has to stay reachable regardless of whether
-            that wheel (or idle-fade chrome) is open. */}
-        {!isPerformanceMode && !isOverlay && showMicNudge && (
-          <MicNudgeToast
-            onYes={() => { setMicEnabled(true); setMicFlash({ on: true, key: performance.now() }); setShowMicNudge(false); }}
-            onNo={() => setShowMicNudge(false)}
-          />
-        )}
+        {/* The mic nudge now lives on the listen trigger inside the wheel (see
+            AudioTrigger's `nudge`), passed down as `showMicNudge` above.
+
+            It used to be a standalone card in the screen's corner, deliberately
+            outside the wheel so it stayed reachable while the wheel was closed.
+            But it is only ever raised *because* the wheel is open — the effect
+            below gates on `radialMenuOpen` — so being outside bought nothing
+            and cost plenty: a panel with a green tick and a red cross, sitting
+            nowhere near the control it was about, that had to be answered to go
+            away. On the wheel, "yes" is the tap you were already steering
+            toward and "no" is doing nothing. */}
         {journeyOn && (
           <div
             key={journeyFlashKey}

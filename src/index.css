@@ -867,6 +867,58 @@
     opacity: 0.45;
     cursor: not-allowed;
   }
+  /**
+   * The secondary control tucked into a trigger's corner — track options,
+   * audio source.
+   *
+   * These were drawn at 20px and 14px square, one of them around an 8px glyph,
+   * sitting on top of another button on a wheel you steer to with a thumb.
+   * TrackTrigger's own comment conceded the point: "a 20px target tucked in a
+   * corner of another button — fine to discover once, tedious to hit every
+   * time".
+   *
+   * The fix is not a bigger badge — that swallows the trigger it belongs to.
+   * The visual stays small and the *target* grows underneath it, which is what
+   * the pointer actually tests against. Sized off the trigger so it tracks
+   * --ht-size instead of being a second number to keep in sync.
+   */
+  .hot-trigger-caret {
+    width: calc(var(--ht-size) * 0.42);
+    height: calc(var(--ht-size) * 0.42);
+    min-width: 18px;
+    min-height: 18px;
+  }
+  .hot-trigger-caret::after {
+    content: "";
+    position: absolute;
+    /* Centred on the badge and at least 44px across — the touch guidance the
+       rest of this app's controls (min-h-10, h-11) already meet. */
+    left: 50%;
+    top: 50%;
+    width: max(44px, 200%);
+    height: max(44px, 200%);
+    translate: -50% -50%;
+  }
+  .hot-trigger-caret:hover,
+  .hot-trigger-caret:focus-visible {
+    color: hsl(var(--accent));
+    background: rgb(0 0 0 / .92);
+  }
+
+  /* The listen trigger asking to be used. Slow and low-contrast on purpose:
+     it has to be noticeable while the wheel is open without competing with
+     the trigger you actually steered toward. */
+  .hot-trigger-nudge {
+    animation: hotTriggerNudge 2.4s ease-in-out infinite;
+  }
+  @keyframes hotTriggerNudge {
+    0%, 100% { opacity: .25; scale: 1; }
+    50%      { opacity: .85; scale: 1.09; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    /* Still visible, just not moving — the point is "this one", not the pulse. */
+    .hot-trigger-nudge { animation: none; opacity: .7; }
+  }
   /* Animate the row rather than the button so its entrance never overrides
      the button's persistent Dock magnification transform. */
   @keyframes hot-trigger-in {
