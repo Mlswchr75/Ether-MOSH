@@ -577,8 +577,13 @@
     .mobile-radial-wheel__slot .hot-trigger {
       /* 44px is the WCAG 2.2 AAA touch-target minimum, and the average thumb
        * contact patch is wider again. The old floor of 40px was reached on
-       * every phone, because 12% of a 328px wheel is 39px. */
-      --ht-size: clamp(44px, calc(var(--radial-size) * .128), 54px);
+       * every phone, because 12% of a 328px wheel is 39px.
+       *
+       * Paging the wheel took a page from twenty-six slots down to fourteen,
+       * which roughly doubled the space between neighbours — so the targets
+       * grow into it rather than banking it: 48px now, and the wheel still
+       * leaves ~60px of clear air between adjacent buttons on a phone. */
+      --ht-size: clamp(48px, calc(var(--radial-size) * .145), 60px);
       --ht-ico: calc(var(--ht-size) * .47);
       border-radius: 999px;
       transform-origin: center;
@@ -693,6 +698,60 @@
       padding: 8px;
     }
     .mobile-radial-wheel__hub small { color: hsl(var(--text-secondary)); font-size: 7px; letter-spacing: .08em; }
+
+    /* Pager: two chevrons and a row of pips, sitting just under the hub.
+     * Off the ring on purpose — the ring is the accurate real estate, and
+     * spending two of its best positions on navigation would give back what
+     * paginating the wheel was meant to buy. */
+    .mobile-radial-wheel__pager {
+      position: absolute;
+      left: 50%;
+      /* Below the outer ring, not between the rings: anywhere inside the
+       * wheel it would either crowd the inner slots or sit under the hub, and
+       * out here it lands low on the screen, where a thumb already is. */
+      top: calc(50% + var(--radial-size) * .55);
+      translate: -50% 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      pointer-events: auto;
+      z-index: 6;
+    }
+    .mobile-radial-wheel__pager button {
+      display: grid;
+      place-items: center;
+      /* 44px of target under a 20px glyph — this sits near the hub, where a
+       * thumb arriving from the ring is least precise. */
+      inline-size: 44px;
+      block-size: 44px;
+      border: 0;
+      background: none;
+      color: hsl(var(--text-body));
+      font: 700 20px/1 ui-monospace, monospace;
+      text-shadow: 0 1px 4px hsl(var(--bg-base));
+      cursor: pointer;
+      transition: color 70ms linear, scale 70ms linear;
+    }
+    .mobile-radial-wheel__pager button:hover { color: hsl(var(--accent)); scale: 1.15; }
+    .mobile-radial-wheel__pager button:active { scale: .92; }
+    .mobile-radial-wheel__pager > span { display: flex; gap: 4px; }
+    .mobile-radial-wheel__pager i {
+      inline-size: 5px;
+      block-size: 5px;
+      border-radius: 999px;
+      background: hsl(var(--text-body) / .3);
+      transition: background-color 70ms linear;
+    }
+    .mobile-radial-wheel__pager i[data-on] {
+      background: hsl(var(--accent));
+      box-shadow: 0 0 6px hsl(var(--accent));
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .mobile-radial-wheel__pager button { transition-duration: 1ms; }
+      .mobile-radial-wheel__pager button:hover,
+      .mobile-radial-wheel__pager button:active { scale: 1; }
+    }
     .mobile-radial-wheel__hub > button:first-child {
       display: flex;
       flex-direction: column;
