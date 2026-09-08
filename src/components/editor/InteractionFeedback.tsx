@@ -26,6 +26,20 @@ const interactiveTarget = (start: EventTarget | null) =>
     ? start.closest<HTMLElement>("button, a, [role='button'], [role='menuitem'], label, [data-input-feedback]")
     : null;
 
+/**
+ * Anything the pointer can operate, as opposed to the picture.
+ *
+ * The cursor draws itself completely differently over the two: over the canvas
+ * it is a lens on the artwork, over a control it has to say precisely which
+ * pixel is armed. `[data-cursor-zone='controls']` marks whole panels, but
+ * relying on that alone means every new panel is invisible-cursor territory
+ * until somebody remembers to tag it — so interactive elements count on their
+ * own merits too, and a panel tag is only needed for the gaps between them.
+ */
+const CONTROL_ZONE =
+  "[data-cursor-zone='controls'], button, a, input, select, textarea, summary, " +
+  "[role='button'], [role='menuitem'], [role='slider'], [role='tab'], [role='option'], [contenteditable='true']";
+
 export function InteractionFeedback() {
   const cursorRef = useRef<HTMLDivElement>(null);
   const [bursts, setBursts] = useState<Burst[]>([]);
@@ -41,7 +55,7 @@ export function InteractionFeedback() {
         cursor.style.transform = `translate3d(${event.clientX}px, ${event.clientY}px, 0)`;
         cursor.dataset.visible = "true";
         cursor.dataset.pen = String(event.pointerType === "pen");
-        cursor.dataset.zone = event.target instanceof Element && event.target.closest("[data-cursor-zone='controls']")
+        cursor.dataset.zone = event.target instanceof Element && event.target.closest(CONTROL_ZONE)
           ? "controls"
           : "visualizer";
       }
@@ -55,6 +69,10 @@ export function InteractionFeedback() {
       cursorFx.release(`hover-${event.pointerId}`);
     };
     const down = (event: PointerEvent) => {
+      // Held state is its own visual register: the same mark, pressed in. Kept
+      // on the element rather than in React state because it changes on every
+      // press of a drag and nothing else on the page reads it.
+      if (cursorRef.current) cursorRef.current.dataset.down = "true";
       const fx = nextInteractionFx();
       const duration = 300 + Math.round(Math.random() * 200);
       cursorFx.burst(
@@ -78,12 +96,22 @@ export function InteractionFeedback() {
       }, duration + 30);
       activeTargets.set(target, timer);
     };
+    // A pointer can be released outside the window, or taken away by an OS
+    // gesture — both arrive as pointerup/pointercancel on the window at most,
+    // and neither is guaranteed, so blur clears the held state as a backstop.
+    const up = () => { if (cursorRef.current) cursorRef.current.dataset.down = "false"; };
     window.addEventListener("pointermove", move, { capture: true, passive: true });
     window.addEventListener("pointerdown", down, { capture: true, passive: true });
+    window.addEventListener("pointerup", up, { capture: true, passive: true });
+    window.addEventListener("pointercancel", up, { capture: true, passive: true });
+    window.addEventListener("blur", up);
     document.documentElement.addEventListener("pointerleave", leave, { passive: true });
     return () => {
       window.removeEventListener("pointermove", move, { capture: true });
       window.removeEventListener("pointerdown", down, { capture: true });
+      window.removeEventListener("pointerup", up, { capture: true });
+      window.removeEventListener("pointercancel", up, { capture: true });
+      window.removeEventListener("blur", up);
       document.documentElement.removeEventListener("pointerleave", leave);
       for (const timer of activeTargets.values()) window.clearTimeout(timer);
     };

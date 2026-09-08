@@ -1328,7 +1328,13 @@ export default function Editor() {
       // Space is the keyboard equivalent of the MOSH button. Shift+Space
       // forgets the recent Art Director history and deliberately jumps to
       // a maximum-range stack that avoids the current unlocked effects.
-      if (e.code === "Space" && radio.config.active && !e.shiftKey) { e.preventDefault(); radio.togglePlay(); return; }
+      //
+      // Space means the same thing on every screen, radio included. It used to
+      // be stolen here for play/pause, which made the one key everybody already
+      // knows do something different in the one mode where the visuals matter
+      // most — and left no way to mosh from the keyboard at all. Transport
+      // belongs on the transport keys: the media keys are wired through
+      // `trackPlayer.setRadioTransport` (trackPlayer.ts), and [ ] \ still work.
       if (e.code === "Space") {
         if (e.metaKey || e.ctrlKey) return;
         e.preventDefault();
