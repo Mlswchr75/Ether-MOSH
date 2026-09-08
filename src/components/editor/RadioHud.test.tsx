@@ -25,7 +25,7 @@ function broadcast(overrides: Partial<RadioBroadcast> = {}): RadioBroadcast {
   return {
     config: { active: true, station: "all", hud: true },
     queue: [NEXT], history: [NOW], status: "playing" as RadioStatus,
-    nowPlaying: NOW, upNext: NEXT, needsGesture: false, paused: false,
+    nowPlaying: NOW, upNext: NEXT, needsGesture: false, paused: false, externalAudio: false,
     previous: vi.fn(), enqueue: vi.fn(), move: vi.fn(), remove: vi.fn(), shuffle: vi.fn(),
     playNow: vi.fn(), playQueue: vi.fn(), start: vi.fn(), skip: vi.fn(), togglePlay: vi.fn(),
     ...overrides,
@@ -60,6 +60,14 @@ describe("RadioHud", () => {
     cleanup();
     draw(broadcast({ status: "paused" }));
     expect(screen.getByRole("status").textContent).toBe("Paused");
+  });
+
+  it("says why it went quiet when the listener's own audio takes over", () => {
+    // "Paused" would be true and useless here: the transport still works, so
+    // without a reason, pressing play to get the visuals moving would fight
+    // the mic for the analyser and look broken from both ends.
+    draw(broadcast({ status: "paused", externalAudio: true }));
+    expect(screen.getByRole("status").textContent).toBe("Your audio is driving the visuals");
   });
 
   it("wires every transport control to the broadcast", () => {

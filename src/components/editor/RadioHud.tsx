@@ -102,6 +102,11 @@ export function RadioHud({ radio, onOpenControls }: { radio: RadioBroadcast; onO
     loading: "Loading song…",
     offline: "Reconnecting…",
   };
+  /* A station holding for the listener's own audio is paused for a reason the
+     word "Paused" does not carry — and the transport still works, so without
+     saying why, pressing play to get the visuals moving would fight the mic
+     for the analyser and look broken from both ends. */
+  const statusLine = radio.externalAudio ? "Your audio is driving the visuals" : labels[status];
   const station = radio.config.station !== "all" ? ` · ${radio.config.station}` : "";
 
   if (minimized) {
@@ -148,7 +153,7 @@ export function RadioHud({ radio, onOpenControls }: { radio: RadioBroadcast; onO
             </button>
           </div>
         </div>
-        <p role="status" className="text-xs text-white/60">{labels[status]}</p>
+        <p role="status" className="text-xs text-white/60">{statusLine}</p>
         <div className="mt-1 flex items-center gap-2">
           <h2 className="min-w-0 flex-1 break-words text-lg font-semibold leading-snug">{nowPlaying?.title || "Tuning in…"}</h2>
           {nowPlaying ? <FavoriteSong track={nowPlaying} library={library} /> : <Heart size={18} className="text-white/40" />}
