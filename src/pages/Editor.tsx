@@ -1601,6 +1601,8 @@ export default function Editor() {
       !(target instanceof HTMLElement) || !target.closest("button, a, input, textarea, [role='slider'], [data-no-longpress]");
     const onDown = (e: PointerEvent) => {
       if (e.pointerType !== "touch" || !isCanvasTap(e.target)) return;
+      // A wheel on screen owns every finger on it.
+      if (useStore.getState().paramWheelOpen || useStore.getState().radialMenuOpen) return;
       points.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (points.size === 3) {
         start = [...points.values()].map(p => ({ ...p }));
@@ -1671,6 +1673,7 @@ export default function Editor() {
     const average = (items: Point[]) => items.reduce((sum, p) => ({ x: sum.x + p.x, y: sum.y + p.y }), { x: 0, y: 0 });
     const onDown = (e: PointerEvent) => {
       if (e.pointerType !== "touch" || !isCanvasTouch(e.target)) return;
+      if (useStore.getState().paramWheelOpen || useStore.getState().radialMenuOpen) return;
       points.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (points.size === 1 || points.size === 2) {
         start = [...points.values()].map(p => ({ ...p }));

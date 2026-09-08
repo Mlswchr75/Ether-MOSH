@@ -91,6 +91,8 @@ export function ParamWheel() {
 
   // ── opening ────────────────────────────────────────────────────────────
   const openAt = useCallback((x: number, y: number) => {
+    // Two wheels are never up at once — whichever opens second wins.
+    window.dispatchEvent(new Event("mosh:close-hot-triggers"));
     const nextSize = wheelSizeFor(window.innerWidth, window.innerHeight);
     setSize(nextSize);
     setAnchor(clampAnchor(x, y, nextSize, window.innerWidth, window.innerHeight));

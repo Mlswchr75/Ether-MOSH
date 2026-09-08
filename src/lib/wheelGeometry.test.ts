@@ -7,8 +7,11 @@ import {
   PER_RING,
   pointerAngle,
   precisionForRadius,
+  proportionalRingPlan,
   ringPlan,
+  ringSpacingPx,
   slotOffset,
+  fixedRingSlots,
   wheelSlots,
 } from "./wheelGeometry";
 
@@ -143,5 +146,66 @@ describe("precisionForRadius", () => {
       expect(value).toBeLessThanOrEqual(previous + 1e-9);
       previous = value;
     }
+  });
+});
+
+describe("proportionalRingPlan", () => {
+  it("weights rings by circumference instead of splitting evenly", () => {
+    const counts = proportionalRingPlan(27, [0.44, 0.315]);
+    expect(counts.reduce((a, b) => a + b, 0)).toBe(27);
+    // The outer ring has the circumference, so it takes the larger share —
+    // the opposite of the old fixed 14-outer/12-inner split, which crowded
+    // the smaller circle.
+    expect(counts[0]).toBeGreaterThan(counts[1]);
+  });
+
+  it("accounts for every item, at any count", () => {
+    for (let total = 1; total <= 40; total++) {
+      expect(proportionalRingPlan(total, [0.44, 0.315]).reduce((a, b) => a + b, 0)).toBe(total);
+    }
+  });
+
+  it("drops rings it cannot fill rather than drawing empty ones", () => {
+    expect(proportionalRingPlan(1, [0.44, 0.315])).toEqual([1]);
+    expect(proportionalRingPlan(0, [0.44, 0.315])).toEqual([]);
+    expect(proportionalRingPlan(5, [])).toEqual([]);
+  });
+
+  it("evens out the touchable gap between the two rings", () => {
+    const diameter = 328; // a 390px-wide phone at 84vw
+    const radii = [0.44, 0.315];
+    const counts = proportionalRingPlan(27, radii);
+    const spacings = counts.map((count, ring) => ringSpacingPx(radii[ring], count, diameter));
+    // Both rings comfortably clear a 44px target...
+    for (const spacing of spacings) expect(spacing).toBeGreaterThan(44);
+    // ...and neither ring is much tighter than the other.
+    expect(Math.max(...spacings) - Math.min(...spacings)).toBeLessThan(12);
+  });
+
+  it("beats an even split on the crowded ring", () => {
+    const diameter = 328;
+    const radii = [0.44, 0.315];
+    const proportional = proportionalRingPlan(27, radii);
+    const evenSplit = [14, 13];
+    const tightest = (counts: number[]) =>
+      Math.min(...counts.map((count, ring) => ringSpacingPx(radii[ring], count, diameter)));
+    expect(tightest(proportional)).toBeGreaterThan(tightest(evenSplit));
+  });
+});
+
+describe("fixedRingSlots", () => {
+  it("round-trips through the same hit-test as the layout", () => {
+    const slots = fixedRingSlots(27, [0.44, 0.315]);
+    for (const slot of slots) {
+      const offset = slotOffset(slot);
+      expect(hitSlot(offset.x, offset.y, slots)).toBe(slot.index);
+    }
+  });
+
+  it("indexes contiguously and puts the outer ring first", () => {
+    const slots = fixedRingSlots(27, [0.44, 0.315]);
+    expect(slots.map(s => s.index)).toEqual(slots.map((_, i) => i));
+    expect(slots[0].radius).toBe(0.44);
+    expect(slots[slots.length - 1].radius).toBe(0.315);
   });
 });

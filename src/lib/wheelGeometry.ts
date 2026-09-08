@@ -187,3 +187,76 @@ export function precisionForRadius(radius: number): number {
   const t = (radius - near) / (far - near);
   return 1 + t * (0.18 - 1);
 }
+
+/**
+ * Spread `total` items across rings of the given radii, in proportion to each
+ * ring's circumference.
+ *
+ * This is the counterpart to `ringPlan` for a wheel whose ring *count* is
+ * fixed by an existing design rather than derived from a breadth budget — the
+ * hot-trigger wheel, which has always been two concentric rings and whose
+ * users have the muscle memory to prove it.
+ *
+ * Splitting such a wheel evenly is the wrong instinct: an inner ring has
+ * markedly less circumference to spend, so an even split makes the *inner*
+ * ring the crowded one. On a 390px phone the old fixed 14-outer / 12-inner
+ * split put the inner slots ~50px apart centre-to-centre, which is barely
+ * more than one 44px target. Weighting by circumference evens the gaps out
+ * instead of the counts.
+ */
+export function proportionalRingPlan(total: number, radii: number[]): number[] {
+  if (total <= 0 || radii.length === 0) return [];
+  if (radii.length === 1) return [total];
+  const weights = radii.map(r => Math.max(0.0001, r));
+  const sum = weights.reduce((a, b) => a + b, 0);
+  const counts = weights.map(w => Math.floor((total * w) / sum));
+  // Hand out what rounding dropped, largest ring first — it has the room.
+  let remainder = total - counts.reduce((a, b) => a + b, 0);
+  const order = radii.map((r, i) => [r, i] as const).sort((a, b) => b[0] - a[0]);
+  let cursor = 0;
+  while (remainder > 0) {
+    counts[order[cursor % order.length][1]]++;
+    remainder--;
+    cursor++;
+  }
+  // A ring with nothing on it is a ring that shouldn't be drawn.
+  return counts.filter(count => count > 0);
+}
+
+/**
+ * Slots for a wheel with a fixed set of ring radii, filled proportionally.
+ * Same normalized space, same hit-test, as `wheelSlots`.
+ */
+export function fixedRingSlots(
+  total: number,
+  radii: number[],
+  rotationDeg = 0,
+): WheelSlot[] {
+  const counts = proportionalRingPlan(total, radii);
+  const slots: WheelSlot[] = [];
+  let index = 0;
+  counts.forEach((count, ring) => {
+    const radius = radii[ring] ?? radii[radii.length - 1];
+    const stagger = ring % 2 === 0 ? 0 : 180 / Math.max(1, count);
+    for (let i = 0; i < count; i++) {
+      slots.push({
+        index: index++,
+        ring,
+        angleDeg: normalizeDegrees(i * 360 / count + stagger + rotationDeg),
+        radius,
+      });
+    }
+  });
+  return slots;
+}
+
+/**
+ * Centre-to-centre spacing between neighbours on a ring, in pixels, for a
+ * wheel of `diameter`. Used to sanity-check that a layout can actually be
+ * touched — a ring whose spacing drops below a target's own width is a ring
+ * of overlapping buttons however good it looks in a screenshot.
+ */
+export function ringSpacingPx(radius: number, count: number, diameter: number): number {
+  if (count < 2) return Infinity;
+  return 2 * radius * diameter * Math.sin(Math.PI / count);
+}

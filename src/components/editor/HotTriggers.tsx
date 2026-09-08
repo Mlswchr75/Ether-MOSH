@@ -1,4 +1,4 @@
-import { Mic, MicOff, Circle, Square, Sparkles, Scissors, Snowflake, Camera, Shuffle, Star, Play, Pencil, Trash2, X, Film, Lock, Share2, Compass, Maximize2, Minimize2, SwitchCamera, Eraser, Link2, Upload, Music, Music2, Shuffle as ShuffleIcon, Undo2, Redo2, ChevronDown, MonitorSpeaker, Heart, GripVertical, RotateCcw, SkipBack, SkipForward, Palette, RectangleVertical, RectangleHorizontal, Moon } from "lucide-react";
+import { Mic, MicOff, Circle, Square, Sparkles, Scissors, Snowflake, Camera, Shuffle, Star, Play, Pencil, Trash2, X, Film, Lock, Share2, Compass, Maximize2, Minimize2, SwitchCamera, Eraser, Link2, Upload, Music, Music2, Shuffle as ShuffleIcon, Undo2, Redo2, ChevronDown, MonitorSpeaker, Heart, GripVertical, RotateCcw, SkipBack, SkipForward, Palette, RectangleVertical, RectangleHorizontal, Moon, SlidersHorizontal } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { useStore } from "@/store/useStore";
@@ -14,6 +14,8 @@ import { crossfadeLayers, MOSH_FADE_MS } from "@/engine/layerCrossfade";
 import { cursorFx } from "@/engine/cursorFx";
 import { toast } from "sonner";
 import { clampRadialPoint, defaultRadialPoint, nearestRadialId, type RadialLayout } from "@/lib/radialLayout";
+import { fixedRingSlots, hitSlot, ringSpacingPx, type WheelSlot } from "@/lib/wheelGeometry";
+import { gestureLock } from "@/engine/canvasGestures";
 import { validateAudioUpload } from "@/lib/mediaFileSafety";
 import { MoshVortexIcon, LiveFeedIcon, UploadBeamIcon, ForgeFlameIcon, MotifMandalaIcon, HomeBeaconIcon, AccountCrystalIcon } from "./HotTriggerIcons";
 import { AccountSettingsOverlay } from "./AccountSettingsOverlay";
@@ -102,13 +104,72 @@ export function radialIndexForAngle(angle: number, count: number, rotation = 0) 
   return Math.round(normalizeRadialDegrees(angle - rotation) / step) % count;
 }
 
-export function radialTriggerIndex(angle: number, distance: number, total: number, rotation = 0) {
+/**
+ * The wheel's two ring radii, as fractions of its diameter.
+ *
+ * Slot placement and slot hit-testing both read from these, via
+ * `lib/wheelGeometry`. They used to be computed separately: the ring was
+ * *drawn* at fractional radii but *flick-selected* against a hard-coded
+ * `distance < 112` pixel boundary, so the two agreed only when the wheel
+ * happened to be about 600px across. On a phone — where the wheel is closer
+ * to 330px — the ring you could see and the ring you could hit were
+ * different rings.
+ *
+ * The inner radius also moved outward (0.29 → 0.315). Combined with
+ * distributing triggers by circumference instead of a fixed 14/12 split, that
+ * lifts the tightest neighbour spacing on a 390px-wide phone from ~50px to
+ * comfortably past a 44px touch target.
+ */
+export const MOBILE_RING_RADII = [0.44, 0.315];
+
+/** A flick is a ballistic gesture, so it gets a far looser catch radius than
+ *  a finger the user is deliberately steering across the ring. */
+const FLICK_TOLERANCE = 0.17;
+
+/** Undo the wheel's rotation so slot geometry can be built once and reused,
+ *  instead of rebuilt on every frame of a spin. */
+function unrotate(nx: number, ny: number, rotationDeg: number) {
+  const radians = -rotationDeg * Math.PI / 180;
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+  return { x: nx * cos - ny * sin, y: nx * sin + ny * cos };
+}
+
+/** Slot geometry only changes when the trigger count does, and steering asks
+ *  for it on every pointermove — so build it once per count. */
+const slotCache = new Map<number, WheelSlot[]>();
+
+export function radialSlotsFor(total: number): WheelSlot[] {
+  const cached = slotCache.get(total);
+  if (cached) return cached;
+  const slots = fixedRingSlots(total, MOBILE_RING_RADII);
+  slotCache.set(total, slots);
+  return slots;
+}
+
+/** Tightest centre-to-centre neighbour gap the layout produces, in px. Exposed
+ *  so a test can hold the line on touch-target spacing. */
+export function radialTightestSpacing(total: number, diameter: number): number {
+  const slots = radialSlotsFor(total);
+  const counts = new Map<number, number>();
+  for (const slot of slots) counts.set(slot.ring, (counts.get(slot.ring) ?? 0) + 1);
+  let tightest = Infinity;
+  for (const [ring, count] of counts) {
+    tightest = Math.min(tightest, ringSpacingPx(MOBILE_RING_RADII[ring] ?? 0, count, diameter));
+  }
+  return tightest;
+}
+
+/**
+ * Which trigger a point addresses, in normalized wheel space (offsets as a
+ * fraction of the wheel's diameter from its centre, +y downward).
+ */
+export function radialTriggerAt(
+  nx: number, ny: number, total: number, rotation = 0, tolerance?: number,
+) {
   if (total <= 0) return -1;
-  const outerCount = Math.min(14, total);
-  const innerCount = Math.max(0, total - outerCount);
-  const useInnerRing = innerCount > 0 && distance < 112;
-  const ringIndex = radialIndexForAngle(angle, useInnerRing ? innerCount : outerCount, rotation);
-  return useInnerRing ? outerCount + ringIndex : ringIndex;
+  const point = unrotate(nx, ny, rotation);
+  return hitSlot(point.x, point.y, radialSlotsFor(total), tolerance);
 }
 
 /** Auto-Mosh / auto-shuffle interval options — the one list every surface
@@ -125,7 +186,7 @@ const DEFAULT_AUTO_MOSH_SEC = 15;
  * trigger's settings overlay instead (see AccountSettingsOverlay.tsx), so
  * none of them need a ring slot of their own any more. */
 const DEFAULT_ORDER = [
-  "mosh", "undo", "redo", "journey", "auto-mosh", "clear-fx", "dark-mode",
+  "mosh", "params", "undo", "redo", "journey", "auto-mosh", "clear-fx", "dark-mode",
   "audio", "theme-track", "freeze",
   "capture", "gif", "share", "favorites",
   "sticker-mode",
@@ -137,6 +198,7 @@ const TRIGGER_LABELS: Record<string, string> = {
   home: "Back to start", undo: "Undo", redo: "Redo",
   "source-upload": "Upload source", "source-camera": "Live camera", "source-forge": "Forge source", "source-motif": "Motif Maestro", account: "Settings",
   mosh: "Mosh", "auto-mosh": "Auto-Mosh", "clear-fx": "Clear FX", journey: "Journey",
+  params: "Parameters — layers, FX, tune, audio (two-finger hold, or T)",
   "dark-mode": "Dark Mode — crush light to black, push color to neon",
   audio: "Audio (mic / device / beat sync)",
   freeze: "Freeze", capture: "Capture — tap for a still, hold to record", gif: "GIF loop", share: "Share",
@@ -836,8 +898,12 @@ function MobileRadialWheel({
   const idsRef = useRef(ids);
   const activateRef = useRef<(id: string) => void>(() => {});
   idsRef.current = ids;
-  const outerCount = Math.min(14, ids.length);
-  const innerCount = Math.max(0, ids.length - outerCount);
+  // Placement comes from the same module the hit-test reads, so a slot can
+  // never be drawn somewhere it can't be touched. Rebuilt only when the
+  // trigger count changes — rotation is applied in CSS and unwound in the
+  // hit-test, never by regenerating this.
+  const slotsRef = useRef<WheelSlot[]>([]);
+  slotsRef.current = radialSlotsFor(ids.length);
 
   const clearTimers = () => {
     if (armTimerRef.current != null) window.clearTimeout(armTimerRef.current);
@@ -851,6 +917,10 @@ function MobileRadialWheel({
     if (!layer) return;
     layer.dataset.phase = phase;
     openRef.current = phase === "open";
+    // While the wheel is up, no other canvas recognizer gets to act on the
+    // fingers steering it — a flick across the ring is not an undo swipe.
+    if (phase === "open") gestureLock.claim("hot-trigger-wheel");
+    else gestureLock.release("hot-trigger-wheel");
     wheelRef.current?.setAttribute("aria-hidden", phase === "open" ? "false" : "true");
     // Published so the audio nudge can fire only while the menu that answers
     // it is actually on screen (see Editor's nudge effect).
@@ -889,6 +959,15 @@ function MobileRadialWheel({
 
   const cacheWheelRect = () => { wheelRectRef.current = wheelRef.current?.getBoundingClientRect() ?? null; };
 
+  /** Pauses the ring's ambient animations while a finger is actually working
+   *  it, so the frame budget goes to pointer response instead. */
+  const setSteering = (on: boolean) => {
+    const layer = layerRef.current;
+    if (!layer) return;
+    if (on) layer.dataset.steering = "true";
+    else delete layer.dataset.steering;
+  };
+
   const paintRotation = (next: number) => {
     rotationRef.current = next;
     const wheel = wheelRef.current;
@@ -906,6 +985,7 @@ function MobileRadialWheel({
 
   const dismiss = () => {
     clearTimers();
+    setSteering(false);
     setPhase("idle");
     select(null);
   };
@@ -914,8 +994,11 @@ function MobileRadialWheel({
     const distance = Math.hypot(dx, dy);
     const threshold = radialFlickThreshold(pointerType);
     if (distance < threshold) { select(null); return; }
-    const angle = normalizeRadialDegrees(Math.atan2(dy, dx) * 180 / Math.PI + 90);
-    const index = radialTriggerIndex(angle, distance, idsRef.current.length, rotationRef.current);
+    // Normalize by the wheel's own size before hit-testing, so a flick lands
+    // on the slot the user can actually see at whatever size the wheel is.
+    const size = wheelRectRef.current?.width
+      ?? Math.min(window.innerWidth, window.innerHeight) * 0.84;
+    const index = radialTriggerAt(dx / size, dy / size, idsRef.current.length, rotationRef.current, FLICK_TOLERANCE);
     select(idsRef.current[index] ?? null);
   };
 
@@ -925,7 +1008,22 @@ function MobileRadialWheel({
     const ignored = (eventTarget: EventTarget | null) =>
       eventTarget instanceof Element && !!eventTarget.closest("button, a, input, textarea, select, [role='slider'], [data-no-longpress], .mobile-radial-wheel");
     const onDown = (event: PointerEvent) => {
-      if ((event.pointerType === "mouse" && event.button !== 0) || ignored(event.target) || gestureRef.current.pointerId !== -1) return;
+      if (event.pointerType === "mouse" && event.button !== 0) return;
+      // A second finger landing mid-hold means the user is reaching for the
+      // Parameters Wheel's two-finger gesture, not this one-finger hold.
+      // Without this the single-finger hold would mature first and open the
+      // wrong wheel out from under them.
+      if (gestureRef.current.pointerId !== -1) {
+        if (event.pointerId !== gestureRef.current.pointerId && !gestureRef.current.fired) {
+          gestureRef.current.cancelled = true;
+          clearTimers();
+          setPhase("idle");
+        }
+        return;
+      }
+      if (ignored(event.target)) return;
+      // The other wheel owns the screen while it is up.
+      if (useStore.getState().paramWheelOpen) return;
       if (!isCentralRadialHoldPoint(event.clientX, event.clientY, window.innerWidth, window.innerHeight)) return;
       clearTimers();
       gestureRef.current = {
@@ -972,7 +1070,10 @@ function MobileRadialWheel({
         }
         return;
       }
-      if (radialGestureShouldActivate(gesture.maxTravel, gesture.pointerType)) selectFromFlick(dx, dy, gesture.pointerType);
+      if (radialGestureShouldActivate(gesture.maxTravel, gesture.pointerType)) {
+        setSteering(true);
+        selectFromFlick(dx, dy, gesture.pointerType);
+      }
     };
     const onEnd = (event: PointerEvent) => {
       if (event.pointerId !== gestureRef.current.pointerId) return;
@@ -990,6 +1091,7 @@ function MobileRadialWheel({
           keepOpen = true;
         }
       }
+      setSteering(false);
       if (!keepOpen) { setPhase("idle"); select(null); }
       gestureRef.current.pointerId = -1;
     };
@@ -1032,16 +1134,10 @@ function MobileRadialWheel({
   const selectNearest = (x: number, y: number, currentRotation = rotationRef.current) => {
     const rect = wheelRectRef.current ?? wheelRef.current?.getBoundingClientRect();
     if (!rect || ids.length === 0) { select(null); return; }
-    const dx = x - (rect.left + rect.width / 2);
-    const dy = y - (rect.top + rect.height / 2);
-    const distance = Math.hypot(dx, dy);
-    if (distance < rect.width * .19 || distance > rect.width * .54) { select(null); return; }
-    const inner = innerCount > 0 && distance < rect.width * .36;
-    const count = inner ? innerCount : outerCount;
-    const offset = inner ? outerCount : 0;
-    const angle = normalizeRadialDegrees(Math.atan2(dy, dx) * 180 / Math.PI + 90);
-    const index = radialIndexForAngle(angle, count, currentRotation);
-    select(ids[offset + index] ?? null);
+    const nx = (x - (rect.left + rect.width / 2)) / rect.width;
+    const ny = (y - (rect.top + rect.height / 2)) / rect.height;
+    const index = radialTriggerAt(nx, ny, ids.length, currentRotation);
+    select(ids[index] ?? null);
   };
   useEffect(() => {
     const wheel = wheelRef.current;
@@ -1064,10 +1160,13 @@ function MobileRadialWheel({
     const onKey = (event: KeyboardEvent) => { if (event.key === "Escape" && openRef.current) dismiss(); };
     const onExternalOpen = () => { setPhase("open"); cacheWheelRect(); };
     const onExternalClose = () => dismiss();
+    // Two wheels are never up at once — the second one to open wins.
+    const onParamWheelOpen = () => { if (openRef.current) dismiss(); };
     window.addEventListener("resize", onResize, { passive: true });
     window.addEventListener("keydown", onKey);
     window.addEventListener("mosh:open-hot-triggers", onExternalOpen);
     window.addEventListener("mosh:close-hot-triggers", onExternalClose);
+    window.addEventListener("mosh:open-param-wheel", onParamWheelOpen);
     const frame = requestAnimationFrame(() => layerRef.current?.setAttribute("data-prepared", "true"));
     return () => {
       cancelAnimationFrame(frame);
@@ -1075,6 +1174,8 @@ function MobileRadialWheel({
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("mosh:open-hot-triggers", onExternalOpen);
       window.removeEventListener("mosh:close-hot-triggers", onExternalClose);
+      window.removeEventListener("mosh:open-param-wheel", onParamWheelOpen);
+      gestureLock.release("hot-trigger-wheel");
       if (persistTimerRef.current != null) window.clearTimeout(persistTimerRef.current);
     };
   }, []);
@@ -1104,6 +1205,7 @@ function MobileRadialWheel({
               if (event.target instanceof Element && event.target.closest("[data-radial-action]")) return;
               cacheWheelRect();
               rotateRef.current = { id: event.pointerId, angle: pointerAngle(event.clientX, event.clientY), rotation: rotationRef.current };
+              setSteering(true);
               event.currentTarget.setPointerCapture(event.pointerId);
             }}
             onPointerMove={(event) => {
@@ -1120,16 +1222,21 @@ function MobileRadialWheel({
             onPointerUp={(event) => {
               if (rotateRef.current?.id !== event.pointerId) return;
               rotateRef.current = null;
+              setSteering(false);
               persistRotationSoon();
+            }}
+            onPointerCancel={(event) => {
+              if (rotateRef.current?.id !== event.pointerId) return;
+              rotateRef.current = null;
+              setSteering(false);
             }}
           >
             <div className="mobile-radial-wheel__rings" aria-hidden><i/><b/><em/></div>
             {ids.map((id, index) => {
-              const inner = index >= outerCount;
-              const ringIndex = inner ? index - outerCount : index;
-              const count = inner ? innerCount : outerCount;
-              const angle = ringIndex * 360 / Math.max(1, count);
-              const radius = inner ? 29 : 43;
+              const slot = slotsRef.current[index];
+              if (!slot) return null;
+              const angle = slot.angleDeg;
+              const radius = slot.radius;
               return (
                 <div
                   key={id}
@@ -1142,7 +1249,7 @@ function MobileRadialWheel({
                   style={{
                     ["--slot-angle" as string]: `${angle}deg`,
                     ["--slot-counter-angle" as string]: `${-angle}deg`,
-                    ["--slot-radius" as string]: `${radius / 100}`,
+                    ["--slot-radius" as string]: `${radius}`,
                     ["--slot-delay" as string]: `${-(index % 9) * 137}ms`,
                   }}
                   onClick={() => { onSelect(id); dismiss(); }}
@@ -1790,6 +1897,20 @@ export function HotTriggers({
     home: onHome && (
       <HotBtn key="home" delay={0} label="Back to start" onClick={onHome} tint="220 12% 80%">
         <HomeBeaconIcon className="h-4 w-4" />
+      </HotBtn>
+    ),
+    // The bridge between the two wheels. Everything that used to sit in the
+    // menu rack below the fold is one tap from here, so a user who found this
+    // wheel never has to discover the two-finger hold on their own.
+    params: (
+      <HotBtn
+        key="params"
+        delay={0}
+        label="Parameters — layers, FX, tune, audio"
+        onClick={() => window.dispatchEvent(new Event("mosh:toggle-param-wheel"))}
+        tint="190 90% 60%"
+      >
+        <SlidersHorizontal className="h-4 w-4" strokeWidth={1.5} />
       </HotBtn>
     ),
     "source-upload": (
