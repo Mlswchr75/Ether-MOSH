@@ -279,3 +279,158 @@
   box-shadow: 0 0 0 2px hsl(var(--accent) / .55), 0 0 24px hsl(var(--accent) / .6);
 }
 .param-wheel__slot[data-engaged] .param-wheel__caption { color: hsl(var(--accent)); }
+
+
+/* ── the effect browser ─────────────────────────────────────────────────
+ *
+ * Fourteen slots on the outer ring instead of eight. The buttons shrink a
+ * little to make room, but never below the 44px floor: on a 328px wheel the
+ * outer ring's neighbours still sit ~64px apart centre-to-centre, which
+ * clears a 48px target with room to spare.
+ */
+.param-wheel-layer[data-layout="browser"] .param-wheel__slot[data-ring="0"] .param-wheel__button {
+  inline-size: clamp(44px, calc(var(--param-wheel-size) * .116), 56px);
+  block-size: clamp(44px, calc(var(--param-wheel-size) * .116), 56px);
+  padding: 0;
+  overflow: hidden;
+}
+
+/* The inner ring holds the selected effect's own controls — few, so they get
+ * the roomier target. */
+.param-wheel-layer[data-layout="browser"] .param-wheel__slot[data-ring="1"] .param-wheel__button {
+  inline-size: clamp(48px, calc(var(--param-wheel-size) * .132), 60px);
+  block-size: clamp(48px, calc(var(--param-wheel-size) * .132), 60px);
+  border-color: hsl(var(--primary) / .5);
+}
+
+/* A 14-slot ring has no room for a caption under every entry. The name lives
+ * in the hub, where it is legible, and comes back on the one you are pointing
+ * at. */
+.param-wheel-layer[data-layout="browser"] .param-wheel__slot[data-ring="0"] .param-wheel__caption {
+  opacity: 0;
+  transition: opacity 80ms linear;
+}
+.param-wheel-layer[data-layout="browser"] .param-wheel__slot[data-ring="0"]:is([data-highlighted], [data-active]) .param-wheel__caption {
+  opacity: 1;
+}
+
+/* The generative per-effect mark, from the same source as the /effects
+ * registry — so an effect looks like itself in both places. */
+.param-wheel__specimen {
+  position: absolute;
+  inset: 0;
+  inline-size: 100%;
+  block-size: 100%;
+  border-radius: inherit;
+  opacity: .82;
+  pointer-events: none;
+}
+.param-wheel__slot:is([data-highlighted], [data-active]) .param-wheel__specimen { opacity: 1; }
+.param-wheel-layer[data-layout="browser"] .param-wheel__slot[data-ring="0"] .param-wheel__glyph {
+  position: absolute;
+  inset: 0;
+}
+
+/* ── the amount dot ─────────────────────────────────────────────────────
+ *
+ * Rides on an arc anchored at its own slot: its angle from the slot *is* the
+ * value. Sized past the 44px floor via a transparent hit area, because the
+ * visible dot has to stay small enough not to swallow the ring it sits on.
+ */
+.param-wheel__dot {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  inline-size: 44px;
+  block-size: 44px;
+  translate: -50% -50%;
+  /* Rotate out to the value's angle, push out past the slot, then rotate back
+   * so the dot itself never appears to spin. */
+  transform:
+    rotate(var(--dot-angle))
+    translateY(calc(var(--param-wheel-size) * var(--dot-reach) * -1))
+    rotate(calc(var(--dot-angle) * -1));
+  transform-origin: center;
+  border: 0;
+  background: none;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  touch-action: none;
+  cursor: grab;
+  z-index: 3;
+}
+.param-wheel__dot::after {
+  content: "";
+  inline-size: 13px;
+  block-size: 13px;
+  border-radius: 999px;
+  background: hsl(var(--accent));
+  border: 2px solid hsl(var(--bg-base));
+  box-shadow: 0 0 10px hsl(var(--accent) / .9);
+  transition: scale 70ms linear;
+}
+.param-wheel__dot[data-dragging] { cursor: grabbing; }
+.param-wheel__dot[data-dragging]::after { scale: 1.35; }
+
+.param-wheel__dot-track,
+.param-wheel__dot-arc { fill: none; stroke-linecap: round; }
+.param-wheel__dot-track { stroke: hsl(var(--text-body) / .18); stroke-width: 1.6; }
+.param-wheel__dot-arc {
+  stroke: hsl(var(--accent));
+  stroke-width: 2.2;
+  filter: drop-shadow(0 0 3px hsl(var(--accent) / .8));
+}
+
+/* While a dot is being dragged its arc widens to a comfortable sweep, which
+ * means it crosses its neighbours. Dimming them turns that from clutter into
+ * a read-out — and it is the same reason the whole surface steps back while
+ * scrubbing: the frame underneath is the thing being changed. */
+.param-wheel-layer[data-dot-dragging] .param-wheel__slot:not([data-highlighted]):not([data-engaged]) {
+  opacity: .25;
+}
+.param-wheel-layer[data-dot-dragging] .param-wheel { opacity: .62; }
+
+/* ── the hub cluster ────────────────────────────────────────────────────*/
+.param-wheel-layer[data-layout="browser"] .param-wheel__hub { inline-size: 34%; }
+
+.param-wheel__hub-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.param-wheel__hub-button {
+  display: grid;
+  place-items: center;
+  min-inline-size: 44px;
+  min-block-size: 30px;
+  padding: 0 8px;
+  border-radius: 7px;
+  border: 1px solid hsl(var(--border-default));
+  background: hsl(var(--surface-2) / .8);
+  color: hsl(var(--text-primary));
+  font: 700 14px/1 ui-monospace, monospace;
+  cursor: pointer;
+  transition: border-color 70ms linear, color 70ms linear, box-shadow 70ms linear;
+}
+.param-wheel__hub-button:hover { border-color: hsl(var(--text-secondary)); }
+.param-wheel__hub-button[data-role="commit"] { color: hsl(var(--text-tertiary)); }
+/* The commit button lights up only when there is something to keep, so
+ * "is anything actually selected?" is answerable without reading a word. */
+.param-wheel__hub-button[data-role="commit"][data-ready] {
+  color: hsl(var(--bg-base));
+  border-color: hsl(var(--accent));
+  background: hsl(var(--accent));
+  box-shadow: 0 0 16px hsl(var(--accent) / .55);
+}
+.param-wheel__hub-button:disabled { cursor: not-allowed; opacity: .45; }
+
+@media (prefers-reduced-motion: reduce) {
+  .param-wheel__dot::after,
+  .param-wheel__hub-button,
+  .param-wheel__specimen { transition-duration: 1ms; }
+  .param-wheel__dot[data-dragging]::after { scale: 1; }
+}

@@ -26,6 +26,10 @@ export type WheelItem = {
   label: string;
   /** Two or three characters shown in the slot itself; the full label lives in the hub. */
   glyph?: ReactNode;
+  /** Fires on tap in a browser ring — auditions without keeping. */
+  preview?: () => void;
+  /** Fires on long-press — audition and keep in one gesture. */
+  commit?: () => void;
   /** Secondary line under the slot — usually the live value. */
   detail?: string;
   /** Drills into another node. */
@@ -40,6 +44,21 @@ export type WheelItem = {
   disabled?: boolean;
 };
 
+/**
+ * How a node fills the wheel.
+ *
+ * `ring` is the default: one ring of at most eight, paging when it overflows.
+ *
+ * `browser` is for a list far longer than anything it contains — the effect
+ * catalogue, which is 117 entries deep while any single effect has at most a
+ * handful of parameters. It puts the list on the *outermost* ring, where the
+ * circumference is greatest and roughly twice as many fit per page, and puts
+ * the selected entry's own parameters on a ring *inward* of it. Branching
+ * outward would waste the big ring on three items and strand the long list on
+ * the small one; this way each ring gets the population it suits.
+ */
+export type WheelLayout = "ring" | "browser";
+
 export type WheelNode = {
   id: string;
   title: string;
@@ -47,17 +66,30 @@ export type WheelNode = {
   /** Hub tap goes here. Absent on the root, where the hub closes the wheel. */
   parent?: string;
   items: WheelItem[];
+  layout?: WheelLayout;
+  /** `browser` only: the selected entry's own controls, drawn on the inner ring. */
+  inner?: WheelItem[];
+  /** `browser` only: what the commit button in the hub does, when there is something to commit. */
+  onCommit?: () => void;
+  /** `browser` only: label for the commit button — names what would be kept. */
+  commitLabel?: string;
 };
 
 export type WheelTree = Record<string, WheelNode>;
 
-/** Slots one page can hold, leaving room for the paging chevrons when needed. */
+/** Slots one ring-layout page can hold, chevrons included. */
 export const PAGE_SIZE = 8;
-const PAGE_SIZE_WITH_CHEVRONS = PAGE_SIZE - 2;
+/**
+ * Slots one browser page can hold. The outermost ring has the most
+ * circumference to spend, so it carries roughly twice a normal ring — 12
+ * entries plus two chevrons — while still leaving every neighbour further
+ * apart than a 44px touch target on a phone.
+ */
+export const BROWSER_PAGE_SIZE = 14;
 
-export function pageCount(items: number): number {
-  if (items <= PAGE_SIZE) return 1;
-  return Math.ceil(items / PAGE_SIZE_WITH_CHEVRONS);
+export function pageCount(items: number, size = PAGE_SIZE): number {
+  if (items <= size) return 1;
+  return Math.ceil(items / (size - 2));
 }
 
 /**
@@ -66,18 +98,19 @@ export function pageCount(items: number): number {
  * pie-menu breadth past ~8 items measurably costs accuracy, while extra depth
  * costs only reaction time (docs/MOBILE_UX_AUDIT.md §8).
  */
-export function pageSlice(items: WheelItem[], page: number): {
+export function pageSlice(items: WheelItem[], page: number, size = PAGE_SIZE): {
   items: WheelItem[];
   pages: number;
   page: number;
   paged: boolean;
 } {
-  const pages = pageCount(items.length);
+  const pages = pageCount(items.length, size);
   if (pages === 1) return { items, pages: 1, page: 0, paged: false };
+  const perPage = size - 2;
   const clamped = ((page % pages) + pages) % pages;
-  const start = clamped * PAGE_SIZE_WITH_CHEVRONS;
+  const start = clamped * perPage;
   return {
-    items: items.slice(start, start + PAGE_SIZE_WITH_CHEVRONS),
+    items: items.slice(start, start + perPage),
     pages,
     page: clamped,
     paged: true,

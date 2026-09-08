@@ -1,5 +1,5 @@
 import { act, cleanup, render, screen, within } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ParamWheel } from "./ParamWheel";
 import { useStore } from "@/store/useStore";
 import { EFFECTS_BY_ID } from "@/engine/effects";
@@ -12,7 +12,14 @@ function summon(x = 200, y = 500) {
 }
 
 function hub() {
-  return document.querySelector<HTMLButtonElement>(".param-wheel__hub")!;
+  return document.querySelector<HTMLElement>(".param-wheel__hub")!;
+}
+/** The hub is a cluster now: a read-out plus real buttons. */
+function hubBack() {
+  return document.querySelector<HTMLButtonElement>('.param-wheel__hub-button[data-role="back"]')!;
+}
+function hubCommit() {
+  return document.querySelector<HTMLButtonElement>('.param-wheel__hub-button[data-role="commit"]');
 }
 function slotLabels() {
   return [...document.querySelectorAll<HTMLElement>(".param-wheel__caption")].map(n => n.textContent);
@@ -30,7 +37,13 @@ function tapSlot(label: string) {
 }
 
 beforeEach(() => {
-  useStore.setState({ layers: [], selectedLayerId: null, paramWheelOpen: false });
+  // Every field these tests assert on. Leaving `past` and `previewLayerId`
+  // out let one test's undo history and one test's uncommitted audition leak
+  // into the next.
+  useStore.setState({
+    layers: [], past: [], future: [],
+    selectedLayerId: null, previewLayerId: null, paramWheelOpen: false,
+  });
 });
 afterEach(() => {
   cleanup();
@@ -49,7 +62,7 @@ describe("ParamWheel", () => {
     render(<ParamWheel />);
     summon();
     expect(useStore.getState().paramWheelOpen).toBe(true);
-    act(() => { hub().click(); });
+    act(() => { hubBack().click(); });
     expect(useStore.getState().paramWheelOpen).toBe(false);
   });
 
@@ -80,15 +93,25 @@ describe("ParamWheel", () => {
     expect(closed).toBe(true);
   });
 
-  it("never draws more slots than one ring's breadth budget allows", () => {
+  it("keeps an ordinary ring inside its breadth budget", () => {
     useStore.getState().addLayer("pixelSort");
     render(<ParamWheel />);
     summon();
-    // The effect catalogue is the worst case: ~30 effects in one category.
+    expect(screen.getAllByRole("menuitem").length).toBeLessThanOrEqual(8);
+    tapSlot("Tune");
+    expect(screen.getAllByRole("menuitem").length).toBeLessThanOrEqual(8);
+  });
+
+  it("gives the effect catalogue the outer ring, at roughly twice the density", () => {
+    render(<ParamWheel />);
+    summon();
     tapSlot("Add FX");
     tapSlot("Data Corruption");
-    const slots = screen.getAllByRole("menuitem");
-    expect(slots.length).toBeLessThanOrEqual(8);
+    const outer = document.querySelectorAll('.param-wheel__slot[data-ring="0"]');
+    // The outermost ring has the circumference to carry twice an ordinary
+    // ring: 12 entries plus two chevrons.
+    expect(outer.length).toBeGreaterThan(8);
+    expect(outer.length).toBeLessThanOrEqual(14);
     // ...and it pages rather than truncating.
     expect(document.querySelector(".param-wheel__page")?.textContent).toMatch(/1 \/ \d+/);
   });
@@ -99,29 +122,81 @@ describe("ParamWheel", () => {
     summon();
     expect(hub().textContent).toContain("PARAMS");
     tapSlot("Layers");
-    expect(hub().getAttribute("aria-label")).toMatch(/^Back to/);
-    act(() => { hub().click(); });
+    expect(hubBack().getAttribute("aria-label")).toMatch(/^Back to/);
+    act(() => { hubBack().click(); });
     expect(hub().textContent).toContain("PARAMS");
     // At the root the hub closes instead of going up.
-    act(() => { hub().click(); });
+    act(() => { hubBack().click(); });
     expect(useStore.getState().paramWheelOpen).toBe(false);
   });
 
-  it("reaches the selected layer's real parameters, and adding a layer works", () => {
+  it("auditions an effect on tap without keeping it", () => {
     render(<ParamWheel />);
     summon();
     tapSlot("Add FX");
     tapSlot("Data Corruption");
     tapSlot("Pixel Sort");
-    const layers = useStore.getState().layers;
-    expect(layers).toHaveLength(1);
-    expect(layers[0].effectId).toBe("pixelSort");
 
-    act(() => { hub().click(); });   // back to categories
-    act(() => { hub().click(); });   // back to root
+    // It is on the frame...
+    const state = useStore.getState();
+    expect(state.layers).toHaveLength(1);
+    expect(state.layers[0].effectId).toBe("pixelSort");
+    // ...but it is only being tried on.
+    expect(state.previewLayerId).toBe(state.layers[0].id);
+    expect(state.past).toHaveLength(0);
+  });
+
+  it("keeps it when the hub's commit button is tapped", () => {
+    render(<ParamWheel />);
+    summon();
+    tapSlot("Add FX");
+    tapSlot("Data Corruption");
+    // Nothing to keep yet, so the button is there but inert.
+    expect(hubCommit()).toBeTruthy();
+    expect(hubCommit()!.disabled).toBe(true);
+
+    tapSlot("Pixel Sort");
+    expect(hubCommit()!.disabled).toBe(false);
+    act(() => { hubCommit()!.click(); });
+
+    const state = useStore.getState();
+    expect(state.previewLayerId).toBeNull();
+    expect(state.layers).toHaveLength(1);
+    expect(state.layers[0].effectId).toBe("pixelSort");
+  });
+
+  it("drops an audition the user walks away from", () => {
+    render(<ParamWheel />);
+    summon();
+    tapSlot("Add FX");
+    tapSlot("Data Corruption");
+    tapSlot("Pixel Sort");
+    expect(useStore.getState().layers).toHaveLength(1);
+    act(() => { hubBack().click(); });
+    expect(useStore.getState().layers).toHaveLength(0);
+    expect(useStore.getState().previewLayerId).toBeNull();
+  });
+
+  it("puts the auditioned effect's own controls on a ring further in", () => {
+    render(<ParamWheel />);
+    summon();
+    tapSlot("Add FX");
+    tapSlot("Data Corruption");
+    tapSlot("Pixel Sort");
+    const inner = [...document.querySelectorAll('.param-wheel__slot[data-ring="1"]')]
+      .map(node => node.querySelector("[role='menuitem']")?.getAttribute("aria-label")?.split(" — ")[0]);
+    // Level, plus every parameter the effect declares — reachable without
+    // leaving the catalogue.
+    expect(inner).toContain("Level");
+    for (const param of EFFECTS_BY_ID.pixelSort.params) expect(inner).toContain(param.label);
+  });
+
+  it("reaches the selected layer's real parameters from Tune", () => {
+    useStore.getState().addLayer("pixelSort");
+    render(<ParamWheel />);
+    summon();
     tapSlot("Tune");
-    const params = EFFECTS_BY_ID.pixelSort.params.map(p => p.label);
-    for (const label of params) expect(slotNamed(label)).toBeTruthy();
+    for (const param of EFFECTS_BY_ID.pixelSort.params) expect(slotNamed(param.label)).toBeTruthy();
   });
 
   it("engages a parameter on tap and shows its live value in the hub", () => {
@@ -252,7 +327,7 @@ describe("ParamWheel — keyboard", () => {
     render(<ParamWheel />);
     summon();
     tapSlot("Tune");
-    expect(hub().getAttribute("aria-label")).toMatch(/^Back to/);
+    expect(hubBack().getAttribute("aria-label")).toMatch(/^Back to/);
     key("Backspace");
     expect(hub().textContent).toContain("PARAMS");
   });
@@ -304,7 +379,7 @@ describe("ParamWheel — focus is not engagement", () => {
     tapSlot("Tune");
     tapSlot("Amount");
     expect(document.querySelector(".param-wheel__slot[data-engaged]")).not.toBeNull();
-    act(() => { hub().click(); });
+    act(() => { hubBack().click(); });
     expect(document.querySelector(".param-wheel__slot[data-engaged]")).toBeNull();
   });
 
@@ -314,12 +389,134 @@ describe("ParamWheel — focus is not engagement", () => {
     summon();
     tapSlot("Tune");
     tapSlot("Amount");
-    act(() => { hub().click(); });      // back to root
+    act(() => { hubBack().click(); });      // back to root
     tapSlot("Audio Map");
     // The branch knows the parameter even though the rim was unwired.
     expect(document.querySelector("[role='menu']")!.getAttribute("aria-label")).toContain("Amount");
     tapSlot("Bass");
     const map = useStore.getState().layers[0].audioMaps?.amount;
     expect(map?.source).toBe("bass");
+  });
+});
+
+describe("ParamWheel — the amount dot", () => {
+  const dot = () => document.querySelector<HTMLElement>(".param-wheel__dot");
+
+  /** Pointer events jsdom doesn't construct with coordinates on its own. */
+  function pointer(type: string, x: number, y: number, id = 1) {
+    const event = new MouseEvent(type, { bubbles: true, clientX: x, clientY: y });
+    Object.defineProperties(event, {
+      pointerId: { value: id },
+      pointerType: { value: "touch" },
+    });
+    return event;
+  }
+
+  it("shows exactly one dot — on the slot under attention, never a ring of them", () => {
+    useStore.getState().addLayer("pixelSort");
+    render(<ParamWheel />);
+    summon();
+    tapSlot("Tune");
+    expect(dot()).toBeNull();          // nothing under attention yet
+    act(() => { slotNamed("Amount")!.focus(); });
+    expect(document.querySelectorAll(".param-wheel__dot")).toHaveLength(1);
+  });
+
+  it("carries the value as an accessible slider, so it is not mouse-only", () => {
+    useStore.getState().addLayer("pixelSort");
+    useStore.setState(state => ({
+      layers: state.layers.map(l => ({ ...l, params: { ...l.params, amount: 0.25 } })),
+    }));
+    render(<ParamWheel />);
+    summon();
+    tapSlot("Tune");
+    act(() => { slotNamed("Amount")!.focus(); });
+    const control = dot()!;
+    expect(control.getAttribute("role")).toBe("slider");
+    expect(control.getAttribute("aria-valuenow")).toBe("25");
+    expect(control.getAttribute("aria-label")).toContain("Amount");
+  });
+
+  it("sits at an angle that tracks the value — its position is the read-out", () => {
+    useStore.getState().addLayer("pixelSort");
+    render(<ParamWheel />);
+    summon();
+    tapSlot("Tune");
+    act(() => { slotNamed("Amount")!.focus(); });
+    const angleAt = (value: number) => {
+      act(() => {
+        useStore.setState(state => ({
+          layers: state.layers.map(l => ({ ...l, params: { ...l.params, amount: value } })),
+        }));
+      });
+      return dot()!.style.getPropertyValue("--dot-angle");
+    };
+    expect(angleAt(0)).toBe("0deg");
+    const low = parseFloat(angleAt(0.25));
+    const high = parseFloat(angleAt(0.9));
+    expect(high).toBeGreaterThan(low);
+    expect(low).toBeGreaterThan(0);
+  });
+
+  it("dims the rest of the wheel while dragging, so a widened arc reads as a read-out", () => {
+    useStore.getState().addLayer("pixelSort");
+    render(<ParamWheel />);
+    summon();
+    tapSlot("Tune");
+    act(() => { slotNamed("Amount")!.focus(); });
+    const layer = document.querySelector<HTMLElement>(".param-wheel-layer")!;
+    expect(layer.dataset.dotDragging).toBeUndefined();
+    act(() => { dot()!.dispatchEvent(pointer("pointerdown", 300, 300)); });
+    expect(layer.dataset.dotDragging).toBe("true");
+    act(() => { dot()!.dispatchEvent(pointer("pointerup", 300, 300)); });
+    expect(layer.dataset.dotDragging).toBeUndefined();
+  });
+
+  it("engages the slot it belongs to when grabbed", () => {
+    useStore.getState().addLayer("pixelSort");
+    render(<ParamWheel />);
+    summon();
+    tapSlot("Tune");
+    act(() => { slotNamed("Amount")!.focus(); });
+    act(() => { dot()!.dispatchEvent(pointer("pointerdown", 300, 300)); });
+    expect(document.querySelector(".param-wheel__slot[data-engaged]")).not.toBeNull();
+  });
+});
+
+describe("ParamWheel — long-press keeps an effect", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("commits without a trip to the hub", () => {
+    vi.useFakeTimers();
+    render(<ParamWheel />);
+    summon();
+    tapSlot("Add FX");
+    tapSlot("Data Corruption");
+
+    const entry = slotNamed("Pixel Sort")!;
+    act(() => { entry.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true })); });
+    act(() => { vi.advanceTimersByTime(600); });
+
+    const state = useStore.getState();
+    expect(state.layers).toHaveLength(1);
+    expect(state.layers[0].effectId).toBe("pixelSort");
+    expect(state.previewLayerId).toBeNull();   // kept, not still being tried
+  });
+
+  it("a short tap still only auditions", () => {
+    vi.useFakeTimers();
+    render(<ParamWheel />);
+    summon();
+    tapSlot("Add FX");
+    tapSlot("Data Corruption");
+
+    const entry = slotNamed("Pixel Sort")!;
+    act(() => { entry.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true })); });
+    act(() => { vi.advanceTimersByTime(120); });
+    act(() => { entry.dispatchEvent(new MouseEvent("pointerup", { bubbles: true })); });
+    act(() => { entry.click(); });
+    act(() => { vi.advanceTimersByTime(900); });
+
+    expect(useStore.getState().previewLayerId).not.toBeNull();
   });
 });

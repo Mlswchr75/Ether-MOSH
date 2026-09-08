@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { EffectSpecimen } from "@/components/effects/EffectSpecimen";
 import { useStore } from "@/store/useStore";
 import { EFFECTS_BY_ID, PUBLIC_EFFECTS, CATEGORY_LABELS, type EffectCategory } from "@/engine/effects";
 import { BLEND_MODES } from "@/engine/blend";
@@ -46,7 +47,6 @@ export function useParamWheelTree(engagedKey: string | null): WheelTree {
   const layers = useStore(s => s.layers);
   const selectedLayerId = useStore(s => s.selectedLayerId);
   const selectLayer = useStore(s => s.selectLayer);
-  const addLayer = useStore(s => s.addLayer);
   const removeLayer = useStore(s => s.removeLayer);
   const duplicateLayer = useStore(s => s.duplicateLayer);
   const reorderLayer = useStore(s => s.reorderLayer);
@@ -57,6 +57,9 @@ export function useParamWheelTree(engagedKey: string | null): WheelTree {
   const setParam = useStore(s => s.setParam);
   const setModulator = useStore(s => s.setModulator);
   const setAudioMap = useStore(s => s.setAudioMap);
+  const previewLayer = useStore(s => s.previewLayer);
+  const commitPreview = useStore(s => s.commitPreview);
+  const previewLayerId = useStore(s => s.previewLayerId);
 
   const bpm = useStore(s => s.bpm);
   const setBpm = useStore(s => s.setBpm);
@@ -132,17 +135,73 @@ export function useParamWheelTree(engagedKey: string | null): WheelTree {
         detail: String(PUBLIC_EFFECTS.filter(e => e.category === category).length),
       })),
     };
+    // The auditioned (or just-committed) layer is what the browser's inner
+    // ring is about — its parameters are reachable without leaving the list.
+    const auditioned = previewLayerId
+      ? layers.find(l => l.id === previewLayerId) ?? null
+      : layer;
+    const auditionedDef = auditioned ? EFFECTS_BY_ID[auditioned.effectId] : null;
+
+    const innerFor = (target: typeof auditioned, def: typeof auditionedDef): WheelItem[] => {
+      if (!target || !def) return [];
+      return [
+        // Level first: it is the one control every effect has, and it is what
+        // "how much of this" means before you know the effect's own
+        // vocabulary. Named "Level" rather than "Amount" because a great many
+        // effects have their own parameter called Amount, and two neighbours
+        // on the same wheel reading "Amount" is a coin flip.
+        {
+          id: `inner-opacity`, label: "Level", glyph: "LVL",
+          detail: `${Math.round(target.opacity * 100)}%`,
+          scalar: {
+            value: target.opacity, min: 0, max: 1,
+            format: v => `${Math.round(v * 100)}%`,
+            set: v => setOpacity(target.id, v),
+            reset: () => setOpacity(target.id, 1),
+          },
+        },
+        ...def.params.map<WheelItem>(param => {
+          const value = target.params[param.key] ?? param.default;
+          return {
+            id: `inner-${param.key}`,
+            label: param.label,
+            glyph: glyphFor(param.label),
+            detail: value.toFixed(2),
+            scalar: {
+              value, min: param.min, max: param.max, step: param.step,
+              set: v => setParam(target.id, param.key, v),
+              reset: () => setParam(target.id, param.key, param.default),
+            },
+          };
+        }),
+      ];
+    };
+
     for (const category of CATEGORIES) {
       const effects = PUBLIC_EFFECTS.filter(e => e.category === category);
+      const inThisCategory = auditionedDef?.category === category;
       tree[`fx:${category}`] = {
-        id: `fx:${category}`, title: CATEGORY_LABELS[category], parent: "fx",
-        subtitle: "tap to add a layer",
+        id: `fx:${category}`,
+        title: CATEGORY_LABELS[category],
+        parent: "fx",
+        layout: "browser",
+        subtitle: auditioned && inThisCategory
+          ? "hold to keep · or tap ＋"
+          : "tap to try it on",
+        inner: inThisCategory ? innerFor(auditioned, auditionedDef) : [],
+        onCommit: previewLayerId ? commitPreview : undefined,
+        commitLabel: previewLayerId && auditionedDef ? `Keep ${auditionedDef.name}` : undefined,
         items: effects.map<WheelItem>(effect => ({
           id: effect.id,
           label: effect.name,
-          glyph: glyphFor(effect.name),
+          glyph: <EffectSpecimen effect={effect} compact className="param-wheel__specimen" />,
           detail: effect.blurb,
-          action: () => addLayer(effect.id),
+          active: auditioned?.effectId === effect.id,
+          tone: previewLayerId && auditioned?.effectId === effect.id ? "accent" : undefined,
+          // Tap auditions. Long-press keeps. Neither costs undo history until
+          // something is actually kept — see the store's preview actions.
+          preview: () => previewLayer(effect.id),
+          commit: () => { previewLayer(effect.id); commitPreview(); },
         })),
       };
     }
@@ -296,7 +355,9 @@ export function useParamWheelTree(engagedKey: string | null): WheelTree {
   }, [
     layers, selectedLayerId, engagedKey, bpm, beatEnabled, micEnabled, systemAudioEnabled,
     micSensitivity, tileMode,
-    selectLayer, addLayer, removeLayer, duplicateLayer, reorderLayer, toggleHidden, toggleLocked,
+    previewLayerId,
+    selectLayer, removeLayer, duplicateLayer, reorderLayer, toggleHidden, toggleLocked,
+    previewLayer, commitPreview,
     setOpacity, setBlend, setParam, setModulator, setAudioMap, setBpm, setBeatEnabled,
     setMicEnabled, setMicSensitivity, setTileMode,
   ]);

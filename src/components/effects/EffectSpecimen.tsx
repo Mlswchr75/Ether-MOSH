@@ -1,8 +1,21 @@
 import { memo } from "react";
-import type { EffectRegistryEntry } from "@/engine/effectRegistry";
+
+/**
+ * Only what the specimen actually reads. It used to take a whole
+ * `EffectRegistryEntry`, which meant a caller holding a plain `EffectDef` —
+ * the Parameters Wheel's effect browser — could not use it without inventing
+ * a `glsl` string it has no business knowing about. The mark is derived from
+ * the id, the name, the category and the parameter count; nothing else.
+ */
+export type SpecimenSubject = {
+  id: string;
+  name: string;
+  category: string;
+  params: readonly unknown[];
+};
 
 type EffectSpecimenProps = {
-  effect: EffectRegistryEntry;
+  effect: SpecimenSubject;
   large?: boolean;
   /**
    * Thins every family down for a ~48px round slot — the Parameters Wheel's
@@ -48,7 +61,7 @@ function hashText(value: string): number {
   return hash >>> 0;
 }
 
-function chooseFamily(effect: EffectRegistryEntry): Family {
+function chooseFamily(effect: SpecimenSubject): Family {
   const key = `${effect.id} ${effect.name}`.toLowerCase();
   if (/rgb|chroma|hue|rainbow|thermal|duotone|palette|solar|prism|anaglyph|infrared|holo|oil/.test(key)) return "spectrum";
   if (/liquid|melt|ripple|twirl|warp|flow|caustic|water|acrylic|turbulence|smear/.test(key)) return "fluid";
@@ -60,7 +73,7 @@ function chooseFamily(effect: EffectRegistryEntry): Family {
   return "field";
 }
 
-function getConfig(effect: EffectRegistryEntry): SpecimenConfig {
+function getConfig(effect: SpecimenSubject): SpecimenConfig {
   const cached = CONFIG_CACHE.get(effect.id);
   if (cached) return cached;
   const seed = hashText(`${effect.id}:${effect.category}:${effect.params.length}`);

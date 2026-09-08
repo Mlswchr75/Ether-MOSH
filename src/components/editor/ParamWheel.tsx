@@ -3,11 +3,11 @@ import { useStore } from "@/store/useStore";
 import { haptic, hapticsAvailable } from "@/hooks/useHaptics";
 import {
   angleDelta, hitSlot, HUB_RADIUS, pointerAngle, precisionForRadius, slotOffset,
-  unrotatePoint, wheelSlots,
+  slotsForCounts, unrotatePoint, wheelSlots, type WheelSlot,
 } from "@/lib/wheelGeometry";
 import {
-  breadcrumb, clampAnchor, formatScalar, pageSlice, scalarFraction, scalarFromFraction,
-  wheelSizeFor, type WheelAnchor, type WheelItem,
+  BROWSER_PAGE_SIZE, breadcrumb, clampAnchor, formatScalar, pageSlice, scalarFraction,
+  scalarFromFraction, wheelSizeFor, type WheelAnchor, type WheelItem,
 } from "./paramWheelModel";
 import { useParamWheelTree } from "./useParamWheelTree";
 import "./paramWheel.css";
@@ -22,6 +22,28 @@ const ROTATION_KEY = "cathedral_param_wheel_rotation_v1";
 const RIM_RADIUS = 0.52;
 /** Degrees of rim sweep that cover a scalar's full range at coarse precision. */
 const SWEEP_DEGREES = 240;
+
+/**
+ * The browser layout's two rings. The outer one carries the catalogue, where
+ * the circumference is greatest; the inner one carries the selected entry's
+ * own controls, which are few. Both stay clear of the hub, which grows in
+ * this layout to hold the back and commit buttons.
+ */
+const BROWSER_RADII = [0.435, 0.285];
+
+/**
+ * How far a dot's arc sweeps for a value's full range: tight when it is just
+ * a read-out sitting beside its slot, wide while a finger is actually
+ * dragging it. Resting arcs have to fit between neighbours on a 14-slot ring
+ * (~26 degrees apart); a dragging arc only has to be comfortable to sweep,
+ * and everything else is dimmed under it anyway.
+ */
+const DOT_ARC_IDLE = 24;
+const DOT_ARC_DRAG = 72;
+/** Radial offset of a dot from the slot it belongs to, in normalized space. */
+const DOT_OFFSET = 0.055;
+/** Long-press on a browser entry keeps it, without a trip to the hub. */
+const COMMIT_HOLD_MS = 500;
 
 export function ParamWheel() {
   const [open, setOpen] = useState(false);
@@ -51,10 +73,14 @@ export function ParamWheel() {
 
   const tree = useParamWheelTree(engagedKey);
   const node = tree[nodeId] ?? tree.root;
-  const view = useMemo(() => pageSlice(node.items, page), [node.items, page]);
+  const browsing = node.layout === "browser";
+  const view = useMemo(
+    () => pageSlice(node.items, page, browsing ? BROWSER_PAGE_SIZE : undefined),
+    [node.items, page, browsing],
+  );
 
-  /** Chevrons only exist when a node overflows one ring. */
-  const items = useMemo<WheelItem[]>(() => {
+  /** Chevrons only exist when a node overflows its ring. */
+  const outerItems = useMemo<WheelItem[]>(() => {
     if (!view.paged) return view.items;
     return [
       { id: "__prev", label: "Previous page", glyph: "‹", action: () => setPage(p => p - 1) },
@@ -63,25 +89,56 @@ export function ParamWheel() {
     ];
   }, [view]);
 
+  const innerItems = useMemo<WheelItem[]>(() => (browsing ? node.inner ?? [] : []), [browsing, node.inner]);
+
+  /**
+   * One flat list, outer ring first, so a single index addresses any slot and
+   * the hit-test needs no idea which ring it landed on.
+   */
+  const items = useMemo(() => [...outerItems, ...innerItems], [outerItems, innerItems]);
+
   // Built unrotated, deliberately. The ring's rotation is applied once, in
   // CSS, on the container — baking it in here too would apply it twice, and
   // rebuilding this on every frame of a spin would be wasted work besides.
   // Pointer positions are rotated back before hit-testing instead.
-  const slots = useMemo(() => wheelSlots(items.length), [items.length]);
+  const slots = useMemo<WheelSlot[]>(() => (
+    browsing
+      ? slotsForCounts([outerItems.length, innerItems.length], BROWSER_RADII)
+      : wheelSlots(outerItems.length)
+  ), [browsing, outerItems.length, innerItems.length]);
 
   const engaged = useMemo(() => {
     const found = items.find(item => item.id === engagedId && item.scalar);
     return found?.scalar ? { item: found, scalar: found.scalar } : null;
   }, [items, engagedId]);
 
+  /**
+   * The slot that currently shows a draggable dot: whatever is engaged, else
+   * whatever is highlighted, provided it has a value to drag. Only one at a
+   * time — a dot on every slot would be a ring of confetti, and the user only
+   * ever has one finger's worth of attention anyway.
+   */
+  const dotIndex = useMemo(() => {
+    const id = engagedId ?? highlight;
+    if (!id) return -1;
+    const index = items.findIndex(item => item.id === id);
+    return index >= 0 && items[index].scalar ? index : -1;
+  }, [items, engagedId, highlight]);
+
+  /** An audition the user walked away from is an audition they declined. */
+  const dropAudition = useCallback(() => {
+    if (useStore.getState().previewLayerId) useStore.getState().discardPreview();
+  }, []);
+
   const close = useCallback(() => {
+    dropAudition();
     setOpen(false);
     setArmed(false);
     setScrubbing(false);
     setHighlight(null);
     setEngagedId(null);
     haptic("close");
-  }, []);
+  }, [dropAudition]);
 
   const goTo = useCallback((next: string) => {
     setNodeId(next);
@@ -96,10 +153,11 @@ export function ParamWheel() {
   }, []);
 
   const goBack = useCallback(() => {
+    dropAudition();
     const parent = tree[nodeId]?.parent;
     if (parent) goTo(parent);
     else close();
-  }, [tree, nodeId, goTo, close]);
+  }, [tree, nodeId, goTo, close, dropAudition]);
 
   // ── opening ────────────────────────────────────────────────────────────
   const openAt = useCallback((x: number, y: number) => {
@@ -168,6 +226,15 @@ export function ParamWheel() {
   const activate = useCallback((item: WheelItem) => {
     if (item.disabled) { haptic("reject"); return; }
     if (item.branch) { goTo(item.branch); return; }
+    // A browser entry auditions on tap: it lands on the frame immediately,
+    // and stays only if it is committed. Nothing here is a decision yet.
+    if (item.preview) {
+      item.preview();
+      setHighlight(item.id);
+      setEngagedId(null);
+      haptic("select");
+      return;
+    }
     if (item.action) {
       item.action();
       haptic("commit");
@@ -183,6 +250,13 @@ export function ParamWheel() {
       haptic("select");
     }
   }, [goTo, nodeId]);
+
+  /** The hub's ＋ button, and the long-press on an entry, both land here. */
+  const commitAudition = useCallback(() => {
+    if (!node.onCommit) { haptic("reject"); return; }
+    node.onCommit();
+    haptic("commit");
+  }, [node]);
 
   // Keyboard steering. Tab already reaches every slot, but a ring is a
   // circle, not a list: left/right walk around it and wrap, up/down step in
@@ -379,19 +453,28 @@ export function ParamWheel() {
     });
   };
 
-  // ── slot long-press: the secondary action (reset / delete) ─────────────
+  // ── slot long-press ────────────────────────────────────────────────────
+  //
+  // Two different secondary actions, decided by what the slot is. On a
+  // browser entry it *keeps* the effect — audition and decide in one gesture,
+  // for someone who already knows what they want and doesn't need the trip to
+  // the hub. On a value it resets to the default.
   const holdRef = useRef<{ id: string; timer: number; fired: boolean } | null>(null);
   const startSlotHold = (item: WheelItem) => {
-    if (!item.scalar?.reset) return;
+    const hold = item.commit
+      ? () => { item.commit?.(); setHighlight(item.id); haptic("commit"); }
+      : item.scalar?.reset
+        ? () => { item.scalar?.reset?.(); haptic("limit"); }
+        : null;
+    if (!hold) return;
     if (holdRef.current) window.clearTimeout(holdRef.current.timer);
     holdRef.current = {
       id: item.id, fired: false,
       timer: window.setTimeout(() => {
         if (!holdRef.current) return;
         holdRef.current.fired = true;
-        item.scalar?.reset?.();
-        haptic("limit");
-      }, 480),
+        hold();
+      }, item.commit ? COMMIT_HOLD_MS : 480),
     };
   };
   const endSlotHold = () => {
@@ -399,6 +482,56 @@ export function ParamWheel() {
   };
   const slotHoldFired = (id: string) => holdRef.current?.id === id && holdRef.current.fired;
   useEffect(() => () => { if (holdRef.current) window.clearTimeout(holdRef.current.timer); }, []);
+
+  // ── the dot: drag it round to draw or erase the amount ─────────────────
+  //
+  // The dot rides on a short arc anchored at its own slot, so "how much of
+  // this" is readable without engaging anything, and settable without
+  // travelling to the rim. Dragging widens the arc from a tidy resting span
+  // to a comfortable sweep, and dims everything else so the widened arc
+  // crossing its neighbours reads as a read-out rather than as clutter.
+  const [dotDragging, setDotDragging] = useState(false);
+  const dotDragRef = useRef<{ pointerId: number; angle: number; fraction: number } | null>(null);
+
+  const dotSlot = dotIndex >= 0 ? slots[dotIndex] : null;
+  const dotItem = dotIndex >= 0 ? items[dotIndex] : null;
+  const dotFraction = dotItem?.scalar ? scalarFraction(dotItem.scalar) : 0;
+  const dotSpan = dotDragging ? DOT_ARC_DRAG : DOT_ARC_IDLE;
+
+  const onDotPointerDown = (event: React.PointerEvent) => {
+    if (!dotItem?.scalar) return;
+    event.stopPropagation();
+    event.preventDefault();
+    const { angle } = localPoint(event.clientX, event.clientY);
+    dotDragRef.current = { pointerId: event.pointerId, angle, fraction: scalarFraction(dotItem.scalar) };
+    (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
+    setDotDragging(true);
+    setScrubbing(true);
+    setEngagedId(dotItem.id);
+    haptic("select");
+  };
+
+  const onDotPointerMove = (event: React.PointerEvent) => {
+    const drag = dotDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId || !dotItem?.scalar) return;
+    event.stopPropagation();
+    const { angle, radius } = localPoint(event.clientX, event.clientY);
+    const delta = angleDelta(drag.angle, angle);
+    drag.angle = angle;
+    const step = (delta / DOT_ARC_DRAG) * precisionForRadius(radius);
+    const next = Math.min(1, Math.max(0, drag.fraction + step));
+    if ((next === 0 || next === 1) && next !== drag.fraction) haptic("limit");
+    drag.fraction = next;
+    queueScrub(dotItem.scalar, next);
+  };
+
+  const endDotDrag = (event: React.PointerEvent) => {
+    const drag = dotDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    dotDragRef.current = null;
+    setDotDragging(false);
+    setScrubbing(false);
+  };
 
   const trail = useMemo(() => breadcrumb(tree, nodeId), [tree, nodeId]);
   const hubValue = engaged ? formatScalar(engaged.scalar) : null;
@@ -416,6 +549,8 @@ export function ParamWheel() {
       className="param-wheel-layer"
       data-phase={open ? "open" : "armed"}
       data-scrubbing={scrubbing || undefined}
+      data-dot-dragging={dotDragging || undefined}
+      data-layout={node.layout ?? "ring"}
       data-silent={hapticsAvailable() ? undefined : "true"}
     >
       <button
@@ -444,9 +579,11 @@ export function ParamWheel() {
         onPointerCancel={endSurfaceDrag}
       >
         <WheelDial
-          fraction={engaged ? scalarFraction(engaged.scalar) : null}
+          fraction={engaged && !dotSlot ? scalarFraction(engaged.scalar) : null}
           pages={view.pages}
           page={view.page}
+          rings={browsing ? BROWSER_RADII : null}
+          dot={dotSlot ? { slot: dotSlot, fraction: dotFraction, span: dotSpan } : null}
         />
 
         {items.map((item, index) => {
@@ -464,6 +601,7 @@ export function ParamWheel() {
               data-active={item.active || undefined}
               data-tone={item.tone}
               data-disabled={item.disabled || undefined}
+              data-ring={slot.ring}
               style={{
                 ["--slot-x" as string]: String(offset.x),
                 ["--slot-y" as string]: String(offset.y),
@@ -498,6 +636,28 @@ export function ParamWheel() {
                 )}
               </button>
               <span className="param-wheel__caption" aria-hidden>{item.label}</span>
+              {dotIndex === index && item.scalar && (
+                <button
+                  type="button"
+                  className="param-wheel__dot"
+                  data-dragging={dotDragging || undefined}
+                  aria-label={`${item.label} amount — drag around the wheel to set`}
+                  aria-valuenow={Math.round(dotFraction * 100)}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  role="slider"
+                  tabIndex={-1}
+                  style={{
+                    ["--dot-angle" as string]: `${dotFraction * dotSpan}deg`,
+                    ["--dot-reach" as string]: String(DOT_OFFSET),
+                  }}
+                  onPointerDown={onDotPointerDown}
+                  onPointerMove={onDotPointerMove}
+                  onPointerUp={endDotDrag}
+                  onPointerCancel={endDotDrag}
+                  onClick={(event) => event.stopPropagation()}
+                />
+              )}
             </div>
           );
         })}
@@ -506,43 +666,88 @@ export function ParamWheel() {
           <p className="param-wheel__empty">{node.subtitle ?? "Nothing here yet"}</p>
         )}
 
-        <button
-          type="button"
-          data-wheel-hub
-          className="param-wheel__hub"
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={goBack}
-          aria-label={node.parent ? `Back to ${tree[node.parent]?.title ?? "menu"}` : "Close parameter wheel"}
-        >
+        {/*
+          The hub is a cluster, not a button. The read-out — where you are,
+          what is under your finger, what it is set to — sits above a row of
+          real controls: BACK, which always steps out one level and is the one
+          thing that must never be a guess, and ＋, which keeps whatever is
+          being auditioned. Making back an explicit target matters more the
+          deeper the tree goes; making commit explicit is what lets every tap
+          in the catalogue be a try rather than a decision.
+        */}
+        <div data-wheel-hub className="param-wheel__hub" onPointerDown={(event) => event.stopPropagation()}>
           <span className="param-wheel__trail" aria-hidden>
             {trail.length > 1 ? trail.slice(0, -1).map(step => step.title).join(" › ") : "PARAMS"}
           </span>
           <span className="param-wheel__title">{hubLabel}</span>
           {hubValue !== null
             ? <span className="param-wheel__value">{hubValue}</span>
-            : <span className="param-wheel__hint">{node.subtitle ?? (node.parent ? "tap centre to go back" : "tap centre to close")}</span>}
+            : <span className="param-wheel__hint">{node.subtitle ?? (node.parent ? "step back with ←" : "tap ✕ to close")}</span>}
           {rimHint && <span className="param-wheel__hint">{rimHint}</span>}
           {view.paged && <span className="param-wheel__page" aria-hidden>{view.page + 1} / {view.pages}</span>}
-        </button>
+          <div className="param-wheel__hub-row">
+            <button
+              type="button"
+              className="param-wheel__hub-button"
+              data-role="back"
+              onClick={goBack}
+              aria-label={node.parent ? `Back to ${tree[node.parent]?.title ?? "menu"}` : "Close parameter wheel"}
+              title={node.parent ? "Back" : "Close"}
+            >
+              {node.parent ? "←" : "✕"}
+            </button>
+            {browsing && (
+              <button
+                type="button"
+                className="param-wheel__hub-button"
+                data-role="commit"
+                data-ready={node.onCommit ? "" : undefined}
+                disabled={!node.onCommit}
+                onClick={commitAudition}
+                aria-label={node.commitLabel ?? "Keep the effect you are trying — pick one first"}
+                title={node.commitLabel ?? "Try an effect first"}
+              >
+                ＋
+              </button>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
 }
 
 /**
- * Rings, tick marks and the rim arc, as one SVG. Drawn rather than composed
- * from bordered elements so the whole dial is a single composited layer over
- * the live canvas — the rim arc updates by stroke-dashoffset, which does not
- * trigger layout.
+ * Rings, tick marks, the rim arc and the dot's arc, as one SVG.
+ *
+ * Drawn rather than composed from bordered elements so the whole dial is a
+ * single composited layer over the live canvas — the arcs update by path
+ * geometry alone, which does not trigger layout.
  */
-function WheelDial({ fraction, pages, page }: { fraction: number | null; pages: number; page: number }) {
+function WheelDial({
+  fraction, pages, page, rings, dot,
+}: {
+  fraction: number | null;
+  pages: number;
+  page: number;
+  /** Explicit ring radii for the browser layout, else the default two. */
+  rings: number[] | null;
+  /** The one slot showing a draggable amount, if any. */
+  dot: { slot: WheelSlot; fraction: number; span: number } | null;
+}) {
   const radius = 46;
   const circumference = 2 * Math.PI * radius;
   const sweep = SWEEP_DEGREES / 360;
+  const guides = rings ?? [0.46, 0.29];
   return (
     <svg className="param-wheel__dial" viewBox="0 0 100 100" aria-hidden focusable="false">
-      <circle className="param-wheel__ring param-wheel__ring--outer" cx="50" cy="50" r={radius} />
-      <circle className="param-wheel__ring param-wheel__ring--inner" cx="50" cy="50" r="29" />
+      {guides.map((r, index) => (
+        <circle
+          key={r}
+          className={`param-wheel__ring param-wheel__ring--${index === 0 ? "outer" : "inner"}`}
+          cx="50" cy="50" r={r * 100}
+        />
+      ))}
       <circle className="param-wheel__ring param-wheel__ring--hub" cx="50" cy="50" r={HUB_RADIUS * 100} />
       {fraction !== null && (
         <>
@@ -557,6 +762,18 @@ function WheelDial({ fraction, pages, page }: { fraction: number | null; pages: 
             cx="50" cy="50" r={radius}
             strokeDasharray={`${circumference * sweep * fraction} ${circumference}`}
             transform={`rotate(${-90 - SWEEP_DEGREES / 2} 50 50)`}
+          />
+        </>
+      )}
+      {dot && (
+        <>
+          <path
+            className="param-wheel__dot-track"
+            d={arcPath(dot.slot.angleDeg, dot.span, dot.slot.radius + DOT_OFFSET)}
+          />
+          <path
+            className="param-wheel__dot-arc"
+            d={arcPath(dot.slot.angleDeg, dot.span * dot.fraction, dot.slot.radius + DOT_OFFSET)}
           />
         </>
       )}
@@ -575,4 +792,27 @@ function WheelDial({ fraction, pages, page }: { fraction: number | null; pages: 
       })}
     </svg>
   );
+}
+
+/**
+ * An arc in the dial's 0-100 viewBox, starting at `fromDeg` clockwise from
+ * twelve o'clock and sweeping `spanDeg`, at `radius` (a fraction of the
+ * wheel's diameter, so ×100 for this viewBox).
+ *
+ * A zero-length sweep still has to draw *something* — that is the state of an
+ * amount turned all the way down, and a path that vanishes would read as
+ * "this control is gone" rather than "this value is zero" — so it collapses
+ * to a hairline stub rather than an empty string.
+ */
+export function arcPath(fromDeg: number, spanDeg: number, radius: number): string {
+  const r = radius * 100;
+  const span = Math.max(0.6, Math.min(359.9, spanDeg));
+  const a0 = (fromDeg - 90) * Math.PI / 180;
+  const a1 = (fromDeg + span - 90) * Math.PI / 180;
+  const x0 = 50 + Math.cos(a0) * r;
+  const y0 = 50 + Math.sin(a0) * r;
+  const x1 = 50 + Math.cos(a1) * r;
+  const y1 = 50 + Math.sin(a1) * r;
+  const largeArc = span > 180 ? 1 : 0;
+  return `M ${x0.toFixed(2)} ${y0.toFixed(2)} A ${r.toFixed(2)} ${r.toFixed(2)} 0 ${largeArc} 1 ${x1.toFixed(2)} ${y1.toFixed(2)}`;
 }

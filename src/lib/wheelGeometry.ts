@@ -224,19 +224,24 @@ export function proportionalRingPlan(total: number, radii: number[]): number[] {
 }
 
 /**
- * Slots for a wheel with a fixed set of ring radii, filled proportionally.
- * Same normalized space, same hit-test, as `wheelSlots`.
+ * Slots for an explicit number of items on each of an explicit set of radii.
+ *
+ * The lowest-level builder: the caller has already decided the shape. The
+ * Parameters Wheel's effect browser needs this — its outer ring holds a page
+ * of the catalogue and its inner ring holds the selected effect's own
+ * parameters, and those two counts are unrelated to each other.
  */
-export function fixedRingSlots(
-  total: number,
+export function slotsForCounts(
+  counts: number[],
   radii: number[],
   rotationDeg = 0,
 ): WheelSlot[] {
-  const counts = proportionalRingPlan(total, radii);
   const slots: WheelSlot[] = [];
   let index = 0;
   counts.forEach((count, ring) => {
     const radius = radii[ring] ?? radii[radii.length - 1];
+    // Stagger every other ring by half a step so an inner slot never hides
+    // directly beneath an outer one along the same radial line.
     const stagger = ring % 2 === 0 ? 0 : 180 / Math.max(1, count);
     for (let i = 0; i < count; i++) {
       slots.push({
@@ -248,6 +253,18 @@ export function fixedRingSlots(
     }
   });
   return slots;
+}
+
+/**
+ * Slots for a wheel with a fixed set of ring radii, filled proportionally.
+ * Same normalized space, same hit-test, as `wheelSlots`.
+ */
+export function fixedRingSlots(
+  total: number,
+  radii: number[],
+  rotationDeg = 0,
+): WheelSlot[] {
+  return slotsForCounts(proportionalRingPlan(total, radii), radii, rotationDeg);
 }
 
 /**
