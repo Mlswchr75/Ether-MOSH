@@ -16,6 +16,7 @@ import { toast } from "sonner";
 import { clampRadialPoint, defaultRadialPoint, nearestRadialId, type RadialLayout } from "@/lib/radialLayout";
 import { fixedRingSlots, hitSlot, ringSpacingPx, unrotatePoint, type WheelSlot } from "@/lib/wheelGeometry";
 import { gestureLock } from "@/engine/canvasGestures";
+import { enhanceHotTriggerRail } from "@/engine/hotTriggerMobile";
 import { validateAudioUpload } from "@/lib/mediaFileSafety";
 import { MoshVortexIcon, LiveFeedIcon, UploadBeamIcon, ForgeFlameIcon, MotifMandalaIcon, HomeBeaconIcon, AccountCrystalIcon } from "./HotTriggerIcons";
 import { AccountSettingsOverlay } from "./AccountSettingsOverlay";
@@ -1642,6 +1643,11 @@ export function HotTriggers({
   // Rail container ref — click delegation for the interact glitch, and the
   // scan target for the ambient random one.
   const railRef = useRef<HTMLDivElement>(null);
+
+  // The legacy rail's up/down arrows. Attached here, when the rail actually
+  // exists, rather than by a document-wide MutationObserver installed on every
+  // page of the site waiting for it to appear.
+  useEffect(() => { enhanceHotTriggerRail(railRef.current); }, [showLegacyLaunchpad]);
   const fireGlitch = (el: Element | null | undefined) => {
     if (!el) return;
     el.setAttribute("data-glitch", "1");

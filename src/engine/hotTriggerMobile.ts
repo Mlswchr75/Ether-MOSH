@@ -1,3 +1,20 @@
+/**
+ * Up/down arrows for the legacy hot-trigger rail — the vertical strip that the
+ * radial wheel replaced, still available behind the bottom rack's "legacy"
+ * toggle.
+ *
+ * This used to run as a page-level `<script type="module">` in index.html,
+ * which meant every route on the site — the landing page, news articles,
+ * pricing — downloaded this module and its stylesheet, and then ran a
+ * `MutationObserver` on the whole document for the life of the page, waiting
+ * for a rail that renders only when a user has deliberately opted back into a
+ * retired UI. The observer's callback fired on every DOM mutation the SPA
+ * made, forever, on behalf of a feature almost nobody turns on.
+ *
+ * So there is no observer and no auto-scan any more: the component that
+ * renders the rail calls `enhanceHotTriggerRail` on it directly, and the whole
+ * module now rides in the editor chunk with the code that uses it.
+ */
 import "./hotTriggerMobile.css";
 
 export function wrapIndex(index: number, length: number): number {
@@ -15,7 +32,8 @@ export function holdStepDelay(heldMs: number): number {
   return 145;
 }
 
-function enhanceRail(rail: HTMLElement) {
+export function enhanceHotTriggerRail(rail: HTMLElement | null | undefined): void {
+  if (!rail) return;
   if (rail.dataset.mobileReelEnhanced === "true") return;
   rail.dataset.mobileReelEnhanced = "true";
 
@@ -85,41 +103,4 @@ function enhanceRail(rail: HTMLElement) {
 
   shell.prepend(makeArrow(-1));
   shell.append(makeArrow(1));
-}
-
-function scan() {
-  document.querySelectorAll<HTMLElement>(".hot-trigger-rail").forEach(enhanceRail);
-}
-
-function subtreeHasRail(node: Node): boolean {
-  if (!(node instanceof Element)) return false;
-  return node.matches(".hot-trigger-rail") || !!node.querySelector(".hot-trigger-rail");
-}
-
-// Loaded via a page-level <script> tag (index.html), not a React import, so
-// there's no component lifecycle to disconnect this on — it's meant to stay
-// active for as long as the page lives. What matters is keeping its
-// per-mutation cost near zero everywhere else: `.hot-trigger-rail` only
-// exists inside the editor, but this observer watches the whole document, so
-// re-running a full querySelectorAll on every childList mutation across the
-// entire SPA (list re-renders, route transitions, canvas-driven DOM churn)
-// added up to real, unbounded cost. Only pay for the full scan when a
-// mutation's added nodes could plausibly contain the rail.
-function onMutations(mutations: MutationRecord[]) {
-  for (const mutation of mutations) {
-    for (const node of mutation.addedNodes) {
-      if (subtreeHasRail(node)) { scan(); return; }
-    }
-  }
-}
-
-if (typeof window !== "undefined") {
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", scan, { once: true });
-  } else {
-    scan();
-  }
-
-  const observer = new MutationObserver(onMutations);
-  observer.observe(document.documentElement, { childList: true, subtree: true });
 }
