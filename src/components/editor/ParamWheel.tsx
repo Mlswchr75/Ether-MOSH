@@ -40,8 +40,13 @@ const BROWSER_RADII = [0.435, 0.285];
  */
 const DOT_ARC_IDLE = 24;
 const DOT_ARC_DRAG = 72;
-/** Radial offset of a dot from the slot it belongs to, in normalized space. */
-const DOT_OFFSET = 0.055;
+/**
+ * Radial offset of a dot from the slot it belongs to, in normalized space.
+ * Far enough that it clears the slot's own button — the widest of which is
+ * ~13% of the diameter, so ~6.6% from centre to edge — and the dot lands
+ * outside it rather than on its rim.
+ */
+const DOT_OFFSET = 0.085;
 /** Long-press on a browser entry keeps it, without a trip to the hub. */
 const COMMIT_HOLD_MS = 500;
 
@@ -540,7 +545,7 @@ export function ParamWheel() {
     : highlight
       ? items.find(item => item.id === highlight)?.label ?? node.title
       : node.title;
-  const rimHint = engaged ? "sweep the rim · hold a slot to reset" : null;
+  const rimHint = engaged ? "drag the dot · or sweep the rim" : null;
 
   if (!open && !armed) return null;
 
@@ -579,7 +584,6 @@ export function ParamWheel() {
         onPointerCancel={endSurfaceDrag}
       >
         <WheelDial
-          fraction={engaged && !dotSlot ? scalarFraction(engaged.scalar) : null}
           pages={view.pages}
           page={view.page}
           rings={browsing ? BROWSER_RADII : null}
@@ -718,16 +722,21 @@ export function ParamWheel() {
 }
 
 /**
- * Rings, tick marks, the rim arc and the dot's arc, as one SVG.
+ * Rings, page pips and the dot's arc, as one SVG.
  *
  * Drawn rather than composed from bordered elements so the whole dial is a
- * single composited layer over the live canvas — the arcs update by path
+ * single composited layer over the live canvas — the arc updates by path
  * geometry alone, which does not trigger layout.
+ *
+ * There used to be a second, full-width arc near the rim showing the engaged
+ * value. It is gone: the dot's own arc shows the same number, anchored to the
+ * slot it belongs to, and two indicators for one value is worse than either
+ * alone — you have to work out whether they agree. The rim *gesture* still
+ * works and drives the engaged scalar; the dot's arc is what answers it.
  */
 function WheelDial({
-  fraction, pages, page, rings, dot,
+  pages, page, rings, dot,
 }: {
-  fraction: number | null;
   pages: number;
   page: number;
   /** Explicit ring radii for the browser layout, else the default two. */
@@ -735,10 +744,7 @@ function WheelDial({
   /** The one slot showing a draggable amount, if any. */
   dot: { slot: WheelSlot; fraction: number; span: number } | null;
 }) {
-  const radius = 46;
-  const circumference = 2 * Math.PI * radius;
-  const sweep = SWEEP_DEGREES / 360;
-  const guides = rings ?? [0.46, 0.29];
+  const guides = rings ?? [0.42, 0.29];
   return (
     <svg className="param-wheel__dial" viewBox="0 0 100 100" aria-hidden focusable="false">
       {guides.map((r, index) => (
@@ -749,22 +755,6 @@ function WheelDial({
         />
       ))}
       <circle className="param-wheel__ring param-wheel__ring--hub" cx="50" cy="50" r={HUB_RADIUS * 100} />
-      {fraction !== null && (
-        <>
-          <circle
-            className="param-wheel__arc param-wheel__arc--track"
-            cx="50" cy="50" r={radius}
-            strokeDasharray={`${circumference * sweep} ${circumference}`}
-            transform={`rotate(${-90 - SWEEP_DEGREES / 2} 50 50)`}
-          />
-          <circle
-            className="param-wheel__arc param-wheel__arc--fill"
-            cx="50" cy="50" r={radius}
-            strokeDasharray={`${circumference * sweep * fraction} ${circumference}`}
-            transform={`rotate(${-90 - SWEEP_DEGREES / 2} 50 50)`}
-          />
-        </>
-      )}
       {dot && (
         <>
           <path

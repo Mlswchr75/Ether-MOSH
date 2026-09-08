@@ -84,10 +84,6 @@
 .param-wheel__ring--inner { stroke: hsl(var(--primary) / .26); stroke-width: .4; stroke-dasharray: 1 3; }
 .param-wheel__ring--hub { fill: hsl(var(--bg-base) / .5); stroke: hsl(var(--primary) / .5); stroke-width: .7; }
 
-.param-wheel__arc { fill: none; stroke-linecap: round; }
-.param-wheel__arc--track { stroke: hsl(var(--text-body) / .16); stroke-width: 2.4; }
-.param-wheel__arc--fill { stroke: hsl(var(--accent)); stroke-width: 2.4; filter: drop-shadow(0 0 3px hsl(var(--accent) / .7)); }
-
 .param-wheel__pip { fill: hsl(var(--text-body) / .28); }
 .param-wheel__pip[data-on] { fill: hsl(var(--accent)); }
 
