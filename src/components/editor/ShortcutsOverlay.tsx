@@ -62,6 +62,22 @@ const SECTIONS: Section[] = [
       { keys: ["Swipe left"], label: "Redo / fresh Mosh" },
       { keys: ["Spin ring"], label: "Rotate either wheel · remembered" },
       { keys: ["Sweep rim"], label: "Set the engaged value · finer further out" },
+      { keys: ["Drag dot"], label: "Set an amount · its angle is the value" },
+    ],
+  },
+  {
+    name: "Parameters wheel · effects",
+    rows: [
+      { keys: ["Tap"], label: "Try an effect on · nothing is kept yet" },
+      { keys: ["Hold"], label: "Try it and keep it, in one gesture" },
+      { keys: ["＋"], label: "Keep the effect you are trying" },
+      { keys: ["←"], label: "Back one level · discards an untried effect" },
+      { keys: ["‹ ›"], label: "Page through the catalogue" },
+      { keys: ["Inner ring"], label: "The tried effect's own parameters" },
+      { keys: ["Enter"], label: "Activate what is highlighted" },
+      { keys: ["↑", "↓"], label: "Nudge an engaged value · Shift for a coarse step" },
+      { keys: ["←", "→"], label: "Walk around the ring" },
+      { keys: ["Backspace"], label: "Back one level" },
     ],
   },
   {

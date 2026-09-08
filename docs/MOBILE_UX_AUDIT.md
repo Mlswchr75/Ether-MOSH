@@ -313,7 +313,7 @@ It carries everything §4's menu rack held:
 |---|---|
 | root | Tune · Add FX · Layers · Stack · Audio Map · Beat & Mic · Tiling |
 | Tune | the selected layer's parameters, each scrubbable |
-| Add FX | 4 categories → a paged ring of all 117 effects |
+| Add FX | 4 categories → the effect **browser** (see below) |
 | Layers | every layer; tap selects, the rim sets its opacity |
 | Stack | opacity, blend, hide, lock, reorder, duplicate, delete |
 | Audio Map | source × amount × smoothing for the engaged parameter |
@@ -332,6 +332,50 @@ scrubber and Enter on a focused parameter disengaged it.
 
 **The art stays visible.** The whole surface drops to 42% opacity while a
 value is being swept — the single thing the old bottom rack could never do.
+
+### The effect browser — a second layout
+
+The catalogue is 117 entries deep while any single effect has three or four
+parameters. A layout that suits one suits the other badly, so the `browser`
+layout matches the geometry to the population:
+
+- **The catalogue takes the outermost ring**, where the circumference is
+  greatest: twelve entries plus chevrons, roughly twice an ordinary ring, with
+  neighbours still ~64px apart on a 390px phone.
+- **The selected entry's own parameters go on a ring *inward* of it.**
+  Branching outward would have spent the big ring on four items and stranded
+  the long list on the small one.
+- **Entries carry their `EffectSpecimen` mark** — the same generative SVG the
+  `/effects` registry draws, thinned to stay legible at 48px, so an effect
+  looks like itself in both places.
+
+**A tap is a question, not an answer.** Tapping an entry *auditions* it: a
+real layer, rendering immediately, that is not kept. Swaps are history-free
+and self-cleaning, so walking the whole catalogue against your own image costs
+neither stack clutter nor undo entries. It becomes permanent only via the
+hub's **＋** or a **long-press** on the entry — the trip to the centre for
+someone deciding, the one gesture for someone who already knows. Walking away
+discards. See `previewLayer` / `commitPreview` / `discardPreview` in the store.
+
+**The hub is a cluster, not a button.** The read-out sits above a row: a
+**BACK** button that always steps out one level (and closes at the root), and
+**＋**, lit only when there is something to keep. Back as an explicit target
+matters more the deeper the tree goes; commit as an explicit target is what
+lets every tap be a try.
+
+### The amount dot
+
+The slot under attention grows a small dot just outside it, riding a short arc
+anchored at that slot: **its angle is the value.** Drag it around the wheel to
+draw or erase the arc. The arc rests at a tidy 24° span so it fits between
+neighbours on a 14-slot ring, and widens to 72° while dragging for comfortable
+travel — everything else dims under it, which turns a widened arc crossing its
+neighbours into a read-out rather than clutter.
+
+It replaced the old full-width rim arc entirely. Both were showing the same
+number at two different radii, and two indicators for one value is worse than
+either alone. The rim *gesture* still drives the engaged value; the dot is
+what answers it.
 
 ### Fixes to the existing wheel
 
