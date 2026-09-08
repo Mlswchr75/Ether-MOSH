@@ -1,5 +1,5 @@
 import { Mic, MicOff, Circle, Square, Sparkles, Scissors, Snowflake, Camera, Shuffle, Star, Play, Pencil, Trash2, X, Film, Lock, Share2, Compass, Maximize2, Minimize2, SwitchCamera, Eraser, Link2, Upload, Music, Music2, Shuffle as ShuffleIcon, Undo2, Redo2, ChevronDown, MonitorSpeaker, Heart, GripVertical, RotateCcw, SkipBack, SkipForward, Palette, RectangleVertical, RectangleHorizontal, Moon, SlidersHorizontal } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { useStore } from "@/store/useStore";
 import { trackPlayer, DEFAULT_TRACK_TITLE, SHOWCASE_TRACKS } from "@/engine/trackPlayer";
@@ -14,7 +14,7 @@ import { crossfadeLayers, MOSH_FADE_MS } from "@/engine/layerCrossfade";
 import { cursorFx } from "@/engine/cursorFx";
 import { toast } from "sonner";
 import { clampRadialPoint, defaultRadialPoint, nearestRadialId, type RadialLayout } from "@/lib/radialLayout";
-import { fixedRingSlots, hitSlot, ringSpacingPx, unrotatePoint, type WheelSlot } from "@/lib/wheelGeometry";
+import { hitSlot, ringSpacingPx, slotsForCounts, unrotatePoint, type WheelSlot } from "@/lib/wheelGeometry";
 import { gestureLock } from "@/engine/canvasGestures";
 import { enhanceHotTriggerRail } from "@/engine/hotTriggerMobile";
 import { validateAudioUpload } from "@/lib/mediaFileSafety";
@@ -116,12 +116,15 @@ export function radialIndexForAngle(angle: number, count: number, rotation = 0) 
  * to 330px — the ring you could see and the ring you could hit were
  * different rings.
  *
- * The inner radius also moved outward (0.29 → 0.315). Combined with
- * distributing triggers by circumference instead of a fixed 14/12 split, that
- * lifts the tightest neighbour spacing on a 390px-wide phone from ~50px to
- * comfortably past a 44px touch target.
+ * The radii also have to hold the two rings *apart*. Eight outer slots and
+ * six inner ones do not share a step size, so the half-step stagger cannot
+ * stop them lining up — at 90° and 270° they do. That is harmless only if the
+ * radial gap exceeds a touch target, which at the previous 0.44/0.315 it did
+ * not: 0.125 of the diameter is ~41px on a phone, and the buttons are 48px,
+ * so the rings overlapped where they aligned. 0.425/0.255 puts ~56px between
+ * them, and still clears the hub inside and the wheel's own edge outside.
  */
-export const MOBILE_RING_RADII = [0.44, 0.315];
+export const MOBILE_RING_RADII = [0.425, 0.255];
 
 /** A flick is a ballistic gesture, so it gets a far looser catch radius than
  *  a finger the user is deliberately steering across the ring. */
@@ -152,15 +155,59 @@ export function clampFlickToRings(nx: number, ny: number): { x: number; y: numbe
   return { x: nx * scale, y: ny * scale };
 }
 
-/** Slot geometry only changes when the trigger count does, and steering asks
- *  for it on every pointermove — so build it once per count. */
+/**
+ * Triggers per ring, and therefore per page.
+ *
+ * The wheel carries 26 ring items. Shown at once that is roughly three times
+ * the breadth pie-menu research puts the accuracy ceiling at, and it showed:
+ * neighbours sat ~57px apart on a phone, barely more than one touch target,
+ * which is the whole reason a flick used to land on the wrong trigger.
+ *
+ * Eight on the outer ring and six on the inner keeps both inside the budget
+ * and takes the tightest gap from ~57px to ~108px — nearly double a 48px
+ * target. Fourteen a page also means the 26 items need only two pages, so
+ * nothing is ever more than one chevron away.
+ */
+const RING_CAPACITY = [8, 6];
+export const RADIAL_PAGE_SIZE = RING_CAPACITY.reduce((a, b) => a + b, 0);
+
+/** How many pages the current trigger set needs. */
+export function radialPageCount(total: number): number {
+  return Math.max(1, Math.ceil(total / RADIAL_PAGE_SIZE));
+}
+
+/** Wrap a page index into range, so paging past either end is continuous. */
+export function wrapPage(page: number, total: number): number {
+  const pages = radialPageCount(total);
+  return ((page % pages) + pages) % pages;
+}
+
+/** The ids shown on `page`, in the user's own order. */
+export function radialPageIds(ids: string[], page: number): string[] {
+  const start = wrapPage(page, ids.length) * RADIAL_PAGE_SIZE;
+  return ids.slice(start, start + RADIAL_PAGE_SIZE);
+}
+
+/** Slot geometry only changes when the page's trigger count does, and
+ *  steering asks for it on every pointermove — so build it once per count. */
 const slotCache = new Map<number, WheelSlot[]>();
 
 export function radialSlotsFor(total: number): WheelSlot[] {
-  const cached = slotCache.get(total);
+  // Clamped to one page. Handed more, this used to fill the outer ring to
+  // capacity and dump the entire remainder on the inner one — twenty-six
+  // triggers became eight outside and eighteen inside, which is worse than
+  // the unpaginated layout it replaced. Callers pass a page; anything beyond
+  // one has nowhere to go, and silently drawing it badly is the failure mode
+  // pagination exists to remove.
+  const capped = Math.max(0, Math.min(total, RADIAL_PAGE_SIZE));
+  const cached = slotCache.get(capped);
   if (cached) return cached;
-  const slots = fixedRingSlots(total, MOBILE_RING_RADII);
-  slotCache.set(total, slots);
+  // Fill the outer ring first — it has the circumference — then the inner.
+  // A page that does not fill the outer ring draws one ring, not two.
+  const counts = [Math.min(RING_CAPACITY[0], capped), Math.max(0, capped - RING_CAPACITY[0])]
+    .filter(count => count > 0);
+  const slots = slotsForCounts(counts, MOBILE_RING_RADII);
+  slotCache.set(capped, slots);
   return slots;
 }
 
@@ -891,6 +938,14 @@ function MobileRadialWheel({
    *  click/spacebar always has. */
   onMosh: () => void;
 }) {
+  // Always opens on page one. Remembering the page would make the wheel
+  // non-deterministic, and muscle memory — the whole reason this layout was
+  // worth preserving — depends on the same flick reaching the same trigger
+  // every time you summon it.
+  const [page, setPage] = useState(0);
+  const pages = radialPageCount(ids.length);
+  const pageIds = useMemo(() => radialPageIds(ids, page), [ids, page]);
+
   const layerRef = useRef<HTMLDivElement>(null);
   const wheelRef = useRef<HTMLDivElement>(null);
   const labelRef = useRef<HTMLSpanElement>(null);
@@ -912,15 +967,15 @@ function MobileRadialWheel({
   if (Number.isNaN(rotationRef.current)) {
     try { rotationRef.current = Number(localStorage.getItem(MOBILE_WHEEL_ROTATION_KEY)) || 0; } catch { rotationRef.current = 0; }
   }
-  const idsRef = useRef(ids);
+  const idsRef = useRef(pageIds);
   const activateRef = useRef<(id: string) => void>(() => {});
-  idsRef.current = ids;
+  idsRef.current = pageIds;
   // Placement comes from the same module the hit-test reads, so a slot can
   // never be drawn somewhere it can't be touched. Rebuilt only when the
   // trigger count changes — rotation is applied in CSS and unwound in the
   // hit-test, never by regenerating this.
   const slotsRef = useRef<WheelSlot[]>([]);
-  slotsRef.current = radialSlotsFor(ids.length);
+  slotsRef.current = radialSlotsFor(pageIds.length);
 
   const clearTimers = () => {
     if (armTimerRef.current != null) window.clearTimeout(armTimerRef.current);
@@ -1000,11 +1055,22 @@ function MobileRadialWheel({
     }, 120);
   };
 
+  const turnPage = (direction: -1 | 1) => {
+    if (pages <= 1) return;
+    setPage(current => wrapPage(current + direction, ids.length));
+    select(null);
+    try { navigator.vibrate?.(4); } catch { /* Android only */ }
+  };
+
   const dismiss = () => {
     clearTimers();
     setSteering(false);
     setPhase("idle");
     select(null);
+    // Back to page one, so the next summon puts the same trigger under the
+    // same flick. A wheel that reopens wherever you left it is a wheel you
+    // have to read before you can use.
+    setPage(0);
   };
 
   const selectFromFlick = (dx: number, dy: number, pointerType: string) => {
@@ -1151,11 +1217,11 @@ function MobileRadialWheel({
   };
   const selectNearest = (x: number, y: number, currentRotation = rotationRef.current) => {
     const rect = wheelRectRef.current ?? wheelRef.current?.getBoundingClientRect();
-    if (!rect || ids.length === 0) { select(null); return; }
+    if (!rect || idsRef.current.length === 0) { select(null); return; }
     const nx = (x - (rect.left + rect.width / 2)) / rect.width;
     const ny = (y - (rect.top + rect.height / 2)) / rect.height;
-    const index = radialTriggerAt(nx, ny, ids.length, currentRotation);
-    select(ids[index] ?? null);
+    const index = radialTriggerAt(nx, ny, idsRef.current.length, currentRotation);
+    select(idsRef.current[index] ?? null);
   };
   useEffect(() => {
     const wheel = wheelRef.current;
@@ -1171,11 +1237,16 @@ function MobileRadialWheel({
     };
     wheel.addEventListener("wheel", onWheel, { passive: false });
     return () => wheel.removeEventListener("wheel", onWheel);
-  }, [ids.length]);
+  }, [pageIds.length]);
 
   useEffect(() => {
     const onResize = () => { wheelRectRef.current = null; };
-    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape" && openRef.current) dismiss(); };
+    const onKey = (event: KeyboardEvent) => {
+      if (!openRef.current) return;
+      if (event.key === "Escape") { dismiss(); return; }
+      if (event.key === "PageDown" || event.key === "ArrowRight") { event.preventDefault(); turnPage(1); return; }
+      if (event.key === "PageUp" || event.key === "ArrowLeft") { event.preventDefault(); turnPage(-1); }
+    };
     const onExternalOpen = () => { setPhase("open"); cacheWheelRect(); };
     const onExternalClose = () => dismiss();
     // Two wheels are never up at once — the second one to open wins.
@@ -1250,7 +1321,7 @@ function MobileRadialWheel({
             }}
           >
             <div className="mobile-radial-wheel__rings" aria-hidden><i/><b/><em/></div>
-            {ids.map((id, index) => {
+            {pageIds.map((id, index) => {
               const slot = slotsRef.current[index];
               if (!slot) return null;
               const angle = slot.angleDeg;
@@ -1289,6 +1360,33 @@ function MobileRadialWheel({
               <span ref={labelRef} className="mobile-radial-wheel__label">MOSH</span>
               <small>{isRecording ? "REC" : "steer · tap · flick"}</small>
             </button>
+            {pages > 1 && (
+              /* Chevrons sit beside the hub rather than taking ring slots:
+                 the ring is the scarce, accurate real estate, and spending
+                 two of its best positions on navigation is what pagination
+                 was supposed to buy back. */
+              <div className="mobile-radial-wheel__pager" data-radial-action>
+                <button
+                  type="button"
+                  data-no-longpress
+                  aria-label="Previous triggers"
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={(event) => { event.stopPropagation(); turnPage(-1); }}
+                >‹</button>
+                <span aria-live="polite" aria-label={`Page ${page + 1} of ${pages}`}>
+                  {Array.from({ length: pages }, (_, index) => (
+                    <i key={index} data-on={index === page || undefined} aria-hidden />
+                  ))}
+                </span>
+                <button
+                  type="button"
+                  data-no-longpress
+                  aria-label="Next triggers"
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={(event) => { event.stopPropagation(); turnPage(1); }}
+                >›</button>
+              </div>
+            )}
           </div>
     </div>
   );

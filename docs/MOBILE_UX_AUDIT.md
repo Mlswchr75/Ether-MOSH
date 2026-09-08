@@ -404,21 +404,50 @@ what answers it.
   `npm run typecheck`, and with it the security gate that runs it, on every
   branch. Fixed here so this work can actually go green.
 
-### Deliberately not done
+### The hot-trigger wheel, paginated
 
-**The hot-trigger wheel was not paginated.** 26 triggers is roughly 3× the
-accuracy budget from §8, and the principled answer is fewer per ring with
-branching. But that wheel is an approved, shipped design
-(`docs/design/mobile-radial-controls-approved.png`) with real muscle memory
-behind it, and restructuring it into four pages of seven is a change to make
-deliberately, not as a side effect of a bug fix. The density problem is
-mitigated (spacing, targets) rather than solved. It is the obvious next
-conversation.
+Held back at first as the owner's call — it is an approved, shipped design
+(`docs/design/mobile-radial-controls-approved.png`) with muscle memory behind
+it — then done on request.
+
+**Fourteen a page: eight outer, six inner.** Both rings inside the §8 breadth
+budget, and 26 ring triggers need only two pages, so nothing is ever more than
+one chevron away. Order is preserved, so page one is still the triggers the
+user reaches for first, at the angles they expect.
+
+**It always reopens on page one.** Remembering the page would make the wheel
+non-deterministic, and muscle memory — the whole reason the layout was worth
+preserving — depends on the same flick reaching the same trigger every time.
+
+**The chevrons sit below the outer ring, not on it.** The ring is the accurate
+real estate; spending two of its best positions on navigation would give back
+exactly what pagination bought. Below the wheel also puts them low on screen,
+where a thumb already is.
+
+**Targets grew into the space.** 48px, up from 44, with the tightest
+neighbour gap on a 390px phone going from ~57px (unpaginated) to ~84px.
+
+**The ring radii moved too, and this was a real bug.** Eight and six slots do
+not share a step size, so the half-step stagger cannot stop them lining up —
+at 90° and 270° they do. At the old 0.44/0.315 that put the rings ~41px apart
+radially while the buttons were 48px, so they overlapped where they aligned.
+0.425/0.255 leaves ~56px. The test that guards this measures the true
+invariant — no two slots on a page closer than a touch target — rather than
+the "no shared angle" approximation that let the overlap through.
 
 ### Still open
 
 - No real-device pass yet. The touch paths are unit-tested; they have not been
-  under a thumb.
-- `engine/hotTriggerMobile.ts` still runs a document-wide MutationObserver for
-  a rail that is hidden by default (§6.8).
+  under a thumb. Every timing is a one-line constant: the two-finger hold
+  (430ms), the rim sweep (240°), the dot's arc spans (24°/72°), the
+  commit long-press (500ms).
 - Rotation is remembered; the last-touched item is not (§6.7).
+- The **desktop** wheel is not paginated. A mouse is precise enough for 26
+  targets, and that wheel's drag-to-arrange custom layout would fight pages.
+  The accuracy problem this solves is a thumb problem.
+
+### Closed since
+
+- `engine/hotTriggerMobile.ts`'s document-wide MutationObserver (§6.8) — it
+  was a page-level script on every route; now a plain call from the component
+  that renders the rail.
