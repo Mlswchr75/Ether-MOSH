@@ -5,7 +5,10 @@ import {
   radialGestureShouldActivate,
   radialHoldJitterTolerance,
   radialIndexForAngle,
-  radialTriggerIndex,
+  radialTriggerAt,
+  radialSlotsFor,
+  radialTightestSpacing,
+  MOBILE_RING_RADII,
   isCentralRadialHoldPoint,
   RADIAL_WHEEL_ARM_MS,
   RADIAL_WHEEL_HOLD_MS,
@@ -32,10 +35,57 @@ describe("mobile radial trigger selection", () => {
     expect(radialIndexForAngle(0, 0)).toBe(-1);
   });
 
-  it("uses flick distance to address both visible rings", () => {
-    expect(radialTriggerIndex(0, 160, 25)).toBe(0);
-    expect(radialTriggerIndex(0, 80, 25)).toBe(14);
-    expect(radialTriggerIndex(90, 80, 25)).toBe(17);
+  it("hit-tests exactly where it draws, at any wheel size", () => {
+    // The regression: placement used fractional radii while flick selection
+    // used a hard-coded 112px ring boundary, so the drawn ring and the
+    // touchable ring parted company on any wheel that wasn't ~600px across.
+    // Both now read the same normalized geometry, so every slot's own centre
+    // resolves back to itself.
+    for (const total of [8, 25, 27]) {
+      for (const slot of radialSlotsFor(total)) {
+        const radians = (slot.angleDeg - 90) * Math.PI / 180;
+        const nx = Math.cos(radians) * slot.radius;
+        const ny = Math.sin(radians) * slot.radius;
+        expect(radialTriggerAt(nx, ny, total)).toBe(slot.index);
+      }
+    }
+  });
+
+  it("still addresses both rings, by radius rather than by pixel count", () => {
+    const total = 27;
+    const slots = radialSlotsFor(total);
+    expect([...new Set(slots.map(s => s.radius))].sort((a, b) => b - a)).toEqual(MOBILE_RING_RADII);
+
+    // Twelve o'clock on the outer radius is the first trigger.
+    expect(radialTriggerAt(0, -MOBILE_RING_RADII[0], total)).toBe(0);
+
+    // The inner ring is staggered half a step, so it has no slot at twelve —
+    // that is the point of staggering, and it is why a point at the same
+    // angle but a shorter radius reaches a different trigger entirely rather
+    // than one hiding directly beneath the first.
+    const inner = radialTriggerAt(0, -MOBILE_RING_RADII[1], total);
+    expect(inner).toBeGreaterThan(0);
+    expect(slots[inner].radius).toBe(MOBILE_RING_RADII[1]);
+  });
+
+  it("follows the wheel's rotation", () => {
+    const total = 27;
+    const slot = radialSlotsFor(total)[3];
+    const radians = (slot.angleDeg + 30 - 90) * Math.PI / 180;
+    expect(radialTriggerAt(Math.cos(radians) * slot.radius, Math.sin(radians) * slot.radius, total, 30))
+      .toBe(slot.index);
+  });
+
+  it("declines the hub and the space beyond the outer ring", () => {
+    expect(radialTriggerAt(0, 0, 27)).toBe(-1);
+    expect(radialTriggerAt(0, -1.2, 27)).toBe(-1);
+  });
+
+  it("keeps every neighbour further apart than a 44px touch target", () => {
+    // 328px is the wheel on a 390px-wide phone at 84vw — the tightest real
+    // case. The previous fixed 14-outer/12-inner split left the inner ring's
+    // slots ~50px apart, which is barely one target's width.
+    expect(radialTightestSpacing(27, 328)).toBeGreaterThan(48);
   });
 
   it("pre-arms early but keeps the hard summon at four tenths", () => {

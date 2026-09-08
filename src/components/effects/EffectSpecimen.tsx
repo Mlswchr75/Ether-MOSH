@@ -1,9 +1,30 @@
 import { memo } from "react";
-import type { EffectRegistryEntry } from "@/engine/effectRegistry";
+
+/**
+ * Only what the specimen actually reads. It used to take a whole
+ * `EffectRegistryEntry`, which meant a caller holding a plain `EffectDef` —
+ * the Parameters Wheel's effect browser — could not use it without inventing
+ * a `glsl` string it has no business knowing about. The mark is derived from
+ * the id, the name, the category and the parameter count; nothing else.
+ */
+export type SpecimenSubject = {
+  id: string;
+  name: string;
+  category: string;
+  params: readonly unknown[];
+};
 
 type EffectSpecimenProps = {
-  effect: EffectRegistryEntry;
+  effect: SpecimenSubject;
   large?: boolean;
+  /**
+   * Thins every family down for a ~48px round slot — the Parameters Wheel's
+   * effect browser. At that size the registry's mark counts turn into a grey
+   * smudge, so the point of the specimen (you can tell the effects apart at a
+   * glance) is lost exactly where it matters most. Same families, same seeds,
+   * same palettes: an effect looks like itself in both places, just simpler.
+   */
+  compact?: boolean;
   className?: string;
 };
 
@@ -27,6 +48,10 @@ const PALETTES: Record<string, [string, string, string]> = {
 
 const CONFIG_CACHE = new Map<string, SpecimenConfig>();
 
+/** `n(large, regular, compact)` picks the mark count for the current size. */
+type Density = (large: number, regular: number, compact: number) => number;
+type FamilyProps = { c: string[]; v: number[]; n: Density };
+
 function hashText(value: string): number {
   let hash = 2166136261;
   for (let i = 0; i < value.length; i += 1) {
@@ -36,7 +61,7 @@ function hashText(value: string): number {
   return hash >>> 0;
 }
 
-function chooseFamily(effect: EffectRegistryEntry): Family {
+function chooseFamily(effect: SpecimenSubject): Family {
   const key = `${effect.id} ${effect.name}`.toLowerCase();
   if (/rgb|chroma|hue|rainbow|thermal|duotone|palette|solar|prism|anaglyph|infrared|holo|oil/.test(key)) return "spectrum";
   if (/liquid|melt|ripple|twirl|warp|flow|caustic|water|acrylic|turbulence|smear/.test(key)) return "fluid";
@@ -48,7 +73,7 @@ function chooseFamily(effect: EffectRegistryEntry): Family {
   return "field";
 }
 
-function getConfig(effect: EffectRegistryEntry): SpecimenConfig {
+function getConfig(effect: SpecimenSubject): SpecimenConfig {
   const cached = CONFIG_CACHE.get(effect.id);
   if (cached) return cached;
   const seed = hashText(`${effect.id}:${effect.category}:${effect.params.length}`);
@@ -71,8 +96,8 @@ function getConfig(effect: EffectRegistryEntry): SpecimenConfig {
   return config;
 }
 
-function Signal({ c, v, dense }: { c: string[]; v: number[]; dense: boolean }) {
-  const count = dense ? 22 : 13;
+function Signal({ c, v, n }: FamilyProps) {
+  const count = n(22, 13, 7);
   return <>
     {Array.from({ length: count }, (_, i) => {
       const y = 7 + i * (86 / count);
@@ -84,8 +109,8 @@ function Signal({ c, v, dense }: { c: string[]; v: number[]; dense: boolean }) {
   </>;
 }
 
-function Spectrum({ c, v, dense }: { c: string[]; v: number[]; dense: boolean }) {
-  const count = dense ? 12 : 8;
+function Spectrum({ c, v, n }: FamilyProps) {
+  const count = n(12, 8, 5);
   return <>
     {Array.from({ length: count }, (_, i) => {
       const x = -12 + i * (190 / (count - 1));
@@ -96,8 +121,8 @@ function Spectrum({ c, v, dense }: { c: string[]; v: number[]; dense: boolean })
   </>;
 }
 
-function Fluid({ c, v, dense }: { c: string[]; v: number[]; dense: boolean }) {
-  const count = dense ? 13 : 8;
+function Fluid({ c, v, n }: FamilyProps) {
+  const count = n(13, 8, 5);
   return <>
     {Array.from({ length: count }, (_, i) => {
       const y = 8 + i * (84 / (count - 1));
@@ -108,8 +133,8 @@ function Fluid({ c, v, dense }: { c: string[]; v: number[]; dense: boolean }) {
   </>;
 }
 
-function Radial({ c, v, dense }: { c: string[]; v: number[]; dense: boolean }) {
-  const count = dense ? 18 : 11;
+function Radial({ c, v, n }: FamilyProps) {
+  const count = n(18, 11, 7);
   const cx = 55 + v[0] * 50;
   const cy = 35 + v[1] * 30;
   return <>
@@ -123,13 +148,13 @@ function Radial({ c, v, dense }: { c: string[]; v: number[]; dense: boolean }) {
   </>;
 }
 
-function Grain({ c, v, dense }: { c: string[]; v: number[]; dense: boolean }) {
-  const count = dense ? 42 : 24;
+function Grain({ c, v, n }: FamilyProps) {
+  const count = n(42, 24, 12);
   return <>
     {Array.from({ length: count }, (_, i) => {
       const x = v[i % 42] * 160;
       const y = v[(i * 7 + 3) % 42] * 100;
-      const size = 1 + v[(i * 11 + 5) % 42] * (dense ? 9 : 7);
+      const size = 1 + v[(i * 11 + 5) % 42] * n(9, 7, 8);
       return i % 3 === 0
         ? <rect key={i} x={x} y={y} width={size * 1.8} height={size} fill={c[i % 3]} opacity={0.35 + v[(i + 8) % 42] * 0.65} />
         : <circle key={i} cx={x} cy={y} r={size / 2} fill={c[i % 3]} opacity={0.35 + v[(i + 8) % 42] * 0.65} />;
@@ -137,8 +162,8 @@ function Grain({ c, v, dense }: { c: string[]; v: number[]; dense: boolean }) {
   </>;
 }
 
-function Contour({ c, v, dense }: { c: string[]; v: number[]; dense: boolean }) {
-  const count = dense ? 14 : 9;
+function Contour({ c, v, n }: FamilyProps) {
+  const count = n(14, 9, 5);
   const cx = 70 + (v[0] - 0.5) * 30;
   const cy = 48 + (v[1] - 0.5) * 20;
   return <>
@@ -150,8 +175,8 @@ function Contour({ c, v, dense }: { c: string[]; v: number[]; dense: boolean }) 
   </>;
 }
 
-function Depth({ c, v, dense }: { c: string[]; v: number[]; dense: boolean }) {
-  const count = dense ? 14 : 9;
+function Depth({ c, v, n }: FamilyProps) {
+  const count = n(14, 9, 6);
   const vanX = 45 + v[0] * 70;
   const vanY = 25 + v[1] * 45;
   return <>
@@ -164,8 +189,8 @@ function Depth({ c, v, dense }: { c: string[]; v: number[]; dense: boolean }) {
   </>;
 }
 
-function Field({ c, v, dense }: { c: string[]; v: number[]; dense: boolean }) {
-  const count = dense ? 20 : 12;
+function Field({ c, v, n }: FamilyProps) {
+  const count = n(20, 12, 6);
   return <>
     {Array.from({ length: count }, (_, i) => {
       const x = v[i] * 145;
@@ -177,9 +202,12 @@ function Field({ c, v, dense }: { c: string[]; v: number[]; dense: boolean }) {
   </>;
 }
 
-export const EffectSpecimen = memo(function EffectSpecimen({ effect, large = false, className = "" }: EffectSpecimenProps) {
+export const EffectSpecimen = memo(function EffectSpecimen({
+  effect, large = false, compact = false, className = "",
+}: EffectSpecimenProps) {
   const config = getConfig(effect);
-  const props = { c: config.colors, v: config.values, dense: large };
+  const density: Density = (l, r, c) => (compact ? c : large ? l : r);
+  const props = { c: config.colors, v: config.values, n: density };
   return (
     <svg
       className={className}
@@ -188,9 +216,10 @@ export const EffectSpecimen = memo(function EffectSpecimen({ effect, large = fal
       aria-hidden="true"
       focusable="false"
       data-specimen-signature={config.signature}
+      data-specimen-compact={compact || undefined}
     >
       <rect width="160" height="100" fill="#050505" />
-      <path d={`M0 ${18 + config.values[38] * 62}H160`} stroke="#f2efe6" strokeWidth=".5" opacity=".25" />
+      {!compact && <path d={`M0 ${18 + config.values[38] * 62}H160`} stroke="#f2efe6" strokeWidth=".5" opacity=".25" />}
       {config.family === "signal" && <Signal {...props} />}
       {config.family === "spectrum" && <Spectrum {...props} />}
       {config.family === "fluid" && <Fluid {...props} />}
@@ -199,7 +228,7 @@ export const EffectSpecimen = memo(function EffectSpecimen({ effect, large = fal
       {config.family === "contour" && <Contour {...props} />}
       {config.family === "depth" && <Depth {...props} />}
       {config.family === "field" && <Field {...props} />}
-      <rect x="3" y="3" width="154" height="94" fill="none" stroke={config.colors[1]} strokeWidth=".65" opacity=".45" />
+      {!compact && <rect x="3" y="3" width="154" height="94" fill="none" stroke={config.colors[1]} strokeWidth=".65" opacity=".45" />}
     </svg>
   );
 });

@@ -136,6 +136,10 @@ export function RadioWelcome({ onDismiss }: { onDismiss: () => void }) {
   return null;
 }
 
-export function RadioGesturePrompt({ onDismiss }: { onDismiss: () => void }) {
+/** Browsers want a real gesture before they will make sound; this is the
+ *  "tap to start" prompt. Named for what its one caller passes — it was
+ *  declared as `onDismiss` while Editor.tsx has always passed `onStart`,
+ *  which is the second half of why typecheck has been failing. */
+export function RadioGesturePrompt({ onStart }: { onStart: () => void }) {
   return null;
 }

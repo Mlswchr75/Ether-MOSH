@@ -474,7 +474,14 @@
       transition: opacity var(--radial-open-ms) linear;
     }
     .mobile-radial-wheel {
-      --radial-size: min(84vw, 84dvh, 700px);
+      /* Sized against the safe area rather than the raw viewport: on a
+       * notched phone in landscape the raw viewport pushes the ring under
+       * the cutout. */
+      --radial-size: min(
+        calc(84vw - env(safe-area-inset-left) - env(safe-area-inset-right)),
+        calc(84dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom)),
+        700px
+      );
       --radial-rotation: 0deg;
       --radial-counter-rotation: 0deg;
       inline-size: var(--radial-size);
@@ -568,7 +575,10 @@
       transform: rotate(45deg);
     }
     .mobile-radial-wheel__slot .hot-trigger {
-      --ht-size: clamp(40px, calc(var(--radial-size) * .12), 52px);
+      /* 44px is the WCAG 2.2 AAA touch-target minimum, and the average thumb
+       * contact patch is wider again. The old floor of 40px was reached on
+       * every phone, because 12% of a 328px wheel is 39px. */
+      --ht-size: clamp(44px, calc(var(--radial-size) * .128), 54px);
       --ht-ico: calc(var(--ht-size) * .47);
       border-radius: 999px;
       transform-origin: center;
@@ -592,6 +602,14 @@
     .mobile-radial-wheel__slot[data-radial-variant="5"]::before { border-style: dashed; }
     .mobile-radial-wheel__slot[data-radial-variant="2"]::after,
     .mobile-radial-wheel__slot[data-radial-variant="6"]::after { border-radius: 16%; }
+    /*
+     * Three infinite animations per slot. On a 27-trigger wheel that is 81
+     * timelines running over a live WebGL canvas, all competing for the same
+     * frame budget as the renderer. They are the wheel's signature, so they
+     * stay — but they stop the moment the user is actually steering, when
+     * every spare millisecond should be going into pointer response, and they
+     * do not run at all for anyone who has asked for less motion.
+     */
     :is(.mobile-radial-layer, .desktop-radial-layer)[data-phase="open"] .mobile-radial-wheel__slot::before {
       animation: radial-orbit 4.8s linear infinite var(--slot-delay, 0ms);
     }
@@ -600,6 +618,27 @@
     }
     :is(.mobile-radial-layer, .desktop-radial-layer)[data-phase="open"] .mobile-radial-wheel__slot .hot-trigger__ico {
       animation: radial-icon-breathe 2.4s ease-in-out infinite var(--slot-delay, 0ms);
+    }
+    :is(.mobile-radial-layer, .desktop-radial-layer)[data-steering] .mobile-radial-wheel__slot::before,
+    :is(.mobile-radial-layer, .desktop-radial-layer)[data-steering] .mobile-radial-wheel__slot::after,
+    :is(.mobile-radial-layer, .desktop-radial-layer)[data-steering] .mobile-radial-wheel__slot .hot-trigger__ico {
+      animation-play-state: paused;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      :is(.mobile-radial-layer, .desktop-radial-layer) .mobile-radial-wheel__slot::before,
+      :is(.mobile-radial-layer, .desktop-radial-layer) .mobile-radial-wheel__slot::after,
+      :is(.mobile-radial-layer, .desktop-radial-layer) .mobile-radial-wheel__slot .hot-trigger__ico,
+      :is(.mobile-radial-layer, .desktop-radial-layer) .mobile-radial-wheel__label {
+        animation: none !important;
+      }
+      :is(.mobile-radial-layer, .desktop-radial-layer)[data-phase="armed"] .mobile-radial-wheel {
+        animation: none;
+        opacity: .3;
+      }
+      .mobile-radial-wheel,
+      .mobile-radial-wheel__backdrop,
+      .mobile-radial-wheel__slot .hot-trigger { transition-duration: 1ms; }
+      .mobile-radial-wheel__slot[data-highlighted] .hot-trigger { scale: 1.12; }
     }
     .mobile-radial-wheel__slot[data-highlighted] .hot-trigger {
       scale: 1.34;

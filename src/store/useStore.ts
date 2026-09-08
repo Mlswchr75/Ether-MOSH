@@ -251,6 +251,25 @@ type State = {
    * the visitor would use to answer it is actually on screen.
    */
   radialMenuOpen: boolean;
+  /**
+   * True while the Parameters Wheel is on screen. Same reason as
+   * `radialMenuOpen` above: it gates behaviour *outside* the wheel — every
+   * canvas gesture recognizer stands down while it is open, so a drag meant
+   * for a slider can't also swipe the undo timeline underneath it.
+   */
+  paramWheelOpen: boolean;
+  /**
+   * The layer currently being auditioned from the Parameters Wheel's effect
+   * browser, or null.
+   *
+   * A preview is a real layer — it renders, it stacks, it takes parameters —
+   * it just isn't *kept*. Tapping through a catalogue of 117 effects should
+   * show you each one on your own frame without burying the stack in things
+   * you glanced at, and without writing 117 entries into the undo timeline.
+   * So preview swaps are history-free and self-cleaning; only `commitPreview`
+   * makes one permanent, and that is the single step undo sees.
+   */
+  previewLayerId: string | null;
   trackArtist: string;
   micSensitivity: number;
   /** Global reactivity multiplier — scales mic/device-audio sensitivity and
@@ -450,6 +469,13 @@ type Actions = {
   setTrackEnabled: (b: boolean) => void;
   addUploadedTrack: (track: UploadedTrack) => void;
   setRadialMenuOpen: (open: boolean) => void;
+  setParamWheelOpen: (open: boolean) => void;
+  /** Audition an effect in place. Replaces any current preview; pass null to clear. */
+  previewLayer: (effectId: string | null) => void;
+  /** Keep the preview. This is the one step the undo timeline records. */
+  commitPreview: () => void;
+  /** Drop the preview and put the frame back how it was. */
+  discardPreview: () => void;
   setTrackMeta: (title: string, artist: string) => void;
   setMicSensitivity: (v: number) => void;
   setSensitivity: (v: number) => void;
@@ -649,6 +675,8 @@ export const useStore = create<State & Actions>((set, get) => ({
   trackEnabled: false,
   uploadedTracks: [],
   radialMenuOpen: false,
+  paramWheelOpen: false,
+  previewLayerId: null,
   trackTitle: trackPlayer.title,
   trackArtist: trackPlayer.artist,
   micSensitivity: 1,
@@ -1340,6 +1368,54 @@ export const useStore = create<State & Actions>((set, get) => ({
     { uploadedTracks: [track, ...s.uploadedTracks.filter(t => t.title !== track.title)] }
   )),
   setRadialMenuOpen: (open) => set(s => s.radialMenuOpen === open ? s : { radialMenuOpen: open }),
+  setParamWheelOpen: (open) => set(s => s.paramWheelOpen === open ? s : { paramWheelOpen: open }),
+
+  previewLayer: (effectId) => set(s => {
+    // Whatever was being auditioned goes, whether or not a new one arrives.
+    const layers = s.previewLayerId ? s.layers.filter(l => l.id !== s.previewLayerId) : s.layers;
+    if (!effectId || !EFFECTS_BY_ID[effectId]) {
+      if (layers === s.layers && !s.previewLayerId) return s;
+      return {
+        layers,
+        previewLayerId: null,
+        selectedLayerId: s.selectedLayerId === s.previewLayerId ? (layers[layers.length - 1]?.id ?? null) : s.selectedLayerId,
+      };
+    }
+    const layer = makeLayer(effectId);
+    // No pushPast: an audition is not an edit. Tapping through a catalogue
+    // must not cost the user their undo history.
+    return {
+      layers: [...layers, layer],
+      previewLayerId: layer.id,
+      selectedLayerId: layer.id,
+      selectedRole: layer.role ?? s.selectedRole,
+    };
+  }),
+
+  commitPreview: () => set(s => {
+    if (!s.previewLayerId) return s;
+    const layer = s.layers.find(l => l.id === s.previewLayerId);
+    if (!layer) return { previewLayerId: null };
+    // History is recorded against the stack *without* the preview in it, so
+    // one undo removes exactly the effect that was just committed — including
+    // any parameter tweaks made while auditioning it.
+    return {
+      past: [...s.past, s.layers.filter(l => l.id !== layer.id)].slice(-HISTORY_LIMIT),
+      future: [],
+      previewLayerId: null,
+      selectedRoleLayers: layer.role ? { ...s.selectedRoleLayers, [layer.role]: layer.id } : s.selectedRoleLayers,
+    };
+  }),
+
+  discardPreview: () => set(s => {
+    if (!s.previewLayerId) return s;
+    const layers = s.layers.filter(l => l.id !== s.previewLayerId);
+    return {
+      layers,
+      previewLayerId: null,
+      selectedLayerId: s.selectedLayerId === s.previewLayerId ? (layers[layers.length - 1]?.id ?? null) : s.selectedLayerId,
+    };
+  }),
   setTrackEnabled: (b) => {
     if (b) {
       trackPlayer.play().then(() => {
