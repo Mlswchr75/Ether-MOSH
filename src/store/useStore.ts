@@ -251,6 +251,13 @@ type State = {
    * the visitor would use to answer it is actually on screen.
    */
   radialMenuOpen: boolean;
+  /**
+   * True while the Parameters Wheel is on screen. Same reason as
+   * `radialMenuOpen` above: it gates behaviour *outside* the wheel — every
+   * canvas gesture recognizer stands down while it is open, so a drag meant
+   * for a slider can't also swipe the undo timeline underneath it.
+   */
+  paramWheelOpen: boolean;
   trackArtist: string;
   micSensitivity: number;
   /** Global reactivity multiplier — scales mic/device-audio sensitivity and
@@ -450,6 +457,7 @@ type Actions = {
   setTrackEnabled: (b: boolean) => void;
   addUploadedTrack: (track: UploadedTrack) => void;
   setRadialMenuOpen: (open: boolean) => void;
+  setParamWheelOpen: (open: boolean) => void;
   setTrackMeta: (title: string, artist: string) => void;
   setMicSensitivity: (v: number) => void;
   setSensitivity: (v: number) => void;
@@ -649,6 +657,7 @@ export const useStore = create<State & Actions>((set, get) => ({
   trackEnabled: false,
   uploadedTracks: [],
   radialMenuOpen: false,
+  paramWheelOpen: false,
   trackTitle: trackPlayer.title,
   trackArtist: trackPlayer.artist,
   micSensitivity: 1,
@@ -1340,6 +1349,7 @@ export const useStore = create<State & Actions>((set, get) => ({
     { uploadedTracks: [track, ...s.uploadedTracks.filter(t => t.title !== track.title)] }
   )),
   setRadialMenuOpen: (open) => set(s => s.radialMenuOpen === open ? s : { radialMenuOpen: open }),
+  setParamWheelOpen: (open) => set(s => s.paramWheelOpen === open ? s : { paramWheelOpen: open }),
   setTrackEnabled: (b) => {
     if (b) {
       trackPlayer.play().then(() => {

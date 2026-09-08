@@ -11,6 +11,9 @@ import { LayerStack } from "@/components/editor/LayerStack";
 import { FxPicker } from "@/components/editor/FxPicker";
 import { ShufflePanel } from "@/components/editor/ShufflePanel";
 import { ParamDock } from "@/components/editor/ParamDock";
+import { ParamWheel, PARAM_WHEEL_ARM_MS, PARAM_WHEEL_HOLD_MS } from "@/components/editor/ParamWheel";
+import { createHoldRecognizer, gestureLock, isBareCanvasTarget } from "@/engine/canvasGestures";
+import { haptic } from "@/hooks/useHaptics";
 import { BeatPanel } from "@/components/editor/BeatPanel";
 import { downloadCanvasPngNow, exportCanvas, downloadBlob, remasterCanvas } from "@/engine/export";
 import { exportPrintReady, type PrintFormat } from "@/engine/printExport";
@@ -1438,6 +1441,15 @@ export default function Editor() {
         window.dispatchEvent(new CustomEvent("mosh:switch-mode", { detail: "forge" }));
         return;
       }
+      // T => the Parameters Wheel, the keyboard counterpart to the
+      // two-finger tap-and-hold. Toggles, because unlike Shift-to-flash the
+      // hot-trigger wheel you generally want this one to stay put while you
+      // work a value.
+      if (!e.shiftKey && (e.key === "t" || e.key === "T")) {
+        e.preventDefault();
+        window.dispatchEvent(new Event("mosh:toggle-param-wheel"));
+        return;
+      }
       // V => share current frame
       if (!e.shiftKey && (e.key === "v" || e.key === "V")) {
         e.preventDefault();
@@ -1614,7 +1626,7 @@ export default function Editor() {
     };
     const onEnd = (e: PointerEvent) => {
       if (!points.has(e.pointerId)) return;
-      if (!handled && !invalid && points.size === 3 && start.length === 3) {
+      if (!handled && !invalid && !gestureLock.isBlocked("gif-3finger") && points.size === 3 && start.length === 3) {
         const elapsed = performance.now() - startedAt;
         if (elapsed <= 420 && maxTravel <= 20) {
           handled = true;
@@ -1687,7 +1699,7 @@ export default function Editor() {
       if (!point) return;
       point.x = e.clientX;
       point.y = e.clientY;
-      if (!handled && !invalid && (points.size === 1 || points.size === 2) && start.length === points.size) {
+      if (!handled && !invalid && !gestureLock.isBlocked("swipe-tap") && (points.size === 1 || points.size === 2) && start.length === points.size) {
         handled = true;
         const from = average(start);
         const to = average([...points.values()]);
@@ -1762,25 +1774,42 @@ export default function Editor() {
     };
   }, [chromePinned]);
 
-  // Pro Mode, touch: hold one finger down, tap with a second while the
-  // first is still held — toggles the menu. No timer on the first finger;
-  // "holding" just means it hasn't lifted yet when the second one lands.
+  // Pro Mode, touch: a second finger tapped against a held first one toggles
+  // the chrome.
+  //
+  // This used to fire the moment the second finger landed, with no duration
+  // test at all, which made it impossible to ever hold two fingers on the art
+  // for anything else — the toggle always won first. It now waits for the lift
+  // and only counts a genuine tap, so a two-finger *hold* belongs to the
+  // Parameters Wheel and a two-finger *tap* still belongs here.
   useEffect(() => {
     const el = canvasContainerRef.current;
     if (!el) return;
     const activeTouches = new Set<number>();
+    let secondFingerAt = 0;
+    let armed = false;
     const onDown = (e: PointerEvent) => {
       if (e.pointerType !== "touch") return;
       if (!useStore.getState().proModeEnabled) return;
-      const t = e.target as HTMLElement | null;
-      if (t && t.closest("button, a, input, textarea, [role='slider'], [data-no-longpress]")) return;
-      if (activeTouches.size >= 1) {
-        setHideUI(v => !v);
-        try { if ("vibrate" in navigator) (navigator as any).vibrate?.(15); } catch {}
+      if (!isBareCanvasTarget(e.target)) return;
+      if (activeTouches.size === 1) {
+        secondFingerAt = performance.now();
+        armed = true;
+      } else if (activeTouches.size >= 2) {
+        // Three fingers is the GIF gesture, never this one.
+        armed = false;
       }
       activeTouches.add(e.pointerId);
     };
-    const onUp = (e: PointerEvent) => { activeTouches.delete(e.pointerId); };
+    const onUp = (e: PointerEvent) => {
+      if (!activeTouches.delete(e.pointerId)) return;
+      if (armed && !gestureLock.isBlocked("pro-mode-toggle") && performance.now() - secondFingerAt <= 420) {
+        armed = false;
+        setHideUI(v => !v);
+        haptic("commit");
+      }
+      if (activeTouches.size === 0) armed = false;
+    };
     el.addEventListener("pointerdown", onDown);
     window.addEventListener("pointerup", onUp);
     window.addEventListener("pointercancel", onUp);
@@ -1788,6 +1817,54 @@ export default function Editor() {
       el.removeEventListener("pointerdown", onDown);
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onUp);
+    };
+  }, []);
+
+  // Two-finger tap-and-hold on the art summons the Parameters Wheel.
+  //
+  // The whole point of the surface: every control that used to live in the
+  // menu rack below the fold is now reachable without the visualizer ever
+  // leaving the screen, so you can see what a parameter does to the frame
+  // while you are changing it. The recognizer arbitrates against every other
+  // canvas gesture (see engine/canvasGestures.ts) so a slow two-finger tap
+  // can't fire a screenshot on its way to opening this.
+  useEffect(() => {
+    const el = canvasContainerRef.current;
+    if (!el) return;
+    const hold = createHoldRecognizer({
+      name: "param-wheel",
+      fingers: 2,
+      holdMs: PARAM_WHEEL_HOLD_MS,
+      armMs: PARAM_WHEEL_ARM_MS,
+      jitterPx: 20,
+      onArm: () => window.dispatchEvent(new Event("mosh:arm-param-wheel")),
+      onCancel: () => window.dispatchEvent(new Event("mosh:disarm-param-wheel")),
+      onCommit: (centroid) => {
+        haptic("open");
+        window.dispatchEvent(new CustomEvent("mosh:open-param-wheel", { detail: centroid }));
+      },
+    });
+    const onDown = (e: PointerEvent) => {
+      if (e.pointerType !== "touch") return;
+      // Already open? Fingers on the wheel are the wheel's business.
+      if (useStore.getState().paramWheelOpen) return;
+      if (!isBareCanvasTarget(e.target)) return;
+      hold.down(e.pointerId, e.clientX, e.clientY);
+    };
+    const onMove = (e: PointerEvent) => hold.move(e.pointerId, e.clientX, e.clientY);
+    const onUp = (e: PointerEvent) => hold.up(e.pointerId);
+    const onCancel = () => hold.cancel();
+    el.addEventListener("pointerdown", onDown, { passive: true });
+    window.addEventListener("pointermove", onMove, { passive: true });
+    window.addEventListener("pointerup", onUp, { passive: true });
+    window.addEventListener("pointercancel", onCancel, { passive: true });
+    return () => {
+      hold.cancel();
+      gestureLock.reset();
+      el.removeEventListener("pointerdown", onDown);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel);
     };
   }, []);
 
@@ -2005,6 +2082,14 @@ export default function Editor() {
             }}
           />
         )}
+        {/* The second wheel: every control from the below-the-fold menu rack,
+            summoned by a two-finger tap-and-hold anywhere on the art (or the
+            T key). Mounted alongside the hot-trigger wheel rather than inside
+            it — they are peers, and this one has to survive Performance Mode
+            hiding the rest of the chrome, because adjusting a parameter
+            without leaving the visualizer is exactly what Performance Mode is
+            for. */}
+        {!isOverlay && <ParamWheel />}
         {/* Standalone, not nested inside HotTriggers — the hot-trigger rail
             now lives inside a press-and-hold radial wheel that's hidden by
             default, which buried this prompt along with it and made it show
