@@ -520,3 +520,47 @@ describe("ParamWheel — long-press keeps an effect", () => {
     expect(useStore.getState().previewLayerId).not.toBeNull();
   });
 });
+
+describe("ParamWheel — regressions from the post-merge review", () => {
+  it("discards an audition when the wheel unmounts, rather than stranding it", () => {
+    const view = render(<ParamWheel />);
+    summon();
+    tapSlot("Add FX");
+    tapSlot("Data Corruption");
+    tapSlot("Pixel Sort");
+    expect(useStore.getState().layers).toHaveLength(1);
+    expect(useStore.getState().previewLayerId).not.toBeNull();
+
+    view.unmount();
+
+    // Without the cleanup this left the layer in the stack with no undo entry
+    // to remove it, and previewLayerId pointing at it — so the next audition
+    // would silently delete a layer the user thought was theirs.
+    expect(useStore.getState().layers).toHaveLength(0);
+    expect(useStore.getState().previewLayerId).toBeNull();
+  });
+
+  it("keeps parameter tweaks made while auditioning, whichever way you commit", () => {
+    // Long-press used to re-preview from the effect's defaults before
+    // committing, throwing away exactly the tuning the hub's + button kept.
+    render(<ParamWheel />);
+    summon();
+    tapSlot("Add FX");
+    tapSlot("Data Corruption");
+    tapSlot("Pixel Sort");
+
+    const id = useStore.getState().previewLayerId!;
+    act(() => { useStore.getState().setParam(id, "amount", 0.87); });
+
+    const entry = slotNamed("Pixel Sort")!;
+    vi.useFakeTimers();
+    act(() => { entry.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true })); });
+    act(() => { vi.advanceTimersByTime(600); });
+    vi.useRealTimers();
+
+    const state = useStore.getState();
+    expect(state.previewLayerId).toBeNull();
+    expect(state.layers).toHaveLength(1);
+    expect(state.layers[0].params.amount).toBe(0.87);
+  });
+});

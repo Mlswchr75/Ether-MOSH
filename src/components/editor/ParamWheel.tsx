@@ -179,7 +179,16 @@ export function ParamWheel() {
   useEffect(() => {
     useStore.getState().setParamWheelOpen(open);
   }, [open]);
-  useEffect(() => () => useStore.getState().setParamWheelOpen(false), []);
+  // A wheel that stops existing is not open — and an audition it was holding
+  // is not something the user chose to keep. Without the discard, unmounting
+  // mid-audition left the previewed layer in the stack with no undo entry to
+  // remove it, and `previewLayerId` pointing at it, so the next audition
+  // silently deleted a layer the user had every reason to think was theirs.
+  useEffect(() => () => {
+    const store = useStore.getState();
+    if (store.previewLayerId) store.discardPreview();
+    store.setParamWheelOpen(false);
+  }, []);
 
   // Two-finger tap-and-hold on the art. The recognizer and its arbitration
   // live in Editor.tsx, which owns every canvas gesture; this component only
@@ -346,6 +355,8 @@ export function ParamWheel() {
     rotation: number;
     fraction: number;
     pageFloat: number;
+    /** Last page this drag actually applied, unwrapped — see the page branch. */
+    pageApplied: number;
     moved: boolean;
   } | null>(null);
   const pendingRef = useRef<{ scalar: WheelItem["scalar"]; fraction: number } | null>(null);
@@ -394,6 +405,7 @@ export function ParamWheel() {
       rotation: rotationRef.current,
       fraction: engaged ? scalarFraction(engaged.scalar) : 0,
       pageFloat: view.page,
+      pageApplied: view.page,
       moved: false,
     };
     event.currentTarget.setPointerCapture?.(event.pointerId);
@@ -427,7 +439,17 @@ export function ParamWheel() {
     if (drag.mode === "page" && view.paged) {
       drag.pageFloat += delta / 90;
       const target = Math.round(drag.pageFloat);
-      if (target !== view.page) { setPage(target); setEngagedId(null); haptic("step"); }
+      // Compare against what this drag last applied, not against `view.page`.
+      // `view.page` comes back wrapped into 0..pages-1 while `target` keeps
+      // counting, so once a scrub crossed either end the two could never agree
+      // again and every single pointermove re-fired: a continuous haptic buzz
+      // and a stream of no-op state writes.
+      if (target !== drag.pageApplied) {
+        drag.pageApplied = target;
+        setPage(target);
+        setEngagedId(null);
+        haptic("step");
+      }
     }
   };
 

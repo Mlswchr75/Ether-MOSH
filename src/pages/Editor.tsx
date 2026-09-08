@@ -15,6 +15,7 @@ import { ParamWheel, PARAM_WHEEL_ARM_MS, PARAM_WHEEL_HOLD_MS } from "@/component
 import { ParamWheelHint } from "@/components/editor/ParamWheelHint";
 import { createHoldRecognizer, gestureLock, isBareCanvasTarget } from "@/engine/canvasGestures";
 import { haptic } from "@/hooks/useHaptics";
+import { editorOwnsKey } from "@/lib/wheelKeyboard";
 import { BeatPanel } from "@/components/editor/BeatPanel";
 import { downloadCanvasPngNow, exportCanvas, downloadBlob, remasterCanvas } from "@/engine/export";
 import { exportPrintReady, type PrintFormat } from "@/engine/printExport";
@@ -1284,6 +1285,10 @@ export default function Editor() {
       // Modal-aware: when palette/shortcuts open, only allow Escape
       const paletteIsOpen = paletteOpen;
       const shortcutsIsOpen = shortcutsOpen;
+      // The Parameters Wheel runs its own keyboard model and listens on the
+      // same target this handler does — see lib/wheelKeyboard.
+      const wheelIsOpen = useStore.getState().paramWheelOpen;
+      if (!editorOwnsKey(e.key, wheelIsOpen)) return;
       if (e.key === "Escape") {
         if (paletteIsOpen) { e.preventDefault(); setPaletteOpen(false); return; }
         if (shortcutsIsOpen) { e.preventDefault(); setShortcutsOpen(false); return; }
@@ -1752,6 +1757,9 @@ export default function Editor() {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== "Shift" || e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
+      // Never two wheels at once — and Shift is a coarse-step modifier inside
+      // the Parameters Wheel, so holding it there must not summon the other one.
+      if (useStore.getState().paramWheelOpen) return;
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
       if (useStore.getState().proModeEnabled) setHideUI(false);
