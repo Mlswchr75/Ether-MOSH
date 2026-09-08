@@ -30,7 +30,13 @@ export function ParamWheel() {
   const [nodeId, setNodeId] = useState("root");
   const [page, setPage] = useState(0);
   const [engagedKey, setEngagedKey] = useState<string | null>(null);
+  // Focus and engagement are two different things, and conflating them was a
+  // bug in both directions: merely hovering a parameter armed the rim
+  // scrubber, and pressing Enter on an already-focused parameter *dis*engaged
+  // it. `highlight` is where attention is; `engagedId` is what the rim is
+  // wired to.
   const [highlight, setHighlight] = useState<string | null>(null);
+  const [engagedId, setEngagedId] = useState<string | null>(null);
   const [scrubbing, setScrubbing] = useState(false);
   const [size, setSize] = useState(() =>
     typeof window === "undefined" ? 420 : wheelSizeFor(window.innerWidth, window.innerHeight));
@@ -64,15 +70,16 @@ export function ParamWheel() {
   const slots = useMemo(() => wheelSlots(items.length), [items.length]);
 
   const engaged = useMemo(() => {
-    const found = items.find(item => item.id === highlight && item.scalar);
+    const found = items.find(item => item.id === engagedId && item.scalar);
     return found?.scalar ? { item: found, scalar: found.scalar } : null;
-  }, [items, highlight]);
+  }, [items, engagedId]);
 
   const close = useCallback(() => {
     setOpen(false);
     setArmed(false);
     setScrubbing(false);
     setHighlight(null);
+    setEngagedId(null);
     haptic("close");
   }, []);
 
@@ -80,6 +87,11 @@ export function ParamWheel() {
     setNodeId(next);
     setPage(0);
     setHighlight(null);
+    // A different node has different scalars, so the rim has nothing to be
+    // wired to any more. `engagedKey` deliberately survives: it is which
+    // *parameter* the mod and audio branches are about, not which slot the
+    // rim is driving.
+    setEngagedId(null);
     haptic("select");
   }, []);
 
@@ -152,10 +164,79 @@ export function ParamWheel() {
     return () => window.removeEventListener("mosh:close-param-wheel", onClose);
   }, [open, close]);
 
+  // ── activation ─────────────────────────────────────────────────────────
+  const activate = useCallback((item: WheelItem) => {
+    if (item.disabled) { haptic("reject"); return; }
+    if (item.branch) { goTo(item.branch); return; }
+    if (item.action) {
+      item.action();
+      haptic("commit");
+      // A slot that also carries a value stays wired to the rim after the
+      // tap, so "pick it, then sweep" is one continuous move.
+      if (item.scalar) { setHighlight(item.id); setEngagedId(item.id); }
+      return;
+    }
+    if (item.scalar) {
+      setHighlight(item.id);
+      setEngagedId(current => (current === item.id ? null : item.id));
+      if (nodeId === "tune") setEngagedKey(current => (current === item.id ? null : item.id));
+      haptic("select");
+    }
+  }, [goTo, nodeId]);
+
+  // Keyboard steering. Tab already reaches every slot, but a ring is a
+  // circle, not a list: left/right walk around it and wrap, up/down step in
+  // and out of the rings, and once a value is engaged they nudge it instead.
+  // Same two axes the two touch bands give a thumb.
+  const stepHighlight = useCallback((delta: number) => {
+    if (!items.length) return;
+    const current = items.findIndex(item => item.id === highlight);
+    const next = current < 0
+      ? (delta > 0 ? 0 : items.length - 1)
+      : (current + delta + items.length) % items.length;
+    setHighlight(items[next].id);
+    haptic("step");
+  }, [items, highlight]);
+
+  const nudgeEngaged = useCallback((direction: -1 | 1, coarse: boolean) => {
+    if (!engaged) return false;
+    const { scalar } = engaged;
+    const stride = coarse ? 0.1 : (scalar.step ? scalar.step / Math.max(1e-6, scalar.max - scalar.min) : 0.02);
+    const next = Math.min(1, Math.max(0, scalarFraction(scalar) + direction * stride));
+    scalar.set(scalarFromFraction(scalar, next));
+    haptic(next === 0 || next === 1 ? "limit" : "step");
+    return true;
+  }, [engaged]);
+
   useEffect(() => {
     if (!open) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") { event.preventDefault(); goBack(); }
+      if (event.key === "Escape") { event.preventDefault(); goBack(); return; }
+      if (event.altKey || event.metaKey || event.ctrlKey) return;
+      switch (event.key) {
+        case "ArrowRight": event.preventDefault(); stepHighlight(1); return;
+        case "ArrowLeft": event.preventDefault(); stepHighlight(-1); return;
+        case "ArrowUp":
+          event.preventDefault();
+          if (!nudgeEngaged(1, event.shiftKey)) stepHighlight(-1);
+          return;
+        case "ArrowDown":
+          event.preventDefault();
+          if (!nudgeEngaged(-1, event.shiftKey)) stepHighlight(1);
+          return;
+        case "PageUp": if (view.paged) { event.preventDefault(); setPage(p => p - 1); setEngagedId(null); } return;
+        case "PageDown": if (view.paged) { event.preventDefault(); setPage(p => p + 1); setEngagedId(null); } return;
+        case "Backspace": event.preventDefault(); goBack(); return;
+        case "Enter":
+        case " ": {
+          const item = items.find(entry => entry.id === highlight);
+          if (!item) return;
+          event.preventDefault();
+          activate(item);
+          return;
+        }
+        default:
+      }
     };
     const onResize = () => {
       const nextSize = wheelSizeFor(window.innerWidth, window.innerHeight);
@@ -170,26 +251,7 @@ export function ParamWheel() {
       window.removeEventListener("resize", onResize);
       window.removeEventListener("orientationchange", onResize);
     };
-  }, [open, goBack]);
-
-  // ── activation ─────────────────────────────────────────────────────────
-  const activate = useCallback((item: WheelItem) => {
-    if (item.disabled) { haptic("reject"); return; }
-    if (item.branch) { goTo(item.branch); return; }
-    if (item.action) {
-      item.action();
-      haptic("commit");
-      // A parameter that can also be scrubbed stays under the rim after the
-      // tap, so "pick it, then sweep" is one continuous move.
-      if (item.scalar) setHighlight(item.id);
-      return;
-    }
-    if (item.scalar) {
-      setHighlight(current => (current === item.id ? null : item.id));
-      if (nodeId === "tune") setEngagedKey(current => (current === item.id ? null : item.id));
-      haptic("select");
-    }
-  }, [goTo, nodeId]);
+  }, [open, goBack, items, highlight, view.paged, activate, stepHighlight, nudgeEngaged]);
 
   // ── rim / ring dragging ────────────────────────────────────────────────
   //
@@ -286,7 +348,7 @@ export function ParamWheel() {
     if (drag.mode === "page" && view.paged) {
       drag.pageFloat += delta / 90;
       const target = Math.round(drag.pageFloat);
-      if (target !== view.page) { setPage(target); haptic("step"); }
+      if (target !== view.page) { setPage(target); setEngagedId(null); haptic("step"); }
     }
   };
 
@@ -345,6 +407,7 @@ export function ParamWheel() {
     : highlight
       ? items.find(item => item.id === highlight)?.label ?? node.title
       : node.title;
+  const rimHint = engaged ? "sweep the rim · hold a slot to reset" : null;
 
   if (!open && !armed) return null;
 
@@ -397,6 +460,7 @@ export function ParamWheel() {
               className="param-wheel__slot"
               data-wheel-slot
               data-highlighted={isHighlighted || undefined}
+              data-engaged={engagedId === item.id || undefined}
               data-active={item.active || undefined}
               data-tone={item.tone}
               data-disabled={item.disabled || undefined}
@@ -457,6 +521,7 @@ export function ParamWheel() {
           {hubValue !== null
             ? <span className="param-wheel__value">{hubValue}</span>
             : <span className="param-wheel__hint">{node.subtitle ?? (node.parent ? "tap centre to go back" : "tap centre to close")}</span>}
+          {rimHint && <span className="param-wheel__hint">{rimHint}</span>}
           {view.paged && <span className="param-wheel__page" aria-hidden>{view.page + 1} / {view.pages}</span>}
         </button>
       </div>

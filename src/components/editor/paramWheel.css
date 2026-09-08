@@ -270,3 +270,12 @@
   .param-wheel-layer[data-phase="armed"] .param-wheel { scale: 1; }
   .param-wheel__slot[data-highlighted] .param-wheel__button { scale: 1; }
 }
+
+/* Engaged is not the same as focused: focus is where attention is, engaged is
+ * what the rim is actually wired to. A user sweeping the rim needs to see
+ * which slot is receiving it without looking away from the frame. */
+.param-wheel__slot[data-engaged] .param-wheel__button {
+  border-color: hsl(var(--accent));
+  box-shadow: 0 0 0 2px hsl(var(--accent) / .55), 0 0 24px hsl(var(--accent) / .6);
+}
+.param-wheel__slot[data-engaged] .param-wheel__caption { color: hsl(var(--accent)); }

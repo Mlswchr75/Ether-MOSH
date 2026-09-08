@@ -182,3 +182,144 @@ describe("ParamWheel", () => {
     expect(useStore.getState().paramWheelOpen).toBe(false);
   });
 });
+
+describe("ParamWheel — keyboard", () => {
+  const key = (k: string, init: KeyboardEventInit = {}) =>
+    act(() => { window.dispatchEvent(new KeyboardEvent("keydown", { key: k, ...init })); });
+
+  it("walks around the ring and wraps, because a ring has no ends", () => {
+    useStore.getState().addLayer("pixelSort");
+    render(<ParamWheel />);
+    summon();
+    const first = document.querySelector(".param-wheel__slot[data-highlighted]");
+    expect(first).toBeNull();
+    key("ArrowRight");
+    const highlighted = () =>
+      document.querySelector<HTMLElement>(".param-wheel__slot[data-highlighted] .param-wheel__caption")?.textContent;
+    const start = highlighted();
+    expect(start).toBeTruthy();
+    key("ArrowLeft");
+    key("ArrowRight");
+    expect(highlighted()).toBe(start);
+    // All the way round and back to where it began.
+    const count = screen.getAllByRole("menuitem").length;
+    for (let i = 0; i < count; i++) key("ArrowRight");
+    expect(highlighted()).toBe(start);
+  });
+
+  it("activates the highlighted slot with Enter", () => {
+    useStore.getState().addLayer("pixelSort");
+    render(<ParamWheel />);
+    summon();
+    tapSlot("Tune");
+    key("ArrowRight");
+    key("Enter");
+    // The first param is now engaged, so the hub reads its value.
+    expect(document.querySelector(".param-wheel__value")).not.toBeNull();
+  });
+
+  it("nudges an engaged value with the arrows instead of moving the highlight", () => {
+    useStore.getState().addLayer("pixelSort");
+    render(<ParamWheel />);
+    summon();
+    tapSlot("Tune");
+    tapSlot("Amount");
+    const before = useStore.getState().layers[0].params.amount;
+    key("ArrowUp");
+    const after = useStore.getState().layers[0].params.amount;
+    expect(after).toBeGreaterThan(before);
+    key("ArrowDown");
+    expect(useStore.getState().layers[0].params.amount).toBeCloseTo(before);
+  });
+
+  it("takes a bigger step with Shift, and never leaves the range", () => {
+    useStore.getState().addLayer("pixelSort");
+    render(<ParamWheel />);
+    summon();
+    tapSlot("Tune");
+    tapSlot("Amount");
+    const before = useStore.getState().layers[0].params.amount;
+    key("ArrowUp", { shiftKey: true });
+    expect(useStore.getState().layers[0].params.amount - before).toBeGreaterThan(0.05);
+    for (let i = 0; i < 40; i++) key("ArrowUp", { shiftKey: true });
+    expect(useStore.getState().layers[0].params.amount).toBeLessThanOrEqual(1);
+    for (let i = 0; i < 80; i++) key("ArrowDown", { shiftKey: true });
+    expect(useStore.getState().layers[0].params.amount).toBeGreaterThanOrEqual(0);
+  });
+
+  it("steps back up the tree with Backspace", () => {
+    useStore.getState().addLayer("pixelSort");
+    render(<ParamWheel />);
+    summon();
+    tapSlot("Tune");
+    expect(hub().getAttribute("aria-label")).toMatch(/^Back to/);
+    key("Backspace");
+    expect(hub().textContent).toContain("PARAMS");
+  });
+
+  it("pages a long ring with PageUp / PageDown", () => {
+    render(<ParamWheel />);
+    summon();
+    tapSlot("Add FX");
+    tapSlot("Data Corruption");
+    const readPage = () => document.querySelector(".param-wheel__page")!.textContent;
+    expect(readPage()).toMatch(/^1 \//);
+    key("PageDown");
+    expect(readPage()).toMatch(/^2 \//);
+    key("PageUp");
+    expect(readPage()).toMatch(/^1 \//);
+  });
+
+  it("leaves modified shortcuts alone, so browser chords still work", () => {
+    useStore.getState().addLayer("pixelSort");
+    render(<ParamWheel />);
+    summon();
+    key("ArrowRight");
+    const before = document.querySelector<HTMLElement>(".param-wheel__slot[data-highlighted]")?.dataset;
+    key("ArrowRight", { metaKey: true });
+    const after = document.querySelector<HTMLElement>(".param-wheel__slot[data-highlighted]")?.dataset;
+    expect(after?.highlighted).toBe(before?.highlighted);
+  });
+});
+
+describe("ParamWheel — focus is not engagement", () => {
+  it("hovering a parameter does not arm the rim", () => {
+    useStore.getState().addLayer("pixelSort");
+    render(<ParamWheel />);
+    summon();
+    tapSlot("Tune");
+    const slot = slotNamed("Amount")!;
+    act(() => { slot.focus(); });
+    // Focused, so the label reads in the hub...
+    expect(document.querySelector(".param-wheel__slot[data-highlighted]")).not.toBeNull();
+    // ...but nothing is wired to the rim until it is deliberately engaged.
+    expect(document.querySelector(".param-wheel__slot[data-engaged]")).toBeNull();
+    expect(document.querySelector(".param-wheel__value")).toBeNull();
+  });
+
+  it("engaging marks the slot, and branching away unwires the rim", () => {
+    useStore.getState().addLayer("pixelSort");
+    render(<ParamWheel />);
+    summon();
+    tapSlot("Tune");
+    tapSlot("Amount");
+    expect(document.querySelector(".param-wheel__slot[data-engaged]")).not.toBeNull();
+    act(() => { hub().click(); });
+    expect(document.querySelector(".param-wheel__slot[data-engaged]")).toBeNull();
+  });
+
+  it("remembers which parameter the audio branch is about after leaving Tune", () => {
+    useStore.getState().addLayer("pixelSort");
+    render(<ParamWheel />);
+    summon();
+    tapSlot("Tune");
+    tapSlot("Amount");
+    act(() => { hub().click(); });      // back to root
+    tapSlot("Audio Map");
+    // The branch knows the parameter even though the rim was unwired.
+    expect(document.querySelector("[role='menu']")!.getAttribute("aria-label")).toContain("Amount");
+    tapSlot("Bass");
+    const map = useStore.getState().layers[0].audioMaps?.amount;
+    expect(map?.source).toBe("bass");
+  });
+});

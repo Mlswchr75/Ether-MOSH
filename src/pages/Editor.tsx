@@ -12,6 +12,7 @@ import { FxPicker } from "@/components/editor/FxPicker";
 import { ShufflePanel } from "@/components/editor/ShufflePanel";
 import { ParamDock } from "@/components/editor/ParamDock";
 import { ParamWheel, PARAM_WHEEL_ARM_MS, PARAM_WHEEL_HOLD_MS } from "@/components/editor/ParamWheel";
+import { ParamWheelHint } from "@/components/editor/ParamWheelHint";
 import { createHoldRecognizer, gestureLock, isBareCanvasTarget } from "@/engine/canvasGestures";
 import { haptic } from "@/hooks/useHaptics";
 import { BeatPanel } from "@/components/editor/BeatPanel";
@@ -2093,6 +2094,7 @@ export default function Editor() {
             without leaving the visualizer is exactly what Performance Mode is
             for. */}
         {!isOverlay && <ParamWheel />}
+        {!isOverlay && !isPerformanceMode && !hideUI && <ParamWheelHint />}
         {/* Standalone, not nested inside HotTriggers — the hot-trigger rail
             now lives inside a press-and-hold radial wheel that's hidden by
             default, which buried this prompt along with it and made it show
