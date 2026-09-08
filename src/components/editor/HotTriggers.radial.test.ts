@@ -6,6 +6,7 @@ import {
   radialHoldJitterTolerance,
   radialIndexForAngle,
   radialTriggerAt,
+  clampFlickToRings,
   radialSlotsFor,
   radialTightestSpacing,
   MOBILE_RING_RADII,
@@ -113,5 +114,38 @@ describe("mobile radial trigger selection", () => {
     expect(radialGestureShouldActivate(20, "touch")).toBe(false);
     expect(radialGestureShouldActivate(70, "touch")).toBe(true);
     expect(radialGestureShouldActivate(40, "mouse")).toBe(true);
+  });
+});
+
+describe("flick selection reaches the ring however hard you throw", () => {
+  it("selects by angle when the flick overshoots the outer ring", () => {
+    const total = 27;
+    const slots = radialSlotsFor(total);
+    const outer = slots.find(s => s.radius === MOBILE_RING_RADII[0])!;
+    const radians = (outer.angleDeg - 90) * Math.PI / 180;
+
+    // A thumb flick easily travels 0.6 of the wheel's diameter from centre.
+    // Nearest-slot matching alone found nothing out there, so the gesture
+    // silently did nothing — the worst failure this control can have.
+    const far = clampFlickToRings(Math.cos(radians) * 0.62, Math.sin(radians) * 0.62);
+    expect(radialTriggerAt(far.x, far.y, total)).toBe(outer.index);
+  });
+
+  it("selects by angle when the flick falls short of the inner ring", () => {
+    const total = 27;
+    const inner = radialSlotsFor(total).find(s => s.radius === MOBILE_RING_RADII[1])!;
+    const radians = (inner.angleDeg - 90) * Math.PI / 180;
+    const short = clampFlickToRings(Math.cos(radians) * 0.09, Math.sin(radians) * 0.09);
+    expect(radialTriggerAt(short.x, short.y, total)).toBe(inner.index);
+  });
+
+  it("leaves a flick that lands between the rings to pick the nearer one", () => {
+    const between = (MOBILE_RING_RADII[0] + MOBILE_RING_RADII[1]) / 2;
+    const point = clampFlickToRings(0, -between);
+    expect(Math.hypot(point.x, point.y)).toBeCloseTo(between);
+  });
+
+  it("does not divide by zero on a flick of no length", () => {
+    expect(clampFlickToRings(0, 0)).toEqual({ x: 0, y: 0 });
   });
 });

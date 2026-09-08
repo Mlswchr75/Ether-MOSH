@@ -127,6 +127,31 @@ export const MOBILE_RING_RADII = [0.44, 0.315];
  *  a finger the user is deliberately steering across the ring. */
 const FLICK_TOLERANCE = 0.17;
 
+/**
+ * Pull a flick's endpoint onto the ring band before hit-testing it.
+ *
+ * A flick says "that direction", not "that exact spot" — the old angle-based
+ * selection took the angle and used distance only to pick a ring, so a long
+ * throw past the outer ring still fired. Nearest-slot matching alone does not:
+ * flick 0.6 of the wheel's diameter from centre and every slot is further away
+ * than the catch radius, so the gesture silently selects nothing. That is well
+ * inside a thumb's reach on a phone, and "I flicked hard and nothing happened"
+ * is the worst failure this control can have.
+ *
+ * So a flick shorter than the inner ring or longer than the outer one is
+ * clamped to the nearest ring and then matched by angle, while a flick that
+ * lands between the rings still picks whichever is genuinely closer.
+ */
+export function clampFlickToRings(nx: number, ny: number): { x: number; y: number } {
+  const distance = Math.hypot(nx, ny);
+  if (distance <= 1e-6) return { x: nx, y: ny };
+  const inner = Math.min(...MOBILE_RING_RADII);
+  const outer = Math.max(...MOBILE_RING_RADII);
+  const clamped = Math.min(outer, Math.max(inner, distance));
+  const scale = clamped / distance;
+  return { x: nx * scale, y: ny * scale };
+}
+
 /** Slot geometry only changes when the trigger count does, and steering asks
  *  for it on every pointermove — so build it once per count. */
 const slotCache = new Map<number, WheelSlot[]>();
@@ -990,7 +1015,8 @@ function MobileRadialWheel({
     // on the slot the user can actually see at whatever size the wheel is.
     const size = wheelRectRef.current?.width
       ?? Math.min(window.innerWidth, window.innerHeight) * 0.84;
-    const index = radialTriggerAt(dx / size, dy / size, idsRef.current.length, rotationRef.current, FLICK_TOLERANCE);
+    const onRing = clampFlickToRings(dx / size, dy / size);
+    const index = radialTriggerAt(onRing.x, onRing.y, idsRef.current.length, rotationRef.current, FLICK_TOLERANCE);
     select(idsRef.current[index] ?? null);
   };
 

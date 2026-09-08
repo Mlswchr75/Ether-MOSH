@@ -201,7 +201,16 @@ export function useParamWheelTree(engagedKey: string | null): WheelTree {
           // Tap auditions. Long-press keeps. Neither costs undo history until
           // something is actually kept — see the store's preview actions.
           preview: () => previewLayer(effect.id),
-          commit: () => { previewLayer(effect.id); commitPreview(); },
+          // Only start an audition if this effect is not already the one being
+          // auditioned. `previewLayer` rebuilds the layer from the effect's
+          // defaults, so re-previewing what is already live would throw away
+          // any parameter the user had already tuned on it — and the hub's ＋
+          // button keeps those. Two commit paths that disagree about what they
+          // keep is worse than either behaviour on its own.
+          commit: () => {
+            if (auditioned?.effectId !== effect.id || !previewLayerId) previewLayer(effect.id);
+            commitPreview();
+          },
         })),
       };
     }
