@@ -80,7 +80,7 @@ export function ShufflePanel() {
       {expanded && (
         <div className="mt-2.5 flex flex-wrap gap-1.5 animate-ui-rise">
           <button
-            onClick={() => { setShuffleSec(null); haptic(8); }}
+            onClick={() => { setShuffleSec(null); haptic("commit"); }}
             className={`flex h-8 items-center rounded-sm border px-3 font-mono text-[10px] uppercase tracking-[0.1em] transition ${shuffleSec === null ? "border-[hsl(var(--accent))] bg-[hsl(var(--accent)/0.08)] text-[hsl(var(--accent))]" : "border-[hsl(var(--border-default))] text-[hsl(var(--text-secondary))] hover:text-[hsl(var(--text-primary))]"}`}
           >
             Off
@@ -88,7 +88,7 @@ export function ShufflePanel() {
           {OPTIONS.map(opt => (
             <button
               key={opt.sec}
-              onClick={() => { setShuffleSec(opt.sec); haptic(8); }}
+              onClick={() => { setShuffleSec(opt.sec); haptic("commit"); }}
               className={`flex h-8 items-center rounded-sm border px-3 font-mono text-[10px] uppercase tracking-[0.1em] transition ${shuffleSec === opt.sec ? "border-[hsl(var(--accent))] bg-[hsl(var(--accent)/0.08)] text-[hsl(var(--accent))]" : "border-[hsl(var(--border-default))] text-[hsl(var(--text-secondary))] hover:text-[hsl(var(--text-primary))]"}`}
             >
               {opt.label}

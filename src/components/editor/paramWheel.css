@@ -1,0 +1,432 @@
+/*
+ * Parameters Wheel.
+ *
+ * Compositing budget, because this sits on top of a live WebGL canvas:
+ *   - exactly ONE backdrop-filtered element (the hub), at a static radius.
+ *     Animating a blur radius re-triggers compositing every frame and drops
+ *     mobile Safari to 30fps or worse.
+ *   - every transition is opacity or transform only.
+ *   - the ring, ticks and value arc are one <svg>, so the dial is one layer
+ *     rather than one layer per bordered element.
+ *   - no infinite animations. The existing hot-trigger wheel runs three per
+ *     slot forever while open; on a 26-slot ring that is 78 timelines
+ *     competing with the renderer for the same frame budget.
+ */
+
+.param-wheel-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 75;
+  pointer-events: none;
+  --param-wheel-size: 420px;
+  --param-wheel-rotation: 0deg;
+  --param-wheel-counter: 0deg;
+  --param-wheel-veil: .34;
+}
+
+.param-wheel-layer__backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+  background: radial-gradient(circle at center, hsl(var(--bg-base) / .04), hsl(var(--bg-base) / .52));
+  transition: opacity 90ms linear;
+}
+
+.param-wheel-layer[data-phase="open"] .param-wheel-layer__backdrop {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* While a value is being swept, the whole surface steps back so the frame
+ * underneath — the thing actually being changed — is legible. This is the
+ * entire reason the wheel exists: on the old bottom rack you could not see
+ * what you were adjusting while you adjusted it. */
+.param-wheel-layer[data-scrubbing] .param-wheel-layer__backdrop { opacity: .18; }
+.param-wheel-layer[data-scrubbing] .param-wheel { opacity: .42; }
+.param-wheel-layer[data-scrubbing] .param-wheel__hub { opacity: 1; }
+
+.param-wheel {
+  position: absolute;
+  inline-size: var(--param-wheel-size);
+  block-size: var(--param-wheel-size);
+  translate: -50% -50%;
+  border-radius: 50%;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  contain: layout style;
+  opacity: 0;
+  scale: .9;
+  pointer-events: none;
+  transition: opacity 110ms linear, scale 150ms cubic-bezier(.16, 1, .3, 1);
+}
+
+.param-wheel-layer[data-phase="armed"] .param-wheel { opacity: .3; scale: .82; }
+.param-wheel-layer[data-phase="open"] .param-wheel { opacity: 1; scale: 1; pointer-events: auto; }
+
+/* ── the dial ──────────────────────────────────────────────────────────── */
+
+.param-wheel__dial {
+  position: absolute;
+  inset: 0;
+  inline-size: 100%;
+  block-size: 100%;
+  overflow: visible;
+  pointer-events: none;
+  rotate: var(--param-wheel-rotation);
+  transition: rotate 0s;
+}
+
+.param-wheel__ring { fill: none; }
+.param-wheel__ring--outer { stroke: hsl(var(--accent) / .34); stroke-width: .5; }
+.param-wheel__ring--inner { stroke: hsl(var(--primary) / .26); stroke-width: .4; stroke-dasharray: 1 3; }
+.param-wheel__ring--hub { fill: hsl(var(--bg-base) / .5); stroke: hsl(var(--primary) / .5); stroke-width: .7; }
+
+.param-wheel__pip { fill: hsl(var(--text-body) / .28); }
+.param-wheel__pip[data-on] { fill: hsl(var(--accent)); }
+
+/* ── slots ─────────────────────────────────────────────────────────────── */
+
+.param-wheel__slot {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  /* Slot offsets are fractions of the wheel's diameter, matching
+   * wheelGeometry's normalized space exactly — the layout and the hit-test
+   * read from the same numbers. The counter-rotation keeps labels upright
+   * however far the ring has been spun. */
+  translate: -50% -50%;
+  transform:
+    rotate(var(--param-wheel-rotation))
+    translate(calc(var(--param-wheel-size) * var(--slot-x)), calc(var(--param-wheel-size) * var(--slot-y)))
+    rotate(var(--param-wheel-counter));
+  pointer-events: none;
+}
+
+.param-wheel__button {
+  position: relative;
+  display: grid;
+  place-items: center;
+  /* 48px floor: 44px is the WCAG AAA minimum and the average thumb contact
+   * patch is wider than that again. The old wheel's clamp bottomed out at
+   * 40px on every phone. */
+  inline-size: clamp(48px, calc(var(--param-wheel-size) * .142), 62px);
+  block-size: clamp(48px, calc(var(--param-wheel-size) * .142), 62px);
+  border-radius: 999px;
+  border: 1px solid hsl(0 0% 100% / .2);
+  color: hsl(var(--text-primary));
+  background: linear-gradient(150deg, hsl(var(--surface-2) / .82), hsl(var(--bg-base) / .66));
+  box-shadow: 0 0 0 1px hsl(0 0% 0% / .74), 0 4px 14px hsl(0 0% 0% / .38);
+  font: 700 11px/1 ui-monospace, monospace;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  pointer-events: auto;
+  overflow: hidden;
+  transition: scale 70ms linear, border-color 70ms linear, box-shadow 70ms linear, color 70ms linear;
+}
+
+.param-wheel__glyph { position: relative; z-index: 1; }
+
+/* Value read-out on the slot itself: a rising tint, so a glance across the
+ * ring shows where every parameter sits without engaging any of them. */
+.param-wheel__fill {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: linear-gradient(to top, hsl(var(--accent) / .5) 0%, hsl(var(--accent) / .5) calc(var(--fill) * 100%), transparent calc(var(--fill) * 100%));
+  pointer-events: none;
+}
+
+.param-wheel__caption {
+  max-inline-size: calc(var(--param-wheel-size) * .2);
+  font: 500 8px/1.15 ui-monospace, monospace;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  text-align: center;
+  color: hsl(var(--text-secondary));
+  text-shadow: 0 1px 3px hsl(var(--bg-base));
+  overflow-wrap: anywhere;
+  pointer-events: none;
+}
+
+.param-wheel__slot[data-active] .param-wheel__button {
+  border-color: hsl(var(--primary));
+  color: hsl(var(--text-body));
+  box-shadow: 0 0 0 1px hsl(0 0% 0% / .74), 0 0 14px hsl(var(--primary) / .5);
+}
+.param-wheel__slot[data-tone="accent"] .param-wheel__button { border-color: hsl(var(--accent) / .8); }
+.param-wheel__slot[data-tone="danger"] .param-wheel__button { color: hsl(var(--destructive)); border-color: hsl(var(--destructive) / .6); }
+.param-wheel__slot[data-disabled] .param-wheel__button { opacity: .34; }
+
+.param-wheel__slot[data-highlighted] .param-wheel__button {
+  scale: 1.18;
+  color: white;
+  border-color: hsl(var(--text-body));
+  box-shadow: 0 0 0 1px hsl(0 0% 0% / .8), 0 0 22px hsl(var(--accent) / .72);
+}
+.param-wheel__slot[data-highlighted] .param-wheel__caption { color: hsl(var(--text-primary)); }
+
+.param-wheel__empty {
+  position: absolute;
+  left: 50%;
+  top: 74%;
+  translate: -50% 0;
+  max-inline-size: 60%;
+  text-align: center;
+  font: 500 10px/1.4 ui-monospace, monospace;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: hsl(var(--text-tertiary));
+}
+
+/* ── hub ───────────────────────────────────────────────────────────────── */
+
+.param-wheel__hub {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  translate: -50% -50%;
+  inline-size: 30%;
+  aspect-ratio: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 6px;
+  border-radius: 999px;
+  border: 1px solid hsl(var(--primary) / .7);
+  color: hsl(var(--text-body));
+  background: hsl(var(--bg-base) / .55);
+  /* The one blurred element on this surface, at a fixed radius. */
+  backdrop-filter: blur(9px);
+  -webkit-backdrop-filter: blur(9px);
+  box-shadow: 0 0 0 1px hsl(0 0% 0% / .7), 0 0 22px hsl(var(--primary) / .28);
+  text-align: center;
+  pointer-events: auto;
+  transition: opacity 110ms linear;
+}
+
+.param-wheel__trail {
+  font: 600 7px/1 ui-monospace, monospace;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: hsl(var(--accent) / .9);
+  max-inline-size: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.param-wheel__title {
+  font: 700 clamp(9px, 2.4vw, 12px)/1.1 ui-monospace, monospace;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  text-wrap: balance;
+}
+.param-wheel__value {
+  font: 700 clamp(15px, 4.6vw, 22px)/1 ui-monospace, monospace;
+  color: hsl(var(--accent));
+  font-variant-numeric: tabular-nums;
+}
+.param-wheel__hint {
+  font: 500 7px/1.25 ui-monospace, monospace;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: hsl(var(--text-tertiary));
+  text-wrap: balance;
+}
+.param-wheel__page {
+  font: 600 7px/1 ui-monospace, monospace;
+  letter-spacing: .1em;
+  color: hsl(var(--text-secondary));
+}
+
+/*
+ * Without haptics — which in practice means every iPhone, since the
+ * Vibration API is an Android/Chromium feature — the confirmation a buzz
+ * would have carried has to be visible instead. Highlighted slots get a
+ * heavier ring so "this is what you are about to change" survives the
+ * missing channel.
+ */
+.param-wheel-layer[data-silent] .param-wheel__slot[data-highlighted] .param-wheel__button {
+  border-width: 2px;
+  box-shadow: 0 0 0 2px hsl(var(--accent) / .5), 0 0 22px hsl(var(--accent) / .72);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .param-wheel,
+  .param-wheel__button,
+  .param-wheel__hub,
+  .param-wheel-layer__backdrop { transition-duration: 1ms; }
+  .param-wheel-layer[data-phase="armed"] .param-wheel { scale: 1; }
+  .param-wheel__slot[data-highlighted] .param-wheel__button { scale: 1; }
+}
+
+/* Engaged is not the same as focused: focus is where attention is, engaged is
+ * what the rim is actually wired to. A user sweeping the rim needs to see
+ * which slot is receiving it without looking away from the frame. */
+.param-wheel__slot[data-engaged] .param-wheel__button {
+  border-color: hsl(var(--accent));
+  box-shadow: 0 0 0 2px hsl(var(--accent) / .55), 0 0 24px hsl(var(--accent) / .6);
+}
+.param-wheel__slot[data-engaged] .param-wheel__caption { color: hsl(var(--accent)); }
+
+
+/* ── the effect browser ─────────────────────────────────────────────────
+ *
+ * Fourteen slots on the outer ring instead of eight. The buttons shrink a
+ * little to make room, but never below the 44px floor: on a 328px wheel the
+ * outer ring's neighbours still sit ~64px apart centre-to-centre, which
+ * clears a 48px target with room to spare.
+ */
+.param-wheel-layer[data-layout="browser"] .param-wheel__slot[data-ring="0"] .param-wheel__button {
+  inline-size: clamp(44px, calc(var(--param-wheel-size) * .116), 56px);
+  block-size: clamp(44px, calc(var(--param-wheel-size) * .116), 56px);
+  padding: 0;
+  overflow: hidden;
+}
+
+/* The inner ring holds the selected effect's own controls — few, so they get
+ * the roomier target. */
+.param-wheel-layer[data-layout="browser"] .param-wheel__slot[data-ring="1"] .param-wheel__button {
+  inline-size: clamp(48px, calc(var(--param-wheel-size) * .132), 60px);
+  block-size: clamp(48px, calc(var(--param-wheel-size) * .132), 60px);
+  border-color: hsl(var(--primary) / .5);
+}
+
+/* A 14-slot ring has no room for a caption under every entry. The name lives
+ * in the hub, where it is legible, and comes back on the one you are pointing
+ * at. */
+.param-wheel-layer[data-layout="browser"] .param-wheel__slot[data-ring="0"] .param-wheel__caption {
+  opacity: 0;
+  transition: opacity 80ms linear;
+}
+.param-wheel-layer[data-layout="browser"] .param-wheel__slot[data-ring="0"]:is([data-highlighted], [data-active]) .param-wheel__caption {
+  opacity: 1;
+}
+
+/* The generative per-effect mark, from the same source as the /effects
+ * registry — so an effect looks like itself in both places. */
+.param-wheel__specimen {
+  position: absolute;
+  inset: 0;
+  inline-size: 100%;
+  block-size: 100%;
+  border-radius: inherit;
+  opacity: .82;
+  pointer-events: none;
+}
+.param-wheel__slot:is([data-highlighted], [data-active]) .param-wheel__specimen { opacity: 1; }
+.param-wheel-layer[data-layout="browser"] .param-wheel__slot[data-ring="0"] .param-wheel__glyph {
+  position: absolute;
+  inset: 0;
+}
+
+/* ── the amount dot ─────────────────────────────────────────────────────
+ *
+ * Rides on an arc anchored at its own slot: its angle from the slot *is* the
+ * value. Sized past the 44px floor via a transparent hit area, because the
+ * visible dot has to stay small enough not to swallow the ring it sits on.
+ */
+.param-wheel__dot {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  inline-size: 44px;
+  block-size: 44px;
+  translate: -50% -50%;
+  /* Rotate out to the value's angle, push out past the slot, then rotate back
+   * so the dot itself never appears to spin. */
+  transform:
+    rotate(var(--dot-angle))
+    translateY(calc(var(--param-wheel-size) * var(--dot-reach) * -1))
+    rotate(calc(var(--dot-angle) * -1));
+  transform-origin: center;
+  border: 0;
+  background: none;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  touch-action: none;
+  cursor: grab;
+  z-index: 3;
+}
+.param-wheel__dot::after {
+  content: "";
+  inline-size: 13px;
+  block-size: 13px;
+  border-radius: 999px;
+  background: hsl(var(--accent));
+  border: 2px solid hsl(var(--bg-base));
+  box-shadow: 0 0 10px hsl(var(--accent) / .9);
+  transition: scale 70ms linear;
+}
+.param-wheel__dot[data-dragging] { cursor: grabbing; }
+.param-wheel__dot[data-dragging]::after { scale: 1.35; }
+
+.param-wheel__dot-track,
+.param-wheel__dot-arc { fill: none; stroke-linecap: round; }
+.param-wheel__dot-track { stroke: hsl(var(--text-body) / .18); stroke-width: 1.6; }
+.param-wheel__dot-arc {
+  stroke: hsl(var(--accent));
+  stroke-width: 2.2;
+  filter: drop-shadow(0 0 3px hsl(var(--accent) / .8));
+}
+
+/* While a dot is being dragged its arc widens to a comfortable sweep, which
+ * means it crosses its neighbours. Dimming them turns that from clutter into
+ * a read-out — and it is the same reason the whole surface steps back while
+ * scrubbing: the frame underneath is the thing being changed. */
+.param-wheel-layer[data-dot-dragging] .param-wheel__slot:not([data-highlighted]):not([data-engaged]) {
+  opacity: .25;
+}
+.param-wheel-layer[data-dot-dragging] .param-wheel { opacity: .62; }
+
+/* ── the hub cluster ────────────────────────────────────────────────────*/
+.param-wheel-layer[data-layout="browser"] .param-wheel__hub { inline-size: 34%; }
+
+.param-wheel__hub-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.param-wheel__hub-button {
+  display: grid;
+  place-items: center;
+  min-inline-size: 44px;
+  min-block-size: 30px;
+  padding: 0 8px;
+  border-radius: 7px;
+  border: 1px solid hsl(var(--border-default));
+  background: hsl(var(--surface-2) / .8);
+  color: hsl(var(--text-primary));
+  font: 700 14px/1 ui-monospace, monospace;
+  cursor: pointer;
+  transition: border-color 70ms linear, color 70ms linear, box-shadow 70ms linear;
+}
+.param-wheel__hub-button:hover { border-color: hsl(var(--text-secondary)); }
+.param-wheel__hub-button[data-role="commit"] { color: hsl(var(--text-tertiary)); }
+/* The commit button lights up only when there is something to keep, so
+ * "is anything actually selected?" is answerable without reading a word. */
+.param-wheel__hub-button[data-role="commit"][data-ready] {
+  color: hsl(var(--bg-base));
+  border-color: hsl(var(--accent));
+  background: hsl(var(--accent));
+  box-shadow: 0 0 16px hsl(var(--accent) / .55);
+}
+.param-wheel__hub-button:disabled { cursor: not-allowed; opacity: .45; }
+
+@media (prefers-reduced-motion: reduce) {
+  .param-wheel__dot::after,
+  .param-wheel__hub-button,
+  .param-wheel__specimen { transition-duration: 1ms; }
+  .param-wheel__dot[data-dragging]::after { scale: 1; }
+}
