@@ -18,6 +18,8 @@ import { startAnalyzer, stopAnalyzer, getAudioData } from "@/engine/audioAnalyze
 import { StickerCapture } from "./StickerCapture";
 import { toast } from "sonner";
 import { vrMode } from "@/engine/vrMode";
+import { ScrubCapture, type ScrubTakeFrame } from "@/engine/scrubCapture";
+import { scrubSession, type ScrubHost } from "@/engine/scrubSession";
 import { VrButton } from "./VrButton";
 import { cursorFx } from "@/engine/cursorFx";
 import { crossfadeLayers, MOSH_FADE_MS } from "@/engine/layerCrossfade";
@@ -71,6 +73,17 @@ export function GlCanvas() {
   const forgeRef = useRef(useStore.getState().forge);
   /** Forge's own small source canvas — repainted every frame, independent of
    *  the ambient ProceduralSource used when there's simply no source yet. */
+  /* Scrub capture. Lives here because this is the only place that holds the
+     resolved layers, the virtual clock and the source element at the same
+     instant — and because Forge is a sourceMode rather than a separate page,
+     recording here covers the visualiser and Forge in one go. */
+  const scrubRef = useRef(new ScrubCapture());
+  /** Non-null while the user is scrubbing: the loop paints this instead of live. */
+  const scrubFrameRef = useRef<ScrubTakeFrame | null>(null);
+  /** Scratch surface the selected frame is drawn into, so the source texture is
+   *  swapped once on entry rather than rebuilt on every scrub tick. */
+  const scrubScratchRef = useRef<HTMLCanvasElement | null>(null);
+  const scrubPrevSourceRef = useRef<null | (() => void)>(null);
   const forgeCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const forgeCtxRef = useRef<CanvasRenderingContext2D | null>(null);
   const forgeRuntimeRef = useRef<ForgeRuntime | null>(null);
@@ -90,6 +103,10 @@ export function GlCanvas() {
   const videoElement = useStore(s => s.videoElement);
   const sourceMode = useStore(s => s.sourceMode);
   const forgeSeamless = useStore(s => s.forge.seamless);
+  /* Bumped when scrubbing hands the canvas back, to re-run the source effect
+     above. Re-triggering it beats duplicating it: that effect wires video
+     listeners and aspect refreshes, and a second copy would drift. */
+  const [sourceGeneration, setSourceGeneration] = useState(0);
   const cameraFacing = useStore(s => s.cameraFacing);
   const showBeforeAfter = useStore(s => s.showBeforeAfter);
   const beforeAfterSplit = useStore(s => s.beforeAfterSplit);
@@ -214,6 +231,64 @@ export function GlCanvas() {
     };
   }, []);
 
+  /* Publish the scrub session so the timeline UI — a sibling in the editor
+     chrome, not a child — can drive preview and export without this component
+     having to own the panel. */
+  useEffect(() => {
+    const capture = scrubRef.current;
+    const entry: ScrubHost = {
+      capture,
+      preview: (frame) => {
+        const renderer = rendererRef.current;
+        if (!renderer) return;
+        if (frame) {
+          if (!scrubScratchRef.current) {
+            const c = document.createElement("canvas");
+            c.width = frame.source?.width || 1280;
+            c.height = frame.source?.height || 720;
+            scrubScratchRef.current = c;
+          }
+          // Swap the source once, on entry. The loop redraws into this same
+          // canvas each tick, and setSourceCanvas marks it for per-frame
+          // upload — so re-pointing the texture per scrub step would only
+          // throw away the upload it already scheduled.
+          if (!scrubFrameRef.current) {
+            renderer.setSourceCanvas(scrubScratchRef.current);
+            const r = containerRef.current?.getBoundingClientRect();
+            if (r) renderer.resize(r.width, r.height);
+          }
+          scrubFrameRef.current = frame;
+          return;
+        }
+        if (scrubFrameRef.current) {
+          scrubFrameRef.current = null;
+          // Hand the clock back before the source, so the first live frame
+          // after a scrub is not still pinned to the frozen moment.
+          renderer.setTimeOverride(null);
+          scrubScratchRef.current = null;
+          setSourceGeneration(g => g + 1);
+        }
+      },
+      context: () => {
+        const st = useStore.getState();
+        const forge = st.sourceMode === "forge" || st.sourceMode === "motif";
+        return {
+          mirror: !!st.videoElement && st.cameraFacing === "user",
+          tileable: forge ? st.forge.seamless : false,
+          // Forge's generated pattern gets the same grade floor the live
+          // finisher gives it, or the export comes back flatter than the
+          // frame the user picked.
+          hdr: forge ? 0.55 : Math.min(1, st.layers.reduce((a, l) => a + (l.hidden ? 0 : l.opacity), 0) / 3),
+        };
+      },
+    };
+    scrubSession.register(entry);
+    return () => {
+      scrubSession.unregister(entry);
+      capture.clear();
+    };
+  }, []);
+
   // Mirror front-facing camera — re-runs whenever the facing changes (e.g. flip button).
   useEffect(() => {
     rendererRef.current?.setSourceMirror(cameraFacing === 'user');
@@ -277,7 +352,7 @@ export function GlCanvas() {
     }
     const r = containerRef.current?.getBoundingClientRect();
     if (r) rendererRef.current.resize(r.width, r.height);
-  }, [imageElement, videoElement, sourceMode, forgeSeamless, rendererGeneration]);
+  }, [imageElement, videoElement, sourceMode, forgeSeamless, rendererGeneration, sourceGeneration]);
 
   // Cleanup procedural on unmount
   useEffect(() => () => { proceduralRef.current?.dispose(); proceduralRef.current = null; }, []);
@@ -477,8 +552,56 @@ export function GlCanvas() {
     let scale = isMobile ? 0.68 : 0.78;
     rendererRef.current?.setRenderScale(scale);
 
+    /** Whatever is currently feeding the renderer, in the same priority order
+     *  the source effect uses. Read per capture rather than cached: the user
+     *  can switch camera, drop an image or enter Forge at any moment. */
+    const currentSourceEl = (): CanvasImageSource | null => {
+      const st = useStore.getState();
+      if (st.videoElement) {
+        // A video with no decoded frame yet rejects the decode; skip it rather
+        // than storing a black sample the timeline would happily show.
+        return st.videoElement.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA
+          ? st.videoElement : null;
+      }
+      if (st.imageElement) return st.imageElement;
+      if (sourceModeRef.current === "forge" || sourceModeRef.current === "motif") {
+        return forgeCanvasRef.current;
+      }
+      return proceduralRef.current?.canvas ?? null;
+    };
+
     const renderOnce = () => {
       const now = performance.now();
+
+      /* Scrubbing owns the canvas. Held frames are painted from the take and
+         nothing else in the loop runs: advancing the clock, re-reading audio or
+         repainting Forge's source would all move the image the user is trying
+         to hold still. */
+      const held = scrubFrameRef.current;
+      if (held) {
+        /* Keep the frame-time baseline moving. Without this the first live
+           frame after a scrub measures the whole time the panel was open as one
+           enormous stall, and the adaptive scaler drops to its floor for a
+           change in nothing. */
+        last = now;
+        const scratch = scrubScratchRef.current;
+        if (scratch && held.source) {
+          const sctx = scratch.getContext("2d");
+          if (sctx) {
+            if (scratch.width !== held.source.width || scratch.height !== held.source.height) {
+              scratch.width = held.source.width;
+              scratch.height = held.source.height;
+            }
+            sctx.drawImage(held.source, 0, 0);
+          }
+        }
+        // Pin the shader clock: without this the "frozen" frame keeps animating
+        // to wall-clock time and the scrub position means nothing.
+        rendererRef.current?.setTimeOverride(held.t);
+        rendererRef.current?.render(held.layers, held.pulse);
+        return;
+      }
+
       const dt = now - last; last = now;
       samples.push(dt);
       if (samples.length > 30) samples.shift();
@@ -717,6 +840,23 @@ export function GlCanvas() {
       }
 
       rendererRef.current?.render(renderLayers, pulse);
+
+      /* Capture for the scrub timeline. Throttled to ~15Hz because the cost is
+         decoding a source bitmap, not storing one; `due` gates that decode so
+         the common path is a single comparison. Failures are swallowed —
+         createImageBitmap rejects on a not-yet-decoded video frame and on a
+         tainted canvas, neither of which is a reason to disturb playback. */
+      const scrub = scrubRef.current;
+      if (scrub.claim(now)) {
+        const el = currentSourceEl();
+        const snap = (bitmap: ImageBitmap | null) =>
+          scrub.push(t, pulse, now, bitmap, renderLayers);
+        if (el) {
+          createImageBitmap(el).then(snap).catch(() => {});
+        } else {
+          snap(null);
+        }
+      }
     };
 
     vrFrameRef.current = renderOnce;

@@ -110,6 +110,8 @@ export class MoshRenderer {
    *  render a small, known subset and shouldn't pay to compile the rest. */
   private warmupEffectIds: string[] | null = null;
   private startTime = performance.now();
+  /** When non-null, shader time comes from here instead of the wall clock. */
+  private timeOverride: number | null = null;
   // Tile pass — post-process after the effect stack, before screen blit.
   private tileMaterial: THREE.ShaderMaterial | null = null;
   private rtTile: THREE.WebGLRenderTarget | null = null;
@@ -983,6 +985,20 @@ export class MoshRenderer {
     this.finisherMaterial.uniforms.uVibrance.value = Math.max(0, Math.min(1, amount));
   }
 
+  /**
+   * Drive shader time from an external clock instead of the wall clock.
+   *
+   * Every animated shader reads `uTime`, and until now that was always derived
+   * from `performance.now()`. That is right for live playback and wrong for
+   * replay: re-rendering a moment from a second ago would animate to whenever
+   * the re-render happened, not to when the moment was. Scrubbing and the
+   * print export both need the frame to come back the way it looked, so they
+   * pin the clock. Pass null to hand it back to the wall clock.
+   */
+  setTimeOverride(t: number | null) {
+    this.timeOverride = t;
+  }
+
   setRenderScale(scale: number) {
     this.renderScale = Math.max(0.42, Math.min(0.9, scale));
     this.resize(this.cssWidth, this.cssHeight);
@@ -1060,7 +1076,7 @@ export class MoshRenderer {
       this.renderer.clear();
       return;
     }
-    const time = (performance.now() - this.startTime) / 1000;
+    const time = this.timeOverride ?? (performance.now() - this.startTime) / 1000;
     const w = this.rtA.width, h = this.rtA.height;
 
     // Force dynamic textures to update every frame. For camera/video, wait until
