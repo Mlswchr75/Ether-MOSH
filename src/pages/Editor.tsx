@@ -68,6 +68,9 @@ import { AccountChip } from "@/components/AccountChip";
 import { usePaywall } from "@/hooks/usePaywall";
 import { useCloudFavorites } from "@/hooks/useCloudFavorites";
 import { JourneyDirector, type JourneyDirectorState } from "@/engine/journeyDirector";
+import { ScrubTimeline } from "@/components/editor/ScrubTimeline";
+import { scrubSession } from "@/engine/scrubSession";
+import type { ScrubTake } from "@/engine/scrubCapture";
 import type { JourneyMic } from "@/engine/journeyCore";
 import { PUBLIC_EFFECTS } from "@/engine/effects";
 import { useIdleFade, markUiActive, isMoshOnlyActivity } from "@/hooks/useIdleFade";
@@ -529,6 +532,60 @@ export default function Editor() {
 
   /** Scan briefly for the cleanest rendered frame, then freeze that exact
    * output. A second invocation releases it immediately. */
+  /* ── Scrub ────────────────────────────────────────────────────────────
+     Tap slows the clock to a near-stop over ~1.5s, then hands the canvas to
+     the timeline. The slow-down is `triggerFreeze`'s own curve — it ramps to
+     5% over the first fifth of its duration — so a 7.5s freeze ramps down
+     across exactly the second and a half asked for, and holds there while the
+     take is built. */
+  const [scrubTake, setScrubTake] = useState<ScrubTake | null>(null);
+  const scrubTimerRef = useRef<number | null>(null);
+
+  const closeScrub = useCallback(() => {
+    if (scrubTimerRef.current) { window.clearTimeout(scrubTimerRef.current); scrubTimerRef.current = null; }
+    setScrubTake(null);
+    timeController.cancelFreeze();
+    scrubSession.get()?.capture.resume();
+  }, []);
+
+  const openScrub = useCallback(() => {
+    if (scrubTake) { closeScrub(); return; }
+    const host = scrubSession.get();
+    if (!host) { toast.error("Nothing is rendering yet"); return; }
+    if (!host.capture.size) {
+      toast.message("Give it a second", { description: "There is no history to scrub yet" });
+      return;
+    }
+
+    /* The tap is the moment, so the window has to be centred on it — not on
+       where the ramp ends. Recording stops here too: the ring holds a little
+       over two seconds and the ramp runs for one and a half, so letting it keep
+       recording would evict most of the history the tap was asking to see. */
+    const pressedAt = performance.now();
+    host.capture.pause();
+    timeController.triggerFreeze(7500);
+    setIconFlash({ icon: "freeze", label: "Freezing…", key: pressedAt });
+
+    scrubTimerRef.current = window.setTimeout(() => {
+      scrubTimerRef.current = null;
+      const st = useStore.getState();
+      const take = host.capture.take(pressedAt, st.layers, 25, st.stackIntensity);
+      if (!take) {
+        timeController.cancelFreeze();
+        host.capture.resume();
+        toast.error("Couldn't capture that moment");
+        return;
+      }
+      setScrubTake(take);
+    }, 1500);
+  }, [scrubTake, closeScrub]);
+
+  // A timer that outlives the page would open a frozen scrub over whatever the
+  // user navigated to next.
+  useEffect(() => () => {
+    if (scrubTimerRef.current) window.clearTimeout(scrubTimerRef.current);
+  }, []);
+
   const toggleSmartFreeze = useCallback(async () => {
     if (freezeFrame) {
       clearSmartFreeze();
@@ -2073,6 +2130,8 @@ export default function Editor() {
             gifBusy={gifBusy}
             gifProgress={gifProgress}
             onFreeze={toggleSmartFreeze}
+            onScrub={openScrub}
+            scrubOpen={!!scrubTake}
             onMicFlash={(on) => setMicFlash({ on, key: performance.now() })}
             showTrackNudge={showTrackNudge}
             onTrackNudgeDismiss={() => setShowTrackNudge(false)}
@@ -2130,6 +2189,8 @@ export default function Editor() {
             not the place for telemetry — but otherwise present, because an
             unattended director that never says what it is doing is
             indistinguishable from a broken one. */}
+        {scrubTake && <ScrubTimeline take={scrubTake} onClose={closeScrub} />}
+
         {journeyOn && journeyState && !isPerformanceMode && !hideUI && (
           <div className="ui-chrome pointer-events-none absolute bottom-3 left-3 z-30 max-w-[min(22rem,60vw)] rounded-sm border border-[hsl(var(--border-subtle))] bg-black/40 px-3 py-2 backdrop-blur-md">
             <p className="font-mono text-[9px] uppercase tracking-[0.3em] text-[hsl(var(--accent))]">

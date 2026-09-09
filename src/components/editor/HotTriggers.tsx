@@ -1,4 +1,4 @@
-import { Mic, MicOff, Circle, Square, Sparkles, Scissors, Snowflake, Camera, Shuffle, Star, Play, Pencil, Trash2, X, Film, Lock, Share2, Compass, Maximize2, Minimize2, SwitchCamera, Eraser, Link2, Upload, Music, Music2, Shuffle as ShuffleIcon, Undo2, Redo2, ChevronDown, MonitorSpeaker, Heart, GripVertical, RotateCcw, SkipBack, SkipForward, Palette, RectangleVertical, RectangleHorizontal, Moon, SlidersHorizontal } from "lucide-react";
+import { Mic, MicOff, Circle, Square, Sparkles, Scissors, Snowflake, Camera, Shuffle, Star, Play, Pencil, Trash2, X, Film, Lock, Share2, Compass, History, Maximize2, Minimize2, SwitchCamera, Eraser, Link2, Upload, Music, Music2, Shuffle as ShuffleIcon, Undo2, Redo2, ChevronDown, MonitorSpeaker, Heart, GripVertical, RotateCcw, SkipBack, SkipForward, Palette, RectangleVertical, RectangleHorizontal, Moon, SlidersHorizontal } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { useStore } from "@/store/useStore";
@@ -44,6 +44,9 @@ type Props = {
   onToggleRecord: () => void;
   onScreenshot: () => void;
   onFreeze: () => void;
+  /** Freeze and open the scrubbable ±1.5s timeline. */
+  onScrub?: () => void;
+  scrubOpen?: boolean;
   onGif: (seconds?: number) => void;
   onShare?: () => void;
   onSupport?: () => void;
@@ -251,7 +254,7 @@ const DEFAULT_AUTO_MOSH_SEC = 15;
  * none of them need a ring slot of their own any more. */
 const DEFAULT_ORDER = [
   "mosh", "params", "undo", "redo", "journey", "auto-mosh", "clear-fx", "dark-mode",
-  "audio", "theme-track", "freeze",
+  "audio", "theme-track", "freeze", "scrub",
   "capture", "gif", "share", "favorites",
   "sticker-mode",
   "source-camera", "switch-camera", "source-upload", "source-forge", "forge-palette", "source-motif", "motif-maestro",
@@ -265,7 +268,7 @@ const TRIGGER_LABELS: Record<string, string> = {
   params: "Parameters — layers, FX, tune, audio (two-finger hold, or T)",
   "dark-mode": "Dark Mode — crush light to black, push color to neon",
   audio: "Audio (mic / device / beat sync)",
-  freeze: "Freeze", capture: "Capture — tap for a still, hold to record", gif: "GIF loop", share: "Share",
+  freeze: "Freeze", scrub: "Scrub — freeze and step through the last 1.5s", capture: "Capture — tap for a still, hold to record", gif: "GIF loop", share: "Share",
   "sticker-mode": "Sticker Studio",
   "theme-track": "Theme track", favorites: "Favorites", fullscreen: "Fullscreen",
   "forge-palette": "Forge settings — colour is directed automatically",
@@ -1707,7 +1710,7 @@ function DesktopRadialWheel({
  */
 export function HotTriggers({
   visualizerRef, hidden = false, showLegacyLaunchpad = false,
-  isRecording, onToggleRecord, onScreenshot, onFreeze, onGif, onShare, onSupport, onAccount, gifBusy, gifProgress,
+  isRecording, onToggleRecord, onScreenshot, onFreeze, onScrub, scrubOpen, onGif, onShare, onSupport, onAccount, gifBusy, gifProgress,
   onMicFlash, journeyOn, onToggleJourney, journeyLocked, journeyPreview, isFullscreen, onToggleFullscreen, onHome,
   onClearFx, hasFx, onSaveFavorite, showTrackNudge, onTrackNudgeDismiss,
 }: Props) {
@@ -2232,6 +2235,18 @@ export function HotTriggers({
     freeze: (
       <HotBtn key="freeze" delay={0} label="Freeze" onClick={onFreeze} tint="200 80% 76%">
         <Snowflake className="h-4 w-4" strokeWidth={1.5} />
+      </HotBtn>
+    ),
+    scrub: (
+      <HotBtn
+        key="scrub"
+        delay={0}
+        label="Scrub — freeze and step through the last 1.5s"
+        active={scrubOpen}
+        onClick={() => onScrub?.()}
+        tint="280 80% 76%"
+      >
+        <History className="h-4 w-4" strokeWidth={1.5} />
       </HotBtn>
     ),
     capture: (
