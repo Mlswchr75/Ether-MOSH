@@ -76,6 +76,20 @@ these migrations apply cleanly in order and reproduce the full schema.
   uri, so any provider added here should keep doing it this way. SVG uploads
   are rejected up front (vector does not rasterise model-side) and raw files
   over 12 MB are too, since inline bytes ride inside the JSON request body.
+  - Storage image transformation is used to downscale each upload to 1600px on
+    its longest edge before it is sent. That is what lets a print-resolution
+    file be analysed at all: a 17MB source exceeds what an inline request can
+    carry, while its downscale carries every signal the analysis reads. If
+    transformation is unavailable on the plan the function falls back to the
+    original and the size cap applies.
+  - Provider calls retry twice on conditions the provider itself calls
+    temporary (503, transient 5xx, a refillable 429). A `429` whose body names
+    `limit: 0` is deliberately *not* retried — that is no quota for the model on
+    that plan rather than an exhausted one, and the same response carries a
+    "please retry" that will never come true.
+  - SVG uploads are rejected with a clear message. Storage transformation passes
+    vector through unchanged rather than rasterising it, so there is nothing to
+    send; export a raster first.
 - `forge-delete` — unchanged, no external dependency.
 
 None of these functions need `LOVABLE_API_KEY`. (The MCP server integration
