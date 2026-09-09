@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowDown, ArrowUp, Heart, ListPlus, Play, Plus, Shuffle, X } from "lucide-react";
+import { ArrowDown, ArrowUp, GripVertical, Heart, ListPlus, Play, Plus, Shuffle, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { SHOWCASE_TRACKS, type ShowcaseTrack } from "@/engine/trackPlayer";
+import { useStore } from "@/store/useStore";
 import type { RadioBroadcast } from "@/hooks/useRadioBroadcast";
 import { useRadioLibrary, type RadioPlaylist } from "@/hooks/useRadioLibrary";
 import { knownRadioTracks, radioLink } from "@/lib/radioLinks";
@@ -35,12 +36,23 @@ function AddToPlaylist({ track, library }: { track: ShowcaseTrack; library: Libr
     </PopoverContent>
   </Popover>;
 }
-function TrackRow({ track, radio, library, index, total, onMove, onRemove }: {
+function TrackRow({ track, radio, library, index, total, onMove, onRemove, drag }: {
   track: ShowcaseTrack; radio: RadioBroadcast; library: LibraryState; index?: number; total?: number;
   onMove?: (from: number, to: number) => void; onRemove?: (index: number) => void;
+  /** Supplied by QueueList for rows that can be dragged into a new position. */
+  drag?: DragHandlers;
 }) {
-  return <li className="border-b border-white/10 py-2">
+  const draggable = drag !== undefined && index !== undefined;
+  return <li
+    className={`border-b border-white/10 py-2 ${draggable ? "cursor-grab active:cursor-grabbing" : ""} ${drag?.overIndex === index && drag?.fromIndex !== index ? "bg-cyan-200/10" : ""}`}
+    draggable={draggable || undefined}
+    onDragStart={draggable ? e => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", String(index)); drag!.onStart(index!); } : undefined}
+    onDragOver={draggable ? e => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; drag!.onOver(index!); } : undefined}
+    onDrop={draggable ? e => { e.preventDefault(); drag!.onDrop(index!); } : undefined}
+    onDragEnd={draggable ? () => drag!.onEnd() : undefined}
+  >
     <div className="flex items-center gap-2">
+      {draggable && <GripVertical size={16} aria-hidden className="shrink-0 text-white/30" />}
       <button type="button" className={iconButton} aria-label={`Play ${track.title}`} onClick={() => radio.playNow(track)}><Play size={16}/></button>
       <div className="min-w-0 flex-1"><a href={radioLink({ track })} onClick={e => { if (!e.metaKey && !e.ctrlKey && !e.shiftKey && e.button === 0) { e.preventDefault(); radio.playNow(track); } }} className="block break-words text-sm font-medium text-white hover:text-cyan-200">{index !== undefined ? `${index + 1}. ` : ""}{track.title}</a><p className="text-xs text-white/50">{track.artist}</p></div>
       <FavoriteSong track={track} library={library}/>
@@ -59,6 +71,95 @@ function TrackRow({ track, radio, library, index, total, onMove, onRemove }: {
     </div>
   </li>;
 }
+type DragHandlers = {
+  fromIndex: number | null;
+  overIndex: number | null;
+  onStart: (index: number) => void;
+  onOver: (index: number) => void;
+  onDrop: (index: number) => void;
+  onEnd: () => void;
+};
+
+/**
+ * The queue, reorderable by dragging.
+ *
+ * The arrows stay. They are not a lesser fallback: drag-and-drop is a
+ * mouse gesture — HTML5 DnD does not fire for touch at all — and moving a song
+ * from tenth to second by dragging inside a scrolling panel on a phone is worse
+ * than pressing a button eight times. They are also the only way to do this
+ * from a keyboard. So the drag is the addition, not the replacement.
+ */
+function QueueList({ radio, library }: { radio: RadioBroadcast; library: LibraryState }) {
+  const [fromIndex, setFrom] = useState<number | null>(null);
+  const [overIndex, setOver] = useState<number | null>(null);
+  const drag: DragHandlers = {
+    fromIndex, overIndex,
+    onStart: setFrom,
+    onOver: index => setOver(prev => (prev === index ? prev : index)),
+    onDrop: index => {
+      // `fromIndex` rather than the dataTransfer payload: the same state drives
+      // the drop highlight, so reading it here means the row that lit up is
+      // exactly the row that moves.
+      if (fromIndex !== null && fromIndex !== index) radio.move(fromIndex, index);
+      setFrom(null);
+      setOver(null);
+    },
+    onEnd: () => { setFrom(null); setOver(null); },
+  };
+  return <ul>{radio.queue.map((track, i) => (
+    <TrackRow
+      key={`${track.id}-${i}`} track={track} radio={radio} library={library}
+      index={i} total={radio.queue.length} onMove={radio.move} onRemove={radio.remove} drag={drag}
+    />
+  ))}</ul>;
+}
+
+/**
+ * Put your own song on the air.
+ *
+ * Object URLs, so the file never leaves the machine and nothing is uploaded
+ * anywhere — `assertSafeTrackUrl` admits `blob:` for exactly this. They last as
+ * long as the tab does; keeping them across sessions means somewhere to put the
+ * bytes, which is a different piece of work.
+ */
+function AddYourOwn({ radio }: { radio: RadioBroadcast }) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const addUploadedTrack = useStore(s => s.addUploadedTrack);
+
+  const take = (files: FileList | null) => {
+    const chosen = [...(files ?? [])].filter(f => f.type.startsWith("audio/"));
+    if (!chosen.length) { toast.error("Choose an audio file"); return; }
+    const added = chosen.map((file, i) => {
+      const title = file.name.replace(/\.[^.]+$/, "");
+      const track: ShowcaseTrack = {
+        id: `upload-${Date.now()}-${i}`,
+        url: URL.createObjectURL(file),
+        title,
+        artist: "Your upload",
+      };
+      addUploadedTrack({ id: track.id, url: track.url, title });
+      radio.enqueue(track);
+      return track;
+    });
+    toast.success(added.length === 1 ? `${added[0].title} added to the queue` : `${added.length} songs added to the queue`);
+  };
+
+  return <>
+    <input
+      ref={fileRef} type="file" accept="audio/*" multiple className="hidden"
+      aria-label="Add your own songs to the queue"
+      onChange={e => { take(e.target.files); e.target.value = ""; }}
+    />
+    <button
+      type="button"
+      onClick={() => fileRef.current?.click()}
+      className="flex min-h-10 items-center gap-2 rounded-lg border border-white/20 px-3 text-sm text-white/80 hover:bg-white/10"
+    >
+      <Upload size={15}/> Add your own
+    </button>
+  </>;
+}
+
 function PlaylistEditor({ playlist, radio, library }: { playlist: RadioPlaylist; radio: RadioBroadcast; library: LibraryState }) {
   const [name, setName] = useState(playlist.name);
   const [tracks, setTracks] = useState(() => knownRadioTracks(playlist.track_ids));
@@ -92,8 +193,9 @@ export function RadioLibrary({ radio, library }: { radio: RadioBroadcast; librar
     <div className="max-h-[min(48dvh,28rem)] overflow-y-auto overscroll-contain pr-1">
       <TabsContent value="queue">
         <div className="flex flex-wrap items-center justify-between gap-1"><button type="button" className="flex min-h-10 items-center gap-2 text-sm text-cyan-200" onClick={radio.shuffle}><Shuffle size={16}/> Shuffle queue</button><RadioShareTag url={radioLink({ tracks: snapshot, name: "My MOSH queue" })} title="this queue"/></div>
-        <p className="my-1 text-xs text-white/50">Up next · use the arrows to reorder</p>
-        <ul>{radio.queue.map((track, i) => <TrackRow key={track.id} track={track} radio={radio} library={library} index={i} total={radio.queue.length} onMove={radio.move} onRemove={radio.remove}/>)}</ul>
+        <div className="my-2"><AddYourOwn radio={radio}/></div>
+        <p className="my-1 text-xs text-white/50">Up next · drag to reorder, or use the arrows</p>
+        <QueueList radio={radio} library={library}/>
         {radio.history.length > 0 && <details className="mt-3"><summary className="min-h-10 cursor-pointer text-sm text-white/60">Recently played</summary><ul>{[...radio.history].reverse().slice(0, 20).map((track, i) => <TrackRow key={`${track.id}-${i}`} track={track} radio={radio} library={library}/>)}</ul></details>}
       </TabsContent>
       <TabsContent value="songs"><input aria-label="Search radio songs" value={query} onChange={e => setQuery(e.target.value)} placeholder="Find a song" className="my-2 w-full rounded-lg border border-white/20 bg-black/30 p-2 text-base"/><ul>{SHOWCASE_TRACKS.filter(matches).map(track => <TrackRow key={track.id} track={track} radio={radio} library={library}/>)}</ul>{!SHOWCASE_TRACKS.some(matches) && <p className="py-4 text-sm text-white/60">No songs match that search.</p>}</TabsContent>

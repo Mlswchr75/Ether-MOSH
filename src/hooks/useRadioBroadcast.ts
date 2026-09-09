@@ -25,6 +25,9 @@ export type RadioBroadcast = {
   needsGesture: boolean;
   /** Deliberately paused by the listener (not stalled, not blocked). */
   paused: boolean;
+  /** The visuals are running on the listener's own mic or device audio, and
+   *  the rotation is held rather than stopped. */
+  externalAudio: boolean;
   /** Call from a real click/tap to start (or restart) the broadcast. */
   start: () => void;
   skip: () => void;
@@ -67,6 +70,22 @@ export function useRadioBroadcast(opts: {
   const [status, setStatus] = useState<RadioStatus>("loading");
   const [paused, setPaused] = useState(false);
   const sessionRef = useRef<RadioSession | null>(null);
+
+  /**
+   * The listener has pointed the visuals at their own sound instead of ours.
+   *
+   * A station is two things bolted together — a rotation and a director — and
+   * only the rotation is opinionated about what you listen to. Someone who
+   * wants the visuals but not the soundtrack (their own set, a film, a room)
+   * should get to keep the half that is doing the work, so choosing the mic or
+   * device audio holds the music rather than ending the broadcast: turn it off
+   * again and the rotation picks up where it was.
+   */
+  const micEnabled = useStore(s => s.micEnabled);
+  const systemAudioEnabled = useStore(s => s.systemAudioEnabled);
+  const external = micEnabled || systemAudioEnabled;
+  const externalAudio = useRef(external);
+  externalAudio.current = external;
 
   // One-time arrival: Forge is the only source that can draw indefinitely
   // without a photo, a camera, or a human, so a station always runs on it.
@@ -127,7 +146,15 @@ export function useRadioBroadcast(opts: {
         // the store answers that with an error toast, so the station opened
         // on a skipped track and a red box. The audio is already rolling by
         // the time this fires; the store only needs to agree.
-        useStore.setState({ trackEnabled: true, micEnabled: false, systemAudioEnabled: false });
+        //
+        // Clearing the two listening flags is how the station claims the
+        // analyser back from a mic — but it must not overrule a listener who
+        // has just deliberately chosen one. Without the guard the mic dies at
+        // the next track change, which reads as the button not working rather
+        // than as the station disagreeing with it.
+        useStore.setState(externalAudio.current
+          ? { trackEnabled: true }
+          : { trackEnabled: true, micEnabled: false, systemAudioEnabled: false });
       },
       onBlocked: () => setNeedsGesture(true),
     });
@@ -138,6 +165,23 @@ export function useRadioBroadcast(opts: {
       useStore.setState({ trackEnabled: false });
     };
   }, [active, config.station, href]);
+
+  /* Hold the music while an external source is feeding the visuals, and let it
+     go again when the listener switches back.
+
+     Deliberately not `stop()`: the queue, the history and the deck position
+     are the listener's, and rebuilding the session would throw all three away
+     to answer what is really a mute. Skipping the very first run matters too —
+     on arrival nothing is listening and pausing a station that has not started
+     yet would leave it silent behind a play button nobody asked for. */
+  const startedRef = useRef(false);
+  useEffect(() => {
+    if (!active) { startedRef.current = false; return; }
+    if (!startedRef.current) { startedRef.current = true; return; }
+    const session = sessionRef.current;
+    if (!session) return;
+    if (external) session.pause(); else session.resume();
+  }, [active, external]);
 
   // Journey is what makes the visuals a performance rather than a screensaver.
   // Requested once, through the editor's own gate.
@@ -172,6 +216,6 @@ export function useRadioBroadcast(opts: {
   const shuffle = useCallback(() => sessionRef.current?.shuffle(), []);
   const playNow = useCallback((track: ShowcaseTrack) => sessionRef.current?.playNow(track), []);
   const playQueue = useCallback((tracks: readonly ShowcaseTrack[]) => sessionRef.current?.playQueue(tracks), []);
-  return { config, nowPlaying, upNext, needsGesture, paused, status, queue, history,
+  return { config, nowPlaying, upNext, needsGesture, paused, externalAudio: external, status, queue, history,
     start, skip, togglePlay, previous, enqueue, move, remove, shuffle, playNow, playQueue };
 }

@@ -3,6 +3,7 @@ import { Helmet } from "react-helmet-async";
 import { useLayoutEffect } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
 import { NewsFooter, NewsHeader } from "@/components/news/NewsChrome";
+import { ShareButton } from "@/components/ShareSheet";
 import { EFFECTS_BY_ID } from "@/engine/effects";
 import { latestNewsArticles, NEWS_ARTICLES, NEWS_ARTICLES_BY_SLUG, NEWS_LOOK_EXAMPLES_BY_SLUG, newsArticlePath } from "@/content/news";
 import "./news.css";
@@ -45,7 +46,10 @@ export default function NewsArticle() {
     <NewsHeader/>
     <div className="news-article-breadcrumb"><Link to="/news"><ArrowLeft/> News + Updates</Link><span>{article.category}</span><span>{article.readMinutes} minute read</span></div>
     <article>
-      <header className="news-article-title"><p className="news-kicker">{article.category} / Dispatch {dispatchNumber}</p><h1>{article.title}</h1><p>{article.dek}</p><div><time dateTime={article.publishedAt}>{formatArticleDate(article.publishedAt)}</time><span>{subjectLabel}: {effect?.name ?? article.effectName}</span><span>{controlCount} core controls</span></div></header>
+      <header className="news-article-title"><p className="news-kicker">{article.category} / Dispatch {dispatchNumber}</p><h1>{article.title}</h1><p>{article.dek}</p><div><time dateTime={article.publishedAt}>{formatArticleDate(article.publishedAt)}</time><span>{subjectLabel}: {effect?.name ?? article.effectName}</span><span>{controlCount} core controls</span>{/* An article is the most shareable thing on the site and had no way to
+            share it — the canonical url, not window.location, so a link posted
+            from a preview deploy still points at the real article. */}
+        <ShareButton url={canonical} title={article.title} text={article.dek} linkLabel="Link to this article" className="!text-inherit"/></div></header>
       <figure className="news-article-hero"><img src={article.image} alt={article.imageAlt} width="1672" height="941"/><figcaption>{article.imageCaption}</figcaption></figure>
       <section className="news-answer"><span>Quick answer</span><p>{article.tldr}</p></section>
       <aside className="news-disclosure" aria-label="Satire disclosure"><strong>Satire disclosure</strong><p>{article.satireDisclosure}</p></aside>
