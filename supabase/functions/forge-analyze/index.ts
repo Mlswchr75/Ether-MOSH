@@ -1,5 +1,6 @@
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { isRetryableProviderError } from "../_shared/provider-retry.ts";
 
 const ANALYZE_TOOL = {
   type: "function",
@@ -120,10 +121,31 @@ const PROVIDERS: Record<ProviderId, { endpoint: string; apiKeyEnv: string; defau
 };
 
 /**
- * Inline images ride inside the JSON request body, and base64 inflates bytes by
- * about a third, so the cap is on the raw file rather than the encoded string.
+ * Backstop, not the primary defence. Downscaling below puts a normal upload far
+ * under this; the cap only catches the case where transformation is unavailable
+ * and the original is genuinely too big to inline. Inline images ride inside
+ * the JSON request body and base64 inflates bytes by about a third, so the
+ * limit is on the raw file rather than the encoded string.
  */
 const MAX_IMAGE_BYTES = 12_000_000;
+
+/**
+ * Longest edge the image is downscaled to before it is sent.
+ *
+ * The model reads palette, shape mix and composition — none of which need a
+ * print-resolution source. A 17MB upload in this bucket transforms to a
+ * fraction of that and analyses identically, so downscaling is what makes a
+ * real artwork file work at all rather than being rejected for its size.
+ */
+const ANALYSIS_EDGE_PX = 1600;
+
+/** Attempts in total, not retries after the first — so 3 means two retries. */
+const MAX_ATTEMPTS = 3;
+
+/** Backoff before attempt 2 and attempt 3. Kept short: the caller is waiting. */
+const RETRY_BACKOFF_MS = [1_500, 4_000];
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
  * `btoa` needs a binary string, and spreading a whole image into
@@ -201,10 +223,29 @@ Deno.serve(async (req) => {
     // Reading through the service-role client also keeps working if
     // `forge-uploads` ever stops being public, which a public-url build
     // would not.
-    const { data: blob, error: dlErr } = await admin.storage
+    // Ask storage for a downscaled render first. This is what lets a
+    // print-resolution upload through: the raw file can be far past what an
+    // inline request may carry, while its downscale is comfortably inside and
+    // carries every signal the analysis actually reads. Transformation is a
+    // paid Storage feature, so a failure here is a configuration difference
+    // rather than a bug — fall back to the original and let the size guard
+    // below decide.
+    let blob: Blob | null = null;
+    const sized = await admin.storage
       .from("forge-uploads")
-      .download(row.storage_path);
-    if (dlErr || !blob) throw dlErr ?? new Error("storage object missing");
+      .download(row.storage_path, {
+        transform: { width: ANALYSIS_EDGE_PX, height: ANALYSIS_EDGE_PX, resize: "contain" },
+      });
+    if (sized.data) {
+      blob = sized.data;
+    } else {
+      console.warn("storage transform unavailable, using original", sized.error?.message);
+      const original = await admin.storage.from("forge-uploads").download(row.storage_path);
+      if (original.error || !original.data) {
+        throw original.error ?? new Error("storage object missing");
+      }
+      blob = original.data;
+    }
 
     const mime = blob.type || "image/jpeg";
     if (mime.includes("svg")) {
@@ -233,42 +274,57 @@ Deno.serve(async (req) => {
     }
     const imageUrl = `data:${mime};base64,${base64(bytes)}`;
 
-    const resp = await fetch(PROVIDER.endpoint, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model,
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are a senior art director analyzing artwork for production-grade seamless pattern generation. Be rigorous, exhaustive, and concrete. Always call the analyze_artwork tool exactly once with complete fields.",
-          },
-          {
-            role: "user",
-            content: [
-              { type: "text", text: "Analyze this artwork for pattern forge." },
-              { type: "image_url", image_url: { url: imageUrl } },
-            ],
-          },
-
-        ],
-        tools: [ANALYZE_TOOL],
-        tool_choice: { type: "function", function: { name: "analyze_artwork" } },
-      }),
+    const requestBody = JSON.stringify({
+      model,
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are a senior art director analyzing artwork for production-grade seamless pattern generation. Be rigorous, exhaustive, and concrete. Always call the analyze_artwork tool exactly once with complete fields.",
+        },
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "Analyze this artwork for pattern forge." },
+            { type: "image_url", image_url: { url: imageUrl } },
+          ],
+        },
+      ],
+      tools: [ANALYZE_TOOL],
+      tool_choice: { type: "function", function: { name: "analyze_artwork" } },
     });
 
-    if (!resp.ok) {
-      // Read and log the body before branching. A 429 used to return silently,
-      // which hid the one detail that decides whether a retry is worth anything:
-      // an exhausted per-minute cap says "wait", but `limit: 0` says the model
-      // has no quota on this plan at all and waiting will never help.
-      const t = await resp.text();
-      console.error("AI provider error", AI_PROVIDER, resp.status, model, t);
+    // Free-tier vision models shed load: gemini-3.6-flash answered 503 "high
+    // demand" twice in ninety seconds on a request that had succeeded minutes
+    // earlier. That is a temporary condition the provider names as temporary,
+    // so failing the upload on the first one hands the user a dead end for a
+    // reason that has already passed by the time they read it.
+    let resp!: Response;
+    let errorBody = "";
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      resp = await fetch(PROVIDER.endpoint, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: requestBody,
+      });
+      if (resp.ok) break;
 
+      // Read the body before branching. It carries the one detail that decides
+      // whether another attempt is worth anything, and a consumed body cannot
+      // be read twice.
+      errorBody = await resp.text();
+      console.error("AI provider error", AI_PROVIDER, resp.status, model, `attempt ${attempt}/${MAX_ATTEMPTS}`, errorBody);
+
+      const backoff = RETRY_BACKOFF_MS[attempt - 1];
+      if (attempt === MAX_ATTEMPTS || backoff === undefined) break;
+      if (!isRetryableProviderError(resp.status, errorBody)) break;
+      await sleep(backoff);
+    }
+
+    if (!resp.ok) {
       if (resp.status === 429) {
         return new Response(JSON.stringify({ error: "Rate limited, please retry shortly." }), {
           status: 429,

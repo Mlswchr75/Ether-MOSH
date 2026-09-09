@@ -29,7 +29,7 @@ export function FxPicker() {
         {items.map(eff => (
           <button
             key={eff.id}
-            onClick={() => { addLayer(eff.id); haptic(8); }}
+            onClick={() => { addLayer(eff.id); haptic("commit"); }}
             className="glass-2 group flex flex-col gap-1 px-3 py-2.5 text-left transition hover:bg-[hsl(var(--surface-hover)/var(--surface-hover-a))]"
           >
             <div className="flex items-start justify-between gap-2">
