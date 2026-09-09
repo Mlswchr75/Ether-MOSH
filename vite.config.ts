@@ -14,8 +14,9 @@ export default defineConfig(({ mode }) => ({
   },
   build: {
     // A "hidden" source map is still emitted as a deployable .map file; it
-    // merely omits the sourceMappingURL comment. MOSH ships proprietary shader
-    // and composition code, so production artifacts must not contain maps.
+    // merely omits the sourceMappingURL comment, and Netlify serves dist/
+    // publicly regardless. MOSH ships proprietary shader and composition
+    // code, so production artifacts must not contain maps.
     sourcemap: false,
   },
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
