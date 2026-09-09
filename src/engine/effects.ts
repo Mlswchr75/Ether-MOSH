@@ -503,7 +503,9 @@ export const EFFECTS: EffectDef[] = [
     `
     vec2 p = vUv-0.5;
     float r = length(p);
-    float w = sin(r*uFreq - uTime*4.0) * uAmount * 0.04;
+    // A gentle low end, with broad folds at full strength; zero stays identity.
+    float reach = uAmount * (1.0 + 1.5 * smoothstep(0.6, 2.0, uAmount));
+    float w = sin(r*uFreq - uTime*4.0) * reach * 0.04;
     gl_FragColor = texture2D(uTex, vUv + normalize(p+0.0001)*w);
     `),
 
@@ -755,9 +757,11 @@ export const EFFECTS: EffectDef[] = [
      { key: "speed", label: "Speed", min: 0, max: 4, default: 1 }],
     `
     float t = uTime * uSpeed;
-    vec2 dr = vec2(cos(t), sin(t)) * uAmount * 0.03;
-    vec2 dg = vec2(cos(t*1.37+2.0), sin(t*1.37+2.0)) * uAmount * 0.03;
-    vec2 db = vec2(cos(t*0.73+4.0), sin(t*0.73+4.0)) * uAmount * 0.03;
+    // Let the channels visibly separate at the upper end, without more samples.
+    float reach = uAmount * (1.0 + 1.5 * smoothstep(0.6, 2.0, uAmount)) * 0.03;
+    vec2 dr = vec2(cos(t), sin(t)) * reach;
+    vec2 dg = vec2(cos(t*1.37+2.0), sin(t*1.37+2.0)) * reach;
+    vec2 db = vec2(cos(t*0.73+4.0), sin(t*0.73+4.0)) * reach;
     float r = texture2D(uTex, vUv+dr).r;
     float g = texture2D(uTex, vUv+dg).g;
     float b = texture2D(uTex, vUv+db).b;
@@ -2038,7 +2042,8 @@ export const EFFECTS: EffectDef[] = [
     // difference even when it cannot name it.
     vec2 rel = vUv - 0.5;
     float r2 = dot(rel, rel);
-    float k = uAmount * 0.06 * mix(1.0, r2 * 4.0, uEdge);
+    float reach = uAmount * (1.0 + 1.5 * smoothstep(0.6, 2.0, uAmount));
+    float k = reach * 0.06 * mix(1.0, r2 * 4.0, uEdge);
     vec3 c;
     c.r = texture2D(uTex, clamp(vUv - rel * k, 0.0, 1.0)).r;
     c.g = texture2D(uTex, vUv).g;

@@ -1,5 +1,5 @@
-import { Mic, MicOff, Circle, Square, Sparkles, Scissors, Snowflake, Camera, Shuffle, Star, Play, Pencil, Trash2, X, Film, Lock, Share2, Compass, History, Maximize2, Minimize2, SwitchCamera, Eraser, Link2, Upload, Music, Music2, Shuffle as ShuffleIcon, Undo2, Redo2, ChevronDown, MonitorSpeaker, Heart, GripVertical, RotateCcw, SkipBack, SkipForward, Palette, RectangleVertical, RectangleHorizontal, Moon } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { Mic, MicOff, Circle, Square, Sparkles, Scissors, Snowflake, Camera, Shuffle, Star, Play, Pencil, Trash2, X, Film, Lock, Share2, Compass, History, Maximize2, Minimize2, SwitchCamera, Eraser, Link2, Upload, Music, Music2, Shuffle as ShuffleIcon, Undo2, Redo2, ChevronDown, MonitorSpeaker, Heart, GripVertical, RotateCcw, SkipBack, SkipForward, Palette, RectangleVertical, RectangleHorizontal, Moon, SlidersHorizontal } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { useStore } from "@/store/useStore";
 import { trackPlayer, DEFAULT_TRACK_TITLE, SHOWCASE_TRACKS } from "@/engine/trackPlayer";
@@ -14,6 +14,9 @@ import { crossfadeLayers, MOSH_FADE_MS } from "@/engine/layerCrossfade";
 import { cursorFx } from "@/engine/cursorFx";
 import { toast } from "sonner";
 import { clampRadialPoint, defaultRadialPoint, nearestRadialId, type RadialLayout } from "@/lib/radialLayout";
+import { hitSlot, ringSpacingPx, slotsForCounts, unrotatePoint, type WheelSlot } from "@/lib/wheelGeometry";
+import { gestureLock } from "@/engine/canvasGestures";
+import { enhanceHotTriggerRail } from "@/engine/hotTriggerMobile";
 import { validateAudioUpload } from "@/lib/mediaFileSafety";
 import { MoshVortexIcon, LiveFeedIcon, UploadBeamIcon, ForgeFlameIcon, MotifMandalaIcon, HomeBeaconIcon, AccountCrystalIcon } from "./HotTriggerIcons";
 import { AccountSettingsOverlay } from "./AccountSettingsOverlay";
@@ -105,13 +108,135 @@ export function radialIndexForAngle(angle: number, count: number, rotation = 0) 
   return Math.round(normalizeRadialDegrees(angle - rotation) / step) % count;
 }
 
-export function radialTriggerIndex(angle: number, distance: number, total: number, rotation = 0) {
+/**
+ * The wheel's two ring radii, as fractions of its diameter.
+ *
+ * Slot placement and slot hit-testing both read from these, via
+ * `lib/wheelGeometry`. They used to be computed separately: the ring was
+ * *drawn* at fractional radii but *flick-selected* against a hard-coded
+ * `distance < 112` pixel boundary, so the two agreed only when the wheel
+ * happened to be about 600px across. On a phone — where the wheel is closer
+ * to 330px — the ring you could see and the ring you could hit were
+ * different rings.
+ *
+ * The radii also have to hold the two rings *apart*. Eight outer slots and
+ * six inner ones do not share a step size, so the half-step stagger cannot
+ * stop them lining up — at 90° and 270° they do. That is harmless only if the
+ * radial gap exceeds a touch target, which at the previous 0.44/0.315 it did
+ * not: 0.125 of the diameter is ~41px on a phone, and the buttons are 48px,
+ * so the rings overlapped where they aligned. 0.425/0.255 puts ~56px between
+ * them, and still clears the hub inside and the wheel's own edge outside.
+ */
+export const MOBILE_RING_RADII = [0.425, 0.255];
+
+/** A flick is a ballistic gesture, so it gets a far looser catch radius than
+ *  a finger the user is deliberately steering across the ring. */
+const FLICK_TOLERANCE = 0.17;
+
+/**
+ * Pull a flick's endpoint onto the ring band before hit-testing it.
+ *
+ * A flick says "that direction", not "that exact spot" — the old angle-based
+ * selection took the angle and used distance only to pick a ring, so a long
+ * throw past the outer ring still fired. Nearest-slot matching alone does not:
+ * flick 0.6 of the wheel's diameter from centre and every slot is further away
+ * than the catch radius, so the gesture silently selects nothing. That is well
+ * inside a thumb's reach on a phone, and "I flicked hard and nothing happened"
+ * is the worst failure this control can have.
+ *
+ * So a flick shorter than the inner ring or longer than the outer one is
+ * clamped to the nearest ring and then matched by angle, while a flick that
+ * lands between the rings still picks whichever is genuinely closer.
+ */
+export function clampFlickToRings(nx: number, ny: number): { x: number; y: number } {
+  const distance = Math.hypot(nx, ny);
+  if (distance <= 1e-6) return { x: nx, y: ny };
+  const inner = Math.min(...MOBILE_RING_RADII);
+  const outer = Math.max(...MOBILE_RING_RADII);
+  const clamped = Math.min(outer, Math.max(inner, distance));
+  const scale = clamped / distance;
+  return { x: nx * scale, y: ny * scale };
+}
+
+/**
+ * Triggers per ring, and therefore per page.
+ *
+ * The wheel carries 26 ring items. Shown at once that is roughly three times
+ * the breadth pie-menu research puts the accuracy ceiling at, and it showed:
+ * neighbours sat ~57px apart on a phone, barely more than one touch target,
+ * which is the whole reason a flick used to land on the wrong trigger.
+ *
+ * Eight on the outer ring and six on the inner keeps both inside the budget
+ * and takes the tightest gap from ~57px to ~108px — nearly double a 48px
+ * target. Fourteen a page also means the 26 items need only two pages, so
+ * nothing is ever more than one chevron away.
+ */
+const RING_CAPACITY = [8, 6];
+export const RADIAL_PAGE_SIZE = RING_CAPACITY.reduce((a, b) => a + b, 0);
+
+/** How many pages the current trigger set needs. */
+export function radialPageCount(total: number): number {
+  return Math.max(1, Math.ceil(total / RADIAL_PAGE_SIZE));
+}
+
+/** Wrap a page index into range, so paging past either end is continuous. */
+export function wrapPage(page: number, total: number): number {
+  const pages = radialPageCount(total);
+  return ((page % pages) + pages) % pages;
+}
+
+/** The ids shown on `page`, in the user's own order. */
+export function radialPageIds(ids: string[], page: number): string[] {
+  const start = wrapPage(page, ids.length) * RADIAL_PAGE_SIZE;
+  return ids.slice(start, start + RADIAL_PAGE_SIZE);
+}
+
+/** Slot geometry only changes when the page's trigger count does, and
+ *  steering asks for it on every pointermove — so build it once per count. */
+const slotCache = new Map<number, WheelSlot[]>();
+
+export function radialSlotsFor(total: number): WheelSlot[] {
+  // Clamped to one page. Handed more, this used to fill the outer ring to
+  // capacity and dump the entire remainder on the inner one — twenty-six
+  // triggers became eight outside and eighteen inside, which is worse than
+  // the unpaginated layout it replaced. Callers pass a page; anything beyond
+  // one has nowhere to go, and silently drawing it badly is the failure mode
+  // pagination exists to remove.
+  const capped = Math.max(0, Math.min(total, RADIAL_PAGE_SIZE));
+  const cached = slotCache.get(capped);
+  if (cached) return cached;
+  // Fill the outer ring first — it has the circumference — then the inner.
+  // A page that does not fill the outer ring draws one ring, not two.
+  const counts = [Math.min(RING_CAPACITY[0], capped), Math.max(0, capped - RING_CAPACITY[0])]
+    .filter(count => count > 0);
+  const slots = slotsForCounts(counts, MOBILE_RING_RADII);
+  slotCache.set(capped, slots);
+  return slots;
+}
+
+/** Tightest centre-to-centre neighbour gap the layout produces, in px. Exposed
+ *  so a test can hold the line on touch-target spacing. */
+export function radialTightestSpacing(total: number, diameter: number): number {
+  const slots = radialSlotsFor(total);
+  const counts = new Map<number, number>();
+  for (const slot of slots) counts.set(slot.ring, (counts.get(slot.ring) ?? 0) + 1);
+  let tightest = Infinity;
+  for (const [ring, count] of counts) {
+    tightest = Math.min(tightest, ringSpacingPx(MOBILE_RING_RADII[ring] ?? 0, count, diameter));
+  }
+  return tightest;
+}
+
+/**
+ * Which trigger a point addresses, in normalized wheel space (offsets as a
+ * fraction of the wheel's diameter from its centre, +y downward).
+ */
+export function radialTriggerAt(
+  nx: number, ny: number, total: number, rotation = 0, tolerance?: number,
+) {
   if (total <= 0) return -1;
-  const outerCount = Math.min(14, total);
-  const innerCount = Math.max(0, total - outerCount);
-  const useInnerRing = innerCount > 0 && distance < 112;
-  const ringIndex = radialIndexForAngle(angle, useInnerRing ? innerCount : outerCount, rotation);
-  return useInnerRing ? outerCount + ringIndex : ringIndex;
+  const point = unrotatePoint(nx, ny, rotation);
+  return hitSlot(point.x, point.y, radialSlotsFor(total), tolerance);
 }
 
 /** Auto-Mosh / auto-shuffle interval options — the one list every surface
@@ -128,7 +253,7 @@ const DEFAULT_AUTO_MOSH_SEC = 15;
  * trigger's settings overlay instead (see AccountSettingsOverlay.tsx), so
  * none of them need a ring slot of their own any more. */
 const DEFAULT_ORDER = [
-  "mosh", "undo", "redo", "journey", "auto-mosh", "clear-fx", "dark-mode",
+  "mosh", "params", "undo", "redo", "journey", "auto-mosh", "clear-fx", "dark-mode",
   "audio", "theme-track", "freeze", "scrub",
   "capture", "gif", "share", "favorites",
   "sticker-mode",
@@ -140,6 +265,7 @@ const TRIGGER_LABELS: Record<string, string> = {
   home: "Back to start", undo: "Undo", redo: "Redo",
   "source-upload": "Upload source", "source-camera": "Live camera", "source-forge": "Forge source", "source-motif": "Motif Maestro", account: "Settings",
   mosh: "Mosh", "auto-mosh": "Auto-Mosh", "clear-fx": "Clear FX", journey: "Journey",
+  params: "Parameters — layers, FX, tune, audio (two-finger hold, or T)",
   "dark-mode": "Dark Mode — crush light to black, push color to neon",
   audio: "Audio (mic / device / beat sync)",
   freeze: "Freeze", scrub: "Scrub — freeze and step through the last 1.5s", capture: "Capture — tap for a still, hold to record", gif: "GIF loop", share: "Share",
@@ -148,7 +274,7 @@ const TRIGGER_LABELS: Record<string, string> = {
   "forge-palette": "Forge settings — colour is directed automatically",
   "motif-maestro": "Motif Maestro controls",
   "switch-camera": "Switch camera",
-  "desktop-portrait": "Portrait view",
+  "desktop-portrait": "Canvas shape",
 };
 
 const ORDER_KEY = "cathedral_hot_trigger_order_v2";
@@ -249,10 +375,18 @@ function TrackNudgeToast({ onPlay, onDismiss }: { onPlay: () => void; onDismiss:
     return () => window.clearTimeout(t);
   }, [leaving, onDismiss]);
 
-  return (
+  return createPortal(
     <div
       role="status"
-      className={`absolute right-full mr-2 top-0 z-50 w-56 rounded-md border border-[hsl(var(--accent))]/40 bg-black/90 p-2.5 backdrop-blur-md panel-in-3d ${leaving ? "bg-glitch-pulse" : ""}`}
+      // Portaled to <body> and fixed, not anchored to the theme-track ring
+      // slot: that slot lives inside the radial wheel, which is
+      // visibility:hidden whenever the wheel itself is closed — this nudge
+      // is meant to appear unprompted while the user is just watching the
+      // visualizer. A plain `fixed` here (without the portal) still isn't
+      // viewport-relative: an ancestor further up the page tree establishes
+      // its own containing block for fixed descendants, so the toast landed
+      // thousands of pixels down the page instead of in the corner.
+      className={`fixed bottom-20 right-3 z-50 w-56 rounded-md border border-[hsl(var(--accent))]/40 bg-black/90 p-2.5 backdrop-blur-md panel-in-3d safe-bottom safe-right ${leaving ? "bg-glitch-pulse" : ""}`}
       style={leaving ? undefined : { animation: "panel-in 180ms ease-out both" }}
     >
       <div className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-[hsl(var(--accent))]">
@@ -277,11 +411,12 @@ function TrackNudgeToast({ onPlay, onDismiss }: { onPlay: () => void; onDismiss:
           Not now
         </button>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
-function TrackTrigger({ delay, showNudge, onNudgeDismiss }: { delay: number; showNudge?: boolean; onNudgeDismiss?: () => void }) {
+function TrackTrigger({ delay }: { delay: number }) {
   const trackEnabled = useStore(s => s.trackEnabled);
   const trackTitle = useStore(s => s.trackTitle);
   const setTrackEnabled = useStore(s => s.setTrackEnabled);
@@ -294,13 +429,16 @@ function TrackTrigger({ delay, showNudge, onNudgeDismiss }: { delay: number; sho
 
   const startRandomTrack = () => {
     runTrackAction(() => trackPlayer.shuffleShowcaseTrack());
-    onNudgeDismiss?.();
   };
 
   useEffect(() => {
     if (!open) return;
+    // Checks the attribute rather than wrapRef.contains(): the panel is
+    // portaled to <body> (see below) so it lands in a fixed, always
+    // on-screen spot regardless of where this trigger sits on the ring —
+    // real DOM containment no longer holds once it's outside wrapRef's tree.
     const close = (e: PointerEvent) => {
-      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
+      if (!(e.target as HTMLElement | null)?.closest?.("[data-shuffle-picker]")) setOpen(false);
     };
     window.addEventListener("pointerdown", close);
     return () => window.removeEventListener("pointerdown", close);
@@ -318,20 +456,23 @@ function TrackTrigger({ delay, showNudge, onNudgeDismiss }: { delay: number; sho
         type="button"
         aria-label={trackEnabled ? `Pause ${trackTitle}` : "Play a random MOSH track"}
         aria-pressed={trackEnabled}
-        title={trackEnabled ? `Pause · ${trackTitle} — shift-click to pick a track` : "Play a random track — shift-click to pick"}
+        title={trackEnabled ? `Pause · ${trackTitle} — Command+Shift-click to choose a song` : "Play a random song + moment — Command+Shift-click to choose"}
         data-active={trackEnabled || undefined}
         data-tint=""
         data-no-longpress
         className="hot-trigger"
         style={{ animationDelay: `${delay}ms`, ["--ht-tint" as string]: "262 68% 72%" }}
-        /* Shift opens the picker instead of toggling. The caret below already
+        /* Command+Shift opens the picker instead of toggling. The caret below already
            opens it, but it is a 20px target tucked in a corner of another
            button — fine to discover once, tedious to hit every time you want
-           a specific track. Shift-click is the same escalation convention the
-           rest of the app uses for "the considered version of this action",
-           and it leaves the plain tap doing exactly what it always did. */
+           a specific track. Ctrl+Shift mirrors the gesture off macOS, and a
+           plain tap still toggles randomized playback exactly as before. */
         onClick={(event) => {
-          if (event.shiftKey) { setOpen(true); return; }
+          if (event.shiftKey && (event.metaKey || event.ctrlKey)) {
+            event.stopPropagation();
+            setOpen(true);
+            return;
+          }
           if (trackEnabled) setTrackEnabled(false); else startRandomTrack();
         }}
       >
@@ -342,7 +483,6 @@ function TrackTrigger({ delay, showNudge, onNudgeDismiss }: { delay: number; sho
           {trackEnabled ? <Music className="h-4 w-4" strokeWidth={1.5} /> : <Music2 className="h-4 w-4" strokeWidth={1.5} />}
         </span>
       </button>
-      {showNudge && <TrackNudgeToast onPlay={startRandomTrack} onDismiss={() => onNudgeDismiss?.()} />}
       <button
         type="button"
         onPointerDown={(e) => e.stopPropagation()}
@@ -357,18 +497,30 @@ function TrackTrigger({ delay, showNudge, onNudgeDismiss }: { delay: number; sho
         <ShuffleIcon className="h-2 w-2" strokeWidth={2.5} />
       </button>
 
-      {open && (
+      {open && createPortal(
         <div
-          className="panel-in-3d absolute right-full top-0 z-50 mr-2 w-52 rounded-sm border border-[hsl(var(--border-default))] bg-black/85 p-2.5 backdrop-blur-md"
-          role="menu"
-          aria-label="Track options"
+          data-shuffle-picker
+          // Fixed to a corner instead of anchored to this trigger's own ring
+          // slot (see forge-palette/motif-maestro for the same pattern): the
+          // ring can place this trigger anywhere in a circle nearly filling
+          // the viewport, and a slot in the lower arc left most of this
+          // library's song list rendered below the visible screen.
+          className="fixed left-3 top-14 z-50 w-64 safe-top safe-left"
           onPointerDown={(e) => e.stopPropagation()}
         >
+          <div
+            className="panel-in-3d max-h-[82dvh] w-full overflow-y-auto rounded-sm border border-[hsl(var(--border-default))] bg-black/85 p-2.5 backdrop-blur-md [scrollbar-width:thin]"
+            role="menu"
+            aria-label="Track options"
+          >
           <div className="overflow-hidden whitespace-nowrap font-mono text-[10px] uppercase tracking-[0.16em] text-[hsl(var(--text-secondary))]">
             now playing
           </div>
           <div className="mt-0.5 truncate text-[12px] font-semibold text-[hsl(var(--text-primary))]" title={trackTitle}>
             {trackTitle}
+          </div>
+          <div className="mt-1 font-mono text-[8px] uppercase tracking-[0.14em] text-[hsl(var(--text-tertiary))]">
+            cmd + shift + song trigger opens this library
           </div>
 
           {/* Bigger, obviously-tappable transport row — the small text
@@ -422,7 +574,8 @@ function TrackTrigger({ delay, showNudge, onNudgeDismiss }: { delay: number; sho
                     type="button"
                     role="menuitem"
                     data-no-longpress
-                    data-active={trackEnabled && trackTitle === t.title || undefined}
+                    data-active={trackTitle === t.title || undefined}
+                    aria-current={trackTitle === t.title ? "true" : undefined}
                     onClick={async () => {
                       setOpen(false);
                       try {
@@ -438,7 +591,7 @@ function TrackTrigger({ delay, showNudge, onNudgeDismiss }: { delay: number; sho
                         toast.error(`"${t.title}" is no longer loaded — add the file again`);
                       }
                     }}
-                    className="flex w-full items-center gap-2 rounded-sm border border-transparent px-2 py-1.5 text-left font-mono text-[10px] uppercase tracking-[0.1em] text-[hsl(var(--text-secondary))] transition hover:border-[hsl(var(--accent))] hover:text-[hsl(var(--accent))] data-[active]:border-[hsl(var(--accent))]/40 data-[active]:text-[hsl(var(--accent))]"
+                    className="flex w-full items-center gap-2 rounded-sm border border-transparent px-2 py-1.5 text-left font-mono text-[10px] uppercase tracking-[0.1em] text-[hsl(var(--text-secondary))] transition hover:border-[hsl(var(--accent))] hover:text-[hsl(var(--accent))] data-[active]:!border-[#5dff9b]/50 data-[active]:!text-[#5dff9b]"
                   >
                     <Upload className="h-3 w-3 shrink-0" strokeWidth={1.5} />
                     <span className="truncate">{t.title}</span>
@@ -448,19 +601,21 @@ function TrackTrigger({ delay, showNudge, onNudgeDismiss }: { delay: number; sho
             </>
           )}
 
-          <div className="mt-2.5 mb-1 font-mono text-[9px] uppercase tracking-[0.18em] text-[hsl(var(--text-tertiary))]">
-            showcase
+          <div className="mt-2.5 mb-1 flex items-center justify-between font-mono text-[9px] uppercase tracking-[0.18em] text-[hsl(var(--text-tertiary))]">
+            <span>showcase</span>
+            <span>{SHOWCASE_TRACKS.length} songs</span>
           </div>
-          <div className="flex flex-col gap-0.5">
+          <div className="flex max-h-[min(42dvh,22rem)] flex-col gap-0.5 overflow-y-auto overscroll-contain pr-1 [scrollbar-width:thin]">
             {SHOWCASE_TRACKS.map((t) => (
               <button
                 key={t.id}
                 type="button"
                 role="menuitem"
                 data-no-longpress
-                data-active={trackEnabled && trackTitle === t.title || undefined}
+                data-active={trackTitle === t.title || undefined}
+                aria-current={trackTitle === t.title ? "true" : undefined}
                 onClick={() => { setOpen(false); runTrackAction(() => trackPlayer.useShowcaseTrack(t.id)); }}
-                className="flex w-full items-center gap-2 rounded-sm border border-transparent px-2 py-1.5 text-left font-mono text-[10px] uppercase tracking-[0.1em] text-[hsl(var(--text-secondary))] transition hover:border-[hsl(var(--accent))] hover:text-[hsl(var(--accent))] data-[active]:border-[hsl(var(--accent))]/40 data-[active]:text-[hsl(var(--accent))]"
+                className="flex w-full items-center gap-2 rounded-sm border border-transparent px-2 py-1.5 text-left font-mono text-[10px] uppercase tracking-[0.1em] text-[hsl(var(--text-secondary))] transition hover:border-[hsl(var(--accent))] hover:text-[hsl(var(--accent))] data-[active]:!border-[#5dff9b]/50 data-[active]:!text-[#5dff9b]"
               >
                 <Music2 className="h-3 w-3 shrink-0" strokeWidth={1.5} />
                 <span className="truncate">{t.title}</span>
@@ -529,7 +684,9 @@ function TrackTrigger({ delay, showNudge, onNudgeDismiss }: { delay: number; sho
               }
             }}
           />
-        </div>
+          </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
@@ -559,8 +716,12 @@ function AudioTrigger({ delay, onMicFlash }: { delay: number; onMicFlash?: (on: 
 
   useEffect(() => {
     if (!open) return;
+    // Checks the attribute rather than wrapRef.contains(): the panel itself
+    // is portaled to <body> (see below) so it can land in a fixed, always
+    // on-screen spot regardless of where this trigger sits on the ring —
+    // real DOM containment no longer holds once it's outside wrapRef's tree.
     const close = (e: PointerEvent) => {
-      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
+      if (!(e.target as HTMLElement | null)?.closest?.("[data-audio-source-picker]")) setOpen(false);
     };
     window.addEventListener("pointerdown", close, true);
     return () => window.removeEventListener("pointerdown", close, true);
@@ -613,10 +774,16 @@ function AudioTrigger({ delay, onMicFlash }: { delay: number; onMicFlash?: (on: 
         <ChevronDown className="h-3 w-3" strokeWidth={2.5} />
       </button>
 
-      {open && (
+      {open && createPortal(
         <div
           data-audio-source-picker
-          className="panel-in-3d absolute right-full top-0 z-50 mr-2 w-60 rounded-md border border-white/10 bg-black/85 p-2 backdrop-blur-md"
+          // Fixed to a corner instead of anchored to this trigger's own ring
+          // slot (see forge-palette/motif-maestro for the same pattern): the
+          // ring can place this trigger anywhere in a circle nearly filling
+          // the viewport, and a slot in the lower arc left this panel's BPM
+          // input and beat-sync toggle rendered below the visible screen
+          // with no way to reach them.
+          className="panel-in-3d fixed left-3 top-14 z-50 w-60 max-h-[70vh] overflow-y-auto rounded-md border border-white/10 bg-black/85 p-2 backdrop-blur-md safe-top safe-left"
           role="menu"
           aria-label="Audio options"
           onPointerDown={(e) => e.stopPropagation()}
@@ -671,7 +838,8 @@ function AudioTrigger({ delay, onMicFlash }: { delay: number; onMicFlash?: (on: 
               <Heart className="h-2.5 w-2.5" strokeWidth={1.5} /> tap
             </button>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
@@ -773,6 +941,14 @@ function MobileRadialWheel({
    *  click/spacebar always has. */
   onMosh: () => void;
 }) {
+  // Always opens on page one. Remembering the page would make the wheel
+  // non-deterministic, and muscle memory — the whole reason this layout was
+  // worth preserving — depends on the same flick reaching the same trigger
+  // every time you summon it.
+  const [page, setPage] = useState(0);
+  const pages = radialPageCount(ids.length);
+  const pageIds = useMemo(() => radialPageIds(ids, page), [ids, page]);
+
   const layerRef = useRef<HTMLDivElement>(null);
   const wheelRef = useRef<HTMLDivElement>(null);
   const labelRef = useRef<HTMLSpanElement>(null);
@@ -794,11 +970,15 @@ function MobileRadialWheel({
   if (Number.isNaN(rotationRef.current)) {
     try { rotationRef.current = Number(localStorage.getItem(MOBILE_WHEEL_ROTATION_KEY)) || 0; } catch { rotationRef.current = 0; }
   }
-  const idsRef = useRef(ids);
+  const idsRef = useRef(pageIds);
   const activateRef = useRef<(id: string) => void>(() => {});
-  idsRef.current = ids;
-  const outerCount = Math.min(14, ids.length);
-  const innerCount = Math.max(0, ids.length - outerCount);
+  idsRef.current = pageIds;
+  // Placement comes from the same module the hit-test reads, so a slot can
+  // never be drawn somewhere it can't be touched. Rebuilt only when the
+  // trigger count changes — rotation is applied in CSS and unwound in the
+  // hit-test, never by regenerating this.
+  const slotsRef = useRef<WheelSlot[]>([]);
+  slotsRef.current = radialSlotsFor(pageIds.length);
 
   const clearTimers = () => {
     if (armTimerRef.current != null) window.clearTimeout(armTimerRef.current);
@@ -812,6 +992,10 @@ function MobileRadialWheel({
     if (!layer) return;
     layer.dataset.phase = phase;
     openRef.current = phase === "open";
+    // While the wheel is up, no other canvas recognizer gets to act on the
+    // fingers steering it — a flick across the ring is not an undo swipe.
+    if (phase === "open") gestureLock.claim("hot-trigger-wheel");
+    else gestureLock.release("hot-trigger-wheel");
     wheelRef.current?.setAttribute("aria-hidden", phase === "open" ? "false" : "true");
     // Published so the audio nudge can fire only while the menu that answers
     // it is actually on screen (see Editor's nudge effect).
@@ -850,6 +1034,15 @@ function MobileRadialWheel({
 
   const cacheWheelRect = () => { wheelRectRef.current = wheelRef.current?.getBoundingClientRect() ?? null; };
 
+  /** Pauses the ring's ambient animations while a finger is actually working
+   *  it, so the frame budget goes to pointer response instead. */
+  const setSteering = (on: boolean) => {
+    const layer = layerRef.current;
+    if (!layer) return;
+    if (on) layer.dataset.steering = "true";
+    else delete layer.dataset.steering;
+  };
+
   const paintRotation = (next: number) => {
     rotationRef.current = next;
     const wheel = wheelRef.current;
@@ -865,18 +1058,34 @@ function MobileRadialWheel({
     }, 120);
   };
 
+  const turnPage = (direction: -1 | 1) => {
+    if (pages <= 1) return;
+    setPage(current => wrapPage(current + direction, ids.length));
+    select(null);
+    try { navigator.vibrate?.(4); } catch { /* Android only */ }
+  };
+
   const dismiss = () => {
     clearTimers();
+    setSteering(false);
     setPhase("idle");
     select(null);
+    // Back to page one, so the next summon puts the same trigger under the
+    // same flick. A wheel that reopens wherever you left it is a wheel you
+    // have to read before you can use.
+    setPage(0);
   };
 
   const selectFromFlick = (dx: number, dy: number, pointerType: string) => {
     const distance = Math.hypot(dx, dy);
     const threshold = radialFlickThreshold(pointerType);
     if (distance < threshold) { select(null); return; }
-    const angle = normalizeRadialDegrees(Math.atan2(dy, dx) * 180 / Math.PI + 90);
-    const index = radialTriggerIndex(angle, distance, idsRef.current.length, rotationRef.current);
+    // Normalize by the wheel's own size before hit-testing, so a flick lands
+    // on the slot the user can actually see at whatever size the wheel is.
+    const size = wheelRectRef.current?.width
+      ?? Math.min(window.innerWidth, window.innerHeight) * 0.84;
+    const onRing = clampFlickToRings(dx / size, dy / size);
+    const index = radialTriggerAt(onRing.x, onRing.y, idsRef.current.length, rotationRef.current, FLICK_TOLERANCE);
     select(idsRef.current[index] ?? null);
   };
 
@@ -886,7 +1095,22 @@ function MobileRadialWheel({
     const ignored = (eventTarget: EventTarget | null) =>
       eventTarget instanceof Element && !!eventTarget.closest("button, a, input, textarea, select, [role='slider'], [data-no-longpress], .mobile-radial-wheel");
     const onDown = (event: PointerEvent) => {
-      if ((event.pointerType === "mouse" && event.button !== 0) || ignored(event.target) || gestureRef.current.pointerId !== -1) return;
+      if (event.pointerType === "mouse" && event.button !== 0) return;
+      // A second finger landing mid-hold means the user is reaching for the
+      // Parameters Wheel's two-finger gesture, not this one-finger hold.
+      // Without this the single-finger hold would mature first and open the
+      // wrong wheel out from under them.
+      if (gestureRef.current.pointerId !== -1) {
+        if (event.pointerId !== gestureRef.current.pointerId && !gestureRef.current.fired) {
+          gestureRef.current.cancelled = true;
+          clearTimers();
+          setPhase("idle");
+        }
+        return;
+      }
+      if (ignored(event.target)) return;
+      // The other wheel owns the screen while it is up.
+      if (useStore.getState().paramWheelOpen) return;
       if (!isCentralRadialHoldPoint(event.clientX, event.clientY, window.innerWidth, window.innerHeight)) return;
       clearTimers();
       gestureRef.current = {
@@ -933,7 +1157,10 @@ function MobileRadialWheel({
         }
         return;
       }
-      if (radialGestureShouldActivate(gesture.maxTravel, gesture.pointerType)) selectFromFlick(dx, dy, gesture.pointerType);
+      if (radialGestureShouldActivate(gesture.maxTravel, gesture.pointerType)) {
+        setSteering(true);
+        selectFromFlick(dx, dy, gesture.pointerType);
+      }
     };
     const onEnd = (event: PointerEvent) => {
       if (event.pointerId !== gestureRef.current.pointerId) return;
@@ -951,6 +1178,7 @@ function MobileRadialWheel({
           keepOpen = true;
         }
       }
+      setSteering(false);
       if (!keepOpen) { setPhase("idle"); select(null); }
       gestureRef.current.pointerId = -1;
     };
@@ -992,17 +1220,11 @@ function MobileRadialWheel({
   };
   const selectNearest = (x: number, y: number, currentRotation = rotationRef.current) => {
     const rect = wheelRectRef.current ?? wheelRef.current?.getBoundingClientRect();
-    if (!rect || ids.length === 0) { select(null); return; }
-    const dx = x - (rect.left + rect.width / 2);
-    const dy = y - (rect.top + rect.height / 2);
-    const distance = Math.hypot(dx, dy);
-    if (distance < rect.width * .19 || distance > rect.width * .54) { select(null); return; }
-    const inner = innerCount > 0 && distance < rect.width * .36;
-    const count = inner ? innerCount : outerCount;
-    const offset = inner ? outerCount : 0;
-    const angle = normalizeRadialDegrees(Math.atan2(dy, dx) * 180 / Math.PI + 90);
-    const index = radialIndexForAngle(angle, count, currentRotation);
-    select(ids[offset + index] ?? null);
+    if (!rect || idsRef.current.length === 0) { select(null); return; }
+    const nx = (x - (rect.left + rect.width / 2)) / rect.width;
+    const ny = (y - (rect.top + rect.height / 2)) / rect.height;
+    const index = radialTriggerAt(nx, ny, idsRef.current.length, currentRotation);
+    select(idsRef.current[index] ?? null);
   };
   useEffect(() => {
     const wheel = wheelRef.current;
@@ -1018,17 +1240,25 @@ function MobileRadialWheel({
     };
     wheel.addEventListener("wheel", onWheel, { passive: false });
     return () => wheel.removeEventListener("wheel", onWheel);
-  }, [ids.length]);
+  }, [pageIds.length]);
 
   useEffect(() => {
     const onResize = () => { wheelRectRef.current = null; };
-    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape" && openRef.current) dismiss(); };
+    const onKey = (event: KeyboardEvent) => {
+      if (!openRef.current) return;
+      if (event.key === "Escape") { dismiss(); return; }
+      if (event.key === "PageDown" || event.key === "ArrowRight") { event.preventDefault(); turnPage(1); return; }
+      if (event.key === "PageUp" || event.key === "ArrowLeft") { event.preventDefault(); turnPage(-1); }
+    };
     const onExternalOpen = () => { setPhase("open"); cacheWheelRect(); };
     const onExternalClose = () => dismiss();
+    // Two wheels are never up at once — the second one to open wins.
+    const onParamWheelOpen = () => { if (openRef.current) dismiss(); };
     window.addEventListener("resize", onResize, { passive: true });
     window.addEventListener("keydown", onKey);
     window.addEventListener("mosh:open-hot-triggers", onExternalOpen);
     window.addEventListener("mosh:close-hot-triggers", onExternalClose);
+    window.addEventListener("mosh:open-param-wheel", onParamWheelOpen);
     const frame = requestAnimationFrame(() => layerRef.current?.setAttribute("data-prepared", "true"));
     return () => {
       cancelAnimationFrame(frame);
@@ -1036,6 +1266,8 @@ function MobileRadialWheel({
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("mosh:open-hot-triggers", onExternalOpen);
       window.removeEventListener("mosh:close-hot-triggers", onExternalClose);
+      window.removeEventListener("mosh:open-param-wheel", onParamWheelOpen);
+      gestureLock.release("hot-trigger-wheel");
       if (persistTimerRef.current != null) window.clearTimeout(persistTimerRef.current);
     };
   }, []);
@@ -1065,6 +1297,7 @@ function MobileRadialWheel({
               if (event.target instanceof Element && event.target.closest("[data-radial-action]")) return;
               cacheWheelRect();
               rotateRef.current = { id: event.pointerId, angle: pointerAngle(event.clientX, event.clientY), rotation: rotationRef.current };
+              setSteering(true);
               event.currentTarget.setPointerCapture(event.pointerId);
             }}
             onPointerMove={(event) => {
@@ -1081,16 +1314,21 @@ function MobileRadialWheel({
             onPointerUp={(event) => {
               if (rotateRef.current?.id !== event.pointerId) return;
               rotateRef.current = null;
+              setSteering(false);
               persistRotationSoon();
+            }}
+            onPointerCancel={(event) => {
+              if (rotateRef.current?.id !== event.pointerId) return;
+              rotateRef.current = null;
+              setSteering(false);
             }}
           >
             <div className="mobile-radial-wheel__rings" aria-hidden><i/><b/><em/></div>
-            {ids.map((id, index) => {
-              const inner = index >= outerCount;
-              const ringIndex = inner ? index - outerCount : index;
-              const count = inner ? innerCount : outerCount;
-              const angle = ringIndex * 360 / Math.max(1, count);
-              const radius = inner ? 29 : 43;
+            {pageIds.map((id, index) => {
+              const slot = slotsRef.current[index];
+              if (!slot) return null;
+              const angle = slot.angleDeg;
+              const radius = slot.radius;
               return (
                 <div
                   key={id}
@@ -1103,7 +1341,7 @@ function MobileRadialWheel({
                   style={{
                     ["--slot-angle" as string]: `${angle}deg`,
                     ["--slot-counter-angle" as string]: `${-angle}deg`,
-                    ["--slot-radius" as string]: `${radius / 100}`,
+                    ["--slot-radius" as string]: `${radius}`,
                     ["--slot-delay" as string]: `${-(index % 9) * 137}ms`,
                   }}
                   onClick={() => { onSelect(id); dismiss(); }}
@@ -1125,6 +1363,33 @@ function MobileRadialWheel({
               <span ref={labelRef} className="mobile-radial-wheel__label">MOSH</span>
               <small>{isRecording ? "REC" : "steer · tap · flick"}</small>
             </button>
+            {pages > 1 && (
+              /* Chevrons sit beside the hub rather than taking ring slots:
+                 the ring is the scarce, accurate real estate, and spending
+                 two of its best positions on navigation is what pagination
+                 was supposed to buy back. */
+              <div className="mobile-radial-wheel__pager" data-radial-action>
+                <button
+                  type="button"
+                  data-no-longpress
+                  aria-label="Previous triggers"
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={(event) => { event.stopPropagation(); turnPage(-1); }}
+                >‹</button>
+                <span aria-live="polite" aria-label={`Page ${page + 1} of ${pages}`}>
+                  {Array.from({ length: pages }, (_, index) => (
+                    <i key={index} data-on={index === page || undefined} aria-hidden />
+                  ))}
+                </span>
+                <button
+                  type="button"
+                  data-no-longpress
+                  aria-label="Next triggers"
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={(event) => { event.stopPropagation(); turnPage(1); }}
+                >›</button>
+              </div>
+            )}
           </div>
     </div>
   );
@@ -1505,6 +1770,11 @@ export function HotTriggers({
   // Rail container ref — click delegation for the interact glitch, and the
   // scan target for the ambient random one.
   const railRef = useRef<HTMLDivElement>(null);
+
+  // The legacy rail's up/down arrows. Attached here, when the rail actually
+  // exists, rather than by a document-wide MutationObserver installed on every
+  // page of the site waiting for it to appear.
+  useEffect(() => { enhanceHotTriggerRail(railRef.current); }, [showLegacyLaunchpad]);
   const fireGlitch = (el: Element | null | undefined) => {
     if (!el) return;
     el.setAttribute("data-glitch", "1");
@@ -1546,8 +1816,8 @@ export function HotTriggers({
   const setVideoSource = useStore(s => s.setVideoSource);
   const clearVideoSource = useStore(s => s.clearVideoSource);
   const [flipBusy, setFlipBusy] = useState(false);
-  const desktopPortraitMode = useStore(s => s.desktopPortraitMode);
-  const toggleDesktopPortraitMode = useStore(s => s.toggleDesktopPortraitMode);
+  const desktopCanvasAspect = useStore(s => s.desktopCanvasAspect);
+  const cycleDesktopCanvasAspect = useStore(s => s.cycleDesktopCanvasAspect);
 
   const stickerMode = useStore(s => s.stickerMode);
   const setStickerMode = useStore(s => s.setStickerMode);
@@ -1751,6 +2021,20 @@ export function HotTriggers({
     home: onHome && (
       <HotBtn key="home" delay={0} label="Back to start" onClick={onHome} tint="220 12% 80%">
         <HomeBeaconIcon className="h-4 w-4" />
+      </HotBtn>
+    ),
+    // The bridge between the two wheels. Everything that used to sit in the
+    // menu rack below the fold is one tap from here, so a user who found this
+    // wheel never has to discover the two-finger hold on their own.
+    params: (
+      <HotBtn
+        key="params"
+        delay={0}
+        label="Parameters — layers, FX, tune, audio"
+        onClick={() => window.dispatchEvent(new Event("mosh:toggle-param-wheel"))}
+        tint="190 90% 60%"
+      >
+        <SlidersHorizontal className="h-4 w-4" strokeWidth={1.5} />
       </HotBtn>
     ),
     "source-upload": (
@@ -2020,7 +2304,7 @@ export function HotTriggers({
         <Scissors className="h-4 w-4" strokeWidth={1.5} />
       </HotBtn>
     ),
-    "theme-track": <TrackTrigger key="theme-track" delay={0} showNudge={showTrackNudge} onNudgeDismiss={onTrackNudgeDismiss} />,
+    "theme-track": <TrackTrigger key="theme-track" delay={0} />,
     "forge-palette": sourceMode === "forge" && (
       <div key="forge-palette" className="relative" data-forge-panel>
         <HotBtn
@@ -2091,11 +2375,16 @@ export function HotTriggers({
             </span>
           )}
         </button>
-        {favOpen && (
+        {favOpen && createPortal(
           <div
             ref={favPanelRef}
             data-fav-panel
-            className="absolute right-full mr-2 top-0 z-40 w-64 max-h-[70vh] overflow-y-auto rounded-md border border-white/10 bg-black/85 p-2 backdrop-blur-md panel-in-3d"
+            // Fixed to a corner instead of anchored to this trigger's own
+            // ring slot (see forge-palette/motif-maestro for the same
+            // pattern): the ring can place this trigger anywhere in a
+            // circle nearly filling the viewport, and a slot in the lower
+            // arc left most of this list rendered below the visible screen.
+            className="fixed left-3 top-14 z-40 w-64 max-h-[70vh] overflow-y-auto rounded-md border border-white/10 bg-black/85 p-2 backdrop-blur-md panel-in-3d safe-top safe-left"
           >
             <div className="flex items-center justify-between px-1 pb-1.5">
               <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-[hsl(var(--accent))]">★ favorites</span>
@@ -2210,7 +2499,8 @@ export function HotTriggers({
                 })}
               </ul>
             )}
-          </div>
+          </div>,
+          document.body,
         )}
       </div>
     ),
@@ -2233,21 +2523,26 @@ export function HotTriggers({
         <SwitchCamera className="h-4 w-4" strokeWidth={1.5} />
       </HotBtn>
     ),
-    // Desktop-only — a phone solves this by physically rotating, but a
-    // desktop browser window has no equivalent, so wide "cover" framing was
-    // routinely cropping the top/bottom off portrait-oriented sources.
+    // Desktop-only — cycle the same stage between the viewport, a fitted 9:16
+    // portrait, and a fitted 1:1 square without spending another wheel slot.
     "desktop-portrait": !isTouchScreen && (
       <HotBtn
         key="desktop-portrait"
         delay={0}
-        label={desktopPortraitMode ? "Exit portrait view" : "Portrait view — for tall images"}
-        active={desktopPortraitMode}
-        onClick={toggleDesktopPortraitMode}
+        label={desktopCanvasAspect === "landscape"
+          ? "Canvas: landscape — switch to portrait"
+          : desktopCanvasAspect === "portrait"
+            ? "Canvas: portrait — switch to square"
+            : "Canvas: square — switch to landscape"}
+        active={desktopCanvasAspect !== "landscape"}
+        onClick={cycleDesktopCanvasAspect}
         tint="46 90% 62%"
       >
-        {desktopPortraitMode
-          ? <RectangleHorizontal className="h-4 w-4" strokeWidth={1.5} />
-          : <RectangleVertical className="h-4 w-4" strokeWidth={1.5} />}
+        {desktopCanvasAspect === "landscape"
+          ? <RectangleVertical className="h-4 w-4" strokeWidth={1.5} />
+          : desktopCanvasAspect === "portrait"
+            ? <Square className="h-4 w-4" strokeWidth={1.5} />
+            : <RectangleHorizontal className="h-4 w-4" strokeWidth={1.5} />}
       </HotBtn>
     ),
     // Was its own wheel trigger ("Support MOSH") — now the loud, animated
@@ -2356,6 +2651,12 @@ export function HotTriggers({
       />
     )}
     {settingsOverlay}
+    {showTrackNudge && (
+      <TrackNudgeToast
+        onPlay={() => { runTrackAction(() => trackPlayer.shuffleShowcaseTrack()); onTrackNudgeDismiss?.(); }}
+        onDismiss={() => onTrackNudgeDismiss?.()}
+      />
+    )}
     {showLegacyLaunchpad && (
     /* Vertically centered so the dock occupies the right edge evenly across
        desktop, tablet and phone aspect ratios. */
@@ -2500,9 +2801,13 @@ function GifButton({
         )}
       </button>
 
-      {open && !gifBusy && (
+      {open && !gifBusy && createPortal(
         <div
-          className="panel-in-3d absolute right-full top-0 z-50 mr-2 flex items-center gap-1 rounded-sm border border-[hsl(var(--border-default))] bg-black/85 p-1 backdrop-blur-md"
+          // Fixed to a corner instead of anchored to this trigger's own ring
+          // slot (see forge-palette/motif-maestro for the same pattern) —
+          // consistent with the other ring accessory panels even though
+          // this one is small enough to rarely clip on its own.
+          className="panel-in-3d fixed left-3 top-14 z-50 flex items-center gap-1 rounded-sm border border-[hsl(var(--border-default))] bg-black/85 p-1 backdrop-blur-md safe-top safe-left"
           role="menu"
           aria-label="GIF loop length"
           onPointerDown={(e) => e.stopPropagation()}
@@ -2519,7 +2824,8 @@ function GifButton({
               {sec}s
             </button>
           ))}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

@@ -19,6 +19,7 @@
  * grammar intact.
  */
 import { EFFECTS, EFFECTS_BY_ID } from "./effects";
+import { combinationPenalty, type StackMemory } from "./compositionVariety";
 import { tileVerdict } from "./tileSafety";
 import type { BlendMode, LayerRegion, RegionMode } from "./blend";
 
@@ -1029,6 +1030,10 @@ export function pickForRole(
      * finishing a stack, a finish used as an accent.
      */
     anyRole?: boolean;
+    /** Occasionally explore the full compatible role shelf. */
+    exploration?: number;
+    recentStacks?: StackMemory;
+    chosen?: readonly string[];
     /** 0..1. Raises the ceiling on drama, grit and colour replacement, and
      *  widens how deep into the ranking a pick may reach. */
     wildness?: number;
@@ -1064,7 +1069,10 @@ export function pickForRole(
   // exactly the habit it exists to break.
   let pool: string[];
   if (opts.anyRole) pool = wider.length ? wider : onLook;
-  else if (affinity >= 0.2) pool = onLook.length ? onLook : wider;
+  else if (affinity >= 0.2) {
+    const explore = (opts.exploration ?? 0) > 0 && rand() < (opts.exploration ?? 0);
+    pool = explore || !onLook.length ? wider : onLook;
+  }
   else if (affinity <= -0.2) pool = offLook.length ? offLook : wider;
   else pool = wider.length ? wider : onLook;
   if (!pool.length) pool = poolForRole(role, tileSafe);
@@ -1145,6 +1153,8 @@ export function pickForRole(
     // small penalty would make it *less* negative, the opposite of what a
     // penalty is for.
     score -= (1 - (penalty?.get(id) ?? 1)) * EFFECT_PENALTY_STRENGTH;
+    score -= combinationPenalty(id, opts.chosen ?? [], opts.recentStacks ?? []);
+    if (onLookPick && (opts.exploration ?? 0) > 0) score += 0.3;
 
     return { id, score: score + rand() * 0.5 };
   });
@@ -1305,7 +1315,7 @@ export function opacityForRole(
     v = Math.min(v, 0.84 + wildness * 0.16);
   }
 
-  return Math.max(0.22, Math.min(1, v));
+  return Math.max(0.22, Math.min(role === "grade" ? 0.94 : 1, v));
 }
 
 export function blendForRole(role: Role, rand: () => number): BlendMode {
@@ -1373,6 +1383,7 @@ export function compose(
      *  effect id, say). */
     lookPenalty?: ReadonlyMap<string, number>;
     effectPenalty?: ReadonlyMap<string, number>;
+    recentStacks?: StackMemory;
     previousLookId?: string | null;
     look?: Look;
     /**
@@ -1481,6 +1492,9 @@ export function compose(
       budgetLeft: budget,
       gpuLeft: Math.max(1, gpu - reserve),
       anyRole: breakRule,
+      exploration: 0.2 + wildness * 0.45,
+      recentStacks: opts.recentStacks,
+      chosen: layers.map(layer => layer.effectId),
       wildness,
       penalty: opts.effectPenalty,
       tileSafe,

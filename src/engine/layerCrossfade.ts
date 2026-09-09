@@ -204,17 +204,30 @@ function makeBoundaryLayer(recipe: RevealRecipe): Layer {
  * transition stacks and leave the oldest layers apparently frozen.
  */
 let fadeRaf: number | null = null;
-let fadeTarget: Layer[] | null = null;
+/**
+ * Render-only transition stack.
+ *
+ * This must never be written to `useStore.layers`. That array is the user's
+ * editable source of truth and drives LayerStack/ParamDock. Putting outgoing,
+ * incoming and boundary layers there made the controls claim that faded-out
+ * effects were still applied during every Auto-Mosh. It also let a paused rAF
+ * leave that lie on screen until animation resumed.
+ *
+ * GlCanvas reads this override directly on each render frame. Every other
+ * consumer continues to see the exact post-mosh stack immediately.
+ */
+let fadeRenderLayers: Layer[] | null = null;
+
+export function getLayerCrossfadeLayers(): Layer[] | null {
+  return fadeRenderLayers;
+}
 
 function settleLayerCrossfade() {
   if (fadeRaf != null) {
     cancelAnimationFrame(fadeRaf);
     fadeRaf = null;
   }
-  if (fadeTarget) {
-    useStore.getState().setLayersRaw(fadeTarget);
-    fadeTarget = null;
-  }
+  fadeRenderLayers = null;
 }
 
 export function crossfadeLayers(commit: () => void, durationMs: number) {
@@ -225,7 +238,6 @@ export function crossfadeLayers(commit: () => void, durationMs: number) {
   commit();
 
   const after = useStore.getState().layers;
-  fadeTarget = after;
   const lockedAfter = after.filter(l => l.locked);
   const incoming = after.filter(l => !l.locked);
 
@@ -263,16 +275,15 @@ export function crossfadeLayers(commit: () => void, durationMs: number) {
         : { ...boundary.region!, scale: eased * 0.95 },
     };
 
-    useStore.getState().setLayersRaw([...lockedAfter, ...fadingOut, ...fadingIn, boundaryNow]);
+    fadeRenderLayers = [...lockedAfter, ...fadingOut, ...fadingIn, boundaryNow];
     if (t < 1) {
       fadeRaf = requestAnimationFrame(tick);
     } else {
       fadeRaf = null;
-      // Restore the exact post-commit array (drops the now-invisible
-      // outgoing layers and the transient boundary layer, instead of
-      // leaving them sitting at opacity 0 or a stale region).
-      useStore.getState().setLayersRaw(after);
-      fadeTarget = null;
+      // The canonical store already contains `after`; dropping this override
+      // removes outgoing and boundary layers from rendering without ever
+      // exposing them to the editor controls.
+      fadeRenderLayers = null;
     }
   };
   // Synchronous first call, not the first rAF frame — so the very first

@@ -22,6 +22,7 @@ import {
   type Role,
 } from "@/engine/artDirector";
 import { recencyPenalty } from "@/engine/compose";
+import { rememberStack } from "@/engine/compositionVariety";
 import { generateSeed, rngFromSeed } from "@/engine/seed";
 import { presetToUrl, type PresetPayload } from "@/engine/presetUrl";
 import {
@@ -77,6 +78,13 @@ export const HISTORY_LIMIT = 12;
 const RECENT_FORM_MEMORY = 5;
 const RECENT_OTHER_MEMORY = 10;
 const LOOK_MEMORY = 5;
+
+export type MoshOptions = {
+  /** Forget the rolling Art Director history before composing this stack. */
+  resetMemory?: boolean;
+  /** Use the maximum composition range and hard-avoid the current unlocked FX. */
+  dramatic?: boolean;
+};
 
 /**
  * How many parts of the composition each intensity centres on.
@@ -168,6 +176,14 @@ export type ExportSettings = {
   shareQuality: number;
 };
 
+export type DesktopCanvasAspect = "landscape" | "portrait" | "square";
+
+export function nextDesktopCanvasAspect(aspect: DesktopCanvasAspect): DesktopCanvasAspect {
+  if (aspect === "landscape") return "portrait";
+  if (aspect === "portrait") return "square";
+  return "landscape";
+}
+
 const EXPORT_SETTINGS_KEY = "cathedral_export_settings_v1";
 
 const DEFAULT_EXPORT_SETTINGS: ExportSettings = {
@@ -235,6 +251,25 @@ type State = {
    * the visitor would use to answer it is actually on screen.
    */
   radialMenuOpen: boolean;
+  /**
+   * True while the Parameters Wheel is on screen. Same reason as
+   * `radialMenuOpen` above: it gates behaviour *outside* the wheel — every
+   * canvas gesture recognizer stands down while it is open, so a drag meant
+   * for a slider can't also swipe the undo timeline underneath it.
+   */
+  paramWheelOpen: boolean;
+  /**
+   * The layer currently being auditioned from the Parameters Wheel's effect
+   * browser, or null.
+   *
+   * A preview is a real layer — it renders, it stacks, it takes parameters —
+   * it just isn't *kept*. Tapping through a catalogue of 117 effects should
+   * show you each one on your own frame without burying the stack in things
+   * you glanced at, and without writing 117 entries into the undo timeline.
+   * So preview swaps are history-free and self-cleaning; only `commitPreview`
+   * makes one permanent, and that is the single step undo sees.
+   */
+  previewLayerId: string | null;
   trackArtist: string;
   micSensitivity: number;
   /** Global reactivity multiplier — scales mic/device-audio sensitivity and
@@ -271,13 +306,10 @@ type State = {
   exportSettings: ExportSettings;
   isPerformanceMode: boolean;
   showMetersInPerformance: boolean;
-  /** Desktop-only: constrains the canvas stage to a tall (9:16) box instead
-   *  of filling the full landscape viewport width. Mobile never needs this —
-   *  rotating the device already gets a portrait frame — but a desktop
-   *  browser window has no equivalent, so wide "cover" framing was
-   *  routinely cropping the top/bottom off portrait-oriented sources.
-   *  Ignored on touch/coarse-pointer devices (see Editor.tsx). */
-  desktopPortraitMode: boolean;
+  /** Desktop-only canvas shape. Landscape fills the viewport, portrait uses
+   *  a fitted 9:16 stage, and square uses a fitted 1:1 stage. Mobile keeps
+   *  following the physical device viewport (see Editor.tsx). */
+  desktopCanvasAspect: DesktopCanvasAspect;
   /** Selective black-crush + neon-boost grade applied in the finisher, on
    *  top of whatever effect stack is running. */
   darkModeOn: boolean;
@@ -347,6 +379,8 @@ type State = {
   /** Recently-used look ids. Rotating the art direction — not just the
    *  effects — is what keeps consecutive moshes from reading the same. */
   recentLooks: string[];
+  /** Recent complete combinations, newest first; never persisted as a preset. */
+  recentStacks: string[][];
   /** The art direction the current stack was composed under. */
   currentLook: { id: string; name: string; blurb: string } | null;
   /** Latest content analysis, for the UI to show what the director saw. */
@@ -403,7 +437,7 @@ type Actions = {
   rerollRole: (role?: Role, layerId?: string) => RoleRoll | null;
   addRole: (role: Role) => RoleRoll | null;
 
-  mosh: (intensity?: Intensity) => void;
+  mosh: (intensity?: Intensity, options?: MoshOptions) => void;
   /**
    * The Forge/Motif equivalent of mosh() — one tap, one coordinated shuffle
    * of everything Forge owns (generator, seed, palette, kaleidoscope) *and*
@@ -435,6 +469,13 @@ type Actions = {
   setTrackEnabled: (b: boolean) => void;
   addUploadedTrack: (track: UploadedTrack) => void;
   setRadialMenuOpen: (open: boolean) => void;
+  setParamWheelOpen: (open: boolean) => void;
+  /** Audition an effect in place. Replaces any current preview; pass null to clear. */
+  previewLayer: (effectId: string | null) => void;
+  /** Keep the preview. This is the one step the undo timeline records. */
+  commitPreview: () => void;
+  /** Drop the preview and put the frame back how it was. */
+  discardPreview: () => void;
   setTrackMeta: (title: string, artist: string) => void;
   setMicSensitivity: (v: number) => void;
   setSensitivity: (v: number) => void;
@@ -443,8 +484,8 @@ type Actions = {
   setExportSettings: (patch: Partial<ExportSettings>) => void;
   setPerformanceMode: (b: boolean) => void;
   togglePerformanceMode: () => void;
-  setDesktopPortraitMode: (b: boolean) => void;
-  toggleDesktopPortraitMode: () => void;
+  setDesktopCanvasAspect: (aspect: DesktopCanvasAspect) => void;
+  cycleDesktopCanvasAspect: () => void;
   setDarkMode: (b: boolean) => void;
   toggleDarkMode: () => void;
   setCaptureLocked: (b: boolean) => void;
@@ -634,6 +675,8 @@ export const useStore = create<State & Actions>((set, get) => ({
   trackEnabled: false,
   uploadedTracks: [],
   radialMenuOpen: false,
+  paramWheelOpen: false,
+  previewLayerId: null,
   trackTitle: trackPlayer.title,
   trackArtist: trackPlayer.artist,
   micSensitivity: 1,
@@ -642,7 +685,7 @@ export const useStore = create<State & Actions>((set, get) => ({
   stackIntensityReactive: 0,
   exportSettings: loadExportSettings(),
   isPerformanceMode: false,
-  desktopPortraitMode: false,
+  desktopCanvasAspect: "landscape",
   darkModeOn: false,
   captureLocked: false,
   showMetersInPerformance: typeof localStorage !== "undefined" && localStorage.getItem("cathedral_meters_in_perf") === "1",
@@ -671,6 +714,7 @@ export const useStore = create<State & Actions>((set, get) => ({
   recentFormEffects: [],
   recentOtherEffects: [],
   recentLooks: [],
+  recentStacks: [],
   currentLook: null,
   currentBrief: null,
   plannedMosh: null,
@@ -909,16 +953,25 @@ export const useStore = create<State & Actions>((set, get) => ({
     };
   }),
 
-  mosh: (intensity) => set(s => {
+  mosh: (intensity, options) => set(s => {
     if (s.captureLocked) return s;
-    const inten = intensity ?? s.intensity;
+    const resetMemory = options?.resetMemory === true;
+    const dramatic = options?.dramatic === true;
+    const inten = dramatic ? "interdimensional" : (intensity ?? s.intensity);
     const brief = briefFrom(analyzeSource(s.videoElement ?? s.imageElement ?? s.glCanvas));
-    const prepared = s.plannedMosh?.intensity === inten && briefDistance(s.plannedMosh.brief, brief) < 0.16
+    const prepared = !resetMemory && !dramatic && s.plannedMosh?.intensity === inten
+      && !s.plannedMosh.composition.layers.some(candidate => s.layers.some(layer => layer.locked && layer.effectId === candidate.effectId))
+      && briefDistance(s.plannedMosh.brief, brief) < 0.16
       ? s.plannedMosh : null;
     const seed = prepared?.seed ?? generateSeed();
     const rand = rngFromSeed(seed);
 
     const locked = s.layers.filter(l => l.locked);
+    const previousForm = resetMemory ? [] : s.recentFormEffects;
+    const previousOther = resetMemory ? [] : s.recentOtherEffects;
+    const previousLooks = resetMemory ? [] : s.recentLooks;
+    const previousStacks = resetMemory ? [] : s.recentStacks;
+    const currentUnlockedEffects = dramatic ? s.layers.filter(l => !l.locked).map(l => l.effectId) : [];
     const composition = prepared?.composition ?? compose(brief, rand, {
       roleCount: rollRoleCount(rand, ROLE_COUNT[inten]),
       chaos: CHAOS[inten],
@@ -927,13 +980,14 @@ export const useStore = create<State & Actions>((set, get) => ({
       // memory Journey mode uses (see recencyPenalty in compose.ts) rather
       // than regular moshing's old fixed-window hard-avoid, which is the
       // gap that made the two shuffle noticeably differently.
-      lookPenalty: recencyPenalty(s.recentLooks, []),
-      effectPenalty: recencyPenalty(s.recentFormEffects, s.recentOtherEffects),
+      lookPenalty: recencyPenalty(dramatic && s.currentLook ? [s.currentLook.id] : previousLooks, []),
+      effectPenalty: recencyPenalty(previousForm, previousOther),
+      recentStacks: previousStacks,
       previousLookId: s.currentLook?.id,
       // A locked layer's effect id is a real hard constraint, not a
       // preference — the director must never reach for it since it's
       // already pinned in a fixed slot.
-      avoidEffects: locked.map(l => l.effectId),
+      avoidEffects: [...locked.map(l => l.effectId), ...currentUnlockedEffects],
     });
 
     const fresh: Layer[] = composition.layers.map(cl => {
@@ -959,9 +1013,10 @@ export const useStore = create<State & Actions>((set, get) => ({
     const paletteIdx = chooseArtDirectedPalette(brief, rand, s.forge.paletteIdx);
     const nextSeed = generateSeed();
     const nextRand = rngFromSeed(nextSeed);
-    const nextForm = [...formIds, ...s.recentFormEffects].slice(0, RECENT_FORM_MEMORY);
-    const nextOther = [...otherIds, ...s.recentOtherEffects].slice(0, RECENT_OTHER_MEMORY);
-    const nextLooks = [composition.look.id, ...s.recentLooks].slice(0, LOOK_MEMORY);
+    const nextForm = [...formIds, ...previousForm].slice(0, RECENT_FORM_MEMORY);
+    const nextOther = [...otherIds, ...previousOther].slice(0, RECENT_OTHER_MEMORY);
+    const nextLooks = [composition.look.id, ...previousLooks].slice(0, LOOK_MEMORY);
+    const nextStacks = rememberStack(previousStacks, layers.map(layer => layer.effectId));
     const plannedMosh = {
       seed: nextSeed, intensity: inten, brief,
       composition: compose(brief, nextRand, {
@@ -969,6 +1024,7 @@ export const useStore = create<State & Actions>((set, get) => ({
         wildness: rollWildness(nextRand, WILD_FLOOR[inten]),
         lookPenalty: recencyPenalty(nextLooks, []),
         effectPenalty: recencyPenalty(nextForm, nextOther),
+        recentStacks: nextStacks,
         previousLookId: composition.look.id,
         avoidEffects: locked.map(l => l.effectId),
       }),
@@ -980,9 +1036,10 @@ export const useStore = create<State & Actions>((set, get) => ({
       seed,
       // Most-recent-first, same ordering recencyPenalty expects (see its
       // own doc: index 0 gets the strongest suppression, decaying outward).
-      recentFormEffects: [...formIds, ...s.recentFormEffects].slice(0, RECENT_FORM_MEMORY),
-      recentOtherEffects: [...otherIds, ...s.recentOtherEffects].slice(0, RECENT_OTHER_MEMORY),
-      recentLooks: [composition.look.id, ...s.recentLooks].slice(0, LOOK_MEMORY),
+      recentFormEffects: nextForm,
+      recentOtherEffects: nextOther,
+      recentLooks: nextLooks,
+      recentStacks: nextStacks,
       currentLook: {
         id: composition.look.id,
         name: composition.look.name,
@@ -1029,6 +1086,7 @@ export const useStore = create<State & Actions>((set, get) => ({
       wildness: rollWildness(rand, WILD_FLOOR[inten]),
       lookPenalty: recencyPenalty(s.recentLooks, []),
       effectPenalty: recencyPenalty(s.recentFormEffects, s.recentOtherEffects),
+      recentStacks: s.recentStacks,
       previousLookId: s.currentLook?.id,
       avoidEffects: locked.map(l => l.effectId),
       tileSafe: s.forge.seamless,
@@ -1081,6 +1139,7 @@ export const useStore = create<State & Actions>((set, get) => ({
       recentFormEffects: [...formIds, ...s.recentFormEffects].slice(0, RECENT_FORM_MEMORY),
       recentOtherEffects: [...otherIds, ...s.recentOtherEffects].slice(0, RECENT_OTHER_MEMORY),
       recentLooks: [composition.look.id, ...s.recentLooks].slice(0, LOOK_MEMORY),
+      recentStacks: rememberStack(s.recentStacks, layers.map(layer => layer.effectId)),
       currentLook: {
         id: composition.look.id,
         name: composition.look.name,
@@ -1309,6 +1368,54 @@ export const useStore = create<State & Actions>((set, get) => ({
     { uploadedTracks: [track, ...s.uploadedTracks.filter(t => t.title !== track.title)] }
   )),
   setRadialMenuOpen: (open) => set(s => s.radialMenuOpen === open ? s : { radialMenuOpen: open }),
+  setParamWheelOpen: (open) => set(s => s.paramWheelOpen === open ? s : { paramWheelOpen: open }),
+
+  previewLayer: (effectId) => set(s => {
+    // Whatever was being auditioned goes, whether or not a new one arrives.
+    const layers = s.previewLayerId ? s.layers.filter(l => l.id !== s.previewLayerId) : s.layers;
+    if (!effectId || !EFFECTS_BY_ID[effectId]) {
+      if (layers === s.layers && !s.previewLayerId) return s;
+      return {
+        layers,
+        previewLayerId: null,
+        selectedLayerId: s.selectedLayerId === s.previewLayerId ? (layers[layers.length - 1]?.id ?? null) : s.selectedLayerId,
+      };
+    }
+    const layer = makeLayer(effectId);
+    // No pushPast: an audition is not an edit. Tapping through a catalogue
+    // must not cost the user their undo history.
+    return {
+      layers: [...layers, layer],
+      previewLayerId: layer.id,
+      selectedLayerId: layer.id,
+      selectedRole: layer.role ?? s.selectedRole,
+    };
+  }),
+
+  commitPreview: () => set(s => {
+    if (!s.previewLayerId) return s;
+    const layer = s.layers.find(l => l.id === s.previewLayerId);
+    if (!layer) return { previewLayerId: null };
+    // History is recorded against the stack *without* the preview in it, so
+    // one undo removes exactly the effect that was just committed — including
+    // any parameter tweaks made while auditioning it.
+    return {
+      past: [...s.past, s.layers.filter(l => l.id !== layer.id)].slice(-HISTORY_LIMIT),
+      future: [],
+      previewLayerId: null,
+      selectedRoleLayers: layer.role ? { ...s.selectedRoleLayers, [layer.role]: layer.id } : s.selectedRoleLayers,
+    };
+  }),
+
+  discardPreview: () => set(s => {
+    if (!s.previewLayerId) return s;
+    const layers = s.layers.filter(l => l.id !== s.previewLayerId);
+    return {
+      layers,
+      previewLayerId: null,
+      selectedLayerId: s.selectedLayerId === s.previewLayerId ? (layers[layers.length - 1]?.id ?? null) : s.selectedLayerId,
+    };
+  }),
   setTrackEnabled: (b) => {
     if (b) {
       trackPlayer.play().then(() => {
@@ -1335,8 +1442,10 @@ export const useStore = create<State & Actions>((set, get) => ({
   }),
   setPerformanceMode: (b) => set({ isPerformanceMode: b }),
   togglePerformanceMode: () => set(s => ({ isPerformanceMode: !s.isPerformanceMode })),
-  setDesktopPortraitMode: (b) => set({ desktopPortraitMode: b }),
-  toggleDesktopPortraitMode: () => set(s => ({ desktopPortraitMode: !s.desktopPortraitMode })),
+  setDesktopCanvasAspect: (desktopCanvasAspect) => set({ desktopCanvasAspect }),
+  cycleDesktopCanvasAspect: () => set(s => ({
+    desktopCanvasAspect: nextDesktopCanvasAspect(s.desktopCanvasAspect),
+  })),
   setDarkMode: (b) => set({ darkModeOn: b }),
   toggleDarkMode: () => set(s => ({ darkModeOn: !s.darkModeOn })),
   setCaptureLocked: (b) => set({ captureLocked: b }),
@@ -1528,11 +1637,10 @@ export const useStore = create<State & Actions>((set, get) => ({
       ...resetRoleSelection(layers),
     };
   }),
-  // Bare `set({ layers })` — no undo push, no seed regen, no role-selection
-  // reset. Exists for the Journey crossfade driver (Editor.tsx), which needs
-  // to write interpolated opacities to the store every animation frame
-  // without spamming undo history; the transition's *end* still calls
-  // moshDirected() once for the real bookkeeping.
+  // Bare canonical replacement with no undo push, seed regen, or selection
+  // reset. Kept for low-level restoration/tests. Visual crossfades deliberately
+  // do not call this: their temporary layers live in layerCrossfade.ts so the
+  // editor controls always reflect the real stack.
   setLayersRaw: (layers) => set({ layers }),
 
   moshStorm: (ids) => set(s => {

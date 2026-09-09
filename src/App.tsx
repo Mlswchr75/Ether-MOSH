@@ -33,6 +33,9 @@ const GuideMakeMusicVideo = lazy(() => import("./pages/GuideMakeMusicVideo.tsx")
 const GuideDatamoshVideo = lazy(() => import("./pages/GuideDatamoshVideo.tsx"));
 const GuideFreeVJSoftware = lazy(() => import("./pages/GuideFreeVJSoftware.tsx"));
 const GuideGlitchTikTok = lazy(() => import("./pages/GuideGlitchTikTok.tsx"));
+const Faq = lazy(() => import("./pages/Faq.tsx"));
+const VsAvsyncLive = lazy(() => import("./pages/VsAvsyncLive.tsx"));
+const PatternForge = lazy(() => import("./pages/PatternForge.tsx"));
 const NewsIndex = lazy(() => import("./pages/NewsIndex.tsx"));
 const NewsArticle = lazy(() => import("./pages/NewsArticle.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
@@ -50,6 +53,9 @@ const App = () => (
             <Route path="/" element={<Index />} />
             <Route path="/edit" element={<Editor />} />
             <Route path="/forge" element={<ForgeRedirect />} />
+            {/* Radio is the editor with the chrome down and a rotation running —
+                see useRadioBroadcast for why it is not its own page. */}
+            <Route path="/radio" element={<Editor />} />
             <Route path="/install" element={<Install />} />
             <Route path="/terms" element={<Terms />} />
             <Route path="/privacy" element={<Privacy />} />
@@ -76,6 +82,9 @@ const App = () => (
             <Route path="/guides/how-to-datamosh-a-video" element={<GuideDatamoshVideo />} />
             <Route path="/guides/free-vj-software-browser" element={<GuideFreeVJSoftware />} />
             <Route path="/guides/glitch-effect-video-tiktok" element={<GuideGlitchTikTok />} />
+            <Route path="/faq" element={<Faq />} />
+            <Route path="/vs/avsync-live" element={<VsAvsyncLive />} />
+            <Route path="/pattern-forge" element={<PatternForge />} />
             <Route path="/news" element={<NewsIndex />} />
             <Route path="/news/:slug" element={<NewsArticle />} />
             <Route path="*" element={<NotFound />} />

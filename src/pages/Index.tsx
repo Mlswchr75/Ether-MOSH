@@ -294,7 +294,8 @@ const Index = () => {
                   type="button"
                   onClick={(e) => { e.stopPropagation(); openPicker(); }}
                   aria-label="Upload an image"
-                  className="source-mode-action"
+                  className="source-mode-action title-mode-cycle title-mode-cycle--upload"
+                  data-cycle-label="UPLOAD"
                 >
                   <Upload aria-hidden="true" />
                   <span className="split-action-label" data-label="UPLOAD">UPLOAD</span>
@@ -304,7 +305,8 @@ const Index = () => {
                   type="button"
                   onClick={handleGoLive}
                   aria-label="Go live with your camera"
-                  className="source-mode-action"
+                  className="source-mode-action title-mode-cycle title-mode-cycle--camera"
+                  data-cycle-label="CAMERA"
                 >
                   <Video aria-hidden="true" />
                   <span className="split-action-label" data-label="CAMERA">CAMERA</span>
@@ -347,7 +349,8 @@ const Index = () => {
                 type="button"
                 onClick={(e) => { e.stopPropagation(); navigate("/forge"); }}
                 aria-label="Open Forge mode"
-                className="forge-mode-action mosh-target"
+                className="forge-mode-action title-mode-cycle title-mode-cycle--forge"
+                data-cycle-label="FORGE"
               >
                 <ForgePatternMark />
                 <span className="split-action-label" data-label="FORGE">FORGE</span>
@@ -366,7 +369,7 @@ const Index = () => {
                 scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
               }}
               aria-label="Scroll up to explore live visuals"
-              className="split-direction split-direction--explore mosh-target"
+              className="split-direction split-direction--explore"
             >
               scroll up to explore <span className="info-hint-arrow" aria-hidden="true">↑</span>
             </motion.button>
@@ -388,6 +391,17 @@ const Index = () => {
             ether-mosh / v0.1
           </div>
           <div className="title-neutral-nav pointer-events-auto flex items-center gap-4">
+            {/* Radio first, and the only item carrying a live dot — it is the
+                one link here that goes somewhere already running rather than
+                somewhere you have to start. */}
+            <Link
+              to="/radio"
+              onClick={(e) => e.stopPropagation()}
+              className="title-radio-link font-mono text-xs uppercase tracking-[0.2em] transition"
+            >
+              <span className="title-radio-dot" aria-hidden="true" />
+              radio →
+            </Link>
             <Link
               to="/news"
               onClick={(e) => e.stopPropagation()}
@@ -429,6 +443,8 @@ const Index = () => {
           className="pointer-events-auto absolute bottom-6 left-0 right-0 z-20 flex flex-col items-center gap-3"
         >
           <nav aria-label="Footer" className="flex flex-wrap items-center justify-center gap-4 font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/60">
+            <Link to="/radio" onClick={(e) => e.stopPropagation()} className="hover:text-accent transition">radio</Link>
+            <span aria-hidden className="text-foreground/30">·</span>
             <Link to="/pricing" onClick={(e) => e.stopPropagation()} className="hover:text-accent transition">pricing</Link>
             <span aria-hidden className="text-foreground/30">·</span>
             <Link to="/news" onClick={(e) => e.stopPropagation()} className="hover:text-accent transition">news + updates</Link>

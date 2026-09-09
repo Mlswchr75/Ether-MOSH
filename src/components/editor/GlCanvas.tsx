@@ -22,7 +22,7 @@ import { ScrubCapture, type ScrubTakeFrame } from "@/engine/scrubCapture";
 import { scrubSession, type ScrubHost } from "@/engine/scrubSession";
 import { VrButton } from "./VrButton";
 import { cursorFx } from "@/engine/cursorFx";
-import { crossfadeLayers, MOSH_FADE_MS } from "@/engine/layerCrossfade";
+import { crossfadeLayers, getLayerCrossfadeLayers, MOSH_FADE_MS } from "@/engine/layerCrossfade";
 
 /** Matches JourneyDirector's default sampleMs — the cadence its AudioFeatures
  *  computation was designed for, not an arbitrary choice. */
@@ -757,7 +757,11 @@ export function GlCanvas() {
         audioSmooth.set(MASTER_SMOOTH_KEY, smoothed);
         master = masterGain(master, stackReactiveRef.current, smoothed * sensitivityRef.current);
       }
-      const renderLayers: RenderLayer[] = layersRef.current.map(l => {
+      // Transition layers are a render-only overlay. The canonical store must
+      // remain the exact editable stack so LayerStack and ParamDock never list
+      // faded-out effects as active during Auto-Mosh.
+      const visibleStack = getLayerCrossfadeLayers() ?? layersRef.current;
+      const renderLayers: RenderLayer[] = visibleStack.map(l => {
         const params: Record<string, number> = {};
         const def = EFFECTS_BY_ID[l.effectId];
         for (const k of Object.keys(l.params)) {
@@ -933,7 +937,13 @@ export function GlCanvas() {
         // above it (HotTriggers etc.) is a separate element that receives
         // the click first.
         onClick={["forge", "motif"].includes(sourceMode)
-          ? () => crossfadeLayers(() => useStore.getState().forgeMosh(), MOSH_FADE_MS)
+          ? () => {
+              // In Sticker Studio the canvas is a preview, not a MOSH pad.
+              // Shape changes are explicit via Cmd/Ctrl+Shift+Space, so an
+              // ordinary preview/menu tap cannot silently replace the stack.
+              if (useStore.getState().stickerMode) return;
+              crossfadeLayers(() => useStore.getState().forgeMosh(), MOSH_FADE_MS);
+            }
           : undefined}
       />
 

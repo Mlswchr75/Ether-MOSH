@@ -474,7 +474,14 @@
       transition: opacity var(--radial-open-ms) linear;
     }
     .mobile-radial-wheel {
-      --radial-size: min(84vw, 84dvh, 700px);
+      /* Sized against the safe area rather than the raw viewport: on a
+       * notched phone in landscape the raw viewport pushes the ring under
+       * the cutout. */
+      --radial-size: min(
+        calc(84vw - env(safe-area-inset-left) - env(safe-area-inset-right)),
+        calc(84dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom)),
+        700px
+      );
       --radial-rotation: 0deg;
       --radial-counter-rotation: 0deg;
       inline-size: var(--radial-size);
@@ -568,7 +575,15 @@
       transform: rotate(45deg);
     }
     .mobile-radial-wheel__slot .hot-trigger {
-      --ht-size: clamp(40px, calc(var(--radial-size) * .12), 52px);
+      /* 44px is the WCAG 2.2 AAA touch-target minimum, and the average thumb
+       * contact patch is wider again. The old floor of 40px was reached on
+       * every phone, because 12% of a 328px wheel is 39px.
+       *
+       * Paging the wheel took a page from twenty-six slots down to fourteen,
+       * which roughly doubled the space between neighbours — so the targets
+       * grow into it rather than banking it: 48px now, and the wheel still
+       * leaves ~60px of clear air between adjacent buttons on a phone. */
+      --ht-size: clamp(48px, calc(var(--radial-size) * .145), 60px);
       --ht-ico: calc(var(--ht-size) * .47);
       border-radius: 999px;
       transform-origin: center;
@@ -592,6 +607,14 @@
     .mobile-radial-wheel__slot[data-radial-variant="5"]::before { border-style: dashed; }
     .mobile-radial-wheel__slot[data-radial-variant="2"]::after,
     .mobile-radial-wheel__slot[data-radial-variant="6"]::after { border-radius: 16%; }
+    /*
+     * Three infinite animations per slot. On a 27-trigger wheel that is 81
+     * timelines running over a live WebGL canvas, all competing for the same
+     * frame budget as the renderer. They are the wheel's signature, so they
+     * stay — but they stop the moment the user is actually steering, when
+     * every spare millisecond should be going into pointer response, and they
+     * do not run at all for anyone who has asked for less motion.
+     */
     :is(.mobile-radial-layer, .desktop-radial-layer)[data-phase="open"] .mobile-radial-wheel__slot::before {
       animation: radial-orbit 4.8s linear infinite var(--slot-delay, 0ms);
     }
@@ -600,6 +623,27 @@
     }
     :is(.mobile-radial-layer, .desktop-radial-layer)[data-phase="open"] .mobile-radial-wheel__slot .hot-trigger__ico {
       animation: radial-icon-breathe 2.4s ease-in-out infinite var(--slot-delay, 0ms);
+    }
+    :is(.mobile-radial-layer, .desktop-radial-layer)[data-steering] .mobile-radial-wheel__slot::before,
+    :is(.mobile-radial-layer, .desktop-radial-layer)[data-steering] .mobile-radial-wheel__slot::after,
+    :is(.mobile-radial-layer, .desktop-radial-layer)[data-steering] .mobile-radial-wheel__slot .hot-trigger__ico {
+      animation-play-state: paused;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      :is(.mobile-radial-layer, .desktop-radial-layer) .mobile-radial-wheel__slot::before,
+      :is(.mobile-radial-layer, .desktop-radial-layer) .mobile-radial-wheel__slot::after,
+      :is(.mobile-radial-layer, .desktop-radial-layer) .mobile-radial-wheel__slot .hot-trigger__ico,
+      :is(.mobile-radial-layer, .desktop-radial-layer) .mobile-radial-wheel__label {
+        animation: none !important;
+      }
+      :is(.mobile-radial-layer, .desktop-radial-layer)[data-phase="armed"] .mobile-radial-wheel {
+        animation: none;
+        opacity: .3;
+      }
+      .mobile-radial-wheel,
+      .mobile-radial-wheel__backdrop,
+      .mobile-radial-wheel__slot .hot-trigger { transition-duration: 1ms; }
+      .mobile-radial-wheel__slot[data-highlighted] .hot-trigger { scale: 1.12; }
     }
     .mobile-radial-wheel__slot[data-highlighted] .hot-trigger {
       scale: 1.34;
@@ -654,6 +698,60 @@
       padding: 8px;
     }
     .mobile-radial-wheel__hub small { color: hsl(var(--text-secondary)); font-size: 7px; letter-spacing: .08em; }
+
+    /* Pager: two chevrons and a row of pips, sitting just under the hub.
+     * Off the ring on purpose — the ring is the accurate real estate, and
+     * spending two of its best positions on navigation would give back what
+     * paginating the wheel was meant to buy. */
+    .mobile-radial-wheel__pager {
+      position: absolute;
+      left: 50%;
+      /* Below the outer ring, not between the rings: anywhere inside the
+       * wheel it would either crowd the inner slots or sit under the hub, and
+       * out here it lands low on the screen, where a thumb already is. */
+      top: calc(50% + var(--radial-size) * .55);
+      translate: -50% 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      pointer-events: auto;
+      z-index: 6;
+    }
+    .mobile-radial-wheel__pager button {
+      display: grid;
+      place-items: center;
+      /* 44px of target under a 20px glyph — this sits near the hub, where a
+       * thumb arriving from the ring is least precise. */
+      inline-size: 44px;
+      block-size: 44px;
+      border: 0;
+      background: none;
+      color: hsl(var(--text-body));
+      font: 700 20px/1 ui-monospace, monospace;
+      text-shadow: 0 1px 4px hsl(var(--bg-base));
+      cursor: pointer;
+      transition: color 70ms linear, scale 70ms linear;
+    }
+    .mobile-radial-wheel__pager button:hover { color: hsl(var(--accent)); scale: 1.15; }
+    .mobile-radial-wheel__pager button:active { scale: .92; }
+    .mobile-radial-wheel__pager > span { display: flex; gap: 4px; }
+    .mobile-radial-wheel__pager i {
+      inline-size: 5px;
+      block-size: 5px;
+      border-radius: 999px;
+      background: hsl(var(--text-body) / .3);
+      transition: background-color 70ms linear;
+    }
+    .mobile-radial-wheel__pager i[data-on] {
+      background: hsl(var(--accent));
+      box-shadow: 0 0 6px hsl(var(--accent));
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .mobile-radial-wheel__pager button { transition-duration: 1ms; }
+      .mobile-radial-wheel__pager button:hover,
+      .mobile-radial-wheel__pager button:active { scale: 1; }
+    }
     .mobile-radial-wheel__hub > button:first-child {
       display: flex;
       flex-direction: column;
@@ -1436,18 +1534,17 @@
   .title-split-pane:hover .split-side-title::before { animation: split-title-ghost-a 2.1s steps(1, end) infinite; }
   .title-split-pane:hover .split-side-title::after { animation: split-title-ghost-b 2.7s steps(1, end) infinite; }
   .source-mode-console {
-    display: grid;
-    width: min(100%, 390px);
-    height: 154px;
-    grid-template-columns: 1fr 1px 1fr;
-    align-items: stretch;
+    display: flex;
+    width: auto;
+    height: auto;
+    align-items: center;
+    justify-content: center;
+    gap: 18px;
     overflow: visible;
-    border: 1px solid hsl(128 90% 68% / .72);
-    border-radius: 2px;
+    border: 0;
     color: hsl(128 90% 74%);
-    background: hsl(var(--background) / .58);
-    box-shadow: 0 0 30px hsl(128 90% 48% / .12), inset 0 0 24px hsl(128 90% 48% / .05);
-    backdrop-filter: blur(10px);
+    background: transparent;
+    box-shadow: none;
     transition: border-color 180ms ease, box-shadow 220ms ease, transform 180ms ease;
   }
   .source-mode-console:hover,
@@ -1455,7 +1552,7 @@
     border-color: hsl(128 90% 72%);
     box-shadow: 0 0 46px hsl(128 90% 48% / .24), inset 0 0 30px hsl(128 90% 48% / .08);
   }
-  .source-mode-divider { width: 1px; margin-block: 22px; background: hsl(128 90% 70% / .34); }
+  .source-mode-divider { display: none; }
   .source-mode-action,
   .forge-mode-action {
     position: relative;
@@ -1468,8 +1565,19 @@
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     text-transform: uppercase;
   }
-  .source-mode-action { flex-direction: column; gap: 18px; }
-  .source-mode-action svg { width: 40px; height: 40px; stroke-width: 1.45; }
+  .source-mode-action {
+    width: 138px;
+    height: 138px;
+    flex: 0 0 138px;
+    flex-direction: column;
+    gap: 18px;
+    border: 1px solid hsl(128 90% 68% / .72);
+    border-radius: 2px;
+    background: hsl(var(--background) / .58);
+    box-shadow: 0 0 30px hsl(128 90% 48% / .12), inset 0 0 24px hsl(128 90% 48% / .05);
+    backdrop-filter: blur(10px);
+  }
+  .source-mode-action svg { width: 46px; height: 46px; stroke-width: 1.45; }
   .source-mode-action:hover { background: hsl(128 90% 54% / .055); }
   .split-action-label {
     position: relative;
@@ -1505,8 +1613,8 @@
   }
   .forge-mode-action {
     --side-color: 350 100% 62%;
-    width: 166px;
-    height: 166px;
+    width: 138px;
+    height: 138px;
     flex-direction: column;
     gap: 13px;
     border: 1px solid hsl(350 100% 66% / .74);
@@ -1527,7 +1635,54 @@
     font: 600 7px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
     letter-spacing: .24em;
   }
-  .forge-pattern-mark { width: 66px; height: 52px; overflow: visible; fill: none; stroke: currentColor; stroke-width: 2; stroke-linejoin: bevel; }
+  .forge-pattern-mark { width: 46px; height: 46px; overflow: visible; fill: none; stroke: currentColor; stroke-width: 2; stroke-linejoin: bevel; }
+  .title-mode-cycle {
+    isolation: isolate;
+    will-change: transform, filter;
+    animation: title-mode-cycle 12s ease-in-out infinite;
+  }
+  .title-mode-cycle--camera { animation-delay: -8s; }
+  .title-mode-cycle--forge { animation-delay: -4s; }
+  .title-mode-cycle > svg,
+  .title-mode-cycle > .forge-pattern-mark {
+    animation: title-mode-icon-mosh 12s steps(1, end) infinite;
+  }
+  .title-mode-cycle--camera > svg { animation-delay: -8s; }
+  .title-mode-cycle--forge > .forge-pattern-mark { animation-delay: -4s; }
+  .title-mode-cycle::after {
+    position: absolute;
+    z-index: 3;
+    top: 50%;
+    left: 50%;
+    content: attr(data-cycle-label);
+    pointer-events: none;
+    color: hsl(var(--foreground));
+    font: 900 clamp(20px, 2.6vw, 38px)/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: .16em;
+    text-indent: .16em;
+    text-shadow: 4px 0 hsl(335 100% 58%), -4px 0 hsl(190 100% 66%), 0 0 22px hsl(var(--side-color) / .72);
+    opacity: 0;
+    transform: translate(-50%, -50%);
+    animation: title-mode-word-flash 12s steps(1, end) infinite;
+  }
+  .title-mode-cycle--camera::after { animation-delay: -8s; }
+  .title-mode-cycle--forge::after { animation-delay: -4s; }
+  @keyframes title-mode-cycle {
+    0%, 20% { transform: scale(1.1); box-shadow: 0 0 48px hsl(var(--side-color) / .35), inset 0 0 28px hsl(var(--side-color) / .08); }
+    26%, 100% { transform: scale(1); }
+  }
+  @keyframes title-mode-icon-mosh {
+    0% { transform: translate(-3px, 1px) skewX(-8deg); filter: drop-shadow(4px 0 hsl(335 100% 58%)) drop-shadow(-4px 0 hsl(190 100% 66%)); }
+    6% { transform: translate(3px, -1px) skewX(7deg); filter: hue-rotate(80deg) saturate(2); }
+    12% { transform: translate(-1px, 2px) scaleX(1.16); filter: drop-shadow(-3px 0 hsl(335 100% 58%)) drop-shadow(3px 0 hsl(190 100% 66%)); }
+    18%, 100% { transform: none; filter: none; }
+  }
+  @keyframes title-mode-word-flash {
+    0% { opacity: .96; transform: translate(-54%, -50%) skewX(-9deg) scaleX(1.14); clip-path: inset(0 0 62%); }
+    6% { opacity: .72; transform: translate(-46%, -48%) skewX(8deg); clip-path: inset(35% 0 12%); }
+    12% { opacity: .92; transform: translate(-51%, -52%) scaleX(.88); clip-path: inset(9% 0 46%); }
+    18%, 100% { opacity: 0; clip-path: inset(50% 0); }
+  }
   .forge-pattern-mark rect { fill: currentColor; stroke: none; }
   .split-direction {
     position: absolute;
@@ -1542,8 +1697,25 @@
   }
   .split-direction--demos { bottom: 17px; left: 30%; transform: translateX(-50%); }
   .split-direction--explore { top: 18px; right: 13%; }
+  .split-direction--explore {
+    color: hsl(var(--foreground) / .42);
+    font-weight: 600;
+  }
   .title-neutral-header > div:first-child { position: absolute; top: 24px; left: 20px; }
   .title-neutral-nav { position: absolute; top: 23px; left: 50%; transform: translateX(-50%); white-space: nowrap; }
+  /* The radio link is the only nav item pointing at something already
+     running, so it carries the same live dot the brand mark uses — a
+     broadcast tally, not decoration. */
+  .title-radio-link { display: inline-flex; align-items: center; gap: 6px; color: hsl(var(--accent)); }
+  .title-radio-link:hover { color: hsl(var(--primary)); }
+  .title-radio-dot {
+    width: 6px; height: 6px; border-radius: 999px; flex: none;
+    background: hsl(var(--primary));
+    box-shadow: 0 0 10px hsl(var(--primary));
+    animation: title-radio-tally 2.4s ease-in-out infinite;
+  }
+  @keyframes title-radio-tally { 0%, 100% { opacity: 1; } 50% { opacity: .28; } }
+  @media (prefers-reduced-motion: reduce) { .title-radio-dot { animation: none; } }
   .title-product-copy {
     top: 62px;
     left: 50%;
@@ -1743,9 +1915,12 @@
     .mosh-icon, .mosh-glitch, .split-side-title::before, .split-side-title::after,
     .split-action-label::before, .split-action-label::after, .split-trace,
     .split-seam-scan, .split-seam-fragment, .side-reactive, .mosh-target,
+    .title-mode-cycle, .title-mode-cycle::after, .title-mode-cycle > svg,
+    .title-mode-cycle > .forge-pattern-mark,
     .bio-flicker { animation: none !important; }
     .split-side-title::before, .split-side-title::after,
     .split-action-label::before, .split-action-label::after { opacity: 0; }
+    .title-mode-cycle::after { opacity: 0; }
     .bio-flicker { opacity: 0.5; }
   }
 
@@ -1967,13 +2142,13 @@
     .title-split-pane { padding-inline: 14px; }
     .split-pane-content { width: min(94%, 520px); gap: clamp(9px, 1.7vh, 16px); }
     .split-side-title { font-size: clamp(25px, 8.6vw, 44px); line-height: .92; }
-    .source-mode-console { width: min(310px, 86vw); height: 92px; }
+    .source-mode-console { width: min(310px, 86vw); height: 92px; gap: 12px; }
     .source-mode-divider { margin-block: 14px; }
-    .source-mode-action { gap: 8px; }
+    .source-mode-action { width: 92px; height: 92px; flex-basis: 92px; gap: 8px; }
     .source-mode-action svg { width: 27px; height: 27px; }
     .split-action-label { font-size: 11px; letter-spacing: .25em; text-indent: .25em; }
     .split-side-meta { font-size: 6px; letter-spacing: .2em; }
-    .forge-mode-action { width: 126px; height: 104px; gap: 5px; }
+    .forge-mode-action { width: 92px; height: 92px; gap: 5px; }
     .forge-pattern-mark { width: 48px; height: 38px; }
     .forge-mode-action small { font-size: 5px; }
     .split-trace { width: min(78%, 430px); max-height: 130%; }
@@ -2015,7 +2190,9 @@
     }
     .title-neutral-header { padding-inline: 16px; }
     .title-neutral-header > div:first-child { top: 16px; left: 16px; font-size: 8px; letter-spacing: .18em; }
-    .title-neutral-nav { top: 42px; gap: 10px; }
+    .title-neutral-nav { top: 42px; gap: 8px; }
+    .title-radio-dot { width: 4px; height: 4px; }
+    .title-radio-link { gap: 4px; }
     .title-neutral-nav a,
     .title-neutral-nav button { font-size: 7px; letter-spacing: .13em; }
     .title-product-copy {
@@ -2039,8 +2216,9 @@
     .title-product-copy { top: 64px; }
     .split-pane-content { gap: 7px; }
     .source-mode-console { height: 78px; }
+    .source-mode-action { width: 78px; height: 78px; flex-basis: 78px; }
     .source-mode-action svg { width: 22px; height: 22px; }
-    .forge-mode-action { width: 112px; height: 86px; }
+    .forge-mode-action { width: 78px; height: 78px; }
     .split-direction { display: none; }
   }
   .home-info-panel {

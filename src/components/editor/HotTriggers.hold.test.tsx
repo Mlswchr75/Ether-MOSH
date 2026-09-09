@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { HotTriggers } from "./HotTriggers";
+import { useStore } from "@/store/useStore";
 
 beforeAll(() => {
   Object.defineProperty(window, "matchMedia", {
@@ -71,5 +72,53 @@ describe("radial hot-trigger holds", () => {
 
     expect(screen.getByRole("button", { name: "Move Capture — tap for a still, hold to record" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Capture — tap for a still, hold to record" })).toBeTruthy();
+  });
+
+  it("cycles the canvas-shape trigger through portrait, square, and landscape", () => {
+    useStore.setState({ desktopCanvasAspect: "landscape" });
+    render(
+      <HotTriggers
+        isRecording={false}
+        onToggleRecord={() => {}}
+        onScreenshot={() => {}}
+        onFreeze={() => {}}
+        onGif={() => {}}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open radial controls" }));
+    fireEvent.click(screen.getByRole("button", { name: "Canvas: landscape — switch to portrait" }));
+    expect(useStore.getState().desktopCanvasAspect).toBe("portrait");
+
+    fireEvent.click(screen.getByRole("button", { name: "Open radial controls" }));
+    fireEvent.click(screen.getByRole("button", { name: "Canvas: portrait — switch to square" }));
+    expect(useStore.getState().desktopCanvasAspect).toBe("square");
+
+    fireEvent.click(screen.getByRole("button", { name: "Open radial controls" }));
+    fireEvent.click(screen.getByRole("button", { name: "Canvas: square — switch to landscape" }));
+    expect(useStore.getState().desktopCanvasAspect).toBe("landscape");
+  });
+
+  it("opens the complete song library with Command+Shift and marks the current song", () => {
+    useStore.setState({ trackEnabled: false, trackTitle: "Miyazaki Demo", uploadedTracks: [] });
+    render(
+      <HotTriggers
+        isRecording={false}
+        onToggleRecord={() => {}}
+        onScreenshot={() => {}}
+        onFreeze={() => {}}
+        onGif={() => {}}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open radial controls" }));
+    fireEvent.click(screen.getByRole("button", { name: "Play a random MOSH track" }), {
+      metaKey: true,
+      shiftKey: true,
+    });
+
+    expect(screen.getByRole("menu", { name: "Track options" })).toBeTruthy();
+    expect(screen.getByText("32 songs")).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Miyazaki Demo" }).getAttribute("aria-current")).toBe("true");
   });
 });

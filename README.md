@@ -50,6 +50,20 @@ It's been a visual sketchbook, a texture generator, a source of finished artwork
 
 ---
 
+## MOSH Radio
+
+`/radio` — Forge generating visuals endlessly, Journey directing them against
+the music, and a rotation of the library underneath both, unattended, for as
+long as the tab is open. `?station=<tag>` narrows it to one channel;
+`?hud=0` strips the ident for a clean capture.
+
+Adding a song is: drop the mp3 in `public/audio/`, run `npm run audio:sync -- --emit`,
+paste the row it prints into `SHOWCASE_TRACKS`, then
+`python3 scripts/analyze-track-cues.py <id>` for its drop-in cues.
+Full setup and the 24/7 broadcast runbook: [docs/RADIO_MODE.md](docs/RADIO_MODE.md).
+
+---
+
 ## Why I made this instead of another filter app
 
 Because the internet has plenty of software that hands you a template, a filter, a preset, and an export button. I wanted to ask a different question: **what happens if we stop trying to make the image behave?**

@@ -11,6 +11,11 @@ import { LayerStack } from "@/components/editor/LayerStack";
 import { FxPicker } from "@/components/editor/FxPicker";
 import { ShufflePanel } from "@/components/editor/ShufflePanel";
 import { ParamDock } from "@/components/editor/ParamDock";
+import { ParamWheel, PARAM_WHEEL_ARM_MS, PARAM_WHEEL_HOLD_MS } from "@/components/editor/ParamWheel";
+import { ParamWheelHint } from "@/components/editor/ParamWheelHint";
+import { createHoldRecognizer, gestureLock, isBareCanvasTarget } from "@/engine/canvasGestures";
+import { haptic } from "@/hooks/useHaptics";
+import { editorOwnsKey } from "@/lib/wheelKeyboard";
 import { BeatPanel } from "@/components/editor/BeatPanel";
 import { downloadCanvasPngNow, exportCanvas, downloadBlob, remasterCanvas } from "@/engine/export";
 import { exportPrintReady, type PrintFormat } from "@/engine/printExport";
@@ -89,6 +94,8 @@ const GlCanvas = lazy(async () => {
   return { default: module.GlCanvas };
 });
 import { CastStageButton } from "@/components/editor/CastStageButton";
+import { RadioGesturePrompt, RadioHud, RadioWelcome } from "@/components/editor/RadioHud";
+import { useRadioBroadcast } from "@/hooks/useRadioBroadcast";
 
 const LEGACY_HOT_TRIGGERS_KEY = "cathedral_legacy_hot_triggers_launchpad_v1";
 
@@ -139,7 +146,7 @@ export default function Editor() {
   const radialMenuOpen = useStore(s => s.radialMenuOpen);
   const isPerformanceMode = useStore(s => s.isPerformanceMode);
   const setPerformanceMode = useStore(s => s.setPerformanceMode);
-  const desktopPortraitMode = useStore(s => s.desktopPortraitMode);
+  const desktopCanvasAspect = useStore(s => s.desktopCanvasAspect);
   const proModeEnabled = useStore(s => s.proModeEnabled);
   const helpModeEnabled = useStore(s => s.helpModeEnabled);
   const [helpCaption, setHelpCaption] = useState<{ text: string; x: number; y: number } | null>(null);
@@ -942,6 +949,13 @@ export default function Editor() {
     setJourneyOn(true);
   }, [isForge, journeyOn, paywall]);
 
+  /* Radio — /radio (or /edit?radio=1). Forge draws, Journey directs, and the
+     rotation below keeps a song under both of them forever. It asks for
+     Journey through toggleJourney rather than setJourneyOn so the station is
+     gated exactly like Journey is everywhere else. */
+  const radio = useRadioBroadcast({ journeyOn, requestJourney: toggleJourney });
+  const [radioWelcome, setRadioWelcome] = useState(true);
+
   // Forge gets one five-minute, session-persistent Journey preview. The clock
   // follows active Journey time and is paused as soon as the director stops.
   useEffect(() => {
@@ -1283,8 +1297,19 @@ export default function Editor() {
       const t = e.target as HTMLElement | null;
       const inField = !!(t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable));
 
+      // Cmd/Ctrl+Shift+K — enter Lottie Sticker Mode and capture the
+      // currently selected Lottie/GIF outputs. This must be checked before
+      // the command palette's Cmd/Ctrl+K chord below.
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === "k" || e.key === "K")) {
+        e.preventDefault();
+        if (e.repeat) return;
+        useStore.getState().setStickerMode(true);
+        window.dispatchEvent(new CustomEvent("mosh:capture-lottie-sticker"));
+        return;
+      }
+
       // Cmd/Ctrl+K — palette (works even when palette open via toggle? we close instead)
-      if ((e.ctrlKey || e.metaKey) && (e.key === "k" || e.key === "K")) {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === "k" || e.key === "K")) {
         e.preventDefault();
         setPaletteOpen(p => !p);
         return;
@@ -1294,16 +1319,20 @@ export default function Editor() {
       // remain the universal MOSH action even immediately after one of those
       // controls was focused.
       //
-      // Shift+Space is repurposed here specifically: rather than undo (its
-      // meaning everywhere else), it asks StickerCapture to throw away the
-      // sticker's current crop lock and propose a fresh framing/border/
-      // structural shape — repeatable indefinitely, since the point is
-      // shopping through candidates before committing to a capture.
+      // Cmd/Ctrl+Shift+Space is the deliberate sticker reshaper. Shift+Space
+      // remains the radical stack reset even while a sticker checkbox or
+      // select has focus; plain Space remains a normal mosh.
       if (e.code === "Space" && useStore.getState().stickerMode) {
+        if ((e.metaKey || e.ctrlKey) && !e.shiftKey) return;
         e.preventDefault();
         if (e.repeat) return;
-        if (e.shiftKey) window.dispatchEvent(new CustomEvent("mosh:reroll-sticker-shape"));
-        else crossfadeLayers(mosh, MOSH_FADE_MS);
+        if ((e.metaKey || e.ctrlKey) && e.shiftKey) {
+          window.dispatchEvent(new CustomEvent("mosh:reroll-sticker-shape"));
+        } else if (e.shiftKey) {
+          crossfadeLayers(() => useStore.getState().mosh(undefined, { resetMemory: true, dramatic: true }), MOSH_FADE_MS);
+        } else {
+          crossfadeLayers(mosh, MOSH_FADE_MS);
+        }
         return;
       }
 
@@ -1313,6 +1342,10 @@ export default function Editor() {
       // Modal-aware: when palette/shortcuts open, only allow Escape
       const paletteIsOpen = paletteOpen;
       const shortcutsIsOpen = shortcutsOpen;
+      // The Parameters Wheel runs its own keyboard model and listens on the
+      // same target this handler does — see lib/wheelKeyboard.
+      const wheelIsOpen = useStore.getState().paramWheelOpen;
+      if (!editorOwnsKey(e.key, wheelIsOpen)) return;
       if (e.key === "Escape") {
         if (paletteIsOpen) { e.preventDefault(); setPaletteOpen(false); return; }
         if (shortcutsIsOpen) { e.preventDefault(); setShortcutsOpen(false); return; }
@@ -1359,11 +1392,14 @@ export default function Editor() {
       }
 
       // Space is the keyboard equivalent of the MOSH button. Shift+Space
-      // walks one step back through the same visual history.
+      // forgets the recent Art Director history and deliberately jumps to
+      // a maximum-range stack that avoids the current unlocked effects.
+      if (e.code === "Space" && radio.config.active && !e.shiftKey) { e.preventDefault(); radio.togglePlay(); return; }
       if (e.code === "Space") {
+        if (e.metaKey || e.ctrlKey) return;
         e.preventDefault();
         if (e.repeat) return;
-        if (e.shiftKey) undo();
+        if (e.shiftKey) crossfadeLayers(() => useStore.getState().mosh(undefined, { resetMemory: true, dramatic: true }), MOSH_FADE_MS);
         else crossfadeLayers(mosh, MOSH_FADE_MS);
         return;
       }
@@ -1386,20 +1422,6 @@ export default function Editor() {
         window.dispatchEvent(new CustomEvent("mosh:make-sticker"));
         return;
       }
-      // Shift+K => jump straight into Lottie Sticker Mode and capture,
-      // without needing scissors mode open or the Lottie checkbox already
-      // ticked first. Opens the sticker panel (so the preview/checkbox are
-      // visibly on) via the store directly, then hands off to
-      // StickerCapture's own listener (always-mounted, same event-bridge
-      // pattern as "mosh:make-sticker" above) for the actual capture.
-      if (e.shiftKey && (e.key === "k" || e.key === "K")) {
-        e.preventDefault();
-        if (e.repeat) return;
-        useStore.getState().setStickerMode(true);
-        window.dispatchEvent(new CustomEvent("mosh:capture-lottie-sticker"));
-        return;
-      }
-
       // M => mic toggle
       if (!e.shiftKey && (e.key === "m" || e.key === "M")) {
         e.preventDefault();
@@ -1482,6 +1504,15 @@ export default function Editor() {
         window.dispatchEvent(new CustomEvent("mosh:switch-mode", { detail: "forge" }));
         return;
       }
+      // T => the Parameters Wheel, the keyboard counterpart to the
+      // two-finger tap-and-hold. Toggles, because unlike Shift-to-flash the
+      // hot-trigger wheel you generally want this one to stay put while you
+      // work a value.
+      if (!e.shiftKey && (e.key === "t" || e.key === "T")) {
+        e.preventDefault();
+        window.dispatchEvent(new Event("mosh:toggle-param-wheel"));
+        return;
+      }
       // V => share current frame
       if (!e.shiftKey && (e.key === "v" || e.key === "V")) {
         e.preventDefault();
@@ -1512,9 +1543,9 @@ export default function Editor() {
       // instead. Works regardless of whether the track panel is open, and
       // always ends up playing (matching an ordinary "next" button), so
       // these work as a real transport control, not just a picker shortcut.
-      if (!e.shiftKey && e.key === "[") { e.preventDefault(); runTrackAction(() => trackPlayer.prevShowcaseTrack()); return; }
-      if (!e.shiftKey && e.key === "]") { e.preventDefault(); runTrackAction(() => trackPlayer.nextShowcaseTrack()); return; }
-      if (!e.shiftKey && e.key === "\\") { e.preventDefault(); runTrackAction(() => trackPlayer.shuffleShowcaseTrack()); return; }
+      if (!e.shiftKey && e.key === "[") { e.preventDefault(); if (radio.config.active) radio.previous(); else runTrackAction(() => trackPlayer.prevShowcaseTrack()); return; }
+      if (!e.shiftKey && e.key === "]") { e.preventDefault(); if (radio.config.active) radio.skip(); else runTrackAction(() => trackPlayer.nextShowcaseTrack()); return; }
+      if (!e.shiftKey && e.key === "\\") { e.preventDefault(); if (radio.config.active) radio.shuffle(); else runTrackAction(() => trackPlayer.shuffleShowcaseTrack()); return; }
 
       // ————————————— Shift combos —————————————
       if (e.shiftKey && (e.key === "M" || e.key === "m")) { e.preventDefault(); crossfadeLayers(mosh, MOSH_FADE_MS); return; }
@@ -1633,6 +1664,8 @@ export default function Editor() {
       !(target instanceof HTMLElement) || !target.closest("button, a, input, textarea, [role='slider'], [data-no-longpress]");
     const onDown = (e: PointerEvent) => {
       if (e.pointerType !== "touch" || !isCanvasTap(e.target)) return;
+      // A wheel on screen owns every finger on it.
+      if (useStore.getState().paramWheelOpen || useStore.getState().radialMenuOpen) return;
       points.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (points.size === 3) {
         start = [...points.values()].map(p => ({ ...p }));
@@ -1658,7 +1691,7 @@ export default function Editor() {
     };
     const onEnd = (e: PointerEvent) => {
       if (!points.has(e.pointerId)) return;
-      if (!handled && !invalid && points.size === 3 && start.length === 3) {
+      if (!handled && !invalid && !gestureLock.isBlocked("gif-3finger") && points.size === 3 && start.length === 3) {
         const elapsed = performance.now() - startedAt;
         if (elapsed <= 420 && maxTravel <= 20) {
           handled = true;
@@ -1703,6 +1736,7 @@ export default function Editor() {
     const average = (items: Point[]) => items.reduce((sum, p) => ({ x: sum.x + p.x, y: sum.y + p.y }), { x: 0, y: 0 });
     const onDown = (e: PointerEvent) => {
       if (e.pointerType !== "touch" || !isCanvasTouch(e.target)) return;
+      if (useStore.getState().paramWheelOpen || useStore.getState().radialMenuOpen) return;
       points.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (points.size === 1 || points.size === 2) {
         start = [...points.values()].map(p => ({ ...p }));
@@ -1731,7 +1765,7 @@ export default function Editor() {
       if (!point) return;
       point.x = e.clientX;
       point.y = e.clientY;
-      if (!handled && !invalid && (points.size === 1 || points.size === 2) && start.length === points.size) {
+      if (!handled && !invalid && !gestureLock.isBlocked("swipe-tap") && (points.size === 1 || points.size === 2) && start.length === points.size) {
         handled = true;
         const from = average(start);
         const to = average([...points.values()]);
@@ -1780,6 +1814,9 @@ export default function Editor() {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== "Shift" || e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
+      // Never two wheels at once — and Shift is a coarse-step modifier inside
+      // the Parameters Wheel, so holding it there must not summon the other one.
+      if (useStore.getState().paramWheelOpen) return;
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
       if (useStore.getState().proModeEnabled) setHideUI(false);
@@ -1806,25 +1843,42 @@ export default function Editor() {
     };
   }, [chromePinned]);
 
-  // Pro Mode, touch: hold one finger down, tap with a second while the
-  // first is still held — toggles the menu. No timer on the first finger;
-  // "holding" just means it hasn't lifted yet when the second one lands.
+  // Pro Mode, touch: a second finger tapped against a held first one toggles
+  // the chrome.
+  //
+  // This used to fire the moment the second finger landed, with no duration
+  // test at all, which made it impossible to ever hold two fingers on the art
+  // for anything else — the toggle always won first. It now waits for the lift
+  // and only counts a genuine tap, so a two-finger *hold* belongs to the
+  // Parameters Wheel and a two-finger *tap* still belongs here.
   useEffect(() => {
     const el = canvasContainerRef.current;
     if (!el) return;
     const activeTouches = new Set<number>();
+    let secondFingerAt = 0;
+    let armed = false;
     const onDown = (e: PointerEvent) => {
       if (e.pointerType !== "touch") return;
       if (!useStore.getState().proModeEnabled) return;
-      const t = e.target as HTMLElement | null;
-      if (t && t.closest("button, a, input, textarea, [role='slider'], [data-no-longpress]")) return;
-      if (activeTouches.size >= 1) {
-        setHideUI(v => !v);
-        try { if ("vibrate" in navigator) (navigator as any).vibrate?.(15); } catch {}
+      if (!isBareCanvasTarget(e.target)) return;
+      if (activeTouches.size === 1) {
+        secondFingerAt = performance.now();
+        armed = true;
+      } else if (activeTouches.size >= 2) {
+        // Three fingers is the GIF gesture, never this one.
+        armed = false;
       }
       activeTouches.add(e.pointerId);
     };
-    const onUp = (e: PointerEvent) => { activeTouches.delete(e.pointerId); };
+    const onUp = (e: PointerEvent) => {
+      if (!activeTouches.delete(e.pointerId)) return;
+      if (armed && !gestureLock.isBlocked("pro-mode-toggle") && performance.now() - secondFingerAt <= 420) {
+        armed = false;
+        setHideUI(v => !v);
+        haptic("commit");
+      }
+      if (activeTouches.size === 0) armed = false;
+    };
     el.addEventListener("pointerdown", onDown);
     window.addEventListener("pointerup", onUp);
     window.addEventListener("pointercancel", onUp);
@@ -1832,6 +1886,54 @@ export default function Editor() {
       el.removeEventListener("pointerdown", onDown);
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onUp);
+    };
+  }, []);
+
+  // Two-finger tap-and-hold on the art summons the Parameters Wheel.
+  //
+  // The whole point of the surface: every control that used to live in the
+  // menu rack below the fold is now reachable without the visualizer ever
+  // leaving the screen, so you can see what a parameter does to the frame
+  // while you are changing it. The recognizer arbitrates against every other
+  // canvas gesture (see engine/canvasGestures.ts) so a slow two-finger tap
+  // can't fire a screenshot on its way to opening this.
+  useEffect(() => {
+    const el = canvasContainerRef.current;
+    if (!el) return;
+    const hold = createHoldRecognizer({
+      name: "param-wheel",
+      fingers: 2,
+      holdMs: PARAM_WHEEL_HOLD_MS,
+      armMs: PARAM_WHEEL_ARM_MS,
+      jitterPx: 20,
+      onArm: (centroid) => window.dispatchEvent(new CustomEvent("mosh:arm-param-wheel", { detail: centroid })),
+      onCancel: () => window.dispatchEvent(new Event("mosh:disarm-param-wheel")),
+      onCommit: (centroid) => {
+        haptic("open");
+        window.dispatchEvent(new CustomEvent("mosh:open-param-wheel", { detail: centroid }));
+      },
+    });
+    const onDown = (e: PointerEvent) => {
+      if (e.pointerType !== "touch") return;
+      // Already open? Fingers on the wheel are the wheel's business.
+      if (useStore.getState().paramWheelOpen) return;
+      if (!isBareCanvasTarget(e.target)) return;
+      hold.down(e.pointerId, e.clientX, e.clientY);
+    };
+    const onMove = (e: PointerEvent) => hold.move(e.pointerId, e.clientX, e.clientY);
+    const onUp = (e: PointerEvent) => hold.up(e.pointerId);
+    const onCancel = () => hold.cancel();
+    el.addEventListener("pointerdown", onDown, { passive: true });
+    window.addEventListener("pointermove", onMove, { passive: true });
+    window.addEventListener("pointerup", onUp, { passive: true });
+    window.addEventListener("pointercancel", onCancel, { passive: true });
+    return () => {
+      hold.cancel();
+      gestureLock.reset();
+      el.removeEventListener("pointerdown", onDown);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel);
     };
   }, []);
 
@@ -1914,6 +2016,8 @@ export default function Editor() {
           loadDroppedImage(file);
         }}
         onPointerDown={(e) => {
+          const target = e.target instanceof Element ? e.target : null;
+          if (target?.closest("button, a, input, textarea, select, label, summary, [role='button'], [role='slider'], [data-sticker-controls]")) return;
           // Cmd/Ctrl-click → ripple (Performance Mode only)
           if (useStore.getState().isPerformanceMode && (e.metaKey || e.ctrlKey)) {
             e.preventDefault();
@@ -1952,12 +2056,14 @@ export default function Editor() {
           if (e.shiftKey) { e.preventDefault(); crossfadeLayers(mosh, MOSH_FADE_MS); }
         }}
         className={`relative bg-background select-none shrink-0 no-touch-scroll ${
-          desktopPortraitMode
+          desktopCanvasAspect === "portrait"
             // Height-driven 9:16 box instead of the usual full-width stage —
             // min() so a browser window too narrow for a full-height 9:16
             // box shrinks to fit its width instead of overflowing sideways.
             ? "self-center w-auto aspect-[9/16] h-[min(100dvh,calc(100vw*16/9))]"
-            : "w-full h-[100dvh]"
+            : desktopCanvasAspect === "square"
+              ? "self-center w-auto aspect-square h-[min(100dvh,100vw)]"
+              : "w-full h-[100dvh]"
         } ${isCameraLive ? "live-ring" : ""}`}
       >
         <div data-tap-fade-target className="absolute inset-0 opacity-100">
@@ -1978,6 +2084,13 @@ export default function Editor() {
         {freezeFrame && <FrozenFrame frame={freezeFrame} />}
         {!hasSource && !isOverlay && <StartCameraOverlay />}
         <SystemAudioHud visible={systemAudioEnabled && !isOverlay} />
+        {radio.config.active && radio.config.hud && (
+          <>
+            <RadioHud radio={radio} onOpenControls={exitPerf} />
+            {radioWelcome && isPerformanceMode && <RadioWelcome onDismiss={() => setRadioWelcome(false)} />}
+          </>
+        )}
+        {radio.config.active && radio.needsGesture && <RadioGesturePrompt onStart={radio.start} />}
         {hasSource && !isForge && !isMotif && !isOverlay && (
           <QuadrantSurface onTogglePerf={togglePerf} onTune={focusTune} />
         )}
@@ -2040,6 +2153,15 @@ export default function Editor() {
             }}
           />
         )}
+        {/* The second wheel: every control from the below-the-fold menu rack,
+            summoned by a two-finger tap-and-hold anywhere on the art (or the
+            T key). Mounted alongside the hot-trigger wheel rather than inside
+            it — they are peers, and this one has to survive Performance Mode
+            hiding the rest of the chrome, because adjusting a parameter
+            without leaving the visualizer is exactly what Performance Mode is
+            for. */}
+        {!isOverlay && <ParamWheel />}
+        {!isOverlay && !isPerformanceMode && !hideUI && <ParamWheelHint />}
         {/* Standalone, not nested inside HotTriggers — the hot-trigger rail
             now lives inside a press-and-hold radial wheel that's hidden by
             default, which buried this prompt along with it and made it show
