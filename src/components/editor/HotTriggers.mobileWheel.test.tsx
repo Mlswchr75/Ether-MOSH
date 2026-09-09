@@ -108,9 +108,20 @@ describe("the wheel pages rather than crowding one ring", () => {
 
     const firstPage = slotIds();
     expect(firstPage.length).toBeLessThanOrEqual(RADIAL_PAGE_SIZE);
-    expect(document.querySelector(".mobile-radial-wheel__pager")).not.toBeNull();
+    const pager = document.querySelector(".mobile-radial-wheel__pager");
+    expect(pager).not.toBeNull();
     // mosh is the hub, so it never takes a ring slot.
     expect(firstPage).not.toContain("mosh");
+
+    // The pager must NOT live inside the wheel. The wheel carries
+    // `contain: layout style paint`, and the pager is positioned below its
+    // border box, so nesting it there means paint containment clips it: the
+    // chevrons never render and never hit-test, stranding every trigger past
+    // the first page. jsdom applies no containment, so nothing else in this
+    // suite can see that — this asserts the structure instead.
+    const wheel = document.querySelector(".mobile-radial-wheel");
+    expect(wheel).not.toBeNull();
+    expect(wheel!.contains(pager!)).toBe(false);
   });
 
   it("reaches the rest of the triggers through the pager, with no repeats", () => {

@@ -435,6 +435,37 @@ radially while the buttons were 48px, so they overlapped where they aligned.
 invariant — no two slots on a page closer than a touch target — rather than
 the "no shared angle" approximation that let the overlap through.
 
+### The pager was invisible on a real browser
+
+The first pagination pass put the chevrons and pips inside the wheel element.
+The wheel carries `contain: layout style paint` — a deliberate compositing
+choice, since it sits over a live WebGL canvas — and the pager is positioned
+*below* the wheel's border box. Paint containment clips anything outside that
+box, so on a real browser the pager never painted and never hit-tested: page
+two was unreachable, and paginating had cut the reachable triggers from 26 to
+14. Strictly worse than not paginating at all.
+
+Every test passed, because jsdom implements no containment. The fix moves the
+pager out to be a sibling of the wheel and hoists `--radial-size` to the layer
+so both still share one geometry; the guard is now structural — the wheel must
+not contain the pager — which is the one part of this a DOM test can actually
+see.
+
+Two more from the same review: the pager overflowed the viewport in landscape
+(at 844x390 it resolved to y=375..419 against 390px) and is now clamped to the
+bottom safe area, and the keyboard handler read `turnPage` from the first
+render's closure, so a wheel that mounted with one page could never regain
+keyboard paging — it goes through a ref now.
+
+### The spacing guard measured the wrong pairs
+
+`radialTightestSpacing` compared slots only *within* a ring, so it never saw
+the pair that actually collides: one outer slot against one inner slot, when
+two ring counts share no step size and drift into alignment. It reported 83.6px
+for a layout whose true tightest pair is 55.8px. It measures every pair now,
+and the assertion is the invariant that matters — no two centres closer than
+the 48px target floor. The geometry itself was fine; the guard was not.
+
 ### Still open
 
 - No real-device pass yet. The touch paths are unit-tested; they have not been
