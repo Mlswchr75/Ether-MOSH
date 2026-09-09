@@ -40,6 +40,16 @@ type Props = {
   hidden?: boolean;
   /** Re-enables the retired right-edge strip without disabling the radial wheel. */
   showLegacyLaunchpad?: boolean;
+  /**
+   * Restrict the wheel to these trigger ids (see RADIO_TRIGGERS). Omit for the
+   * full instrument.
+   *
+   * A filter rather than a second wheel: everything that makes the wheel worth
+   * using — the flick-to-select geometry, the rotation, the saved layout, the
+   * hold-to-open arming — is behaviour, not content, and a parallel component
+   * would be a copy of all of it that drifts the first time either is touched.
+   */
+  only?: readonly string[];
   isRecording: boolean;
   onToggleRecord: () => void;
   onScreenshot: () => void;
@@ -68,6 +78,8 @@ type Props = {
   /** After a minute of silent play, invite the user to start a soundtrack. */
   showTrackNudge?: boolean;
   onTrackNudgeDismiss?: () => void;
+  /** Draw attention to the listen trigger while nothing is feeding the visuals. */
+  showMicNudge?: boolean;
 };
 
 export const RADIAL_WHEEL_ARM_MS = 220;
@@ -256,6 +268,26 @@ const DEFAULT_ORDER = [
   "sticker-mode",
   "source-camera", "switch-camera", "source-upload", "source-forge", "forge-palette", "source-motif", "motif-maestro",
   "fullscreen", "desktop-portrait", "account", "home",
+] as const;
+
+/**
+ * What the wheel offers on a station (`/radio`).
+ *
+ * A station is a narrower instrument than the editor: the source is fixed —
+ * Radio always runs on Forge, which is what lets it draw forever — so every
+ * source switch, the camera, the sticker studio and the Motif controls have
+ * nothing to act on. What is left is the audio route, the transport, the ways
+ * to take something away with you, and the ways to change how it looks.
+ *
+ * `mosh` is here because it is the centre hub of both wheels rather than a
+ * ring slot; the wheels filter it out of the ring themselves.
+ */
+export const RADIO_TRIGGERS = [
+  "mosh",
+  "audio", "theme-track",
+  "capture", "gif", "share", "favorites",
+  "dark-mode", "desktop-portrait", "fullscreen",
+  "account", "home",
 ] as const;
 
 const TRIGGER_LABELS: Record<string, string> = {
@@ -488,10 +520,10 @@ function TrackTrigger({ delay }: { delay: number }) {
         aria-expanded={open || undefined}
         aria-haspopup="menu"
         data-no-longpress
-        className="pointer-events-auto absolute -bottom-1 -right-1 z-20 grid h-5 w-5 place-items-center rounded-full bg-black/80 text-[hsl(var(--text-secondary))] transition hover:text-[hsl(var(--accent))]"
+        className="hot-trigger-caret pointer-events-auto absolute -bottom-1 -right-1 z-20 grid place-items-center rounded-full bg-black/80 text-[hsl(var(--text-secondary))] transition hover:text-[hsl(var(--accent))]"
         title="Track options"
       >
-        <ShuffleIcon className="h-2 w-2" strokeWidth={2.5} />
+        <ShuffleIcon className="h-3 w-3" strokeWidth={2.5} />
       </button>
 
       {open && createPortal(
@@ -698,7 +730,7 @@ function TrackTrigger({ delay }: { delay: number }) {
  * separate concerns from "what's this thing listening to," they were just
  * drawn in three different places; this is the one place now.
  */
-function AudioTrigger({ delay, onMicFlash }: { delay: number; onMicFlash?: (on: boolean) => void }) {
+function AudioTrigger({ delay, onMicFlash, nudge }: { delay: number; onMicFlash?: (on: boolean) => void; nudge?: boolean }) {
   const micEnabled = useStore(s => s.micEnabled);
   const setMicEnabled = useStore(s => s.setMicEnabled);
   const systemAudioEnabled = useStore(s => s.systemAudioEnabled);
@@ -738,21 +770,48 @@ function AudioTrigger({ delay, onMicFlash }: { delay: number; onMicFlash?: (on: 
 
   const listening = micEnabled || systemAudioEnabled;
 
+  /* The nudge is the trigger itself asking, not a card asking on its behalf.
+     The old one was a separate panel in the screen's corner with a green tick
+     and a red cross — an interruption that had to be answered, placed nowhere
+     near the control it was about, and rendered outside the wheel entirely so
+     it never appeared in performance mode or on a station at all. Here the
+     answer to "yes" is the tap you were already going to make, and the answer
+     to "no" is to carry on: nothing to dismiss, so nothing to resent. */
+  const showNudge = nudge && !listening && !beatEnabled;
+
   return (
-    <div ref={wrapRef} className="relative" data-audio-source-picker>
+    <div ref={wrapRef} className="relative" data-audio-source-picker data-mic-nudge={showNudge || undefined}>
+      {showNudge && (
+        <span
+          aria-hidden
+          className="hot-trigger-nudge pointer-events-none absolute -inset-1 rounded-[6px] border border-[hsl(var(--signal-good))]/70"
+        />
+      )}
       <HotBtn
         delay={delay}
-        label={micEnabled ? "Mic on" : systemAudioEnabled ? "Device audio on" : "Listen mode"}
+        label={
+          micEnabled ? "Mic on"
+            : systemAudioEnabled ? "Device audio on"
+            : showNudge ? "Listen mode — turn the mic on so the visuals move with sound"
+            : "Listen mode — turn the mic on"
+        }
         active={listening || beatEnabled}
         tint="var(--signal-good)"
-        onClick={(e) => {
+        /* Tapping this turns the mic on. It used to open the source picker
+           instead, so reaching the mic meant: hold to open the wheel, steer to
+           this trigger, release, then find a second control inside a popover.
+           Three deliberate acts to answer a yes/no question, and the wheel had
+           already been steered to the thing that means "listen".
+
+           Choosing a *different* source is the rarer intent and still has the
+           caret below. The browser's own permission prompt is the only
+           confirmation left, and it does not reappear for someone who has
+           already granted it — so for a returning listener this is one tap. */
+        onClick={() => {
           if (micEnabled) { setMicEnabled(false); onMicFlash?.(false); return; }
           if (systemAudioEnabled) { setSystemAudioEnabled(false); onMicFlash?.(false); return; }
-          // Opening the source/beat-sync popover, not firing a one-shot
-          // action — must not bubble into the ring-item wrapper's
-          // dismiss-on-click, or the popover would never get to show.
-          e.stopPropagation();
-          setOpen(v => !v);
+          setMicEnabled(true);
+          onMicFlash?.(true);
         }}
       >
         {listening ? <Mic className="h-4 w-4" strokeWidth={1.5} /> : <MicOff className="h-4 w-4" strokeWidth={1.5} />}
@@ -765,7 +824,7 @@ function AudioTrigger({ delay, onMicFlash }: { delay: number; onMicFlash?: (on: 
         aria-expanded={open || undefined}
         aria-haspopup="menu"
         data-no-longpress
-        className="absolute -bottom-1 -right-1 grid h-3.5 w-3.5 place-items-center rounded-full bg-black/70 text-[hsl(var(--text-secondary))] transition hover:text-[hsl(var(--accent))]"
+        className="hot-trigger-caret pointer-events-auto absolute -bottom-1 -right-1 z-20 grid place-items-center rounded-full bg-black/80 text-[hsl(var(--text-secondary))] transition hover:text-[hsl(var(--accent))]"
         title="Audio options — source & beat sync"
       >
         <ChevronDown className="h-3 w-3" strokeWidth={2.5} />
@@ -1706,10 +1765,10 @@ function DesktopRadialWheel({
  * The DOM overlay is outside <canvas>, so canvas.captureStream() never records these.
  */
 export function HotTriggers({
-  visualizerRef, hidden = false, showLegacyLaunchpad = false,
+  visualizerRef, hidden = false, showLegacyLaunchpad = false, only,
   isRecording, onToggleRecord, onScreenshot, onFreeze, onGif, onShare, onSupport, onAccount, gifBusy, gifProgress,
   onMicFlash, journeyOn, onToggleJourney, journeyLocked, journeyPreview, isFullscreen, onToggleFullscreen, onHome,
-  onClearFx, hasFx, onSaveFavorite, showTrackNudge, onTrackNudgeDismiss,
+  onClearFx, hasFx, onSaveFavorite, showTrackNudge, onTrackNudgeDismiss, showMicNudge,
 }: Props) {
   const mosh = useStore(s => s.mosh);
   // Shared by the ring's own "mosh" slot AND both radial wheels' center
@@ -2226,7 +2285,7 @@ export function HotTriggers({
     ),
     audio: (
       <div key="audio" className="relative">
-        <AudioTrigger delay={0} onMicFlash={onMicFlash} />
+        <AudioTrigger delay={0} onMicFlash={onMicFlash} nudge={showMicNudge} />
       </div>
     ),
     freeze: (
@@ -2535,7 +2594,9 @@ export function HotTriggers({
     // straight through to AccountSettingsOverlay below.
   };
 
-  const availableIds = order.filter(id => !!registry[id]);
+  // `only` narrows what the wheel offers; `order` still decides the sequence,
+  // so a layout arranged in the full instrument survives into the narrowed one.
+  const availableIds = order.filter(id => !!registry[id] && (!only || only.includes(id)));
   const present = new Set(availableIds);
   // The two radial wheels never show "mosh" as a ring slot — their center
   // hub IS the mosh button now (see triggerMosh above). Still present in
@@ -2583,7 +2644,7 @@ export function HotTriggers({
     return () => rail.removeEventListener("wheel", onWheel);
   }, [showLegacyLaunchpad]);
 
-  // Same reasoning as MicNudgeToast: this overlay is itself the way out of
+  // Same reasoning as the mic nudge: this overlay is itself the way out of
   // Pro Mode (and everything else buried behind it), so it can't be nested
   // inside the branch that Pro Mode hides — toggling Pro Mode ON from
   // inside these settings would otherwise yank the settings overlay out

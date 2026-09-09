@@ -1,5 +1,5 @@
-import { toast } from "sonner";
 import { markUiActive } from "@/hooks/useIdleFade";
+import { openShareSheet } from "@/components/ShareSheet";
 
 const APP_TITLE = "MOSH";
 const APP_TAGLINE = "brutalist webgl visualizer — mosh your camera & sound in real time";
@@ -8,16 +8,6 @@ function canShareData(data?: ShareData): boolean {
   if (typeof navigator === "undefined" || typeof navigator.share !== "function") return false;
   if (data && (navigator as any).canShare && !(navigator as any).canShare(data)) return false;
   return true;
-}
-
-async function copyToClipboard(text: string): Promise<boolean> {
-  try {
-    if (navigator?.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text);
-      return true;
-    }
-  } catch {}
-  return false;
 }
 
 export type ShareResult = "shared" | "downloaded" | "cancelled";
@@ -66,7 +56,15 @@ export async function shareOrDownload(
   }
 }
 
-/** Share a URL via Web Share API, falling back to clipboard copy. */
+/**
+ * Share a URL: the device's own sheet where that exists, the app's share panel
+ * where it doesn't.
+ *
+ * The fallback used to be a clipboard copy and a toast saying so. That is every
+ * desktop Firefox, every desktop Chrome on Linux and Windows, and any browser
+ * that declines — on all of them "share" meant "a link is on your clipboard,
+ * work out the rest yourself", which is not sharing, it is refusing to.
+ */
 export async function shareUrl(
   url: string,
   title = APP_TITLE,
@@ -78,18 +76,19 @@ export async function shareUrl(
         await navigator.share({ url, title, text });
         return "shared";
       } catch (err: unknown) {
+        // A deliberate cancel is an answer — reopening as a panel would argue
+        // with someone who just said no.
         if ((err as { name?: string })?.name === "AbortError") return "cancelled";
       }
     }
-    const ok = await copyToClipboard(url);
-    toast[ok ? "success" : "error"](ok ? "link copied to clipboard" : "share not supported", { position: "top-right" });
-    return "downloaded";
+    openShareSheet({ url, title, text });
+    return "shared";
   } finally {
     markUiActive();
   }
 }
 
-/** Legacy: share the app URL. */
+/** Share the app URL. Same two-tier behaviour as `shareUrl`. */
 export async function shareApp(url: string = typeof window !== "undefined" ? window.location.origin : ""): Promise<void> {
   try {
     const data: ShareData = { title: APP_TITLE, text: APP_TAGLINE, url };
@@ -101,8 +100,7 @@ export async function shareApp(url: string = typeof window !== "undefined" ? win
         if (e?.name === "AbortError") return;
       }
     }
-    const ok = await copyToClipboard(url);
-    toast[ok ? "success" : "error"](ok ? "link copied to clipboard" : "share not supported", { position: "top-right" });
+    openShareSheet({ url, title: APP_TITLE, text: APP_TAGLINE });
   } finally {
     markUiActive();
   }

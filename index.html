@@ -29,7 +29,27 @@
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet" />
+    <!--
+      Every webfont the app uses, requested once from the document.
+
+      news.css used to @import its own copy (Archivo Black, IBM Plex Mono and a
+      second Space Grotesk) from inside a lazily-loaded route stylesheet. That
+      is what made the whole news section render blank whenever
+      fonts.googleapis.com was unreachable: a failed @import makes the browser
+      fire `error` on the route's stylesheet, Vite's preload helper rejects on
+      that, and the lazy chunk never mounts — so an unreachable font took the
+      page with it instead of falling back to a system face. Verified both
+      ways: with the @import the route renders 0 characters, without it 3350.
+
+      A <link> here cannot do that. It is not a dependency of any chunk, so the
+      worst an unreachable Google Fonts can now do is leave the fallback stack
+      showing. It also gets the preconnects above, and drops a request that
+      previously could not even start until the route's CSS had arrived.
+
+      IBM Plex Mono is deliberately absent: it appears only as a fallback
+      inside a JetBrains Mono stack, so it was being downloaded and never used.
+    -->
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;700&family=Archivo+Black&display=swap" rel="stylesheet" />
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
 
     <script type="application/ld+json">

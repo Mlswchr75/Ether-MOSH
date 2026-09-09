@@ -1,5 +1,6 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { HelmetProvider } from "react-helmet-async";
+import { Toaster } from "sonner";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
 import { NEWS_ARTICLES, NEWS_LOOK_EXAMPLES_BY_SLUG } from "@/content/news";
@@ -18,6 +19,19 @@ function renderArticle(slug: string) {
 }
 
 describe("NewsArticle", () => {
+  it("gives every article a way to be shared, pointed at its canonical url", async () => {
+    // The most shareable thing on the site had no share control at all, and a
+    // window.location link would post the preview deploy from a preview deploy.
+    const article = NEWS_ARTICLES[0];
+    renderArticle(article.slug);
+    render(<Toaster />);
+
+    screen.getByRole("button", { name: `Share ${article.title}` }).click();
+
+    const link = await screen.findByLabelText<HTMLInputElement>("Link to this article");
+    expect(link.value).toBe(`https://ether-mosh.online/news/${article.slug}`);
+  });
+
   it("uses the clean FAQ heading and discloses satire before the fictional dispatch", () => {
     const { container } = renderArticle("sort-your-pixels-before-they-sort-you");
 
