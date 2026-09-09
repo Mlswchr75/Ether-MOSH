@@ -1035,6 +1035,75 @@ export const NEWS_ARTICLES: NewsArticle[] = [
       { question: "Can I use Oil Slick for print and projection?", answer: "Yes. For print, freeze and soft-proof a legible frame. For projection, use slow visual changes, keep essential information outside the effect, test the real display, and provide a calmer alternate state." },
     ],
   },
+  {
+    slug: "make-the-film-grain-effect-show-its-receipts",
+    subjectKind: "effect",
+    effectId: "filmGrain",
+    effectName: "Film Grain",
+    category: "Emulsion Incident",
+    title: "Make the Film Grain Effect Show Its Receipts",
+    dek: "A practical audit of animated grain, warm halation, and the suspicious executive who keeps calling flat gray noise ‘cinematic.’",
+    description: "Learn how Film Grain adds animated texture and warm halation, with Ether-MOSH Amount and Halation settings for print, motion, projection, patterns, and education.",
+    publishedAt: "2026-09-09T08:00:00-07:00",
+    readMinutes: 6,
+    image: "/news/film-grain-emulsion-audit.jpg",
+    imageAlt: "Fictional film-archive inspectors examine a projected portrait with fine grain and a warm halation glow around its bright hair and shoulders",
+    imageCaption: "The fictional Bureau of Emulsion Standards found the grain in the midtones and the marketing department hiding behind the projector.",
+    keywords: ["film grain effect", "digital film grain", "halation effect", "Ether-MOSH Film Grain", "cinematic texture", "projection visuals", "film emulsion tutorial"],
+    tldr: "Ether-MOSH Film Grain adds animated, colored, midtone-weighted texture plus a warm halo around bright areas. Amount controls grain strength; Halation controls highlight bleed. It is a GPU stylization of photographic image structure, not a film-stock measurement or restoration tool. Find it under Atmosphere and start near 0.28 Amount, 0.22 Halation.",
+    satireDisclosure: "The bureau, inspectors, audit, portrait sitter, and procurement scandal are fictional. The film science, Ether-MOSH controls, shader behavior, settings, accessibility cautions, product listing, and production advice are factual and sourced.",
+    dispatch: [
+      "At 08:06, the fictional Bureau of Emulsion Standards seized a perfectly clean digital portrait after an executive sprayed uniform gray noise over it and declared the image ‘shot on something expensive.’",
+      "Senior Inspector Dot Gelatin—an invented specialist whose loupe has its own expense account—found actual structure missing from the alleged cinema. Amount was reduced, Halation was moved back onto the highlights, and a long fleece coat entered evidence for reasons procurement refuses to explain.",
+    ],
+    explanation: [
+      "Kodak distinguishes graininess—the viewer's subjective impression of a random dot-like pattern—from granularity, an objective measurement of density variation. In color film, dyes form where light-sensitive silver-halide grains existed in the unprocessed emulsion. Grain is therefore image structure produced by a physical photographic process, not a generic gray overlay with excellent branding.",
+      "Halation is a different phenomenon. Light can pass through the emulsion, reflect from the film base, and create a secondary exposure around bright objects. Anti-halation layers absorb that reflected light to limit the loss of sharpness and scatter. A controlled warm edge can suggest the artifact; a red fog over the whole frame suggests the intern found Blend Mode.",
+      "Ether-MOSH openly performs a digital stylization. Its shader combines two animated noise scales with independent color-channel noise, then weights that texture with a luminance response that is strongest in midtones and fades toward clean black and white. A separate 11-pixel blur samples bright regions above a luminance threshold and adds a warm orange-red halo. Amount and Halation are independent 0–1 controls, and neither identifies a real stock, scan, camera, or preservation condition.",
+    ],
+    steps: [
+      "Open MOSH, load a portrait, night exterior, archival still, product image, or clip with clear midtones and a few bright edges, then open the FX panel.",
+      "Choose Atmosphere and add Film Grain. Start with Amount at 0.28 and Halation at 0.22 so the source remains the witness, not the noise.",
+      "Raise Amount until texture is visible at the final viewing size. Judge a moving clip while it plays; animated grain can feel stronger than one paused frame.",
+      "Raise Halation around lamps, windows, rim light, or white fabric. Pull it back if skin edges turn uniformly orange or captions begin glowing like a distressed restaurant sign.",
+      "Export a still or record a calm loop, then inspect print proofs, pattern seams, compression, captions, and the actual projector or LED wall. Avoid rapid high-contrast cuts, and provide a clean or lower-intensity version when accessibility or archival comparison matters.",
+    ],
+    parameters: [
+      { control: "Amount", purpose: "Adds animated multiscale and colored texture, weighted most strongly through the midtones", low: "0–0.18 fine texture", high: "0.65–1 visibly distressed", sweetSpot: "0.28" },
+      { control: "Halation", purpose: "Adds warm orange-red bleed around bright regions", low: "0–0.15 crisp highlights", high: "0.60–1 broad warm glow", sweetSpot: "0.22" },
+      { control: "Source luminance", purpose: "Determines where grain response and bright-edge bleed become visible", low: "Deep blacks and clipped whites stay quieter", high: "Midtones show grain; highlights seed halos", sweetSpot: "Open midtones + isolated lights" },
+    ],
+    uses: [
+      { title: "Print + editorial", body: "Export at final size, inspect at 100%, and proof on the intended stock. Fine grain may disappear in absorbent paper or become crunchy after sharpening, so texture must survive ink instead of merely impressing a retina display." },
+      { title: "Pattern + textiles", body: "Apply Film Grain before assembling the repeat, then check a 3×3 proof. Fine texture can unify mismatched motifs; aggressive animated-looking speckle frozen into one tile can reveal the repeat faster than a witness under fluorescent lighting." },
+      { title: "Vector + Lottie", body: "Keep vector type and essential marks clean. Use one short raster grain loop as a clipped texture layer, or trace only a few large halation shapes; converting every grain into a vector path is a file-size hostage situation." },
+      { title: "Projection + venue", body: "Favor large readable midtone fields and isolated practical lights. Projector contrast and LED processing can erase fine texture, so test on the real surface and keep captions outside the effected layer." },
+      { title: "Museum + education", body: "Place the MOSH result beside a documented film scan and Kodak's film-structure diagrams. Ask learners to separate physical grain, measured granularity, halation, digital noise, compression, and this shader's deliberate approximation without presenting the effect as restoration." },
+    ],
+    quote: "The image did not become cinema when you added noise. It became an image with noise and a very confident expense report.",
+    quoteAttribution: "Dot Gelatin, fictional senior emulsion inspector and hostile witness to presets",
+    downloadHref: "/news/downloads/film-grain-field-card.md",
+    product: {
+      name: "Stipple Wave Long Fleece Coat",
+      href: "https://aestheticrebellion.store/products/stipple-wave-long-fleece-coat",
+      copy: "Mandatory commercial grain sample: Aesthetic Rebellion's currently listed Stipple Wave Long Fleece Coat covers an entire long silhouette in thousands of pointillist dots because subtle texture apparently needed horn buttons and cold-desert authority. Buying it will not identify your film stock, calibrate Amount, or replace a projection test. It will let your torso arrive as a very warm granularity chart, so capitalism has approved this inspection.",
+    },
+    sources: [
+      { label: "Kodak — The Essential Reference Guide for Filmmakers", href: "https://www.kodak.com/content/products-brochures/Film/kodak-essential-reference-guide-for-filmmakers.pdf", note: "Primary technical guide for film structure, silver-halide emulsions, graininess versus granularity, color dye clouds, halation, and anti-halation layers." },
+      { label: "Kodak — VISION3 500T 5219 / 7219 technical data", href: "https://www.kodak.com/content/products-brochures/motion-picture/KODAK-VISION3-5219-7219-technical-information.pdf", note: "Current manufacturer data describing reduced shadow grain, anti-halation undercoat, highlight latitude, and storage guidance for a specific motion-picture stock." },
+      { label: "Library of Congress — Care, Handling, and Storage of Motion Picture Film", href: "https://www.loc.gov/preservation/care/film", note: "Preservation authority for distinguishing creative surface treatment from care of physical motion-picture film." },
+      { label: "W3C — Understanding Three Flashes or Below Threshold", href: "https://www.w3.org/WAI/WCAG22/Understanding/three-flashes-or-below-threshold", note: "Current accessibility guidance for rapidly changing high-contrast content used in motion and venue checks." },
+      { label: "Ether-MOSH Film Grain registry entry", href: "/effects#filmGrain", note: "Current public effect, Atmosphere category, Amount and Halation ranges, defaults, and GLSL source." },
+      { label: "CRT field report", href: "/news/your-fake-crt-looks-cheap", note: "Related guide to phosphor texture, bloom, scaling, and display-era visual cues." },
+    ],
+    relatedEffects: ["bloom", "lightLeak", "noiseTint", "paperGrain"],
+    faqs: [
+      { question: "What does the Film Grain effect do in Ether-MOSH?", answer: "It adds animated multiscale and colored noise weighted toward source midtones, plus a separate warm halo around bright regions." },
+      { question: "Is digital film grain the same as real photographic grain?", answer: "No. Photographic grain comes from a film emulsion and processing; Ether-MOSH creates a GPU stylization designed to evoke some of its visible texture." },
+      { question: "Where is Film Grain, and what settings should I start with?", answer: "Open the FX panel, choose Atmosphere, and add Film Grain. Start at 0.28 Amount and 0.22 Halation, then judge the moving result at final display size." },
+      { question: "Can I use Film Grain for print and projection?", answer: "Yes. Proof print texture at final resolution, test projection on the real surface, keep essential text clean, avoid rapid high-contrast cuts, and provide a calmer alternate when needed." },
+    ],
+  },
 ];
 
 export const NEWS_ARTICLES_BY_SLUG = new Map(NEWS_ARTICLES.map((article) => [article.slug, article]));
@@ -1101,5 +1170,9 @@ export const NEWS_LOOK_EXAMPLES_BY_SLUG: Record<string, [NewsLookExample, NewsLo
   "make-the-oil-slick-effect-pass-a-sheen-inspection": [
     { scene: "Side-lit portrait", settings: "Amount 0.45 · Frequency 6", result: "Broad violet, cyan, amber, and magenta bands follow the face's highlight-to-shadow transitions while eyes and silhouette remain readable." },
     { scene: "Black glass and folded metallic fabric", settings: "Amount 0.70 · Frequency 12", result: "Tight iridescent contours ripple through reflections and creases, with deep black regions acting as visual rests between saturated bands." },
+  ],
+  "make-the-film-grain-effect-show-its-receipts": [
+    { scene: "Window-lit portrait", settings: "Amount 0.28 · Halation 0.22", result: "Fine colored texture gathers through skin, hair, and clothing midtones while clean black shadows stay comparatively quiet; the bright window and rim-lit hair carry a restrained warm edge." },
+    { scene: "Night street with practical lights", settings: "Amount 0.48 · Halation 0.42", result: "Pavement and storefront midtones gain visible moving texture while lamps and white signage bloom into orange-red halos without fogging the entire frame." },
   ],
 };

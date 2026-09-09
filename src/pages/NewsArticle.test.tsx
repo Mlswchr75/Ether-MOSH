@@ -66,12 +66,12 @@ describe("NewsArticle", () => {
     expect(screen.getByText("3 core controls")).toBeTruthy();
   });
 
-  it("publishes fifteen unique reports including eight September effects and two modes", () => {
-    expect(NEWS_ARTICLES).toHaveLength(15);
-    expect(new Set(NEWS_ARTICLES.map(article => article.slug)).size).toBe(15);
+  it("publishes sixteen unique reports including nine September effects and two modes", () => {
+    expect(NEWS_ARTICLES).toHaveLength(16);
+    expect(new Set(NEWS_ARTICLES.map(article => article.slug)).size).toBe(16);
     expect(NEWS_ARTICLES.find(article => article.effectId === "kaleidoscope")?.steps).toHaveLength(5);
-    expect(NEWS_ARTICLES.filter(article => ["kaleidoscope", "posterize", "duotone", "asciiCollapse", "solarize", "thermal", "rgbShift", "oilSlick"].includes(article.effectId ?? "")))
-      .toHaveLength(8);
+    expect(NEWS_ARTICLES.filter(article => ["kaleidoscope", "posterize", "duotone", "asciiCollapse", "solarize", "thermal", "rgbShift", "oilSlick", "filmGrain"].includes(article.effectId ?? "")))
+      .toHaveLength(9);
     expect(NEWS_ARTICLES.filter(article => article.subjectKind === "mode").map(article => article.effectName))
       .toEqual(["Forge Mode", "Pattern / Motif Mode"]);
   });
@@ -98,8 +98,8 @@ describe("NewsArticle", () => {
     expect(container.querySelectorAll(".news-look-examples article")).toHaveLength(2);
   });
 
-  it("keeps the seven recent reports answer-first and release-complete", () => {
-    const batch = NEWS_ARTICLES.filter(article => ["posterize", "duotone", "asciiCollapse", "solarize", "thermal", "rgbShift", "oilSlick"].includes(article.effectId ?? ""));
+  it("keeps the eight recent reports answer-first and release-complete", () => {
+    const batch = NEWS_ARTICLES.filter(article => ["posterize", "duotone", "asciiCollapse", "solarize", "thermal", "rgbShift", "oilSlick", "filmGrain"].includes(article.effectId ?? ""));
     for (const article of batch) {
       const answerWords = article.tldr.trim().split(/\s+/).length;
       expect(answerWords, `${article.slug} direct answer`).toBeGreaterThanOrEqual(40);
@@ -184,5 +184,18 @@ describe("NewsArticle", () => {
       .toBe("https://aestheticrebellion.store/products/chameleon-prism-hoodie");
     expect(screen.getByRole("link", { name: "Download .md" }).getAttribute("href"))
       .toBe("/news/downloads/oil-slick-field-card.md");
+  });
+
+  it("renders Film Grain controls, physical distinction, download, and live product link", () => {
+    renderArticle("make-the-film-grain-effect-show-its-receipts");
+
+    expect(screen.getByRole("heading", { name: "Make the Film Grain Effect Show Its Receipts" })).toBeTruthy();
+    expect(screen.getByText("Amount")).toBeTruthy();
+    expect(screen.getByText("Halation")).toBeTruthy();
+    expect(screen.getAllByText(/not a film-stock measurement or restoration tool/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByRole("link", { name: /View the thing we interrupted science for/i }).getAttribute("href"))
+      .toBe("https://aestheticrebellion.store/products/stipple-wave-long-fleece-coat");
+    expect(screen.getByRole("link", { name: "Download .md" }).getAttribute("href"))
+      .toBe("/news/downloads/film-grain-field-card.md");
   });
 });
