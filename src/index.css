@@ -473,7 +473,12 @@
       background: radial-gradient(circle at center, hsl(var(--bg-base) / .14), hsl(var(--bg-base) / .48));
       transition: opacity var(--radial-open-ms) linear;
     }
-    .mobile-radial-wheel {
+    /* --radial-size is declared on the LAYER, not the wheel. The pager sits
+     * below the wheel's border box, and the wheel carries `contain: paint`
+     * (below), which clips anything outside that box — so the pager has to be
+     * a sibling of the wheel rather than a child, and siblings can only share
+     * this geometry if the variable lives on their common parent. */
+    .mobile-radial-layer {
       /* Sized against the safe area rather than the raw viewport: on a
        * notched phone in landscape the raw viewport pushes the ring under
        * the cutout. */
@@ -482,6 +487,8 @@
         calc(84dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom)),
         700px
       );
+    }
+    .mobile-radial-wheel {
       --radial-rotation: 0deg;
       --radial-counter-rotation: 0deg;
       inline-size: var(--radial-size);
@@ -538,7 +545,10 @@
       border-radius: inherit;
       pointer-events: none;
     }
-    .mobile-radial-wheel__rings::before { inset: 17%; border: 2px solid hsl(var(--primary) / .5); box-shadow: 0 0 18px hsl(var(--primary) / .12); }
+    /* 24.5% == 0.5 - 0.255, so this traces MOBILE_RING_RADII[1]. It was 17%
+     * for an inner ring at 0.315; when that ring moved inward to clear the
+     * outer one, the circle stayed put and drew through empty space. */
+    .mobile-radial-wheel__rings::before { inset: 24.5%; border: 2px solid hsl(var(--primary) / .5); box-shadow: 0 0 18px hsl(var(--primary) / .12); }
     .mobile-radial-wheel__rings::after { inset: 34%; border: 1px solid hsl(var(--accent) / .72); box-shadow: inset 0 0 16px hsl(var(--accent) / .12); }
     .mobile-radial-wheel__rings > i,
     .mobile-radial-wheel__rings > b,
@@ -580,9 +590,11 @@
        * every phone, because 12% of a 328px wheel is 39px.
        *
        * Paging the wheel took a page from twenty-six slots down to fourteen,
-       * which roughly doubled the space between neighbours — so the targets
-       * grow into it rather than banking it: 48px now, and the wheel still
-       * leaves ~60px of clear air between adjacent buttons on a phone. */
+       * which opened up room between neighbours — so the targets grow into it
+       * rather than banking it: 48px now. The closest pair on a 328px wheel is
+       * one outer slot against one inner slot, 55.8px centre to centre, so the
+       * tightest real clearance is ~8px; along a ring it is 35.6px (inner) and
+       * 58.7px (outer). */
       --ht-size: clamp(48px, calc(var(--radial-size) * .145), 60px);
       --ht-ico: calc(var(--ht-size) * .47);
       border-radius: 999px;
@@ -708,14 +720,33 @@
       left: 50%;
       /* Below the outer ring, not between the rings: anywhere inside the
        * wheel it would either crowd the inner slots or sit under the hub, and
-       * out here it lands low on the screen, where a thumb already is. */
-      top: calc(50% + var(--radial-size) * .55);
+       * out here it lands low on the screen, where a thumb already is.
+       *
+       * Clamped against the bottom safe area. In landscape the wheel is very
+       * nearly as tall as the viewport, and the unclamped offset put the
+       * chevrons off-screen entirely: at 844x390, --radial-size is 327.6, so
+       * this resolved to y=375..419 against 390px of usable height. */
+      top: min(
+        calc(50% + var(--radial-size) * .55),
+        calc(100% - 52px - env(safe-area-inset-bottom))
+      );
       translate: -50% 0;
       display: flex;
       align-items: center;
       gap: 6px;
-      pointer-events: auto;
       z-index: 6;
+      /* The pager is a sibling of the wheel rather than a child — the wheel's
+       * `contain: paint` would clip it, since it sits outside that border box
+       * — so it cannot inherit the wheel's reveal and carries its own. */
+      visibility: hidden;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity var(--radial-open-ms) linear;
+    }
+    :is(.mobile-radial-layer, .desktop-radial-layer)[data-phase="open"] .mobile-radial-wheel__pager {
+      visibility: visible;
+      opacity: 1;
+      pointer-events: auto;
     }
     .mobile-radial-wheel__pager button {
       display: grid;
@@ -821,11 +852,12 @@
       100% { transform: translate(1px, -1px); }
     }
     @media (pointer: coarse), (max-width: 900px) {
-      .mobile-radial-wheel { --radial-size: min(96vw, 82dvh, 600px); }
+      .mobile-radial-layer { --radial-size: min(96vw, 82dvh, 600px); }
     }
     @media (prefers-reduced-motion: reduce) {
       .mobile-radial-wheel,
       .mobile-radial-wheel__backdrop,
+      .mobile-radial-wheel__pager,
       .mobile-radial-wheel__slot .hot-trigger { transition: none; }
       .mobile-radial-wheel__label { animation: none !important; }
       .mobile-radial-wheel__slot::before,

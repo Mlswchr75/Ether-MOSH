@@ -14,7 +14,7 @@ import { crossfadeLayers, MOSH_FADE_MS } from "@/engine/layerCrossfade";
 import { cursorFx } from "@/engine/cursorFx";
 import { toast } from "sonner";
 import { clampRadialPoint, defaultRadialPoint, nearestRadialId, type RadialLayout } from "@/lib/radialLayout";
-import { hitSlot, ringSpacingPx, slotsForCounts, unrotatePoint, type WheelSlot } from "@/lib/wheelGeometry";
+import { hitSlot, slotsForCounts, unrotatePoint, type WheelSlot } from "@/lib/wheelGeometry";
 import { gestureLock } from "@/engine/canvasGestures";
 import { enhanceHotTriggerRail } from "@/engine/hotTriggerMobile";
 import { validateAudioUpload } from "@/lib/mediaFileSafety";
@@ -163,10 +163,13 @@ export function clampFlickToRings(nx: number, ny: number): { x: number; y: numbe
  * neighbours sat ~57px apart on a phone, barely more than one touch target,
  * which is the whole reason a flick used to land on the wrong trigger.
  *
- * Eight on the outer ring and six on the inner keeps both inside the budget
- * and takes the tightest gap from ~57px to ~108px — nearly double a 48px
- * target. Fourteen a page also means the 26 items need only two pages, so
- * nothing is ever more than one chevron away.
+ * Eight on the outer ring and six on the inner keeps both inside the budget.
+ * On a 328px wheel — a 390px phone at 84vw, the tightest real case — that
+ * puts adjacent outer slots 106.7px apart and adjacent inner slots 83.6px
+ * apart, and the closest pair of all, one outer against one inner, 55.8px
+ * apart against a 48px target: no overlap, ~8px of air. Fourteen a page also
+ * means 26 items need only two pages, so nothing is more than one chevron
+ * away.
  */
 const RING_CAPACITY = [8, 6];
 export const RADIAL_PAGE_SIZE = RING_CAPACITY.reduce((a, b) => a + b, 0);
@@ -213,13 +216,28 @@ export function radialSlotsFor(total: number): WheelSlot[] {
 
 /** Tightest centre-to-centre neighbour gap the layout produces, in px. Exposed
  *  so a test can hold the line on touch-target spacing. */
+/**
+ * The smallest centre-to-centre distance between ANY two slots on a page, in
+ * px, for a wheel of the given diameter.
+ *
+ * Every pair, not every pair within a ring. Ring-local spacing was the
+ * original measure and it could not see the failure it existed to catch: two
+ * rings whose slot counts share no step size drift into alignment, and the
+ * pair that collides is one outer slot against one inner slot. Ring-local
+ * spacing reported 83.6px for a layout whose true tightest pair was 55.8px.
+ */
 export function radialTightestSpacing(total: number, diameter: number): number {
   const slots = radialSlotsFor(total);
-  const counts = new Map<number, number>();
-  for (const slot of slots) counts.set(slot.ring, (counts.get(slot.ring) ?? 0) + 1);
+  const points = slots.map(slot => {
+    const radians = (slot.angleDeg - 90) * Math.PI / 180;
+    const radius = (MOBILE_RING_RADII[slot.ring] ?? 0) * diameter;
+    return { x: Math.cos(radians) * radius, y: Math.sin(radians) * radius };
+  });
   let tightest = Infinity;
-  for (const [ring, count] of counts) {
-    tightest = Math.min(tightest, ringSpacingPx(MOBILE_RING_RADII[ring] ?? 0, count, diameter));
+  for (let i = 0; i < points.length; i += 1) {
+    for (let j = i + 1; j < points.length; j += 1) {
+      tightest = Math.min(tightest, Math.hypot(points[i].x - points[j].x, points[i].y - points[j].y));
+    }
   }
   return tightest;
 }
@@ -969,6 +987,12 @@ function MobileRadialWheel({
   }
   const idsRef = useRef(pageIds);
   const activateRef = useRef<(id: string) => void>(() => {});
+  // The keydown listener is registered once, on mount. Reading turnPage
+  // through a ref keeps it from capturing the first render's `pages` and
+  // `ids.length`: several registry entries are conditional, so the trigger
+  // count does change at runtime, and a wheel that mounted with one page
+  // would otherwise never regain keyboard paging.
+  const turnPageRef = useRef<(direction: -1 | 1) => void>(() => {});
   idsRef.current = pageIds;
   // Placement comes from the same module the hit-test reads, so a slot can
   // never be drawn somewhere it can't be touched. Rebuilt only when the
@@ -1061,6 +1085,7 @@ function MobileRadialWheel({
     select(null);
     try { navigator.vibrate?.(4); } catch { /* Android only */ }
   };
+  turnPageRef.current = turnPage;
 
   const dismiss = () => {
     clearTimers();
@@ -1244,8 +1269,8 @@ function MobileRadialWheel({
     const onKey = (event: KeyboardEvent) => {
       if (!openRef.current) return;
       if (event.key === "Escape") { dismiss(); return; }
-      if (event.key === "PageDown" || event.key === "ArrowRight") { event.preventDefault(); turnPage(1); return; }
-      if (event.key === "PageUp" || event.key === "ArrowLeft") { event.preventDefault(); turnPage(-1); }
+      if (event.key === "PageDown" || event.key === "ArrowRight") { event.preventDefault(); turnPageRef.current(1); return; }
+      if (event.key === "PageUp" || event.key === "ArrowLeft") { event.preventDefault(); turnPageRef.current(-1); }
     };
     const onExternalOpen = () => { setPhase("open"); cacheWheelRect(); };
     const onExternalClose = () => dismiss();
@@ -1360,34 +1385,40 @@ function MobileRadialWheel({
               <span ref={labelRef} className="mobile-radial-wheel__label">MOSH</span>
               <small>{isRecording ? "REC" : "steer · tap · flick"}</small>
             </button>
-            {pages > 1 && (
-              /* Chevrons sit beside the hub rather than taking ring slots:
-                 the ring is the scarce, accurate real estate, and spending
-                 two of its best positions on navigation is what pagination
-                 was supposed to buy back. */
-              <div className="mobile-radial-wheel__pager" data-radial-action>
-                <button
-                  type="button"
-                  data-no-longpress
-                  aria-label="Previous triggers"
-                  onPointerDown={(event) => event.stopPropagation()}
-                  onClick={(event) => { event.stopPropagation(); turnPage(-1); }}
-                >‹</button>
-                <span aria-live="polite" aria-label={`Page ${page + 1} of ${pages}`}>
-                  {Array.from({ length: pages }, (_, index) => (
-                    <i key={index} data-on={index === page || undefined} aria-hidden />
-                  ))}
-                </span>
-                <button
-                  type="button"
-                  data-no-longpress
-                  aria-label="Next triggers"
-                  onPointerDown={(event) => event.stopPropagation()}
-                  onClick={(event) => { event.stopPropagation(); turnPage(1); }}
-                >›</button>
-              </div>
-            )}
           </div>
+          {pages > 1 && (
+            /* A SIBLING of the wheel, not a child. The chevrons sit below the
+               outer ring — the ring is the scarce, accurate real estate, and
+               spending two of its best positions on navigation gives back
+               exactly what pagination was meant to buy — but the wheel carries
+               `contain: paint`, which clips everything outside its border box.
+               Nested, this rendered nothing at all and left page two
+               unreachable. It also kept non-menuitem children inside the
+               wheel's role="menu"; out here, both problems go away. */
+            <div className="mobile-radial-wheel__pager" data-radial-action>
+              <button
+                type="button"
+                data-no-longpress
+                aria-label="Previous triggers"
+                onClick={() => turnPage(-1)}
+              >‹</button>
+              {/* The pips are decorative, so the live region needs real text of
+                  its own — a label on a role-less span announces nothing when
+                  it changes. */}
+              <span aria-live="polite">
+                <span className="sr-only">{`Page ${page + 1} of ${pages}`}</span>
+                {Array.from({ length: pages }, (_, index) => (
+                  <i key={index} data-on={index === page || undefined} aria-hidden />
+                ))}
+              </span>
+              <button
+                type="button"
+                data-no-longpress
+                aria-label="Next triggers"
+                onClick={() => turnPage(1)}
+              >›</button>
+            </div>
+          )}
     </div>
   );
 }

@@ -91,7 +91,11 @@ describe("mobile radial trigger selection", () => {
     // 328px is the wheel on a 390px-wide phone at 84vw — the tightest real
     // case. Unpaginated, twenty-six triggers left neighbours ~57px apart,
     // barely more than one 48px target. A page of fourteen leaves ~84px.
-    expect(radialTightestSpacing(RADIAL_PAGE_SIZE, 328)).toBeGreaterThan(80);
+    // --ht-size floors at 48px, so any pair closer than that overlaps. This
+    // measures every pair, including one outer slot against one inner one,
+    // which is the pair that actually collides when two ring counts share no
+    // step size and drift into alignment.
+    expect(radialTightestSpacing(RADIAL_PAGE_SIZE, 328)).toBeGreaterThan(48);
   });
 
   it("never draws more than a page, however many triggers it is handed", () => {
