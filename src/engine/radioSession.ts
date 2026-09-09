@@ -13,6 +13,8 @@ export type RadioSessionOptions = {
   onStatus?: (status: RadioStatus) => void;
   onBlocked?: () => void;
   rand?: () => number;
+  /** Start held — see setHeld. For arriving at a station with a mic already on. */
+  held?: boolean;
 };
 export type RadioSession = {
   current: () => ShowcaseTrack | null;
@@ -26,6 +28,17 @@ export type RadioSession = {
   remove: (index: number) => void;
   shuffle: () => void;
   playQueue: (tracks: readonly ShowcaseTrack[]) => void;
+  /**
+   * Hold (or release) the rotation without tearing it down.
+   *
+   * A listener pointing the visuals at their own mic or device audio is
+   * muting us, not leaving: the queue, the history and the deck position are
+   * still theirs. While held the rotation keeps *selecting* — skip, previous
+   * and the queue all still move, and the now-playing card still follows —
+   * but nothing is ever handed to the audio element, so the station can never
+   * end up playing underneath the sound it is supposed to be reacting to.
+   */
+  setHeld: (held: boolean) => void;
   stop: () => void;
 };
 
@@ -41,6 +54,11 @@ export function startRadioSession(options: RadioSessionOptions): RadioSession {
   let failures = 0;
   let retryAt = 0;
   let status: RadioStatus = "loading";
+  let held = options.held ?? false;
+  /** The last track actually handed to the audio element. While the station is
+   *  held the rotation moves without ever reaching the player, so `now` and
+   *  this diverge — and releasing the hold has to load, not just un-pause. */
+  let sounded: ShowcaseTrack | null = null;
   const setStatus = (value: RadioStatus) => {
     status = value;
     if (!stopped) options.onStatus?.(value);
@@ -56,13 +74,20 @@ export function startRadioSession(options: RadioSessionOptions): RadioSession {
     now = track;
     strikes = 0;
     lastPosition = -1;
-    setStatus("loading");
     publish();
+    // Held: the selection is real and the card should follow it, but this is
+    // as far as it goes. Deliberately checked after `now`/`publish` so the
+    // rotation stays usable while the listener's own audio is driving.
+    // onTrack before setStatus, so the "paused" the listener ends up seeing is
+    // this hold and not the momentary "playing" onTrack would otherwise imply.
+    if (held) { options.onTrack?.(track, rotation.peek()); setStatus("paused"); return; }
+    setStatus("loading");
     try {
       if (fromStart) await trackPlayer.playTrackFromStart(track);
       else await trackPlayer.play();
       if (stopped || token !== request) return;
       failures = 0;
+      sounded = track;
       setStatus("playing");
       options.onTrack?.(track, rotation.peek());
     } catch (err) {
@@ -91,9 +116,10 @@ export function startRadioSession(options: RadioSessionOptions): RadioSession {
     void load(rotation.next());
   };
   const resume = () => {
-    if (stopped) return;
+    if (stopped || held) return;
     failures = 0;
-    if (now) void load(now, status !== "paused"); else advance();
+    if (!now) { advance(); return; }
+    void load(now, sounded !== now || status !== "paused");
   };
   const pause = () => {
     request++;
@@ -119,7 +145,11 @@ export function startRadioSession(options: RadioSessionOptions): RadioSession {
     if (++strikes >= WATCHDOG_STRIKES) advance();
   };
   trackPlayer.setAutoAdvance(advance);
-  trackPlayer.setRadioTransport({ play: resume, next: advance, previous, onPause: () => { request++; setStatus("paused"); } });
+  const shuffleAndAdvance = () => { rotation.shuffle(); advance(); };
+  trackPlayer.setRadioTransport({
+    play: resume, next: advance, previous, shuffle: shuffleAndAdvance,
+    onPause: () => { request++; setStatus("paused"); },
+  });
   const watchdog = window.setInterval(tick, WATCHDOG_INTERVAL_MS);
   advance();
 
@@ -132,6 +162,11 @@ export function startRadioSession(options: RadioSessionOptions): RadioSession {
     remove(index) { rotation.remove(index); publish(); },
     shuffle() { rotation.shuffle(); publish(); },
     playQueue(tracks) { if (tracks.length) { rotation.replace(tracks); advance(); } },
+    setHeld(value) {
+      if (stopped || held === value) return;
+      held = value;
+      if (held) pause(); else resume();
+    },
     stop() {
       stopped = true;
       request++;

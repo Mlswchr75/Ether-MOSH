@@ -6,6 +6,7 @@ import { radioFromUrl, resolveStation, type RadioConfig } from "@/engine/radio";
 import { startRadioSession, type RadioSession, type RadioStatus } from "@/engine/radioSession";
 import { radioRequest } from "@/lib/radioLinks";
 import { trackPlayer, type ShowcaseTrack } from "@/engine/trackPlayer";
+import { catalogueSnapshot, loadRadioCatalogue } from "@/engine/radioCatalogue";
 
 export type RadioBroadcast = {
   config: RadioConfig;
@@ -72,6 +73,24 @@ export function useRadioBroadcast(opts: {
   const sessionRef = useRef<RadioSession | null>(null);
 
   /**
+   * The library, which now lives in storage rather than in the bundle.
+   *
+   * Starts as whatever is already known (the bundled tracks, plus anything a
+   * previous load resolved) so the very first render has a rotation, and is
+   * replaced once the hosted list arrives. `loadRadioCatalogue` is memoized
+   * per session and never rejects, so this settles to a stable array exactly
+   * once and a station that cannot reach the table simply plays the songs it
+   * shipped with.
+   */
+  const [library, setLibrary] = useState<ShowcaseTrack[]>(catalogueSnapshot);
+  useEffect(() => {
+    if (!active) return;
+    let alive = true;
+    void loadRadioCatalogue().then(tracks => { if (alive) setLibrary(tracks); });
+    return () => { alive = false; };
+  }, [active]);
+
+  /**
    * The listener has pointed the visuals at their own sound instead of ours.
    *
    * A station is two things bolted together — a rotation and a director — and
@@ -107,7 +126,7 @@ export function useRadioBroadcast(opts: {
   // The station itself.
   useEffect(() => {
     if (!active) return;
-    const station = resolveStation(config.station);
+    const station = resolveStation(config.station, library);
     if (station.fellBack && config.station !== station.id) {
       toast.message(`No tracks tagged "${config.station}" — playing everything`, { duration: 6_000 });
     }
@@ -119,6 +138,9 @@ export function useRadioBroadcast(opts: {
       ? [request.track, ...station.tracks] : station.tracks;
     const session = startRadioSession({
       tracks,
+      // Arriving with a mic already on (a returning listener, a shared link
+      // opened mid-set) must not put the station on the air underneath it.
+      held: externalAudio.current,
       startWith: request.track?.id,
       initialQueue,
       onQueue: (track, upcoming, recent) => {
@@ -164,24 +186,25 @@ export function useRadioBroadcast(opts: {
       sessionRef.current = null;
       useStore.setState({ trackEnabled: false });
     };
-  }, [active, config.station, href]);
+  }, [active, config.station, href, library]);
 
   /* Hold the music while an external source is feeding the visuals, and let it
      go again when the listener switches back.
 
-     Deliberately not `stop()`: the queue, the history and the deck position
-     are the listener's, and rebuilding the session would throw all three away
-     to answer what is really a mute. Skipping the very first run matters too —
-     on arrival nothing is listening and pausing a station that has not started
-     yet would leave it silent behind a play button nobody asked for. */
-  const startedRef = useRef(false);
+     Deliberately a hold on the session rather than a `pause()` here: pausing
+     only answers the moment the mic goes on, and every control still on screen
+     — play, skip, previous, a row in the queue — puts the station straight
+     back on the air underneath the listener's own audio, because none of them
+     changes `external` and so none of them re-runs this effect. `setHeld` is
+     a state the session keeps, so those controls keep moving the rotation and
+     none of them can make a sound until the hold lifts.
+
+     Also not `stop()`: the queue, the history and the deck position are the
+     listener's, and rebuilding the session would throw all three away to
+     answer what is really a mute. */
   useEffect(() => {
-    if (!active) { startedRef.current = false; return; }
-    if (!startedRef.current) { startedRef.current = true; return; }
-    const session = sessionRef.current;
-    if (!session) return;
-    if (external) session.pause(); else session.resume();
-  }, [active, external]);
+    sessionRef.current?.setHeld(external);
+  }, [active, external, library]);
 
   // Journey is what makes the visuals a performance rather than a screensaver.
   // Requested once, through the editor's own gate.
@@ -194,10 +217,20 @@ export function useRadioBroadcast(opts: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active]);
 
+  /* Pressing play on the station means "play the station" — so when the
+     listener's own audio is what is holding it, that is the thing to turn
+     off. Doing nothing here is the reading that makes the button look broken. */
+  const releaseExternal = useCallback(() => {
+    if (!externalAudio.current) return false;
+    useStore.setState({ micEnabled: false, systemAudioEnabled: false });
+    return true;
+  }, []);
+
   const start = useCallback(() => {
     setNeedsGesture(false);
+    if (releaseExternal()) return;
     sessionRef.current?.resume();
-  }, []);
+  }, [releaseExternal]);
 
   const skip = useCallback(() => {
     setPaused(false);
@@ -205,9 +238,10 @@ export function useRadioBroadcast(opts: {
   }, []);
 
   const togglePlay = useCallback(() => {
+    if (releaseExternal()) return;
     if (trackPlayer.isRolling()) sessionRef.current?.pause();
     else sessionRef.current?.resume();
-  }, []);
+  }, [releaseExternal]);
 
   const previous = useCallback(() => sessionRef.current?.previous(), []);
   const enqueue = useCallback((track: ShowcaseTrack, next?: boolean) => sessionRef.current?.enqueue(track, next), []);
