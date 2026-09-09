@@ -1,3 +1,4 @@
+import { MinimizeButton, useMinimized } from "./Minimize";
 import { Keyboard, X } from "lucide-react";
 
 type Row = { keys: string[]; label: string };
@@ -114,6 +115,7 @@ const SECTIONS: Section[] = [
 ];
 
 export function ShortcutsOverlay({ onClose }: { onClose: () => void }) {
+  const { minimized, toggle } = useMinimized("overlay.shortcuts");
   return (
     <div
       className="fixed inset-0 z-[10000] grid place-items-center bg-black/60 backdrop-blur-sm"
@@ -129,12 +131,15 @@ export function ShortcutsOverlay({ onClose }: { onClose: () => void }) {
             <Keyboard className="h-3.5 w-3.5 text-[hsl(var(--text-secondary))]" strokeWidth={1.5} />
             <h2 className="font-mono text-[13px] uppercase tracking-[0.18em] text-[hsl(var(--text-primary))]">Keyboard</h2>
           </div>
-          <button onClick={onClose} className="btn-icon h-8 w-8" aria-label="close">
-            <X className="h-3.5 w-3.5" strokeWidth={1.5} />
-          </button>
+          <div className="flex items-center gap-1.5">
+            <MinimizeButton minimized={minimized} onToggle={toggle} label="the keyboard shortcuts" />
+            <button onClick={onClose} className="btn-icon h-8 w-8" aria-label="close">
+              <X className="h-3.5 w-3.5" strokeWidth={1.5} />
+            </button>
+          </div>
         </div>
 
-        <div className="grid gap-x-8 gap-y-5 sm:grid-cols-2">
+        {!minimized && <div className="grid gap-x-8 gap-y-5 sm:grid-cols-2">
           {SECTIONS.map(sec => (
             <section key={sec.name}>
               <h3 className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-[hsl(var(--text-tertiary))]">{sec.name}</h3>
@@ -155,7 +160,7 @@ export function ShortcutsOverlay({ onClose }: { onClose: () => void }) {
               </div>
             </section>
           ))}
-        </div>
+        </div>}
       </div>
       <style>{`@keyframes shFade { from { opacity: 0 } to { opacity: 1 } }`}</style>
     </div>

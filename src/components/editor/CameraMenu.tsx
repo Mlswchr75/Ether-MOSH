@@ -1,3 +1,4 @@
+import { MinimizeButton, useMinimized } from "./Minimize";
 import { Camera, FlipHorizontal2, StopCircle, ChevronDown } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useCamera } from "@/hooks/useCamera";
@@ -6,6 +7,7 @@ import { toast } from "sonner";
 export function CameraMenu() {
   const { isLive, facing, devices, start, stop, flip, error } = useCamera();
   const [open, setOpen] = useState(false);
+  const camMin = useMinimized("menu.camera", { persist: false });
   const wasLiveRef = useRef(isLive);
 
   // flip() and the device-picker below both call start() fire-and-forget, so
@@ -60,6 +62,11 @@ export function CameraMenu() {
             </button>
             {open && (
               <div className="absolute top-full mt-1 right-0 z-50 min-w-[180px] rounded border border-border bg-surface-0 shadow-modal py-1">
+                <div className="flex items-center justify-between gap-2 px-2 pb-1">
+                  <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-[hsl(var(--accent))]">camera</span>
+                  <MinimizeButton minimized={camMin.minimized} onToggle={camMin.toggle} label="the camera menu" variant="minus" />
+                </div>
+                {!camMin.minimized && <>
                 {devices.map(d => (
                   <button
                     key={d.deviceId}
@@ -69,6 +76,7 @@ export function CameraMenu() {
                     {d.label || `Camera ${d.deviceId.slice(0, 6)}`}
                   </button>
                 ))}
+                </>}
               </div>
             )}
           </div>

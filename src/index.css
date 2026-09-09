@@ -877,6 +877,31 @@
     flex: 1; height: 1px;
     background: linear-gradient(to right, hsl(195 100% 65% / 0.55), transparent);
   }
+  /* One minimize affordance, used by every panel, overlay and popup menu in
+     the instrument — see components/editor/Minimize.tsx for why it is shared
+     rather than reimplemented per panel. */
+  .mosh-minimize {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 22px; height: 22px;
+    border-radius: 999px;
+    border: 1px solid hsl(var(--border-default));
+    color: hsl(var(--text-secondary));
+    background: hsl(240 20% 4% / .6);
+    transition: color .15s ease, border-color .15s ease, background-color .15s ease, transform .15s ease;
+  }
+  .mosh-minimize:hover,
+  .mosh-minimize:focus-visible {
+    color: hsl(var(--accent));
+    border-color: hsl(var(--accent) / .5);
+    background: hsl(var(--accent) / .1);
+  }
+  /* Collapsed: the chevron points the other way, so the control states which
+     direction it will move rather than what it currently is. */
+  .mosh-minimize.is-minimized svg { transform: rotate(-90deg); }
+  .mosh-minimize svg { transition: transform .18s ease; }
+
   .section-header .badge {
     font-family: 'JetBrains Mono', ui-monospace, monospace;
     font-size: 9px;
@@ -1699,6 +1724,46 @@
     letter-spacing: .28em;
     text-transform: uppercase;
   }
+  /* Sits where the upload side's meta line sits, so the two panes stay
+     balanced — but it is a destination, not a caption, so it carries the
+     accent and the same live tally the brand mark uses. */
+  .split-side-radio {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    /* A 140x11 line of text is not a tap target. Lighthouse flags it (the
+       tap-target audit sits in the SEO category, which is what caught it),
+       and a thumb misses it — the same reason it went unfound in the first
+       place. The padding buys a real hit area; the hairline makes it read as
+       something you can press rather than as a caption. */
+    min-height: 34px;
+    margin: 0;
+    padding: 9px 16px;
+    border: 1px solid hsl(var(--accent) / .3);
+    border-radius: 999px;
+    color: hsl(var(--accent) / .82);
+    font: 600 9px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: .28em;
+    text-transform: uppercase;
+    transition: color .18s ease, border-color .18s ease, background-color .18s ease;
+  }
+  .split-side-radio:hover,
+  .split-side-radio:focus-visible {
+    color: hsl(var(--accent));
+    border-color: hsl(var(--accent) / .65);
+    background: hsl(var(--accent) / .08);
+  }
+  .split-side-radio__dot {
+    width: 5px;
+    height: 5px;
+    flex: none;
+    border-radius: 999px;
+    background: hsl(var(--primary));
+    box-shadow: 0 0 8px hsl(var(--primary));
+    animation: title-radio-tally 2.4s ease-in-out infinite;
+  }
+  @media (prefers-reduced-motion: reduce) { .split-side-radio__dot { animation: none; } }
   .forge-mode-action {
     --side-color: 350 100% 62%;
     width: 138px;
@@ -1803,6 +1868,8 @@
     animation: title-radio-tally 2.4s ease-in-out infinite;
   }
   @keyframes title-radio-tally { 0%, 100% { opacity: 1; } 50% { opacity: .28; } }
+  .radio-plate-title:hover { color: hsl(var(--accent)); }
+  .radio-plate-title:hover svg { opacity: 1; }
   @media (prefers-reduced-motion: reduce) { .title-radio-dot { animation: none; } }
   .title-product-copy {
     top: 62px;
@@ -2236,6 +2303,10 @@
     .source-mode-action svg { width: 27px; height: 27px; }
     .split-action-label { font-size: 11px; letter-spacing: .25em; text-indent: .25em; }
     .split-side-meta { font-size: 6px; letter-spacing: .2em; }
+    /* Phones are where this matters most: a thumb needs the height even when
+       the type stays small. */
+    .split-side-radio { font-size: 8px; letter-spacing: .22em; gap: 6px; min-height: 44px; padding: 12px 18px; }
+    .split-side-radio__dot { width: 4px; height: 4px; }
     .forge-mode-action { width: 92px; height: 92px; gap: 5px; }
     .forge-pattern-mark { width: 48px; height: 38px; }
     .forge-mode-action small { font-size: 5px; }

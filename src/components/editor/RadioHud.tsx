@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronUp, Heart, ListMusic, Minimize2, Pause, Play, Radio, Shuffle, SkipBack, SkipForward, Sliders, Volume2 } from "lucide-react";
+import { ArrowUpRight, ChevronUp, Heart, ListMusic, Minimize2, Pause, Play, Radio, Shuffle, SkipBack, SkipForward, Sliders, Volume2 } from "lucide-react";
+import { hasOwnLink, trackLink } from "@/engine/radio";
 import { trackPlayer } from "@/engine/trackPlayer";
 import type { RadioBroadcast } from "@/hooks/useRadioBroadcast";
 import { useRadioLibrary } from "@/hooks/useRadioLibrary";
@@ -155,7 +156,24 @@ export function RadioHud({ radio, onOpenControls }: { radio: RadioBroadcast; onO
         </div>
         <p role="status" className="text-xs text-white/60">{statusLine}</p>
         <div className="mt-1 flex items-center gap-2">
-          <h2 className="min-w-0 flex-1 break-words text-lg font-semibold leading-snug">{nowPlaying?.title || "Tuning in…"}</h2>
+          {/* The share tag above sends people to the station; this sends them
+              to the artist. Both matter, and they are not the same errand: a
+              listener who likes the song wants the person who made it. Opens
+              in a new tab — navigating away would take the broadcast with it. */}
+          <h2 className="min-w-0 flex-1 break-words text-lg font-semibold leading-snug">
+            {nowPlaying
+              ? <a
+                  href={trackLink(nowPlaying)}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  title={hasOwnLink(nowPlaying) ? `Open "${nowPlaying.title}" on SoundCloud` : "Open the artist on SoundCloud"}
+                  className="radio-plate-title inline-flex items-baseline gap-1.5 transition-colors"
+                >
+                  <span>{nowPlaying.title}</span>
+                  <ArrowUpRight size={14} className="shrink-0 opacity-45" aria-hidden />
+                </a>
+              : "Tuning in…"}
+          </h2>
           {nowPlaying ? <FavoriteSong track={nowPlaying} library={library} /> : <Heart size={18} className="text-white/40" />}
         </div>
         <div className="mt-1 flex items-center justify-between gap-2">

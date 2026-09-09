@@ -38,11 +38,16 @@ time either changed.
 
 ```
 /radio                       whole library, now-playing card on
-/radio?station=flow          only tracks tagged "flow"
+/radio?station=catalog       the curated catalogue only
+/radio?station=unreleased    the later drops only
 /radio?hud=0                 no card at all — clean output for a capture
 /edit?radio=1                same station from the editor's own URL
 /radio?radio=0               neutered, for a bookmark you want to keep
 ```
+
+`/radio?station=catalog` is the one to put in a bio link: it is the curated
+set, without the working files and alternate takes that live under
+`unreleased`.
 
 Behaviour on arrival: source switches to Forge, performance mode goes on
 (chrome down, cursor auto-hides, edge-peek still available), Forge's own
@@ -133,18 +138,49 @@ weakening the property.
 
 ### Tags = stations
 
-**Nothing in the library is tagged `flow` today.** The nine songs registered
-alongside Radio are tagged `unreleased`, because which files came out of Flow
-versus anywhere else is not something the repo records — the mp3s carry no
-provenance. `?station=flow` therefore falls back to the whole library until
-those rows are tagged. Retagging is a one-word edit per row in
-`SHOWCASE_TRACKS`.
+`tags` on a track is what `?station=` filters on, and every track carries at
+least one so nothing is reachable only from `?station=all`. Two ship today:
 
-`tags` on a track is what `?station=` filters on. Tag your Flow output
-`"flow"` and it gets its own channel. Anything goes: `festival`, `ambient`,
-`iron`, `unreleased`. A station tag that matches nothing falls back to the
-whole library rather than to silence — an unattended broadcast answering a
-typo with a black screen is not a failure anyone is watching to notice.
+| Station | What's in it |
+|---|---|
+| `catalog` | The 23 curated tracks — the set that was already offered from the theme-track panel before Radio existed. |
+| `unreleased` | The 9 later drops registered alongside Radio, including working files like "Instrumental Version" and alternate takes. |
+
+Add any tag you like — `festival`, `ambient`, `iron`, `flow` — and it becomes a
+station immediately; `availableStations()` derives the list from the library
+rather than from a second place to keep in sync.
+
+**Nothing is tagged `flow` yet.** Which files came out of Google Flow versus
+anywhere else is not something the repo records — the mp3s carry no
+provenance — so tagging them is a judgement only their author can make. It is
+a one-word edit per row in `SHOWCASE_TRACKS`.
+
+A station tag that matches nothing falls back to the whole library rather than
+to silence — an unattended broadcast answering a typo with a black screen is
+not a failure anyone is watching to notice.
+
+### The now-playing card links out
+
+The track title on the station plate is a link. A station that plays for six
+hours and offers no way to follow the artist is a screensaver; the moment a
+song is playing is the moment a listener's interest is highest, and spending it
+on nothing is the waste worth fixing.
+
+Per-track destinations live in the registry:
+
+```ts
+{ id: "iron-requiem", url: "/audio/Iron Requiem.mp3", title: "Iron Requiem",
+  artist: "MOSH", tags: ["catalog"],
+  soundcloudUrl: "https://soundcloud.com/dyles-mavis/iron-requiem" },
+```
+
+`soundcloudUrl` is optional. Without it the card links to
+`ARTIST_SOUNDCLOUD_URL` (the profile) instead, so every track leads *somewhere*
+— a card that sometimes has no link teaches viewers not to try. Fill in exact
+track URLs as you go; each one upgrades that track's card with no other change.
+
+Links open in a new tab on purpose: navigating away would take the broadcast
+down with it.
 
 ### If per-song deploys become the bottleneck
 

@@ -1,3 +1,4 @@
+import { MinimizeButton, useMinimized } from "./Minimize";
 import { X } from "lucide-react";
 import { useStore, type ExportSettings } from "@/store/useStore";
 
@@ -15,6 +16,7 @@ import { useStore, type ExportSettings } from "@/store/useStore";
  * export-related, and what of it you can actually change."
  */
 export function ExportSettingsPanel({ onClose }: { onClose: () => void }) {
+  const { minimized, toggle } = useMinimized("panel.exportSettings");
   const settings = useStore(s => s.exportSettings);
   const setSettings = useStore(s => s.setExportSettings);
 
@@ -26,10 +28,14 @@ export function ExportSettingsPanel({ onClose }: { onClose: () => void }) {
     >
       <div className="flex items-center justify-between">
         <p className="font-mono text-[9px] uppercase tracking-[0.3em] text-[hsl(var(--accent))]">Export settings</p>
-        <button type="button" onClick={onClose} aria-label="Close export settings" className="text-white/40 transition hover:text-white">
-          <X className="h-3.5 w-3.5" strokeWidth={1.5} />
-        </button>
+        <div className="flex items-center gap-1.5">
+          <MinimizeButton minimized={minimized} onToggle={toggle} label="export settings" />
+          <button type="button" onClick={onClose} aria-label="Close export settings" className="text-white/40 transition hover:text-white">
+            <X className="h-3.5 w-3.5" strokeWidth={1.5} />
+          </button>
+        </div>
       </div>
+      {minimized ? null : <>
 
       <Section title="GIF loop">
         <RangeRow label="Frame rate" value={settings.gifFps} min={6} max={24} step={1} unit=" fps"
@@ -83,6 +89,7 @@ export function ExportSettingsPanel({ onClose }: { onClose: () => void }) {
           Screenshot stays a synchronous PNG save on purpose — many phones silently drop a download that starts even a moment after the tap, so this is the one export that can't wait on an encode choice. Sticker export format (WebP, animated PNG, GIF, or Lottie JSON) follows the sticker type, not a quality setting.
         </p>
       </Section>
+      </>}
     </div>
   );
 }

@@ -356,6 +356,21 @@ const Index = () => {
                 <span className="split-action-label" data-label="FORGE">FORGE</span>
                 <small>pattern generator</small>
               </button>
+              {/* Balances the upload side's meta line, and gives Radio a way in
+                  that a visitor can actually find. The top-nav entry renders at
+                  7px on a phone — technically present, practically invisible,
+                  which is how it got missed. This sits in the pane's own flow
+                  at the size the rest of the screen uses. stopPropagation
+                  because the whole pane is a click target for Forge. */}
+              <Link
+                to="/radio"
+                onClick={(e) => e.stopPropagation()}
+                className="split-side-radio"
+                aria-label="Open MOSH Radio, the 24/7 station"
+              >
+                <span className="split-side-radio__dot" aria-hidden="true" />
+                radio <span aria-hidden="true">·</span> 24/7 station
+              </Link>
             </motion.div>
 
             <motion.button

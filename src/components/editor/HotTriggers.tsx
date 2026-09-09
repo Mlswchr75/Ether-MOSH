@@ -1,3 +1,4 @@
+import { MinimizeButton, useMinimized } from "./Minimize";
 import { Mic, MicOff, Circle, Square, Sparkles, Scissors, Snowflake, Camera, Shuffle, Star, Play, Pencil, Trash2, X, Film, Lock, Share2, Compass, Maximize2, Minimize2, SwitchCamera, Eraser, Link2, Upload, Music, Music2, Shuffle as ShuffleIcon, Undo2, Redo2, ChevronDown, MonitorSpeaker, Heart, GripVertical, RotateCcw, SkipBack, SkipForward, Palette, RectangleVertical, RectangleHorizontal, Moon, SlidersHorizontal } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
@@ -453,6 +454,7 @@ function TrackTrigger({ delay }: { delay: number }) {
   const uploadedTracks = useStore(s => s.uploadedTracks);
   const addUploadedTrack = useStore(s => s.addUploadedTrack);
   const [open, setOpen] = useState(false);
+  const trackMin = useMinimized("trackMin", { persist: false });
   const fileRef = useRef<HTMLInputElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
 
@@ -542,9 +544,13 @@ function TrackTrigger({ delay }: { delay: number }) {
             role="menu"
             aria-label="Track options"
           >
-          <div className="overflow-hidden whitespace-nowrap font-mono text-[10px] uppercase tracking-[0.16em] text-[hsl(var(--text-secondary))]">
-            now playing
+          <div className="flex items-center justify-between gap-2">
+            <div className="overflow-hidden whitespace-nowrap font-mono text-[10px] uppercase tracking-[0.16em] text-[hsl(var(--text-secondary))]">
+              now playing
+            </div>
+            <MinimizeButton minimized={trackMin.minimized} onToggle={trackMin.toggle} label="the track options menu" variant="minus" />
           </div>
+          {!trackMin.minimized && <>
           <div className="mt-0.5 truncate text-[12px] font-semibold text-[hsl(var(--text-primary))]" title={trackTitle}>
             {trackTitle}
           </div>
@@ -713,6 +719,7 @@ function TrackTrigger({ delay }: { delay: number }) {
               }
             }}
           />
+          </>}
           </div>
         </div>,
         document.body,
@@ -740,6 +747,7 @@ function AudioTrigger({ delay, onMicFlash, nudge }: { delay: number; onMicFlash?
   const bpm = useStore(s => s.bpm);
   const setBpm = useStore(s => s.setBpm);
   const [open, setOpen] = useState(false);
+  const audioMin = useMinimized("audioMin", { persist: false });
   const [taps, setTaps] = useState<number[]>([]);
   const wrapRef = useRef<HTMLDivElement>(null);
 
@@ -845,7 +853,11 @@ function AudioTrigger({ delay, onMicFlash, nudge }: { delay: number; onMicFlash?
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="mb-1 font-mono text-[9px] uppercase tracking-[0.2em] text-[hsl(var(--accent))]">source</div>
+          <div className="mb-1 flex items-center justify-between gap-2">
+            <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-[hsl(var(--accent))]">source</span>
+            <MinimizeButton minimized={audioMin.minimized} onToggle={audioMin.toggle} label="the audio options menu" variant="minus" />
+          </div>
+          {!audioMin.minimized && <>
           <button
             type="button"
             onClick={() => { setSystemAudioEnabled(false); setMicEnabled(true); onMicFlash?.(true); }}
@@ -894,6 +906,7 @@ function AudioTrigger({ delay, onMicFlash, nudge }: { delay: number; onMicFlash?
               <Heart className="h-2.5 w-2.5" strokeWidth={1.5} /> tap
             </button>
           </div>
+          </>}
         </div>,
         document.body,
       )}
@@ -915,6 +928,7 @@ function CustomizeTrigger({
   present: Set<string>;
 }) {
   const [open, setOpen] = useState(false);
+  const layoutMin = useMinimized("layoutMin", { persist: false });
   const wrapRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -938,6 +952,8 @@ function CustomizeTrigger({
         >
           <div className="mb-1.5 flex items-center justify-between px-0.5">
             <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-[hsl(var(--accent))]">customize layout</span>
+            <div className="flex items-center gap-1.5">
+            <MinimizeButton minimized={layoutMin.minimized} onToggle={layoutMin.toggle} label="the customize layout menu" variant="minus" />
             <button
               type="button"
               onClick={onReset}
@@ -946,8 +962,9 @@ function CustomizeTrigger({
             >
               <RotateCcw className="h-2.5 w-2.5" strokeWidth={1.5} /> reset
             </button>
+            </div>
           </div>
-          <ul className="flex flex-col gap-0.5">
+          {!layoutMin.minimized && <ul className="flex flex-col gap-0.5">
             {order.map((id, i) => (
               <li
                 key={id}
@@ -977,7 +994,7 @@ function CustomizeTrigger({
                 </button>
               </li>
             ))}
-          </ul>
+          </ul>}
         </div>
       )}
     </div>
@@ -2794,6 +2811,7 @@ function GifButton({
   onGif, gifBusy, gifProgress,
 }: { onGif: (seconds?: number) => void; gifBusy?: boolean; gifProgress?: number }) {
   const [open, setOpen] = useState(false);
+  const gifMin = useMinimized("gifMin", { persist: false });
 
   // Dismiss on any outside interaction, so the menu cannot strand itself open
   // over the canvas during a set.
@@ -2858,7 +2876,8 @@ function GifButton({
           aria-label="GIF loop length"
           onPointerDown={(e) => e.stopPropagation()}
         >
-          {GIF_LENGTHS.map((sec) => (
+          <MinimizeButton minimized={gifMin.minimized} onToggle={gifMin.toggle} label="the GIF loop length menu" variant="minus" />
+          {!gifMin.minimized && GIF_LENGTHS.map((sec) => (
             <button
               key={sec}
               type="button"

@@ -1,3 +1,4 @@
+import { MinimizeButton, useMinimized } from "./Minimize";
 import { useState } from "react";
 import { Cast, Maximize2, X } from "lucide-react";
 import { useStore } from "@/store/useStore";
@@ -15,6 +16,7 @@ import { usePaywall } from "@/hooks/usePaywall";
  */
 export function CastStageButton() {
   const [open, setOpen] = useState(false);
+  const castMin = useMinimized("menu.cast", { persist: false });
   const sourceMode = useStore(s => s.sourceMode);
   const paywall = usePaywall();
 
@@ -54,15 +56,19 @@ export function CastStageButton() {
                   <h2 id="cast-stage-title" className="mt-1 font-mono text-sm uppercase tracking-[0.12em] text-white">Project MOSH</h2>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setOpen(false)}
-                className="btn-icon h-8 w-8"
-                aria-label="Close casting instructions"
-              >
-                <X className="h-4 w-4" aria-hidden="true" />
-              </button>
+              <div className="flex items-center gap-1.5">
+                <MinimizeButton minimized={castMin.minimized} onToggle={castMin.toggle} label="the casting panel" />
+                <button
+                  type="button"
+                  onClick={() => setOpen(false)}
+                  className="btn-icon h-8 w-8"
+                  aria-label="Close casting instructions"
+                >
+                  <X className="h-4 w-4" aria-hidden="true" />
+                </button>
+              </div>
             </div>
+            {!castMin.minimized && <>
 
             <p className="mt-4 text-sm leading-relaxed text-white/75">
               Mirror this browser tab to put the exact live MOSH canvas on your TV or projector. Your session stays live behind this panel and works with Upload, Camera, and Forge.
@@ -87,6 +93,7 @@ export function CastStageButton() {
               <Maximize2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[hsl(var(--accent))]" aria-hidden="true" />
               <p>Tab casting mirrors the live visual output. MOSH’s microphone is used to animate the image; it does not send microphone sound to the display.</p>
             </div>
+            </>}
         </section>
       )}
     </span>

@@ -27,6 +27,7 @@ import { PerformanceOverlay, PerformanceTooltip } from "@/components/editor/Perf
 import { CommandPalette } from "@/components/editor/CommandPalette";
 import { ShortcutsOverlay } from "@/components/editor/ShortcutsOverlay";
 import { SlotIndicator } from "@/components/editor/SlotIndicator";
+import { MinimizeButton, useMinimized } from "@/components/editor/Minimize";
 
 import { OnboardingPrompts, shouldShowOnboarding, markOnboardingSeen } from "@/components/editor/OnboardingPrompts";
 import { HintPulse, isHintDismissed, dismissHint } from "@/components/editor/HintPulse";
@@ -906,6 +907,16 @@ export default function Editor() {
      gated exactly like Journey is everywhere else. */
   const radio = useRadioBroadcast({ journeyOn, requestJourney: toggleJourney });
   const [radioWelcome, setRadioWelcome] = useState(true);
+
+  /* Every section of the control rack minimizes to its own header. The rack
+     is the single biggest thing standing between the operator and the
+     picture, and "collapse the parts I am not using" is a different need from
+     the existing all-or-nothing hide (H). */
+  const secLayers = useMinimized("rack.layers");
+  const secFx = useMinimized("rack.fx");
+  const secTune = useMinimized("rack.tune");
+  const secBeat = useMinimized("rack.beat");
+  const secLegacy = useMinimized("rack.legacy");
 
   // Forge gets one five-minute, session-persistent Journey preview. The clock
   // follows active Journey time and is paused as soon as the director stops.
@@ -2379,41 +2390,45 @@ export default function Editor() {
 
           {/* Unified one-screen control stack — every section visible, no tabs. */}
           <div className="divide-y divide-[hsl(var(--border-subtle))]">
-            <section>
+            <section data-minimized={secLayers.minimized || undefined}>
               <div className="section-header">
                 <h2>Layers</h2><div className="rule" />
                 <span className="badge">{layers.length} active</span>
+                <MinimizeButton minimized={secLayers.minimized} onToggle={secLayers.toggle} label="the Layers section" />
               </div>
-              <LayerStack />
+              {!secLayers.minimized && <LayerStack />}
             </section>
-            <section>
+            <section data-minimized={secFx.minimized || undefined}>
               <div className="section-header">
                 <h2>FX</h2><div className="rule" />
                 <span className="badge">tap to add</span>
+                <MinimizeButton minimized={secFx.minimized} onToggle={secFx.toggle} label="the FX section" />
               </div>
-              <ShufflePanel />
-              <FxPicker />
+              {!secFx.minimized && <><ShufflePanel /><FxPicker /></>}
             </section>
-            <section data-tune-panel>
+            <section data-tune-panel data-minimized={secTune.minimized || undefined}>
               <div className="section-header">
                 <h2>Tune</h2><div className="rule" />
                 <span className="badge">arrows · ←↑↓→</span>
+                <MinimizeButton minimized={secTune.minimized} onToggle={secTune.toggle} label="the Tune section" />
               </div>
-              <ParamDock />
+              {!secTune.minimized && <ParamDock />}
             </section>
-            <section>
+            <section data-minimized={secBeat.minimized || undefined}>
               <div className="section-header">
                 <h2>Beat &amp; Audio</h2><div className="rule" />
                 <span className="badge">listen</span>
+                <MinimizeButton minimized={secBeat.minimized} onToggle={secBeat.toggle} label="the Beat and Audio section" />
               </div>
-              <BeatPanel />
+              {!secBeat.minimized && <BeatPanel />}
             </section>
-            <section>
+            <section data-minimized={secLegacy.minimized || undefined}>
               <div className="section-header">
                 <h2>MOSH &amp; Older Settings</h2><div className="rule" />
                 <span className="badge">legacy</span>
+                <MinimizeButton minimized={secLegacy.minimized} onToggle={secLegacy.toggle} label="the MOSH and Older Settings section" />
               </div>
-              <div className="flex items-center justify-between gap-4 px-3 py-4">
+              {!secLegacy.minimized && <div className="flex items-center justify-between gap-4 px-3 py-4">
                 <div>
                   <div className="font-mono text-[11px] uppercase tracking-[0.1em] text-[hsl(var(--text-primary))]">
                     Legacy hot triggers launchpad
@@ -2438,7 +2453,7 @@ export default function Editor() {
                 >
                   <span className={`absolute top-1/2 h-4 w-4 -translate-y-1/2 rounded-full transition-all ${legacyHotTriggers ? "left-[23px] bg-[hsl(var(--accent))] shadow-[0_0_10px_hsl(var(--accent)/0.7)]" : "left-[3px] bg-[hsl(var(--text-tertiary))]"}`} />
                 </button>
-              </div>
+              </div>}
             </section>
           </div>
         </div>

@@ -3,10 +3,12 @@ import {
   ALL_STATION,
   availableStations,
   createRadioRotation,
+  hasOwnLink,
   radioFromUrl,
   resolveStation,
+  trackLink,
 } from "./radio";
-import type { ShowcaseTrack } from "./trackPlayer";
+import { ARTIST_SOUNDCLOUD_URL, SHOWCASE_TRACKS, type ShowcaseTrack } from "./trackPlayer";
 
 /**
  * A station runs for hours with nobody watching it. The tests that matter are
@@ -127,6 +129,52 @@ describe("createRadioRotation", () => {
   });
 });
 
+describe("trackLink", () => {
+  it("uses the track's own page when it has one", () => {
+    const t = { soundcloudUrl: "https://soundcloud.com/dyles-mavis/iron-requiem" };
+    expect(trackLink(t)).toBe("https://soundcloud.com/dyles-mavis/iron-requiem");
+    expect(hasOwnLink(t)).toBe(true);
+  });
+
+  it("falls back to the artist profile rather than to nothing", () => {
+    // The card is shown at the exact moment a listener cares most; a track
+    // without its own page must still lead somewhere.
+    for (const t of [{}, { soundcloudUrl: "" }, { soundcloudUrl: "   " }]) {
+      expect(trackLink(t)).toBe(ARTIST_SOUNDCLOUD_URL);
+      expect(hasOwnLink(t)).toBe(false);
+    }
+  });
+
+  it("never returns an empty destination for anything in the library", () => {
+    for (const track of SHOWCASE_TRACKS) {
+      expect(trackLink(track), track.id).toMatch(/^https:\/\/soundcloud\.com\//);
+    }
+  });
+});
+
+describe("the shipped library's stations", () => {
+  it("offers a catalog station that is a real subset, not the whole library", () => {
+    const catalog = resolveStation("catalog");
+    expect(catalog.fellBack).toBe(false);
+    expect(catalog.tracks.length).toBeGreaterThan(0);
+    expect(catalog.tracks.length).toBeLessThan(SHOWCASE_TRACKS.length);
+  });
+
+  it("keeps the unreleased drops out of the catalog station", () => {
+    const catalog = resolveStation("catalog").tracks.map(t => t.id);
+    const unreleased = resolveStation("unreleased").tracks.map(t => t.id);
+    expect(unreleased.length).toBeGreaterThan(0);
+    for (const id of unreleased) expect(catalog).not.toContain(id);
+  });
+
+  it("accounts for every track — nothing is stranded outside both stations", () => {
+    const tagged = new Set([
+      ...resolveStation("catalog").tracks.map(t => t.id),
+      ...resolveStation("unreleased").tracks.map(t => t.id),
+    ]);
+    expect(tagged.size).toBe(SHOWCASE_TRACKS.length);
+  });
+});
 
 it("avoids a repeat even with an adversarial shuffle at the cycle boundary", () => {
   let calls = 0;
