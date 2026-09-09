@@ -134,6 +134,18 @@ export type Database = {
         Update: { id?: string; user_id?: string; name?: string; track_ids?: string[]; updated_at?: string };
         Relationships: [];
       };
+      radio_tracks: {
+        Row: { id: string; storage_path: string; title: string; artist: string; tags: string[]; sort: number; created_at: string };
+        Insert: { id: string; storage_path: string; title: string; artist?: string; tags?: string[]; sort?: number; created_at?: string };
+        Update: { id?: string; storage_path?: string; title?: string; artist?: string; tags?: string[]; sort?: number; created_at?: string };
+        Relationships: [];
+      };
+      radio_user_tracks: {
+        Row: { id: string; user_id: string; storage_path: string; title: string; bytes: number | null; created_at: string };
+        Insert: { id?: string; user_id: string; storage_path: string; title: string; bytes?: number | null; created_at?: string };
+        Update: { id?: string; user_id?: string; storage_path?: string; title?: string; bytes?: number | null; created_at?: string };
+        Relationships: [];
+      };
       entitlements: {
         Row: {
           created_at: string

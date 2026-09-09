@@ -9,6 +9,8 @@ import { useStore } from "@/store/useStore";
 import type { RadioBroadcast } from "@/hooks/useRadioBroadcast";
 import { useRadioLibrary, type RadioPlaylist } from "@/hooks/useRadioLibrary";
 import { knownRadioTracks, radioLink } from "@/lib/radioLinks";
+import { MAX_SAVED_UPLOADS, savedUploadTrack, savedUploadUrl, uploadIssue } from "@/lib/radioUploads";
+import { useEntitlements } from "@/hooks/useEntitlements";
 import { RadioShareTag } from "./RadioShareToast";
 
 export type LibraryState = ReturnType<typeof useRadioLibrary>;
@@ -117,19 +119,34 @@ function QueueList({ radio, library }: { radio: RadioBroadcast; library: Library
 /**
  * Put your own song on the air.
  *
- * Object URLs, so the file never leaves the machine and nothing is uploaded
- * anywhere — `assertSafeTrackUrl` admits `blob:` for exactly this. They last as
- * long as the tab does; keeping them across sessions means somewhere to put the
- * bytes, which is a different piece of work.
+ * Playing one needs no server at all: object URLs, so the file never leaves
+ * the machine — `assertSafeTrackUrl` admits `blob:` for exactly this. They last
+ * as long as the tab does, which is why supporters get the second half, a
+ * "keep on my account" that puts the bytes in the private uploads bucket
+ * (radioUploads.ts) so the song is still there tomorrow.
+ *
+ * Which files are allowed is `validateAudioUpload`, the same check the rest of
+ * the app uses, rather than a `type.startsWith("audio/")` filter: browsers hand
+ * over an empty `File.type` often enough that filtering on it silently drops
+ * files that play perfectly, and it happily accepts a zero-byte one that does
+ * not.
  */
-function AddYourOwn({ radio }: { radio: RadioBroadcast }) {
+function AddYourOwn({ radio, library }: { radio: RadioBroadcast; library: LibraryState }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const addUploadedTrack = useStore(s => s.addUploadedTrack);
+  const { isSupporter } = useEntitlements();
+  const [keep, setKeep] = useState(false);
+  const canKeep = !!library.user && isSupporter;
 
-  const take = (files: FileList | null) => {
-    const chosen = [...(files ?? [])].filter(f => f.type.startsWith("audio/"));
-    if (!chosen.length) { toast.error("Choose an audio file"); return; }
-    const added = chosen.map((file, i) => {
+  const take = async (files: FileList | null) => {
+    const chosen = [...(files ?? [])];
+    if (!chosen.length) return;
+    const rejected: string[] = [];
+    const added: ShowcaseTrack[] = [];
+
+    for (const [i, file] of chosen.entries()) {
+      const issue = uploadIssue(file);
+      if (issue) { rejected.push(`${file.name}: ${issue}`); continue; }
       const title = file.name.replace(/\.[^.]+$/, "");
       const track: ShowcaseTrack = {
         id: `upload-${Date.now()}-${i}`,
@@ -139,16 +156,25 @@ function AddYourOwn({ radio }: { radio: RadioBroadcast }) {
       };
       addUploadedTrack({ id: track.id, url: track.url, title });
       radio.enqueue(track);
-      return track;
-    });
-    toast.success(added.length === 1 ? `${added[0].title} added to the queue` : `${added.length} songs added to the queue`);
+      added.push(track);
+      // Queue it first, save it second: the song is already playable by the
+      // time the upload starts, and a failed save (not a supporter, at the
+      // hundred-song cap, a dropped connection) costs the listener nothing
+      // they were about to hear.
+      if (keep && canKeep) await library.keepUpload(file);
+    }
+
+    if (added.length) {
+      toast.success(added.length === 1 ? `${added[0].title} added to the queue` : `${added.length} songs added to the queue`);
+    }
+    if (rejected.length) toast.error(rejected.length === 1 ? rejected[0] : `${rejected.length} files skipped — ${rejected[0]}`);
   };
 
   return <>
     <input
       ref={fileRef} type="file" accept="audio/*" multiple className="hidden"
       aria-label="Add your own songs to the queue"
-      onChange={e => { take(e.target.files); e.target.value = ""; }}
+      onChange={e => { void take(e.target.files); e.target.value = ""; }}
     />
     <button
       type="button"
@@ -157,7 +183,46 @@ function AddYourOwn({ radio }: { radio: RadioBroadcast }) {
     >
       <Upload size={15}/> Add your own
     </button>
+    {canKeep && (
+      <label className="flex min-h-10 items-center gap-2 text-sm text-white/60">
+        <input type="checkbox" checked={keep} onChange={e => setKeep(e.target.checked)} className="accent-cyan-300"/>
+        Keep on my account
+      </label>
+    )}
   </>;
+}
+
+/** Songs a supporter has kept, playable again on any device they sign in on. */
+function SavedUploads({ radio, library }: { radio: RadioBroadcast; library: LibraryState }) {
+  if (!library.uploads.length) return null;
+  return <div className="mt-3">
+    <div className="text-xs uppercase tracking-[0.16em] text-white/40">
+      Your saved songs · {library.uploads.length}/{MAX_SAVED_UPLOADS}
+    </div>
+    <ul>
+      {library.uploads.map(upload => (
+        <li key={upload.id} className="flex items-center gap-2 py-1">
+          <button
+            type="button"
+            className="min-h-10 min-w-0 flex-1 truncate text-left text-sm"
+            onClick={async () => {
+              try {
+                radio.playNow(savedUploadTrack(upload, await savedUploadUrl(upload.storagePath)));
+              } catch {
+                toast.error(`Couldn’t load "${upload.title}" — try again`);
+              }
+            }}
+          >{upload.title}</button>
+          <button
+            type="button" disabled={library.busy}
+            aria-label={`Remove ${upload.title} from your account`}
+            className="min-h-10 px-2 text-sm text-white/50 disabled:opacity-40"
+            onClick={() => void library.removeUpload(upload)}
+          >Remove</button>
+        </li>
+      ))}
+    </ul>
+  </div>;
 }
 
 function PlaylistEditor({ playlist, radio, library }: { playlist: RadioPlaylist; radio: RadioBroadcast; library: LibraryState }) {
@@ -193,7 +258,8 @@ export function RadioLibrary({ radio, library }: { radio: RadioBroadcast; librar
     <div className="max-h-[min(48dvh,28rem)] overflow-y-auto overscroll-contain pr-1">
       <TabsContent value="queue">
         <div className="flex flex-wrap items-center justify-between gap-1"><button type="button" className="flex min-h-10 items-center gap-2 text-sm text-cyan-200" onClick={radio.shuffle}><Shuffle size={16}/> Shuffle queue</button><RadioShareTag url={radioLink({ tracks: snapshot, name: "My MOSH queue" })} title="this queue"/></div>
-        <div className="my-2"><AddYourOwn radio={radio}/></div>
+        <div className="my-2 flex flex-wrap items-center gap-3"><AddYourOwn radio={radio} library={library}/></div>
+        <SavedUploads radio={radio} library={library}/>
         <p className="my-1 text-xs text-white/50">Up next · drag to reorder, or use the arrows</p>
         <QueueList radio={radio} library={library}/>
         {radio.history.length > 0 && <details className="mt-3"><summary className="min-h-10 cursor-pointer text-sm text-white/60">Recently played</summary><ul>{[...radio.history].reverse().slice(0, 20).map((track, i) => <TrackRow key={`${track.id}-${i}`} track={track} radio={radio} library={library}/>)}</ul></details>}

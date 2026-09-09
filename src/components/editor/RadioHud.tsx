@@ -42,6 +42,14 @@ export function RadioHud({ radio, onOpenControls }: { radio: RadioBroadcast; onO
   const [opacity, setOpacity] = useState(loadOpacity);
   const library = useRadioLibrary();
 
+  // The wheel's track trigger hands its caret over to this panel on a station
+  // (see TrackTrigger) — the station's queue is the only one that is real.
+  useEffect(() => {
+    const show = () => { setOpen(true); setMinimized(false); };
+    window.addEventListener("mosh:open-radio-library", show);
+    return () => window.removeEventListener("mosh:open-radio-library", show);
+  }, []);
+
   // Idle fade — the plate steps back when nothing is happening and returns on
   // the first sign of life. Suspended while the library is open, since a list
   // you are reading is not idle no matter how still the pointer is.

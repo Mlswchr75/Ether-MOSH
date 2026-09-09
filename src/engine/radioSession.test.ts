@@ -55,6 +55,7 @@ beforeEach(() => {
   player.failWith = null;
   player.autoAdvance = null;
   player.playTrackFromStart.mockClear();
+  player.setRadioTransport.mockClear();
 });
 
 afterEach(() => { vi.useRealTimers(); });
@@ -232,6 +233,60 @@ describe("editable radio transport", () => {
     expect(onBlocked).not.toHaveBeenCalled();
     session.stop();
   });
+  /* Held — the listener's own mic or device audio is driving the visuals.
+     The station must keep selecting and must never make a sound, because the
+     old shape (pause once, on the transition) let every control still on
+     screen put it straight back on the air underneath them. */
+  it("selects without sounding while held, and never plays behind an external source", async () => {
+    const onTrack = vi.fn();
+    const session = startRadioSession({ tracks: LIBRARY, held: true, onTrack });
+    await settle();
+
+    expect(player.played).toHaveLength(0);
+    expect(onTrack).toHaveBeenCalledOnce();
+    expect(session.current()).not.toBeNull();
+
+    // Every operation a HUD or a library row can still reach.
+    session.skip(); session.previous(); session.resume();
+    session.playNow(LIBRARY[2]); session.playQueue(LIBRARY);
+    await settle();
+    expect(player.played).toHaveLength(0);
+    expect(player.rolling).toBe(false);
+    session.stop();
+  });
+
+  it("keeps the queue and history across a hold", async () => {
+    const session = startRadioSession({ tracks: LIBRARY });
+    await settle();
+    session.skip(); await settle();
+    const before = session.current()!.id;
+
+    session.setHeld(true); await settle();
+    expect(player.rolling).toBe(false);
+    expect(session.current()!.id).toBe(before);
+    session.stop();
+  });
+
+  it("loads the held selection when the hold lifts, rather than un-pausing a stale one", async () => {
+    const session = startRadioSession({ tracks: LIBRARY, held: true });
+    await settle();
+    session.skip(); await settle();
+    const selected = session.current()!.id;
+
+    session.setHeld(false); await settle();
+    expect(player.played).toEqual([selected]);
+    expect(player.rolling).toBe(true);
+    session.stop();
+  });
+
+  it("gives the player a transport whose shuffle moves the rotation", async () => {
+    const session = startRadioSession({ tracks: LIBRARY }); await settle();
+    const transport = player.setRadioTransport.mock.calls.at(-1)![0] as { shuffle: () => void };
+    transport.shuffle(); await settle();
+    expect(player.played).toHaveLength(2);
+    session.stop();
+  });
+
   it("backs off after library-wide failures and retries without spinning", async () => {
     player.playTrackFromStart.mockRejectedValue(new Error("offline"));
     const session = startRadioSession({ tracks: LIBRARY }); await settle();

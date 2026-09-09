@@ -517,7 +517,20 @@ function TrackTrigger({ delay }: { delay: number }) {
       <button
         type="button"
         onPointerDown={(e) => e.stopPropagation()}
-        onClick={(event) => { event.stopPropagation(); setOpen(o => !o); }}
+        /* On a station the queue belongs to the radio session, and this
+           picker does not: its rows load a source straight into the player,
+           which leaves the now-playing card, the history and the stall
+           watchdog all describing a song that is no longer the one playing.
+           So there the caret opens the station's own library instead — the
+           one place that can actually queue, reorder and share a track. */
+        onClick={(event) => {
+          event.stopPropagation();
+          if (trackPlayer.hasRadioTransport()) {
+            window.dispatchEvent(new CustomEvent("mosh:open-radio-library"));
+            return;
+          }
+          setOpen(o => !o);
+        }}
         aria-label="Track options"
         aria-expanded={open || undefined}
         aria-haspopup="menu"

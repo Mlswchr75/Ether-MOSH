@@ -6,10 +6,19 @@ import { RadioLibrary } from "./RadioLibrary";
 import type { RadioBroadcast } from "@/hooks/useRadioBroadcast";
 import type { ShowcaseTrack } from "@/engine/trackPlayer";
 
-const library = {
-  user: null, favorites: [], playlists: [], loading: false, busy: false, error: "",
+const entitlements = { isSupporter: false };
+vi.mock("@/hooks/useEntitlements", () => ({ useEntitlements: () => entitlements }));
+
+const keepUpload = vi.fn(async () => null);
+const removeUpload = vi.fn(async () => true);
+const libraryState = (extra: Record<string, unknown> = {}) => ({
+  user: null, favorites: [], playlists: [], uploads: [], loading: false, busy: false, error: "",
   refresh: vi.fn(), toggleFavorite: vi.fn(), savePlaylist: vi.fn(), deletePlaylist: vi.fn(),
-} as unknown as Parameters<typeof RadioLibrary>[0]["library"];
+  keepUpload, removeUpload,
+  ...extra,
+}) as unknown as Parameters<typeof RadioLibrary>[0]["library"];
+
+let library = libraryState();
 
 const track = (id: string, title: string): ShowcaseTrack => ({ id, url: `/audio/${id}.mp3`, title, artist: "MOSH" });
 const QUEUE = [track("a", "Alpha"), track("b", "Beta"), track("c", "Gamma")];
@@ -34,7 +43,12 @@ const rows = () => [...document.querySelectorAll("li")].filter(li => li.getAttri
 const dt = () => ({ effectAllowed: "", dropEffect: "", setData: vi.fn(), getData: vi.fn() });
 
 afterEach(cleanup);
-beforeEach(() => { vi.restoreAllMocks(); });
+beforeEach(() => {
+  vi.restoreAllMocks();
+  entitlements.isSupporter = false;
+  keepUpload.mockClear();
+  library = libraryState();
+});
 
 describe("the radio queue", () => {
   it("reorders by dragging one song onto another", () => {
@@ -110,7 +124,78 @@ describe("adding your own songs", () => {
     const input = screen.getByLabelText("Add your own songs to the queue") as HTMLInputElement;
     fireEvent.change(input, { target: { files: [new File(["x"], "cover.png", { type: "image/png" })] } });
 
-    await screen.findByText("Choose an audio file");
+    await screen.findByText(/isn't audio/i);
     expect(radio.enqueue).not.toHaveBeenCalled();
+  });
+
+  it("queues a song whose MIME type the browser left blank", async () => {
+    // A MIME-only filter drops these, and they play perfectly — plenty of
+    // pickers (share sheets, some Android file providers) send an empty type.
+    const radio = broadcast();
+    draw(radio);
+    vi.stubGlobal("URL", Object.assign(URL, { createObjectURL: vi.fn(() => "blob:mosh/abc") }));
+
+    const input = screen.getByLabelText("Add your own songs to the queue") as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [new File(["fake audio"], "Set 03.m4a", { type: "" })] } });
+
+    await waitFor(() => expect(radio.enqueue).toHaveBeenCalled());
+  });
+
+  it("refuses an empty file, which a MIME check would have queued as silence", async () => {
+    const radio = broadcast();
+    draw(radio);
+
+    const input = screen.getByLabelText("Add your own songs to the queue") as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [new File([], "Empty.mp3", { type: "audio/mpeg" })] } });
+
+    await waitFor(() => expect(radio.enqueue).not.toHaveBeenCalled());
+  });
+
+  it("offers to keep a song only to a signed-in supporter", async () => {
+    draw(broadcast());
+    expect(screen.queryByLabelText(/keep on my account/i)).toBeNull();
+    cleanup();
+
+    entitlements.isSupporter = true;
+    library = libraryState({ user: { id: "user-1" } });
+    draw(broadcast());
+    expect(screen.getByText(/keep on my account/i)).toBeTruthy();
+  });
+
+  it("queues the song first and saves it second, so a failed save costs nothing", async () => {
+    entitlements.isSupporter = true;
+    library = libraryState({ user: { id: "user-1" } });
+    const radio = broadcast();
+    draw(radio);
+    vi.stubGlobal("URL", Object.assign(URL, { createObjectURL: vi.fn(() => "blob:mosh/abc") }));
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /keep on my account/i }));
+    const input = screen.getByLabelText("Add your own songs to the queue") as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [new File(["fake audio"], "Kept.mp3", { type: "audio/mpeg" })] } });
+
+    await waitFor(() => expect(keepUpload).toHaveBeenCalled());
+    expect(radio.enqueue).toHaveBeenCalled();
+  });
+});
+
+describe("songs kept on the account", () => {
+  it("lists them with the cap, so the limit is visible before it bites", () => {
+    library = libraryState({
+      user: { id: "user-1" },
+      uploads: [{ id: "u1", title: "Kept Song", storagePath: "user-1/1.mp3", bytes: 12 }],
+    });
+    draw(broadcast());
+    expect(screen.getByText(/Your saved songs · 1\/100/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Kept Song" })).toBeTruthy();
+  });
+
+  it("removes one on request", () => {
+    library = libraryState({
+      user: { id: "user-1" },
+      uploads: [{ id: "u1", title: "Kept Song", storagePath: "user-1/1.mp3", bytes: 12 }],
+    });
+    draw(broadcast());
+    fireEvent.click(screen.getByRole("button", { name: "Remove Kept Song from your account" }));
+    expect(removeUpload).toHaveBeenCalled();
   });
 });

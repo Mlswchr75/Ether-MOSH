@@ -1,10 +1,19 @@
-import { SHOWCASE_TRACKS, type ShowcaseTrack } from "@/engine/trackPlayer";
+import { type ShowcaseTrack } from "@/engine/trackPlayer";
+import { lookupTrack } from "@/engine/radioCatalogue";
 
 export const MAX_PLAYLIST_TRACKS = 100;
+/**
+ * Playlists, favourites and share links all travel as bare track ids, so this
+ * is where an id becomes a song again.
+ *
+ * `lookupTrack` covers the hosted library as well as the bundled one — while
+ * the library was a compile-time array this could never miss, and now that it
+ * is a table it can. Bundled tracks stay resolvable either way, so a share link
+ * made before the move still opens.
+ */
 export function knownRadioTracks(ids: readonly string[]): ShowcaseTrack[] {
-  const catalog = new Map(SHOWCASE_TRACKS.map(t => [t.id, t]));
   return [...new Set(ids)].slice(0, MAX_PLAYLIST_TRACKS)
-    .flatMap(id => catalog.has(id) ? [catalog.get(id)!] : []);
+    .flatMap(id => { const track = lookupTrack(id); return track ? [track] : []; });
 }
 
 export function radioRequest(href: string) {

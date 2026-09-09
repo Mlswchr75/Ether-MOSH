@@ -173,19 +173,66 @@ export const SHOWCASE_TRACKS: ShowcaseTrack[] = [
 ];
 
 /**
- * `setSource`'s `url` only ever arrives as `URL.createObjectURL()` on a
- * locally-selected audio File (HotTriggers' file input) or one of this
- * module's own same-origin SHOWCASE_TRACKS paths — never a remote or
- * user-typed string. CodeQL's js/xss-through-dom query flags any
- * `File`-derived string reaching a `.src` sink regardless of that guarantee,
- * since it doesn't model `createObjectURL`'s opaque blob: output; asserting
- * the shape here is what actually stands between a future refactor and a
- * real open redirect.
+ * The one origin the hosted library and a listener's own uploads come from.
+ *
+ * Read from the same env var the Supabase client is built with, so this cannot
+ * drift from where the audio actually lives, and reduced to an origin so the
+ * check below compares hosts rather than string prefixes — `https://evil.test/
+ * ?x=https://project.supabase.co/` starts with nothing useful, but it does
+ * start with something, which is exactly how prefix checks fail.
  */
-function assertSafeTrackUrl(url: string): string {
-  const known = url.startsWith("blob:") || SHOWCASE_TRACKS.some(t => t.url === url);
+const STORAGE_ORIGIN = (() => {
+  try {
+    return new URL(import.meta.env.VITE_SUPABASE_URL as string).origin;
+  } catch {
+    return null;
+  }
+})();
+
+/** Public catalogue objects, and the signed URLs a listener's own uploads use. */
+const STORAGE_PATH_PREFIXES = [
+  "/storage/v1/object/public/radio-catalogue/",
+  "/storage/v1/object/sign/radio-uploads/",
+  "/storage/v1/object/authenticated/radio-uploads/",
+];
+
+function isHostedTrackUrl(url: string): boolean {
+  if (!STORAGE_ORIGIN) return false;
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  // Exact origin, then a known bucket path. Both, in that order — either alone
+  // admits a URL that only looks right.
+  if (parsed.origin !== STORAGE_ORIGIN) return false;
+  return STORAGE_PATH_PREFIXES.some(prefix => parsed.pathname.startsWith(prefix));
+}
+
+/**
+ * `setSource`'s `url` only ever arrives as `URL.createObjectURL()` on a
+ * locally-selected audio File (HotTriggers' file input), one of this module's
+ * own same-origin SHOWCASE_TRACKS paths, or an object in this project's own
+ * audio buckets — never a remote or user-typed string. CodeQL's
+ * js/xss-through-dom query flags any `File`-derived string reaching a `.src`
+ * sink regardless of that guarantee, since it doesn't model
+ * `createObjectURL`'s opaque blob: output; asserting the shape here is what
+ * actually stands between a future refactor and a real open redirect.
+ *
+ * The hosted case is admitted by origin-and-prefix rather than by membership in
+ * a list, because the library is a database table now and cannot be enumerated
+ * at compile time. That is a genuinely weaker guarantee than the array was, and
+ * it is bounded deliberately: one origin, three paths, all of them this
+ * project's own storage. A row in `radio_tracks` can name any object inside
+ * those buckets and nothing outside them.
+ */
+export function assertSafeTrackUrl(url: string): string {
+  const known = url.startsWith("blob:")
+    || SHOWCASE_TRACKS.some(t => t.url === url)
+    || isHostedTrackUrl(url);
   if (!known) {
-    throw new Error("Expected an object URL or a known showcase track path");
+    throw new Error("Expected an object URL, a bundled track path, or this project's audio storage");
   }
   return url;
 }
@@ -224,9 +271,14 @@ class TrackPlayer {
   private everPlayed = false;
   /** Registered by setAutoAdvance (radio mode); null the rest of the time. */
   private endedHandler: (() => void) | null = null;
-  private radioTransport: { play: () => void; next: () => void; previous: () => void; onPause: () => void } | null = null;
+  private radioTransport: {
+    play: () => void; next: () => void; previous: () => void; shuffle: () => void; onPause: () => void;
+  } | null = null;
 
   setRadioTransport(controls: typeof this.radioTransport) { this.radioTransport = controls; }
+
+  /** True while a station owns the queue — see nextShowcaseTrack. */
+  hasRadioTransport(): boolean { return !!this.radioTransport; }
 
   enabled = false;
   volume = 0.75;
@@ -456,6 +508,13 @@ class TrackPlayer {
    *  non-showcase track (an uploaded file), starts at the first one. Always
    *  ends up playing, matching ordinary media-player "next" semantics. */
   async nextShowcaseTrack() {
+    // A station owns the queue while it is on the air, and it is a rotation,
+    // not an index into SHOWCASE_TRACKS: stepping the array behind its back
+    // starts a song the session never selected, so its now-playing card, its
+    // history and its watchdog all go on describing the previous one. Every
+    // caller of these three — the wheel's transport row, `[` `]` `\`, the OS
+    // media keys — means "the next song", so route them all at the source.
+    if (this.radioTransport) { this.radioTransport.next(); return; }
     if (!SHOWCASE_TRACKS.length) return;
     const i = this.showcaseIndex();
     const t = SHOWCASE_TRACKS[i === -1 ? 0 : (i + 1) % SHOWCASE_TRACKS.length];
@@ -466,6 +525,7 @@ class TrackPlayer {
   /** Same as nextShowcaseTrack, backwards. From a non-showcase track, starts
    *  at the last one. */
   async prevShowcaseTrack() {
+    if (this.radioTransport) { this.radioTransport.previous(); return; }
     if (!SHOWCASE_TRACKS.length) return;
     const i = this.showcaseIndex();
     const t = SHOWCASE_TRACKS[i === -1 ? SHOWCASE_TRACKS.length - 1 : (i - 1 + SHOWCASE_TRACKS.length) % SHOWCASE_TRACKS.length];
@@ -476,6 +536,7 @@ class TrackPlayer {
   /** Jumps to a random *different* showcase track (never repeats the one
    *  already playing, unless it's the only one available). */
   async shuffleShowcaseTrack() {
+    if (this.radioTransport) { this.radioTransport.shuffle(); return; }
     if (!SHOWCASE_TRACKS.length) return;
     if (SHOWCASE_TRACKS.length === 1) {
       const only = SHOWCASE_TRACKS[0];

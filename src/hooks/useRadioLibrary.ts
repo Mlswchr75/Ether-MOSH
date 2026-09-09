@@ -4,6 +4,7 @@ import { useAuth } from "./useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 import { knownRadioTracks } from "@/lib/radioLinks";
+import { deleteSavedUpload, listSavedUploads, saveUpload, type SavedUpload } from "@/lib/radioUploads";
 
 export type RadioPlaylist = Database["public"]["Tables"]["radio_playlists"]["Row"];
 export function useRadioLibrary() {
@@ -14,6 +15,7 @@ export function useRadioLibrary() {
   const [dataOwner, setDataOwner] = useState<string>();
   const [favorites, setFavorites] = useState<string[]>([]);
   const [playlists, setPlaylists] = useState<RadioPlaylist[]>([]);
+  const [uploads, setUploads] = useState<SavedUpload[]>([]);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const lock = useRef(false);
@@ -22,18 +24,22 @@ export function useRadioLibrary() {
 
   const refresh = useCallback(async () => {
     const token = ++generation.current;
-    if (!userId) { setFavorites([]); setPlaylists([]); setError(""); setLoading(false); return; }
+    if (!userId) { setFavorites([]); setPlaylists([]); setUploads([]); setError(""); setLoading(false); return; }
     setLoading(true);
     try {
-      const [f, p] = await Promise.all([
+      const [f, p, u] = await Promise.all([
         supabase.from("radio_favorites").select("track_id").eq("user_id", userId),
         supabase.from("radio_playlists").select("*").eq("user_id", userId).order("updated_at", { ascending: false }),
+        // Saved uploads are a supporter perk, so a non-supporter's read is
+        // simply empty. Not fatal to the rest of the library either way.
+        listSavedUploads(userId).catch(() => [] as SavedUpload[]),
       ]);
       if (f.error || p.error) throw f.error || p.error;
       if (account.current !== userId || token !== generation.current) return;
       setDataOwner(userId);
       setFavorites((f.data || []).map(row => row.track_id));
       setPlaylists(p.data || []);
+      setUploads(u);
       setError("");
     } catch {
       if (account.current === userId && token === generation.current) setError("Couldn’t load your saved music. Try again.");
@@ -42,7 +48,7 @@ export function useRadioLibrary() {
 
   const cancelRefresh = useCallback(() => { generation.current++; }, []);
   useEffect(() => {
-    setFavorites([]); setPlaylists([]); setError("");
+    setFavorites([]); setPlaylists([]); setUploads([]); setError("");
     void refresh();
     const onFocus = () => { if (!lock.current) void refresh(); };
     window.addEventListener("focus", onFocus);
@@ -81,9 +87,40 @@ export function useRadioLibrary() {
       if (result.error) throw result.error;
     }, id ? "Playlist updated" : "Playlist created");
   };
+  /**
+   * Keep a song on the account.
+   *
+   * Its own error path rather than `mutate`'s: the server's refusals here are
+   * things the listener can do something about ("that's a supporter feature",
+   * "you're at a hundred songs"), and answering both with "please try again"
+   * is how a hard limit reads as a broken button.
+   */
+  const keepUpload = async (file: File) => {
+    if (!userId || lock.current) return null;
+    lock.current = true; setBusy(true); generation.current++;
+    try {
+      const saved = await saveUpload(userId, file);
+      if (account.current === userId) { toast.success(`${saved.title} saved to your account`); await refresh(); }
+      return saved;
+    } catch (err) {
+      if (account.current === userId) toast.error((err as Error)?.message || "Couldn’t save that song.");
+      return null;
+    } finally { lock.current = false; setBusy(false); }
+  };
+
+  const removeUpload = (upload: SavedUpload) => mutate(
+    () => deleteSavedUpload(userId!, upload), `${upload.title} removed`);
+
   const deletePlaylist = (id: string) => mutate(async () => {
     const result = await supabase.from("radio_playlists").delete().eq("user_id", userId!).eq("id", id).select().single();
     if (result.error) throw result.error;
   }, "Playlist deleted");
-  return { user, favorites: dataOwner === userId ? favorites : [], playlists: dataOwner === userId ? playlists : [], loading: authLoading || loading, busy, error, refresh, toggleFavorite, savePlaylist, deletePlaylist };
+  return {
+    user,
+    favorites: dataOwner === userId ? favorites : [],
+    playlists: dataOwner === userId ? playlists : [],
+    uploads: dataOwner === userId ? uploads : [],
+    loading: authLoading || loading, busy, error, refresh,
+    toggleFavorite, savePlaylist, deletePlaylist, keepUpload, removeUpload,
+  };
 }
