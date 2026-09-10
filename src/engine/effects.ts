@@ -2531,6 +2531,93 @@ export const EFFECTS: EffectDef[] = [
     vec3 toned = c.rgb * mix(1.0, fiber, uAmount);
     gl_FragColor = vec4(toned, c.a);
     `),
+
+  fx("singularity", "Singularity", "dimension", "The frame comes apart and spirals into a wandering black hole. Debris stretches into arcs, thins, and is dust before it ever reaches the eye.",
+    [{ key: "amount", label: "Pull", min: 0, max: 1, default: 0.55 },
+     { key: "twist", label: "Twist", min: 0, max: 1, default: 0.5 },
+     { key: "debris", label: "Debris", min: 0, max: 1, default: 0.45 }],
+    `
+    // The eye drifts. Two periods that do not divide into one another, so the
+    // path never lands back where a bar started, plus a pulse term that lurches
+    // it on a hit — a vortex parked dead centre reads as a lens artefact rather
+    // than as weather moving through the frame.
+    vec2 ctr = vec2(0.5) + vec2(sin(uTime * 0.13), cos(uTime * 0.087)) * (0.19 + uPulse * 0.07);
+
+    float aspect = uResolution.x / max(uResolution.y, 1.0);
+    vec2 rel = (vUv - ctr) * vec2(aspect, 1.0);
+    float r = max(length(rel), 0.0015);
+    float ang = atan(rel.y, rel.x);
+    // Log-polar is the vortex's own coordinate system. An inflow that is
+    // exponential in radius — quick at the rim, asymptotically slow near the
+    // eye, so nothing ever quite arrives — is a straight shear along this axis,
+    // which is why everything below is additions rather than a spiral solved
+    // per pixel.
+    float lr = log(r);
+
+    // Depth decides what lets go first: the room drains away while whoever is
+    // in front of the lens keeps their grip a beat longer.
+    float grip = 1.0 - depthAt(vUv) * 0.5;
+    // Renderer.ts doubles "amount" before it reaches here, so this sees 0..2.
+    // Kept small on purpose: past a log-offset of about 0.9 every tap lands
+    // outside the frame and clamps to the same edge, and the top half of the
+    // slider stops doing anything at all — measured identical output at 1.0
+    // and 2.0 before this was tuned down.
+    float pull = uAmount * 0.34 * grip;
+    // Differential rotation. The eye of a storm turns faster than its rim, and
+    // that shear is what stretches debris into arcs instead of sliding the disc
+    // inward rigidly. The 0.3 keeps 1/r finite at the centre.
+    // Amount feeds the spin as well as the pull, so the far end of the slider
+    // still escalates once the radial term has given all it has.
+    float spin = (uTwist * 1.8 + uAmount * 0.55) * grip / (0.3 + r);
+
+    // Debris cells live in log-polar space, so a square cell is already a
+    // curved streak on screen and lengthens on its own as it winds in.
+    // Screen-space cells would have to be bent by hand to get the same shape.
+    vec2 cellId = floor(vec2(ang * 3.0, lr * 2.4) * (0.6 + uDebris * 3.4));
+    float shard = rand(cellId);
+    // Each shard carries its own lead on the spiral and its own moment, which
+    // is what turns one smooth suction into material coming apart.
+    float lead = (shard - 0.5) * uDebris * 0.55;
+    float shardAge = rand(cellId + 19.3) * uDebris * 0.7;
+
+    // The head of each streak is the live frame, so this still reads on the
+    // first frame and straight after a resize, when the history ring is black.
+    vec2 headSrc = ctr + vec2(cos(ang - lead), sin(ang - lead)) * r / vec2(aspect, 1.0);
+    vec3 col = texture2D(uTex, clamp(headSrc, 0.0, 1.0)).rgb * 0.5;
+    float wsum = 0.5;
+    // Two taps walked back along the spiral into the history ring. Because the
+    // ring holds past OUTPUT, each frame re-advects what the last one already
+    // moved, so material genuinely travels inward over time instead of sitting
+    // in a static swirl. Two and not a dozen: every tap is two fetches through
+    // timeAt(), and this runs on every frame of every stack.
+    for (int i = 1; i < 3; i++) {
+      float t = float(i) * 0.5;
+      float s = pull * t;
+      float r2 = exp(lr + s);
+      float a2 = ang - spin * s - lead;
+      vec2 src = ctr + vec2(cos(a2), sin(a2)) * r2 / vec2(aspect, 1.0);
+      float w = 0.34 - float(i - 1) * 0.09;
+      col += timeAt(clamp(src, 0.0, 1.0), clamp(t * 0.5 + shardAge, 0.0, 1.0)) * w;
+      wsum += w;
+    }
+    // Normalised, the live tap still holds ~46% of the result, so the history
+    // half of the loop sits well under unity gain. History feeding history at
+    // unity latches into a smear that never clears.
+    col /= wsum;
+
+    // Nothing reaches the eye. Shards thin, break into grain, and are gone
+    // before the centre — thresholded per shard, so they go one at a time
+    // rather than the whole field dimming together.
+    // The dust radius grows with amount — the other half of what keeps the top
+    // of the range moving: harder pull, wider grave.
+    float reach = smoothstep(0.015, 0.20 + uDebris * 0.16 + uAmount * 0.10, r);
+    float dust = smoothstep(shard * 0.75, shard * 0.75 + 0.28, reach);
+    // A little fine noise so the last of it is grain rather than a clean edge.
+    dust *= 0.82 + 0.18 * step(0.35, noise(vUv * 220.0 + uTime * 3.0));
+
+    vec4 base = texture2D(uTex, vUv);
+    gl_FragColor = vec4(mix(base.rgb, col * dust, clamp(uAmount * 1.2, 0.0, 1.0)), base.a);
+    `),
 ];
 
 /** Every effect except the internal, manager-driven ones — what any

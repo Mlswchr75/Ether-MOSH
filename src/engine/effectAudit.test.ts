@@ -98,10 +98,10 @@ describe("effect audit metrics", () => {
       .toBeLessThan(EFFECT_AUDIT_THRESHOLDS.inertMeanAbsoluteDelta);
   });
 
-  it("requires exactly 118 unique effect ids and names", () => {
-    expect(EFFECTS).toHaveLength(118);
-    expect(new Set(EFFECTS.map((effect) => effect.id)).size).toBe(118);
-    expect(new Set(EFFECTS.map((effect) => effect.name)).size).toBe(118);
+  it("requires exactly 119 unique effect ids and names", () => {
+    expect(EFFECTS).toHaveLength(119);
+    expect(new Set(EFFECTS.map((effect) => effect.id)).size).toBe(119);
+    expect(new Set(EFFECTS.map((effect) => effect.name)).size).toBe(119);
   });
 });
 
@@ -179,7 +179,7 @@ describe("effect audit harness", () => {
     expect(sheet.width).toBe(7 * 256);
     expect(sheet.height).toBe(2 * AUDIT_CONTACT_SHEET.tileHeight);
     expect(sheet.data.subarray(256 * 144 * 4, 256 * (144 + 8) * 4).some((value) => value !== 0)).toBe(true);
-    expect(report).toMatchObject({ selected: 1, summary: { total: 1, pass: 1, failed: 0 }, registry: { total: 118, uniqueIds: 118, uniqueNames: 118 } });
+    expect(report).toMatchObject({ selected: 1, summary: { total: 1, pass: 1, failed: 0 }, registry: { total: 119, uniqueIds: 119, uniqueNames: 119 } });
     expect(Object.keys(report).sort()).toEqual(["date", "dimensions", "environment", "registry", "results", "samples", "selected", "summary", "thresholds"]);
     expect(Object.keys(report.results[0]).sort()).toEqual(["category", "compileLog", "elapsedMs", "glError", "id", "metrics", "name", "status"]);
     expect(Object.keys(report.results[0].metrics ?? {}).sort()).toEqual(["blank", "changedPixelRatio", "inert", "luminanceMean", "luminanceVariance", "meanAbsoluteDelta"]);

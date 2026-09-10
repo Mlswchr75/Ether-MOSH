@@ -263,7 +263,7 @@ type State = {
    * browser, or null.
    *
    * A preview is a real layer — it renders, it stacks, it takes parameters —
-   * it just isn't *kept*. Tapping through a catalogue of 117 effects should
+   * it just isn't *kept*. Tapping through a catalogue of 118 effects should
    * show you each one on your own frame without burying the stack in things
    * you glanced at, and without writing 117 entries into the undo timeline.
    * So preview swaps are history-free and self-cleaning; only `commitPreview`
