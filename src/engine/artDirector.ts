@@ -444,6 +444,10 @@ const CRAFT: Record<string, Craft> = {
   strataSlice:     { role: "form", fidelity: "neutral",   gives: { structure: 0.95 }, cost: 0.7, gpu: 2.6 },
   chronoBleed:     { role: "form", fidelity: "cinematic", gives: { structure: 0.7, color: 0.7 }, cost: 0.55, gpu: 2.4 },
   volumetricPull:  { role: "form", fidelity: "cinematic", gives: { structure: 0.9 }, cost: 0.6, gpu: 1.5 },
+  // Destroys more source than any other form effect: whatever the vortex
+  // reaches is gone rather than displaced, so the detail budget has to see
+  // it as expensive or the director will stack a second eraser on top.
+  singularity:     { role: "form", fidelity: "neutral",   gives: { structure: 1.0 }, cost: 0.85, gpu: 2.6 },
 
   // ── FLOW & OPTICS ──────────────────────────────────────────────────
   // Flow effects follow real motion, so they are `form` — they restructure.
@@ -609,7 +613,7 @@ export const LOOKS: Look[] = [
   },
   {
     id: "deepVoid", name: "DEEP VOID", blurb: "Weight, shadow and drift.",
-    picks: { grade: ["filmicTone", "duotone", "infraredDream", "crossHatch", "noiseTint", "selfBlend"], form: ["frameSmear", "perspectiveTilt", "melt", "volumetricPull"],
+    picks: { grade: ["filmicTone", "duotone", "infraredDream", "crossHatch", "noiseTint", "selfBlend"], form: ["frameSmear", "perspectiveTilt", "melt", "volumetricPull", "singularity"],
              accent: ["bufferEcho", "scanFreeze", "echoTrails", "trailDecay"], finish: ["fog", "vignette", "dustMotes", "volumetricShaft", "paperGrain"] },
     suits: { needsCompression: 0.8, brightness: 0.3, clipHigh: 0.5 }, drive: 0.45,
   },
@@ -633,7 +637,7 @@ export const LOOKS: Look[] = [
   },
   {
     id: "vortex", name: "VORTEX", blurb: "Everything pulled to one point.",
-    picks: { grade: ["oilSlick", "filmicTone", "colorQuake", "hueRotate"], form: ["drosteTunnel", "twirl", "fractalZoom", "infiniteZoom", "moirePulse", "zoomPunch"],
+    picks: { grade: ["oilSlick", "filmicTone", "colorQuake", "hueRotate"], form: ["drosteTunnel", "twirl", "fractalZoom", "infiniteZoom", "moirePulse", "zoomPunch", "singularity"],
              accent: ["shockwave", "pixelExplode", "chromaAberrate", "echoTrails"], finish: ["bloom", "godRays", "vignette", "anamorphic"] },
     suits: { needsStructure: 0.7, contrast: 0.3 }, drive: 0.8,
   },
@@ -681,7 +685,7 @@ export const LOOKS: Look[] = [
   {
     id: "eventHorizon", name: "EVENT HORIZON", blurb: "The near world tears outward and leaves ghosts.",
     picks: { grade: ["infraredDream", "thermal", "filmicTone", "chromaPulse"],
-             form: ["parallaxExplode", "depthEcho", "volumetricPull", "zoomPunch", "cameraShake"],
+             form: ["parallaxExplode", "depthEcho", "volumetricPull", "zoomPunch", "cameraShake", "singularity"],
              accent: ["echoTrails", "bufferEcho", "shockwave", "trailDecay"],
              finish: ["godRays", "dreamGlow", "anamorphic", "volumetricShaft", "keyingHalo"] },
     suits: { brightness: -0.3, needsLift: 0.4, needsColor: 0.4 }, drive: 0.75,

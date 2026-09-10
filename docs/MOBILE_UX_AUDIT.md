@@ -18,7 +18,7 @@ currently falls down. It is deliberately exhaustive — the point is that nobody
 | `/radio` | `Editor` | Same component, radio mode on (`?station=`, `?hud=0`). |
 | `/forge` | `ForgeRedirect` | → `/edit` in forge source mode. |
 | `/pattern-forge` | `PatternForge` | Standalone seamless-pattern workspace. |
-| `/effects` | `EffectsRegistry` | Browsable catalog of the 117 effects. |
+| `/effects` | `EffectsRegistry` | Browsable catalog of the 118 effects. |
 | `/favorites` | `Favorites` | Saved stacks. |
 | `/journey-portals`, `/embed/journey` | Journey | Portal picker + embeddable player. |
 | `/live-visuals`, `/vs/avsync-live`, `/guides/*`, `/faq`, `/news/*` | Marketing / SEO | Static-ish content. |
@@ -107,7 +107,7 @@ slot's inner button.
 |---|---|---|
 | utility bar | inline | back, seed, slots, camera menu, undo/redo, before/after hold, mic, device audio, shortcuts, cast, performance mode, **Export** (+ 5K/8K/PNG print menu) |
 | Layers | `LayerStack` | per layer: visibility, lock, blend mode `<select>`, opacity slider, reorder ↑↓, duplicate, delete |
-| FX | `ShufflePanel` + `FxPicker` | 4 category tabs, 117 effects, tap-to-add cards |
+| FX | `ShufflePanel` + `FxPicker` | 4 category tabs, 118 effects, tap-to-add cards |
 | Tune | `ParamDock` | **the real prize** — per-param slider, live value, 6 modulator types (sine/tri/saw/perlin/random/beat) with speed/depth/offset, audio mapping popover (source × amount × smoothing) + live meter; plus `SeamlessPanel` |
 | Beat & Audio | `BeatPanel` | BPM / beat-sync controls |
 | Legacy | inline | re-enable the old right-edge launchpad |
