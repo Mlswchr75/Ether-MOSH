@@ -1104,6 +1104,75 @@ export const NEWS_ARTICLES: NewsArticle[] = [
       { question: "Can I use Film Grain for print and projection?", answer: "Yes. Proof print texture at final resolution, test projection on the real surface, keep essential text clean, avoid rapid high-contrast cuts, and provide a calmer alternate when needed." },
     ],
   },
+  {
+    slug: "make-the-singularity-effect-swallow-the-evidence",
+    subjectKind: "effect",
+    effectId: "singularity",
+    effectName: "Singularity",
+    category: "Dimensional Incident",
+    title: "Make the Singularity Effect Swallow the Evidence",
+    dek: "A practical review of a wandering feedback vortex, the museum committee it allegedly ate, and why a shader with a dark center is not suddenly an astrophysics instrument.",
+    description: "Learn how the Ether-MOSH Singularity effect uses Pull, Twist, Debris, depth, and recent-frame feedback for print, motion, projection, patterns, and education.",
+    publishedAt: "2026-09-10T08:00:00-07:00",
+    readMinutes: 6,
+    image: "/news/singularity-museum-review.jpg",
+    imageAlt: "Fictional museum technicians inspect the Ether-MOSH Singularity effect pulling a projected portrait and geometric artwork into curved digital fragments around a dark center",
+    imageCaption: "The fictional review board approved the projection after confirming that no actual spacetime, interns, or donor plaques had been consumed.",
+    keywords: ["Singularity effect", "digital vortex effect", "Ether-MOSH Singularity", "feedback shader", "log-polar effect", "projection visuals", "glitch art tutorial"],
+    tldr: "Ether-MOSH Singularity bends the current image and recent output into a wandering digital vortex. Pull sets the overall inward displacement and blend, Twist controls differential rotation, and Debris breaks the field into curved shards that dissolve near the center. It is a stylized log-polar feedback effect—not a black-hole simulation. Find it under Dimensional and start near 0.32 Pull, 0.38 Twist, 0.28 Debris.",
+    satireDisclosure: "The museum board, technicians, missing slide deck, review, and procurement dispute are fictional. The astronomy, 2019 observation, log-polar explanation, Ether-MOSH controls and shader behavior, accessibility cautions, product listing, and production advice are factual and sourced.",
+    dispatch: [
+      "At 08:11, the fictional Museum Committee for Responsible Vanishing misplaced a twelve-page donor presentation inside a projected vortex. Chairperson Vera Horizon—an invented administrator with three lanyards and no emergency stop—called the loss ‘an immersive acquisition.’",
+      "The technicians recovered the laptop, lowered Pull, and established that the missing slides were still in the deck. Only their pixels had been curved into arcs, mixed with recent frames, and dissolved near a moving dark center. Procurement then submitted a neon hoodie as protective equipment, which is why procurement no longer has unsupervised internet access.",
+    ],
+    explanation: [
+      "Real black-hole terms are specific. NASA describes the event horizon as the boundary beyond which even light cannot escape, the accretion disk as hot luminous matter outside it, and the shadow as a dark region enlarged by light capture and gravitational lensing. General relativity predicts a singularity at the center, but NASA notes that scientists do not yet know whether it is a physical structure or a mathematical sign that the theory is incomplete.",
+      "In 2019, the Event Horizon Telescope collaboration released the first direct visual evidence of a supermassive black hole and its shadow, using a planet-scale network of radio telescopes and computational reconstruction. That image showed M87's black-hole environment; it did not photograph a singularity. Ether-MOSH borrows the cultural silhouette of inward motion and a dark eye, not the physics or observational method.",
+      "The Singularity shader uses angle plus logarithmic distance from a moving center. In log-polar image coordinates, rotation and uniform scale become shifts along the angular and log-radius axes, which makes curved inward sampling practical. Ether-MOSH combines the live frame with two samples from a short ring of finished output, applies less pull to the foreground depth proxy so the room releases first, and dissolves randomized shards before the center. Pull is a true no-op at zero; Twist changes rotational shear; Debris changes shard structure, timing, and the dust-out region.",
+    ],
+    steps: [
+      "Open MOSH, load a portrait, sculpture, architectural still, patterned artwork, camera feed, or Forge composition with one clear focal subject, then open the FX panel.",
+      "Choose Dimensional and add Singularity. Start with Pull at 0.32, Twist at 0.38, and Debris at 0.28 so the image bends without immediately becoming evidence dust.",
+      "Raise Pull until the background visibly drains toward the wandering eye. Return it to 0 whenever you need the source completely untouched; zero is the clean bypass state.",
+      "Adjust Twist for arc length and rotational shear, then raise Debris to separate the flow into smaller shards. If faces, captions, or logos become unreadable, lower Debris before blaming gravity.",
+      "Record one slow control move or freeze a strong still. Proof pattern seams and print scale, test the actual projector or LED wall, keep essential text outside the effected layer, check full-screen flash risk, and provide a static or calmer version for motion-sensitive audiences.",
+    ],
+    parameters: [
+      { control: "Pull", purpose: "Sets the overall blend, inward sampling distance, and upper-range spin and dust escalation", low: "0 is an untouched source", high: "0.70–1 broad collapse", sweetSpot: "0.32" },
+      { control: "Twist", purpose: "Controls differential rotation around the wandering center", low: "0–0.20 short bends", high: "0.70–1 long spiral arcs", sweetSpot: "0.38" },
+      { control: "Debris", purpose: "Changes log-polar shard density, per-shard offsets, history age, and dissolution radius", low: "0–0.20 broad flow", high: "0.70–1 granular breakup", sweetSpot: "0.28" },
+    ],
+    uses: [
+      { title: "Print + editorial", body: "Freeze a frame before the subject disappears, inspect the dark center and fine debris at 100%, and soft-proof the final stock. Tiny shards can vanish in absorbent paper; a giant black patch can return from press looking less cosmic and more toner emergency." },
+      { title: "Pattern + textiles", body: "Capture one strong arc field, crop deliberately, and inspect a 3×3 repeat. A wandering center that lands near a tile edge can create excellent directional rhythm or one repeating drain across every pillow." },
+      { title: "Vector + Lottie", body: "Trace only a few dominant arcs and shard silhouettes into vector paths, or keep a short raster vortex behind lightweight Lottie labels. Preserve meaningful type as real text; several thousand dust paths are not a personality." },
+      { title: "Projection + venue", body: "Use dancers, sculpture, architecture, or Forge fields with readable silhouettes. Rehearse the slowest useful Pull move at full brightness, keep captions outside the effect, analyze the delivered loop for flash risk, and maintain a static or lower-motion cue." },
+      { title: "Museum + education", body: "Place the MOSH result beside the EHT image and NASA's scientific visualization, then label observation, physics-based simulation, and artistic shader separately. Let learners compare the pictures without implying that a browser effect has solved general relativity before lunch." },
+    ],
+    quote: "The slide deck was not lost to gravity. It was displaced by a feedback shader and an administrator with theatrical timing.",
+    quoteAttribution: "Vera Horizon, fictional chair of the Museum Committee for Responsible Vanishing",
+    downloadHref: "/news/downloads/singularity-field-card.md",
+    product: {
+      name: "Neon Cell AOP Hoodie",
+      href: "https://aestheticrebellion.store/products/neon-cell-aop-hoodie",
+      copy: "Mandatory event-horizon retail telemetry: Aesthetic Rebellion's currently listed Neon Cell AOP Hoodie wraps premium fleece in magenta, purple, blue, and teal organic cells because the universe apparently needed a louder background process. Buying it will not stabilize the feedback ring, prove a singularity exists, or protect procurement from follow-up questions. It will make your torso look qualified to supervise the vortex, so capitalism has crossed the boundary willingly.",
+    },
+    sources: [
+      { label: "NASA Science — Anatomy of a Black Hole", href: "https://science.nasa.gov/universe/black-holes/anatomy/", note: "Current authoritative distinctions among the event horizon, accretion disk, shadow, photon rings, lensing, and the still-uncertain physical status of a singularity." },
+      { label: "Event Horizon Telescope — First Image of a Black Hole", href: "https://eventhorizontelescope.org/press-release-april-10-2019-astronomers-capture-first-image-black-hole", note: "Primary collaboration release for the 2019 M87 observation, telescope network, black-hole shadow, and image reconstruction." },
+      { label: "NASA Goddard — Black Hole Accretion Disk Visualization", href: "https://svs.gsfc.nasa.gov/13326", note: "Physics-based visualization explaining accretion-disk light bending, viewing angle, Doppler beaming, photon rings, and the shadow." },
+      { label: "Human-centric Computing and Information Sciences — Adaptive polar transform", href: "https://link.springer.com/article/10.1186/s13673-014-0004-z", note: "Peer-reviewed open-access explanation that rotation and uniform scaling become shifts in angular and log-radius directions in log-polar coordinates." },
+      { label: "W3C — Understanding Three Flashes or Below Threshold", href: "https://www.w3.org/WAI/WCAG22/Understanding/three-flashes-or-below-threshold", note: "Current accessibility guidance for testing rapidly changing content at its largest viewing scale." },
+      { label: "Ether-MOSH Singularity registry entry", href: "/effects#singularity", note: "Current public effect, Dimension registry category, Pull, Twist, and Debris ranges, defaults, description, and GLSL source." },
+    ],
+    relatedEffects: ["twirl", "volumetricPull", "depthEcho", "infiniteZoom"],
+    faqs: [
+      { question: "What does the Singularity effect do in Ether-MOSH?", answer: "It mixes the live image with recent finished frames sampled along a moving log-polar vortex, then breaks the flow into curved shards that dissolve before the center." },
+      { question: "Is the Ether-MOSH Singularity effect a black-hole simulation?", answer: "No. It does not model spacetime, gravity, accretion, lensing, radiation, or an event horizon. It is an artistic GPU feedback effect with a black-hole-inspired visual metaphor." },
+      { question: "Where is Singularity, and what settings should I start with?", answer: "Open the FX panel, choose Dimensional, and add Singularity. Start at 0.32 Pull, 0.38 Twist, and 0.28 Debris, then tune while the source is moving." },
+      { question: "Can I use Singularity for print and projection?", answer: "Yes. Freeze and proof a legible still for print; for projection, test the actual display, keep essential text clean, analyze flash risk full-screen, and provide a static or lower-motion alternative." },
+    ],
+  },
 ];
 
 export const NEWS_ARTICLES_BY_SLUG = new Map(NEWS_ARTICLES.map((article) => [article.slug, article]));
@@ -1174,5 +1243,9 @@ export const NEWS_LOOK_EXAMPLES_BY_SLUG: Record<string, [NewsLookExample, NewsLo
   "make-the-film-grain-effect-show-its-receipts": [
     { scene: "Window-lit portrait", settings: "Amount 0.28 · Halation 0.22", result: "Fine colored texture gathers through skin, hair, and clothing midtones while clean black shadows stay comparatively quiet; the bright window and rim-lit hair carry a restrained warm edge." },
     { scene: "Night street with practical lights", settings: "Amount 0.48 · Halation 0.42", result: "Pavement and storefront midtones gain visible moving texture while lamps and white signage bloom into orange-red halos without fogging the entire frame." },
+  ],
+  "make-the-singularity-effect-swallow-the-evidence": [
+    { scene: "Portrait in a structured room", settings: "Pull 0.32 · Twist 0.38 · Debris 0.28", result: "The walls and furniture begin curving toward a slowly wandering dark eye while the foreground face holds together a beat longer and leaves broad readable arcs." },
+    { scene: "Geometric Forge composition", settings: "Pull 0.68 · Twist 0.72 · Debris 0.64", result: "Colored blocks stretch into tight spiral trails, split into staggered shards from recent frames, and dissolve into granular darkness before reaching the moving center." },
   ],
 };

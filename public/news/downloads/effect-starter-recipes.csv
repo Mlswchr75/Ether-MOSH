@@ -15,3 +15,4 @@ Thermal,Color Chaos,Mix,0.35,Range,0.40,CRT + Bloom,"editorial; patterns; venue 
 RGB Shift,Color Chaos,Amount,0.18,Angle,0.25,Jitter + Bloom,"editorial; patterns; vector/Lottie; venue visuals; optics education"
 Oil Slick,Color Chaos,Amount,0.45,Frequency,6,Bloom + Film Grain,"editorial; patterns; vector/Lottie; projection; optics education"
 Film Grain,Atmosphere,Amount,0.28,Halation,0.22,Bloom + Vignette,"editorial; print; patterns; projection; film education"
+Singularity,Dimensional,Pull,0.32,Twist,0.38,Film Grain + Bloom,"editorial; patterns; vector/Lottie; projection; astronomy education"

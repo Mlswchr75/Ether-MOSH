@@ -66,12 +66,12 @@ describe("NewsArticle", () => {
     expect(screen.getByText("3 core controls")).toBeTruthy();
   });
 
-  it("publishes sixteen unique reports including nine September effects and two modes", () => {
-    expect(NEWS_ARTICLES).toHaveLength(16);
-    expect(new Set(NEWS_ARTICLES.map(article => article.slug)).size).toBe(16);
+  it("publishes seventeen unique reports including ten September effects and two modes", () => {
+    expect(NEWS_ARTICLES).toHaveLength(17);
+    expect(new Set(NEWS_ARTICLES.map(article => article.slug)).size).toBe(17);
     expect(NEWS_ARTICLES.find(article => article.effectId === "kaleidoscope")?.steps).toHaveLength(5);
-    expect(NEWS_ARTICLES.filter(article => ["kaleidoscope", "posterize", "duotone", "asciiCollapse", "solarize", "thermal", "rgbShift", "oilSlick", "filmGrain"].includes(article.effectId ?? "")))
-      .toHaveLength(9);
+    expect(NEWS_ARTICLES.filter(article => ["kaleidoscope", "posterize", "duotone", "asciiCollapse", "solarize", "thermal", "rgbShift", "oilSlick", "filmGrain", "singularity"].includes(article.effectId ?? "")))
+      .toHaveLength(10);
     expect(NEWS_ARTICLES.filter(article => article.subjectKind === "mode").map(article => article.effectName))
       .toEqual(["Forge Mode", "Pattern / Motif Mode"]);
   });
@@ -98,8 +98,8 @@ describe("NewsArticle", () => {
     expect(container.querySelectorAll(".news-look-examples article")).toHaveLength(2);
   });
 
-  it("keeps the eight recent reports answer-first and release-complete", () => {
-    const batch = NEWS_ARTICLES.filter(article => ["posterize", "duotone", "asciiCollapse", "solarize", "thermal", "rgbShift", "oilSlick", "filmGrain"].includes(article.effectId ?? ""));
+  it("keeps the nine recent reports answer-first and release-complete", () => {
+    const batch = NEWS_ARTICLES.filter(article => ["posterize", "duotone", "asciiCollapse", "solarize", "thermal", "rgbShift", "oilSlick", "filmGrain", "singularity"].includes(article.effectId ?? ""));
     for (const article of batch) {
       const answerWords = article.tldr.trim().split(/\s+/).length;
       expect(answerWords, `${article.slug} direct answer`).toBeGreaterThanOrEqual(40);
@@ -197,5 +197,20 @@ describe("NewsArticle", () => {
       .toBe("https://aestheticrebellion.store/products/stipple-wave-long-fleece-coat");
     expect(screen.getByRole("link", { name: "Download .md" }).getAttribute("href"))
       .toBe("/news/downloads/film-grain-field-card.md");
+  });
+
+  it("renders Singularity controls, scientific distinction, download, and live product link", () => {
+    renderArticle("make-the-singularity-effect-swallow-the-evidence");
+
+    expect(screen.getByRole("heading", { name: "Make the Singularity Effect Swallow the Evidence" })).toBeTruthy();
+    expect(screen.getByText("Pull")).toBeTruthy();
+    expect(screen.getByText("Twist")).toBeTruthy();
+    expect(screen.getByText("Debris")).toBeTruthy();
+    expect(screen.getAllByText(/not a black-hole simulation/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByRole("navigation", { name: "Related effects" }).querySelectorAll("a")).toHaveLength(4);
+    expect(screen.getByRole("link", { name: /View the thing we interrupted science for/i }).getAttribute("href"))
+      .toBe("https://aestheticrebellion.store/products/neon-cell-aop-hoodie");
+    expect(screen.getByRole("link", { name: "Download .md" }).getAttribute("href"))
+      .toBe("/news/downloads/singularity-field-card.md");
   });
 });
