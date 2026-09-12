@@ -16,3 +16,4 @@ RGB Shift,Color Chaos,Amount,0.18,Angle,0.25,Jitter + Bloom,"editorial; patterns
 Oil Slick,Color Chaos,Amount,0.45,Frequency,6,Bloom + Film Grain,"editorial; patterns; vector/Lottie; projection; optics education"
 Film Grain,Atmosphere,Amount,0.28,Halation,0.22,Bloom + Vignette,"editorial; print; patterns; projection; film education"
 Singularity,Dimensional,Pull,0.32,Twist,0.38,Film Grain + Bloom,"editorial; patterns; vector/Lottie; projection; astronomy education"
+Anaglyph,Color Chaos,Amount,0.28,Depth,0.18,Film Grain + Bloom,"editorial; patterns; vector/Lottie; projection; stereo education"

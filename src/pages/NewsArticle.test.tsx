@@ -66,12 +66,12 @@ describe("NewsArticle", () => {
     expect(screen.getByText("3 core controls")).toBeTruthy();
   });
 
-  it("publishes seventeen unique reports including ten September effects and two modes", () => {
-    expect(NEWS_ARTICLES).toHaveLength(17);
-    expect(new Set(NEWS_ARTICLES.map(article => article.slug)).size).toBe(17);
+  it("publishes eighteen unique reports including eleven September effects and two modes", () => {
+    expect(NEWS_ARTICLES).toHaveLength(18);
+    expect(new Set(NEWS_ARTICLES.map(article => article.slug)).size).toBe(18);
     expect(NEWS_ARTICLES.find(article => article.effectId === "kaleidoscope")?.steps).toHaveLength(5);
-    expect(NEWS_ARTICLES.filter(article => ["kaleidoscope", "posterize", "duotone", "asciiCollapse", "solarize", "thermal", "rgbShift", "oilSlick", "filmGrain", "singularity"].includes(article.effectId ?? "")))
-      .toHaveLength(10);
+    expect(NEWS_ARTICLES.filter(article => ["kaleidoscope", "posterize", "duotone", "asciiCollapse", "solarize", "thermal", "rgbShift", "oilSlick", "filmGrain", "singularity", "anaglyph"].includes(article.effectId ?? "")))
+      .toHaveLength(11);
     expect(NEWS_ARTICLES.filter(article => article.subjectKind === "mode").map(article => article.effectName))
       .toEqual(["Forge Mode", "Pattern / Motif Mode"]);
   });
@@ -98,8 +98,8 @@ describe("NewsArticle", () => {
     expect(container.querySelectorAll(".news-look-examples article")).toHaveLength(2);
   });
 
-  it("keeps the nine recent reports answer-first and release-complete", () => {
-    const batch = NEWS_ARTICLES.filter(article => ["posterize", "duotone", "asciiCollapse", "solarize", "thermal", "rgbShift", "oilSlick", "filmGrain", "singularity"].includes(article.effectId ?? ""));
+  it("keeps the ten recent reports answer-first and release-complete", () => {
+    const batch = NEWS_ARTICLES.filter(article => ["posterize", "duotone", "asciiCollapse", "solarize", "thermal", "rgbShift", "oilSlick", "filmGrain", "singularity", "anaglyph"].includes(article.effectId ?? ""));
     for (const article of batch) {
       const answerWords = article.tldr.trim().split(/\s+/).length;
       expect(answerWords, `${article.slug} direct answer`).toBeGreaterThanOrEqual(40);
@@ -212,5 +212,18 @@ describe("NewsArticle", () => {
       .toBe("https://aestheticrebellion.store/products/neon-cell-aop-hoodie");
     expect(screen.getByRole("link", { name: "Download .md" }).getAttribute("href"))
       .toBe("/news/downloads/singularity-field-card.md");
+  });
+
+  it("renders Anaglyph controls, true-stereo distinction, download, and no unavailable product link", () => {
+    const { container } = renderArticle("make-the-anaglyph-effect-prove-it-has-depth");
+
+    expect(screen.getByRole("heading", { name: "Make the Anaglyph Effect Prove It Has Depth" })).toBeTruthy();
+    expect(screen.getByText("Amount")).toBeTruthy();
+    expect(screen.getByText("Depth")).toBeTruthy();
+    expect(screen.getAllByText(/does not create a true stereo pair/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByRole("navigation", { name: "Related effects" }).querySelectorAll("a")).toHaveLength(4);
+    expect(container.querySelector(".news-sponsor")).toBeNull();
+    expect(screen.getByRole("link", { name: "Download .md" }).getAttribute("href"))
+      .toBe("/news/downloads/anaglyph-field-card.md");
   });
 });

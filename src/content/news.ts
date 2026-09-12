@@ -23,7 +23,7 @@ export type NewsArticle = {
   quote: string;
   quoteAttribution: string;
   downloadHref: string;
-  product: { name: string; href: string; copy: string };
+  product?: { name: string; href: string; copy: string };
   sources: { label: string; href: string; note: string }[];
   relatedEffects: string[];
   faqs: { question: string; answer: string }[];
@@ -1173,6 +1173,71 @@ export const NEWS_ARTICLES: NewsArticle[] = [
       { question: "Can I use Singularity for print and projection?", answer: "Yes. Freeze and proof a legible still for print; for projection, test the actual display, keep essential text clean, analyze flash risk full-screen, and provide a static or lower-motion alternative." },
     ],
   },
+  {
+    slug: "make-the-anaglyph-effect-prove-it-has-depth",
+    subjectKind: "effect",
+    effectId: "anaglyph",
+    effectName: "Anaglyph",
+    category: "Color Chaos",
+    title: "Make the Anaglyph Effect Prove It Has Depth",
+    dek: "A practical hearing on red-cyan separation, the two viewpoints a real anaglyph needs, and the single-image shader currently wearing depth like a borrowed lab coat.",
+    description: "Learn how the Ether-MOSH Anaglyph effect uses Amount and Depth for red-cyan separation in print, motion, projection, patterns, and stereo education.",
+    publishedAt: "2026-09-12T08:00:00-07:00",
+    readMinutes: 6,
+    image: "/news/anaglyph-depth-hearing.jpg",
+    imageAlt: "Fictional museum technicians review the Ether-MOSH Anaglyph effect as a projected sculpture splits into red and cyan horizontal edges",
+    imageCaption: "The fictional depth committee found two colors, one source image, and a suspicious shortage of second cameras.",
+    keywords: ["Anaglyph effect", "red cyan effect", "Ether-MOSH Anaglyph", "stereoscopic image", "3D effect tutorial", "projection visuals", "glitch art"],
+    tldr: "An anaglyph combines color-separated views so filtered eyes receive different images and the brain can infer depth. The Ether-MOSH Anaglyph effect is a single-image stylization: Amount blends red-cyan separation, while Depth controls luminance-driven horizontal offset. It does not create a true stereo pair. Find it under Color Chaos; start near 0.28 Amount and 0.18 Depth.",
+    satireDisclosure: "The museum hearing, depth committee, technicians, missing second camera, and all quoted officials are fictional. The stereoscopy history, NASA examples, visual-comfort research, Ether-MOSH controls and shader behavior, accessibility guidance, and production advice are factual and sourced.",
+    dispatch: [
+      "At 09:06, the fictional Municipal Office of Dimensional Claims ordered a marble head to prove it had depth. Inspector Ruby Cyan arrived with three cardboard glasses, one clipboard, and the legal confidence of a person who had never opened the shader.",
+      "The exhibit produced persuasive red-cyan edges but only one source image. When asked for the second camera view required by actual stereo, the effect pointed at its Depth slider and requested that the distinction be entered into the minutes as ‘administratively three-dimensional.’",
+    ],
+    explanation: [
+      "Stereoscopy predates the anaglyph. Charles Wheatstone demonstrated the mirror stereoscope in 1838. Historical research credits Wilhelm Rollmann with using color separation for stereo drawings in 1853, Joseph-Charles d'Almeida with a two-lantern filtered projection in 1858, and Louis Ducos du Hauron with overprinted photographic anaglyphs and the name in 1891.",
+      "A real anaglyph starts with two views from slightly different positions. The views are superimposed in different colors—commonly red and cyan—and matching filters route a different view to each eye, allowing binocular disparity to support perceived depth. NASA still uses the method for public and scientific views: its MISR instrument records Earth from nine camera angles, and MESSENGER imagery has been released as red-cyan crater anaglyphs.",
+      "Ether-MOSH does something related-looking but mechanically different. Its shader calculates source luminance, treats brightness as a crude depth proxy, and samples the same image to the left and right by a Depth-controlled horizontal offset. Red comes from one sample; green and blue come from the other; Amount blends that result over the source. Amount at 0 is a true visual bypass. Depth at 0 removes the spatial offset, although Amount can still leave a slight channel weighting. No second viewpoint or measured scene depth is created.",
+    ],
+    steps: [
+      "Open MOSH, load a portrait, sculpture, product still, architectural detail, camera feed, or Forge composition with one clear foreground shape, then open the FX panel.",
+      "Choose Color Chaos and add Anaglyph. Start with Amount at 0.28 and Depth at 0.18 so the red-cyan edge is readable without detaching the whole subject.",
+      "Move Depth first. Bright regions receive wider horizontal separation because luminance drives the offset; dark regions stay comparatively tight. This is an artistic depth cue, not recovered geometry.",
+      "Adjust Amount for the blend. Set Amount to 0 for an untouched source; setting only Depth to 0 removes displacement but may retain a slight red-cyan color weighting. Keep captions, legends, and safety information outside the effected layer.",
+      "Record one slow Depth move or freeze a strong still. Proof print and 3×3 repeats, simplify contours before vector tracing, test the actual projector or LED wall, analyze rapid cuts for flash risk, and provide a clean non-stereo alternative for viewers who cannot fuse or distinguish the color channels.",
+    ],
+    parameters: [
+      { control: "Amount", purpose: "Blends the source with the red-cyan channel-separated result", low: "0 is an untouched source", high: "0.70–1 color split dominates", sweetSpot: "0.28" },
+      { control: "Depth", purpose: "Sets luminance-driven horizontal sample separation", low: "0 removes spatial offset", high: "0.60–1 broad bright-region parallax", sweetSpot: "0.18" },
+    ],
+    uses: [
+      { title: "Print + editorial", body: "Freeze a frame with legible silhouettes, soft-proof the saturated fringes, and inspect registration at final size. Red-cyan edges can become excellent poster tension or an accidental prepress complaint, depending on whether you checked the proof." },
+      { title: "Pattern + textiles", body: "Use hard-edged motifs, keep Depth moderate, and inspect a 3×3 repeat. Horizontal channel ghosts can create directional rhythm, but a bright shape crossing the tile edge may repeat as a red-cyan zipper across the entire garment." },
+      { title: "Vector + Lottie", body: "Trace only a few dominant red and cyan contours into separate vector paths, then animate their separation slowly in Lottie or motion graphics. Preserve labels as real text and do not convert every noisy fringe into six thousand points of professional regret." },
+      { title: "Projection + venue", body: "Use sculpture, dancers, architecture, or bold Forge shapes and rehearse on the actual surface. Large disparity and rapid changes can be uncomfortable; keep essential content clean, avoid fast saturated-red flashing, and offer a lower-motion or flat cue." },
+      { title: "Museum + education", body: "Show a real two-view NASA anaglyph beside the Ether-MOSH single-image stylization. Label viewpoint disparity, color filtering, luminance proxy, and crosstalk separately so learners can compare the shared visual language without being told the shader measured depth." },
+    ],
+    quote: "The effect has been granted provisional depth pending delivery of the other photograph.",
+    quoteAttribution: "Ruby Cyan, fictional inspector for the Municipal Office of Dimensional Claims",
+    downloadHref: "/news/downloads/anaglyph-field-card.md",
+    sources: [
+      { label: "NASA Earth Matters — What on Earth Is an Anaglyph?", href: "https://science.nasa.gov/blogs/earth-matters/2016/11/21/what-on-earth-is-an-anaglyph/", note: "Authoritative explanation of two-view red-cyan image separation, colored filters, binocular depth, Wheatstone's stereoscope, and NASA MISR's nine viewing angles." },
+      { label: "Perception — On the Origins of Terms in Binocular Vision", href: "https://pmc.ncbi.nlm.nih.gov/articles/PMC7926055/", note: "Peer-reviewed history of Rollmann's 1853 color separation, d'Almeida's 1858 projection, and Ducos du Hauron's 1891 printed anaglyph method and terminology." },
+      { label: "NASA MESSENGER — Seeing to New Depths (Anaglyph)", href: "https://science.nasa.gov/photojournal/seeing-to-new-depths-anaglyph/", note: "Primary red-cyan crater anaglyph released from MESSENGER imagery, with viewing instructions and downloadable source files." },
+      { label: "Journal of Vision — The Zone of Comfort", href: "https://pmc.ncbi.nlm.nih.gov/articles/PMC3369815/", note: "Peer-reviewed evidence and production guidance on binocular disparity, vergence-accommodation conflict, visual discomfort, and viewing conditions for stereo displays." },
+      { label: "W3C — Understanding Use of Color", href: "https://www.w3.org/WAI/WCAG22/Understanding/use-of-color", note: "Current accessibility guidance that information conveyed by color also needs another visual or textual cue." },
+      { label: "W3C — Understanding Three Flashes or Below Threshold", href: "https://www.w3.org/WAI/WCAG22/Understanding/three-flashes-or-below-threshold", note: "Current accessibility guidance for testing rapidly changing content, including the special saturated-red flash threshold." },
+      { label: "Ether-MOSH Anaglyph registry entry", href: "/effects#anaglyph", note: "Current public effect, Color category, Amount and Depth ranges, defaults, description, and GLSL source." },
+      { label: "RGB Shift field report", href: "/news/make-the-rgb-shift-effect-split-before-it-gets-a-lawyer", note: "Related guide to radial channel separation and the difference between a shader treatment and a physical optical process." },
+    ],
+    relatedEffects: ["rgbShift", "depthShear", "depthEcho", "parallaxExplode"],
+    faqs: [
+      { question: "What does the Anaglyph effect do in Ether-MOSH?", answer: "It uses source brightness to offset two samples horizontally, takes red from one and green-blue from the other, then blends the result over the original image." },
+      { question: "Does the Ether-MOSH Anaglyph effect make real stereoscopic 3D?", answer: "No. A real anaglyph uses separate left-eye and right-eye viewpoints. Ether-MOSH stylizes one image with luminance-driven red-cyan parallax, so it should not be presented as measured or captured depth." },
+      { question: "Where is Anaglyph, and what settings should I start with?", answer: "Open the FX panel, choose Color Chaos, and add Anaglyph. Start at 0.28 Amount and 0.18 Depth, then raise Depth slowly while watching important edges." },
+      { question: "How do I use an anaglyph-style effect accessibly?", answer: "Never encode essential meaning only in red and cyan, keep text and safety information outside the effect, provide a clean alternate, limit uncomfortable disparity, and test delivered motion for general and saturated-red flash risk." },
+    ],
+  },
 ];
 
 export const NEWS_ARTICLES_BY_SLUG = new Map(NEWS_ARTICLES.map((article) => [article.slug, article]));
@@ -1247,5 +1312,9 @@ export const NEWS_LOOK_EXAMPLES_BY_SLUG: Record<string, [NewsLookExample, NewsLo
   "make-the-singularity-effect-swallow-the-evidence": [
     { scene: "Portrait in a structured room", settings: "Pull 0.32 · Twist 0.38 · Debris 0.28", result: "The walls and furniture begin curving toward a slowly wandering dark eye while the foreground face holds together a beat longer and leaves broad readable arcs." },
     { scene: "Geometric Forge composition", settings: "Pull 0.68 · Twist 0.72 · Debris 0.64", result: "Colored blocks stretch into tight spiral trails, split into staggered shards from recent frames, and dissolve into granular darkness before reaching the moving center." },
+  ],
+  "make-the-anaglyph-effect-prove-it-has-depth": [
+    { scene: "Side-lit stone portrait", settings: "Amount 0.28 · Depth 0.18", result: "The bright forehead, nose, and shoulder gain crisp red and cyan horizontal rims while the darker eye sockets and background remain comparatively tight and readable." },
+    { scene: "Hard-edged geometric sculpture", settings: "Amount 0.55 · Depth 0.38", result: "White faces split into broad opposing color ghosts, midtone edges separate less dramatically, and black negative space keeps the composition from becoming one continuous pair of cardboard glasses." },
   ],
 };
