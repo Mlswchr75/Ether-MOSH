@@ -34,6 +34,8 @@ import {
 } from '@/engine/overlay/lottieStickerMode';
 import { focusFromSegmentationMasks } from '@/engine/overlay/stickerIsolation';
 
+import { renderFxStack, paintFxFrame } from '@/engine/overlay/fxStackCapture';
+
 type Phase = 'idle' | 'capturing' | 'recording' | 'encoding';
 
 function overlayUsesUrl(url: string): boolean {
@@ -78,6 +80,10 @@ export function StickerCapture() {
   const studioRef = useRef<HTMLElement>(null);
   const studioHidden = useProximityIdle(studioRef);
   const [galleryOpen, setGalleryOpen] = useState(false);
+  const [captureStyle, setCaptureStyle] = useState<'subject' | 'fx'>('subject');
+  const fxMode = captureStyle === 'fx';
+  const [fxKey, setFxKey] = useState<LottieStickerBackground>('black');
+  const [fxCutoff, setFxCutoff] = useState(.04);
   const [lottieMode, setLottieMode] = useState(false);
   const [lottieBackground, setLottieBackground] = useState<LottieStickerBackground>('black');
   const [includeGif, setIncludeGif] = useState(true);
@@ -151,7 +157,7 @@ export function StickerCapture() {
   const prepareIsolationFocus = useCallback(async (point = tapPoint): Promise<OrganicFocus | undefined> => {
     const source = glRef.current;
     const mode = useStore.getState().isolationMode;
-    if (!source || source.width < 2 || source.height < 2 || mode === 'off' || transparentActive) {
+    if (!source || source.width < 2 || source.height < 2 || mode === 'off' || transparentActive || fxMode) {
       isolationFocusRef.current = undefined;
       setIsolationState('idle');
       return undefined;
@@ -187,24 +193,24 @@ export function StickerCapture() {
       setIsolationState('organic');
       return organic;
     }
-  }, [tapPoint, transparentActive]);
+  }, [tapPoint, transparentActive, fxMode]);
 
   useEffect(() => {
-    if (!stickerMode || transparentActive) return;
+    if (!stickerMode || transparentActive || fxMode) return;
     isolationFocusRef.current = undefined;
     lockedBoxRef.current = undefined;
     if (isolationMode === 'tap' && !tapPoint) { setIsolationState('tap'); return; }
     const frame = requestAnimationFrame(() => { void prepareIsolationFocus(); });
     return () => cancelAnimationFrame(frame);
-  }, [isolationMode, moshSeed, prepareIsolationFocus, stickerMode, tapPoint, transparentActive]);
+  }, [isolationMode, moshSeed, prepareIsolationFocus, stickerMode, tapPoint, transparentActive, fxMode]);
 
   useEffect(() => {
-    if (stickerMode && isolationMode === 'off' && !transparentActive) setIsolationMode('auto');
-  }, [isolationMode, setIsolationMode, stickerMode, transparentActive]);
+    if (stickerMode && isolationMode === 'off' && !transparentActive && !fxMode) setIsolationMode('auto');
+  }, [isolationMode, setIsolationMode, stickerMode, transparentActive, fxMode]);
 
   useEffect(() => {
-    if (!stickerMode || !lottieMode) return;
-    let raf = 0, frame = 0;
+    if (!stickerMode || (!lottieMode && !fxMode)) return;
+    let raf = 0, frame = 0, lastFxFrame = 0;
     const maxDimension = window.matchMedia('(max-width: 700px)').matches ? 480 : 720;
     const draw = (now: number) => {
       raf = requestAnimationFrame(draw);
@@ -212,6 +218,14 @@ export function StickerCapture() {
       if (!source || !preview || source.width < 2 || source.height < 2) return;
       const ctx = preview.getContext('2d');
       if (!ctx) return;
+      if (fxMode) {
+        if (now - lastFxFrame < 1000 / 24) return;
+        lastFxFrame = now;
+        const stage = previewStageFrameSize(source, maxDimension);
+        if (preview.width !== stage.width || preview.height !== stage.height) { preview.width = stage.width; preview.height = stage.height; }
+        paintFxFrame(ctx, renderFxStack(source, stage.width, stage.height, fxKey, fxCutoff), lottieBackground);
+        return;
+      }
       if (transparentActive) {
         // Genuine alpha, not a synthesized cutout — the preview should show
         // exactly what export will capture, including a fully opaque
@@ -258,7 +272,7 @@ export function StickerCapture() {
     };
     raf = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(raf);
-  }, [isolationMode, lottieBackground, lottieMode, stickerMode, tapPoint, transparentActive]);
+  }, [isolationMode, lottieBackground, lottieMode, stickerMode, tapPoint, transparentActive, fxMode, fxKey, fxCutoff]);
 
   const setPhase = (p: Phase) => { phaseRef.current = p; _setPhase(p); };
 
@@ -309,7 +323,7 @@ export function StickerCapture() {
   }, [publishSticker]);
 
   useEffect(() => {
-    if (!stickerMode) return;
+    if (!stickerMode || fxMode) return;
     segmentationEngine.loadTap();
 
     const tick = () => {
@@ -331,7 +345,7 @@ export function StickerCapture() {
     };
     rafRef.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [stickerMode, finishRecording]);
+  }, [stickerMode, finishRecording, fxMode]);
 
   // The actual capture — segmenting/cropping/compositing off the live
   // render — now happens in OverlayVault's own "mosh:make-sticker" listener
@@ -431,7 +445,14 @@ export function StickerCapture() {
       const maxDimension = outputLongEdge;
       const frames: ImageData[] = [];
       let width = 0, height = 0;
-      if (transparentActive) {
+      if (fxMode) {
+        ({ width, height } = previewStageFrameSize(source, maxDimension));
+        for (let index = 0; index < count; index++) {
+          frames.push(renderFxStack(source, width, height, fxKey, fxCutoff));
+          setLottieProgress((index + 1) / count * .72);
+          if (index < count - 1) await new Promise(resolve => setTimeout(resolve, 1000 / fps));
+        }
+      } else if (transparentActive) {
         // Genuine-alpha path: no energy field, no invented cutout — the
         // uploaded PNG's own alpha channel, now carried and reshaped by
         // every FX shader in the live MOSH pipeline, is captured straight
@@ -519,7 +540,67 @@ export function StickerCapture() {
       setPhase('idle');
       window.setTimeout(() => setLottieProgress(0), 800);
     }
-  }, [includeGif, isolationMode, loopSeconds, outputLongEdge, tapPoint, transparentActive]);
+  }, [includeGif, isolationMode, loopSeconds, outputLongEdge, tapPoint, transparentActive, fxMode, fxKey, fxCutoff]);
+
+  const exportFxMedia = useCallback(async (format: 'png' | 'gif' | 'transparent-gif' | 'video') => {
+    const source = glRef.current;
+    if (!source || phaseRef.current !== 'idle') return;
+    setPhase('encoding');
+    useStore.getState().setCaptureLocked(true);
+    let stream: MediaStream | undefined;
+    let recorder: MediaRecorder | undefined;
+    try {
+      const { width, height } = previewStageFrameSize(source, outputLongEdge);
+      const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      if (!ctx) throw new Error('Canvas unavailable');
+      const draw = () => paintFxFrame(ctx, renderFxStack(source, width, height, fxKey, fxCutoff), format === 'transparent-gif' || (format === 'png' && lottieMode) ? undefined : lottieBackground);
+      draw();
+      let blob: Blob;
+      if (format === 'png') {
+        blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob(b => b ? resolve(b) : reject(new Error('PNG encoding failed')), 'image/png'));
+      } else if (format === 'video') {
+        if (typeof MediaRecorder === 'undefined' || !canvas.captureStream) throw new Error('Video recording unavailable in this browser');
+        const mimeType = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm', 'video/mp4'].find(t => MediaRecorder.isTypeSupported(t));
+        if (!mimeType) throw new Error('No supported video encoder');
+        stream = canvas.captureStream(30);
+        recorder = new MediaRecorder(stream, { mimeType });
+        const chunks: Blob[] = [];
+        const finished = new Promise<Blob>((resolve, reject) => {
+          recorder!.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+          recorder!.onstop = () => resolve(new Blob(chunks, { type: mimeType }));
+          recorder!.onerror = () => reject(new Error('Video encoding failed'));
+        });
+        // Attach rejection handling immediately while capture is still running.
+        void finished.catch(() => {});
+        recorder.start();
+        const start = performance.now();
+        while (performance.now() - start < loopSeconds * 1000) {
+          draw(); setLottieProgress((performance.now() - start) / (loopSeconds * 1000));
+          await new Promise(resolve => setTimeout(resolve, 1000 / 30));
+        }
+        recorder.stop(); blob = await finished;
+      } else {
+        const frames: ImageData[] = [];
+        const count = Math.round(loopSeconds * 8);
+        for (let i = 0; i < count; i++) {
+          draw(); frames.push(ctx.getImageData(0, 0, width, height));
+          setLottieProgress((i + 1) / count);
+          if (i < count - 1) await new Promise(resolve => setTimeout(resolve, 125));
+        }
+        blob = await encodeTransparentStickerGif(frames, 8);
+      }
+      const extension = format === 'video' ? blob.type.includes('mp4') ? 'mp4' : 'webm' : format === 'png' ? 'png' : 'gif';
+      downloadBlob(blob, `mosh-fx-stack-${Date.now()}.${extension}`);
+      toast.success('FX Stack capture exported');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'FX capture failed');
+    } finally {
+      if (recorder?.state === 'recording') recorder.stop();
+      stream?.getTracks().forEach(track => track.stop());
+      useStore.getState().setCaptureLocked(false); setPhase('idle'); setLottieProgress(0);
+    }
+  }, [fxKey, fxCutoff, lottieMode, lottieBackground, loopSeconds, outputLongEdge]);
 
   // Cmd/Ctrl+Shift+K, handled globally in Editor.tsx (this component is always
   // mounted, same "always-listening" setup as "mosh:make-sticker" above) —
@@ -547,6 +628,7 @@ export function StickerCapture() {
   const rerollStickerShape = useCallback(() => {
     const source = glRef.current;
     if (!source || phaseRef.current !== 'idle' || source.width < 2 || source.height < 2) return;
+    if (fxMode) return;
     if (transparentActive) {
       // Genuine-alpha path: there's no synthesized mask to regenerate, but
       // the crop window around the actual alpha content is still worth a
@@ -570,7 +652,7 @@ export function StickerCapture() {
     const freshBox: ContentBox = { left: isolated.left, right: isolated.right, top: isolated.top, bottom: isolated.bottom };
     lockedBoxRef.current = freshBox;
     doFlash();
-  }, [isolationMode, tapPoint, transparentActive]);
+  }, [isolationMode, tapPoint, transparentActive, fxMode]);
 
   useEffect(() => {
     window.addEventListener('mosh:reroll-sticker-shape', rerollStickerShape);
@@ -662,9 +744,9 @@ export function StickerCapture() {
       {/* Universal overlay interaction surface: imports + placed entities. */}
       <OverlayStage />
 
-      {lottieMode && <canvas ref={previewRef} aria-label="Lottie Sticker live preview" className="pointer-events-none absolute inset-0 z-[24] h-full w-full" />}
+      {(lottieMode || fxMode) && <canvas ref={previewRef} aria-label="Lottie Sticker live preview" className="pointer-events-none absolute inset-0 z-[24] h-full w-full" />}
 
-      {isolationMode === 'tap' && tapArmed && !transparentActive && (
+      {!fxMode && isolationMode === 'tap' && tapArmed && !transparentActive && (
         <div
           role="button"
           tabIndex={0}
@@ -705,7 +787,16 @@ export function StickerCapture() {
           <button type="button" onClick={() => useStore.getState().setStickerMode(false)} aria-label="Close Sticker panel" className="rounded-full p-1 text-white/40 hover:bg-white/10 hover:text-white"><X size={11} /></button>
         </div>
 
-        <div className="mt-3 rounded-xl border border-cyan-200/15 bg-cyan-300/[0.035] p-2">
+        <div className="mt-3 grid grid-cols-2 gap-2" role="group" aria-label="Sticker capture process">
+          {(['subject', 'fx'] as const).map(value => <button key={value} type="button" disabled={phase !== 'idle'} aria-pressed={captureStyle === value} onClick={() => { setCaptureStyle(value); isolationRequestRef.current++; setTapArmed(false); }} className={`rounded-lg border p-2 text-xs ${captureStyle === value ? 'border-violet-300 text-violet-100 bg-violet-400/20' : 'border-white/20 text-white/50'}`}>{value === 'subject' ? 'Subject · Original' : 'FX Stack'}</button>)}
+        </div>
+        {fxMode && <div className="mt-3 space-y-2 text-xs text-white/70">
+          <p>Capture the entire moving stack. No subject selection or moving crop.</p>
+          <label className="flex justify-between">Remove background<select disabled={phase !== 'idle'} value={fxKey} onChange={e => setFxKey(e.target.value as LottieStickerBackground)} className="bg-black"><option value="black">Dark</option><option value="white">Light</option></select></label>
+          <label className="block">Background cutoff · {Math.round(fxCutoff * 100)}%<input aria-label="FX background cutoff" disabled={phase !== 'idle'} type="range" min="0" max="0.5" step="0.01" value={fxCutoff} onChange={e => setFxCutoff(Number(e.target.value))} className="w-full" /></label>
+          <p className="text-[10px] text-white/40">Dark/light removal also removes matching artwork colors. Lower cutoff preserves faint trails. Lottie and transparent GIF keep alpha.</p>
+        </div>}
+        {!fxMode && <div className="mt-3 rounded-xl border border-cyan-200/15 bg-cyan-300/[0.035] p-2">
           <div className="mb-1.5 flex items-center justify-between"><span className="font-mono text-[7px] uppercase tracking-[0.14em] text-cyan-100/75">Cut intelligence</span><span className="font-mono text-[6px] uppercase tracking-[0.1em] text-white/35">{isolationLabel}</span></div>
           <div className="grid grid-cols-3 gap-1">
             {([
@@ -727,10 +818,13 @@ export function StickerCapture() {
           <p className="mt-1.5 font-mono text-[6px] leading-relaxed tracking-[0.06em] text-white/30">
             {isolationMode === 'layers' ? 'Keeps up to three distinct, related elements with transparent space between them.' : isolationMode === 'tap' ? 'Choose the exact subject or visual layer directly on the canvas.' : 'Ranks semantic subjects, composition, edge integrity and saliency automatically.'}
           </p>
-        </div>
+        </div>}
 
         <div className="mt-2 flex gap-1.5">
-          {captureButton}
+          {!fxMode && captureButton}
+          {fxMode && <div className="grid flex-1 grid-cols-2 gap-1">
+            {(['png', 'gif', 'transparent-gif', 'video'] as const).map(format => <button type="button" key={format} disabled={phase !== 'idle'} onClick={() => void exportFxMedia(format)} className="rounded border border-white/20 p-2 text-[10px] text-white/80 disabled:opacity-40">{format === 'png' ? lottieMode ? 'Transparent PNG' : 'PNG' : format === 'transparent-gif' ? 'Transparent GIF' : format.toUpperCase()}</button>)}
+          </div>}
           <button type="button" onClick={() => window.dispatchEvent(new Event('mosh:toggle-sticker-vault'))} className="flex items-center justify-center rounded-full border border-white/15 px-3 text-white/50 transition hover:border-cyan-200/30 hover:text-cyan-100" aria-label="Open Sticker Vault"><Library size={12} /></button>
         </div>
 
@@ -751,7 +845,7 @@ export function StickerCapture() {
           <input type="checkbox" checked={includeGif} onChange={event => setIncludeGif(event.target.checked)} className="accent-violet-400" />
           Transparent GIF
         </label>}
-        {lottieMode && <div className="mt-2 space-y-2 border-t border-white/10 pt-2">
+        {(lottieMode || fxMode) && <div className="mt-2 space-y-2 border-t border-white/10 pt-2">
           <input
             ref={fileInputRef}
             type="file"
@@ -782,7 +876,7 @@ export function StickerCapture() {
             </div>
           )}
           <div className="flex items-center justify-between gap-2 font-mono text-[7px] uppercase tracking-[0.1em] text-white/45">
-            <span>Living background</span>
+            <span>Preview / capture background</span>
             <div className="flex overflow-hidden rounded-full border border-white/15">
               {(['black', 'white'] as LottieStickerBackground[]).map(value => <button type="button" key={value} onClick={() => setLottieBackground(value)} data-active={lottieBackground === value || undefined} className={`px-2 py-1 ${lottieBackground === value ? 'bg-violet-400/20 text-violet-100' : 'text-white/40'}`}>{value}</button>)}
             </div>
@@ -802,8 +896,8 @@ export function StickerCapture() {
             className="flex w-full items-center justify-center gap-1.5 rounded-full border border-violet-300/35 bg-violet-400/10 px-3 py-2 font-mono text-[8px] uppercase tracking-[0.14em] text-violet-100 disabled:opacity-40"
           >{phase === 'encoding' ? <LoaderCircle size={11} className="animate-spin" /> : <Film size={11} />} {phase === 'encoding' ? `Capturing ${Math.round(lottieProgress * 100)}%` : includeGif ? 'Export Lottie + GIF' : 'Export Transparent Lottie'}</button>
           <p className="font-mono text-[6px] uppercase leading-relaxed tracking-[0.08em] text-white/25">
-            {transparentActive
-              ? "Living background is preview-only. Export preserves the source's real transparency straight through — every FX shape it."
+            {fxMode ? 'Full-frame FX capture. JSON saves to Sticker Vault. Background removal follows the cutoff above.' : transparentActive
+              ? "Background is preview-only. Export preserves the source's real transparency straight through — every FX shape it."
               : 'Preview fill is removed on export. JSON auto-saves to Sticker Vault.'}
           </p>
         </div>}
