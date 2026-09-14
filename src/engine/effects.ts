@@ -1,3 +1,5 @@
+import { FLOATING_EFFECTS, FLOATING_HEADER } from './floatingEffects';
+
 export type ParamSchema = {
   key: string;
   label: string;
@@ -42,12 +44,14 @@ export type EffectDef = {
    *  instead of the manager's live-driven effect. Still fully renderable via
    *  EFFECTS_BY_ID and still gets warmup-precompiled. */
   internal?: boolean;
+  /** Emits explicit moving coverage when FX Stack confinement is enabled. */
+  stickerShape?: boolean;
 };
 
 /** Common texture uniforms reserved by every effect shader. Keep scalar params
  * outside this namespace so their saved keys remain valid GLSL uniforms. */
 export const EFFECT_SAMPLER_NAMES = [
-  "uTex", "uFeedback", "uDepthTex", "uFlowTex", "uHist0", "uHist1", "uHist2", "uHist3",
+  "uShapeSource", "uTex", "uFeedback", "uDepthTex", "uFlowTex", "uHist0", "uHist1", "uHist2", "uHist3",
 ] as const;
 
 const COMMON_HEADER = /* glsl */ `
@@ -169,6 +173,11 @@ const fx = (id: string, name: string, category: EffectCategory, blurb: string, p
 });
 
 export const EFFECTS: EffectDef[] = [
+  ...FLOATING_EFFECTS.map(spec => ({
+    ...fx(spec.id, spec.name, "geometry", spec.blurb, spec.params, spec.body),
+    stickerShape: true,
+    frag: COMMON_HEADER + spec.params.map(p => `uniform float u${p.key[0].toUpperCase() + p.key.slice(1)};`).join("\n") + FLOATING_HEADER + "\nvoid main(){\n" + spec.body + "\n}",
+  })),
   // ── DATA CORRUPTION ───────────────────────────────────────────────
   fx("pixelSort", "Pixel Sort", "corruption", "Brightness-driven horizontal smear.",
     [{ key: "amount", label: "Amount", min: 0, max: 1, default: 0.5 },

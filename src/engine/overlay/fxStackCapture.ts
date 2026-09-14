@@ -1,10 +1,15 @@
 export type FxBackdrop = 'black' | 'white';
-type Provider = { enable: (active: boolean) => void; read: (width: number, height: number, cutoff: number) => ImageData };
+export type FxShapeOptions = { stayInside: boolean; combine: 'join' | 'overlap' | 'cut' };
+type Provider = { configure?: (options: FxShapeOptions) => void; enable: (active: boolean) => void; read: (width: number, height: number, cutoff: number) => ImageData };
 const providers = new WeakMap<HTMLCanvasElement, Provider>();
 const active = new WeakSet<HTMLCanvasElement>();
+const settings = new WeakMap<HTMLCanvasElement, FxShapeOptions>();
 export function registerFxCapture(canvas: HTMLCanvasElement, provider: Provider) {
-  providers.set(canvas, provider); provider.enable(active.has(canvas));
+  providers.set(canvas, provider); provider.configure?.(settings.get(canvas) ?? { stayInside: true, combine: 'join' }); provider.enable(active.has(canvas));
   return () => { if (providers.get(canvas) === provider) providers.delete(canvas); };
+}
+export function configureFxCapture(canvas: HTMLCanvasElement, options: FxShapeOptions) {
+  settings.set(canvas, options); providers.get(canvas)?.configure?.(options);
 }
 export function enableFxCapture(canvas: HTMLCanvasElement) {
   active.add(canvas); providers.get(canvas)?.enable(true);
@@ -35,5 +40,5 @@ export function paintFxFrame(ctx: CanvasRenderingContext2D, frame: ImageData, ba
   ctx.drawImage(canvas,0,0,ctx.canvas.width,ctx.canvas.height);
 }
 export const FX_DIFFERENCE_FRAG = `precision highp float; varying vec2 vUv;
-uniform sampler2D uBefore,uAfter,uColor;uniform float uCutoff;
-void main(){vec4 before=texture2D(uBefore,vUv),after=texture2D(uAfter,vUv),color=texture2D(uColor,vUv);vec4 d=abs(after-before);float change=max(max(d.r,d.g),max(d.b,d.a));float coverage=smoothstep(uCutoff,uCutoff+.04,change);float a=color.a*coverage;gl_FragColor=vec4(a>0.?color.rgb:vec3(0.),a);}`;
+uniform sampler2D uBefore,uAfter,uColor;uniform float uCutoff,uUseShape;
+void main(){vec4 before=texture2D(uBefore,vUv),after=texture2D(uAfter,vUv),color=texture2D(uColor,vUv);vec4 d=abs(after-before);float change=max(max(d.r,d.g),max(d.b,d.a));float coverage=uUseShape>0.5?1.0:smoothstep(uCutoff,uCutoff+.04,change);float a=color.a*coverage;gl_FragColor=vec4(a>0.?color.rgb:vec3(0.),a);}`;

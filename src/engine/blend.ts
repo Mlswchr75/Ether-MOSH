@@ -76,6 +76,7 @@ uniform sampler2D uCur;
 uniform sampler2D uRegionDepth;
 uniform float uOpacity;
 uniform int uMode;
+uniform int uStickerAlpha;
 uniform int uRegionMode;
 uniform float uRegionScale;
 uniform float uRegionPhase;
@@ -175,7 +176,13 @@ void main() {
   else                 outRgb = b + t;
   float a = uOpacity * cur.a * regionMask(vUv);
   outRgb = mix(b, outRgb, a);
-  gl_FragColor = vec4(linearToSrgb(outRgb), max(prev.a, a));
+  float alpha = max(prev.a, a);
+  // Effect opacity blends the image and its moving silhouette together. A
+  // first shape replaces opaque source coverage, never unions with it.
+  if (uStickerAlpha == 1) alpha = cur.a * regionMask(vUv);
+  else if (uStickerAlpha == 2) alpha = mix(prev.a, cur.a, uOpacity * regionMask(vUv));
+  else if (uStickerAlpha == 3) alpha = mix(prev.a, cur.a, regionMask(vUv));
+  gl_FragColor = vec4(linearToSrgb(outRgb), alpha);
 }
 `;
 

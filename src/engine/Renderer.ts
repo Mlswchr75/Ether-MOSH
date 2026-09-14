@@ -47,6 +47,9 @@ export class MoshRenderer {
   private quad: THREE.Mesh;
   private fxCaptureEnabled = false;
   private fxCaptureReady = false;
+  private fxStayInside = true;
+  private fxShapeCombine = 0;
+  private fxShapeActive = false;
   private unregisterFxCapture?: () => void;
   private rtFxSource?: THREE.WebGLRenderTarget;
   private rtFxColor?: THREE.WebGLRenderTarget;
@@ -142,6 +145,9 @@ export class MoshRenderer {
     this.unregisterFxCapture = registerFxCapture(canvas, {enable: active => {
       this.fxCaptureEnabled=active;
       if(!active){this.fxCaptureReady=false;this.rtFxSource?.dispose();this.rtFxSource=undefined;this.rtFxColor?.dispose();this.rtFxColor=undefined;this.rtFxMask?.dispose();this.rtFxMask=undefined;}
+    },configure: options => {
+      this.fxStayInside = options.stayInside;
+      this.fxShapeCombine = {join: 0, overlap: 1, cut: 2}[options.combine];
     },read: (width,height,cutoff)=>this.readFxFrame(width,height,cutoff)});
     this.renderer = new THREE.WebGLRenderer({
       canvas,
@@ -178,6 +184,7 @@ export class MoshRenderer {
         uOpacity: { value: 1 },
         uMode: { value: 0 },
         uRegionMode: { value: 0 },
+        uStickerAlpha: { value: 0 },
         uRegionScale: { value: 1 },
         uRegionPhase: { value: 0 },
         uRegionGate: { value: 0.5 },
@@ -1048,6 +1055,11 @@ export class MoshRenderer {
       uHist3: { value: null },
       uHistDepth: { value: 0 },
       uResolution: { value: new THREE.Vector2(1, 1) },
+      uShapeSource: { value: null },
+      uStickerShape: { value: 0 },
+      uShapeStarted: { value: 0 },
+      uShapeCombine: { value: 0 },
+      uShapeOpacity: { value: 1 },
       uTime: { value: 0 },
       uPulse: { value: 0 },
     };
@@ -1145,17 +1157,27 @@ export class MoshRenderer {
 
     const targets = [this.rtA, this.rtB, this.rtC];
     let read = this.rtA;
+    this.fxShapeActive = false;
 
     for (const layer of layers) {
-      if (layer.hidden) continue;
+      if (layer.hidden || layer.opacity <= 0) continue;
       const def = EFFECTS_BY_ID[layer.effectId];
       if (!def) continue;
+      // Zero shape amount is identity, including its mask. Do not start a cutout.
+      if (def.stickerShape && (layer.params.amount ?? 0.65) <= 0) continue;
+      const shapeLayer = !!def.stickerShape && this.fxCaptureEnabled && this.fxStayInside;
+      const firstShape = shapeLayer && !this.fxShapeActive;
       const entry = this.getShader(layer.effectId);
       const uni = entry.material.uniforms;
       const effectTarget = targets.find(t => t !== read)!;
       const compositeTarget = targets.find(t => t !== read && t !== effectTarget)!;
 
       uni.uTex.value = read.texture;
+      uni.uShapeSource.value = this.rtFxSource?.texture ?? read.texture;
+      uni.uStickerShape.value = shapeLayer ? 1 : 0;
+      uni.uShapeStarted.value = this.fxShapeActive ? 1 : 0;
+      uni.uShapeCombine.value = this.fxShapeCombine;
+      uni.uShapeOpacity.value = layer.opacity;
       // Last frame's finished output. Black until the first frame lands, so
       // feedback effects fade in rather than flashing garbage.
       uni.uFeedback.value = this.historyPrimed ? this.rtHistA.texture : null;
@@ -1205,6 +1227,7 @@ export class MoshRenderer {
       this.renderer.setRenderTarget(effectTarget);
       this.renderer.render(this.scene, this.camera);
 
+      if (shapeLayer) this.fxShapeActive = true;
       const region = layer.region && layer.region.mode !== "none" ? layer.region : null;
 
       // The fast path swaps buffers instead of compositing — which also skips
@@ -1215,6 +1238,7 @@ export class MoshRenderer {
         continue;
       }
 
+      this.compositor.uniforms.uStickerAlpha.value = this.fxShapeActive ? (firstShape ? 1 : shapeLayer ? 3 : 2) : 0;
       this.compositor.uniforms.uPrev.value = read.texture;
       this.compositor.uniforms.uCur.value = effectTarget.texture;
       this.compositor.uniforms.uOpacity.value = layer.opacity;
@@ -1305,8 +1329,8 @@ export class MoshRenderer {
       }
       this.finisherMaterial.uniforms.uTex.value=this.rtHistA.texture;this.quad.material=this.finisherMaterial;
       this.renderer.setRenderTarget(this.rtFxColor);this.renderer.render(this.scene,this.camera);
-      if(!this.fxMaskMaterial)this.fxMaskMaterial=new THREE.ShaderMaterial({vertexShader:PASSTHROUGH_VERT,fragmentShader:FX_DIFFERENCE_FRAG,depthTest:false,depthWrite:false,blending:THREE.NoBlending,uniforms:{uBefore:{value:null},uAfter:{value:null},uColor:{value:null},uCutoff:{value:0}}});
-      const u=this.fxMaskMaterial.uniforms;u.uBefore.value=this.rtFxSource.texture;u.uAfter.value=this.rtHistA.texture;u.uColor.value=this.rtFxColor.texture;u.uCutoff.value=Math.max(0,Math.min(.5,cutoff));
+      if(!this.fxMaskMaterial)this.fxMaskMaterial=new THREE.ShaderMaterial({vertexShader:PASSTHROUGH_VERT,fragmentShader:FX_DIFFERENCE_FRAG,depthTest:false,depthWrite:false,blending:THREE.NoBlending,uniforms:{uBefore:{value:null},uAfter:{value:null},uColor:{value:null},uCutoff:{value:0},uUseShape:{value:0}}});
+      const u=this.fxMaskMaterial.uniforms;u.uBefore.value=this.rtFxSource.texture;u.uAfter.value=this.rtHistA.texture;u.uColor.value=this.rtFxColor.texture;u.uUseShape.value=this.fxShapeActive?1:0;u.uCutoff.value=Math.max(0,Math.min(.5,cutoff));
       this.quad.material=this.fxMaskMaterial;this.renderer.setRenderTarget(this.rtFxMask!);this.renderer.render(this.scene,this.camera);
       const pixels=new Uint8Array(width*height*4);this.renderer.readRenderTargetPixels(this.rtFxMask!,0,0,width,height,pixels);
       const topDown=new Uint8ClampedArray(pixels.length);for(let y=0;y<height;y++)topDown.set(pixels.subarray(y*width*4,(y+1)*width*4),(height-y-1)*width*4);

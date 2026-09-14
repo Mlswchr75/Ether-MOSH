@@ -34,7 +34,9 @@ import {
 } from '@/engine/overlay/lottieStickerMode';
 import { focusFromSegmentationMasks } from '@/engine/overlay/stickerIsolation';
 
-import { renderFxStack, paintFxFrame, enableFxCapture } from '@/engine/overlay/fxStackCapture';
+import { renderFxStack, paintFxFrame, enableFxCapture, configureFxCapture, type FxShapeOptions } from '@/engine/overlay/fxStackCapture';
+
+import { FLOATING_EFFECTS } from '@/engine/floatingEffects';
 
 type Phase = 'idle' | 'capturing' | 'recording' | 'encoding';
 
@@ -83,6 +85,17 @@ export function StickerCapture() {
   const [captureStyle, setCaptureStyle] = useState<'subject' | 'fx'>('subject');
   const fxMode = captureStyle === 'fx';
   const [fxCutoff, setFxCutoff] = useState(.02);
+  const [stayInside, setStayInside] = useState(true);
+  const [shapeCombine, setShapeCombine] = useState<FxShapeOptions['combine']>('join');
+  const stackLayers = useStore(s => s.layers);
+  const selectedLayerId = useStore(s => s.selectedLayerId);
+  const shapeLayers = stackLayers.filter(layer => FLOATING_EFFECTS.some(fx => fx.id === layer.effectId));
+  const hasActiveShape = shapeLayers.some(layer => !layer.hidden && layer.opacity > 0 && (layer.params.amount ?? 0.65) > 0);
+  const selectedShape = shapeLayers.find(layer => layer.id === selectedLayerId) ?? shapeLayers.at(-1);
+  const selectedShapeDef = FLOATING_EFFECTS.find(fx => fx.id === selectedShape?.effectId);
+  useEffect(() => {
+    if (glCanvas) configureFxCapture(glCanvas, { stayInside, combine: shapeCombine });
+  }, [glCanvas, stayInside, shapeCombine]);
   useEffect(() => {
     if(stickerMode && fxMode && glCanvas) return enableFxCapture(glCanvas);
   },[stickerMode,fxMode,glCanvas]);
@@ -793,9 +806,19 @@ export function StickerCapture() {
           {(['subject', 'fx'] as const).map(value => <button key={value} type="button" disabled={phase !== 'idle'} aria-pressed={captureStyle === value} onClick={() => { setCaptureStyle(value); isolationRequestRef.current++; setTapArmed(false); }} className={`rounded-lg border p-2 text-xs ${captureStyle === value ? 'border-violet-300 text-violet-100 bg-violet-400/20' : 'border-white/20 text-white/50'}`}>{value === 'subject' ? 'Subject · Original' : 'FX Stack'}</button>)}
         </div>
         {fxMode && <div className="mt-3 space-y-2 text-xs text-white/70">
-          <p>Keep source content only where the FX stack visibly changes it. Unchanged pixels become transparent.</p>
-          <label className="block">Change threshold · {Math.round(fxCutoff * 100)}%<input aria-label="FX change threshold" disabled={phase !== 'idle'} type="range" min="0" max="0.5" step="0.005" value={fxCutoff} onChange={e => setFxCutoff(Number(e.target.value))} className="w-full" /></label>
-          <p className="text-[10px] text-white/40">Black and white are preview backgrounds only. All sticker exports keep transparency. Full-frame effects can change every pixel; use localized effects for floating shapes.</p>
+          <p>{stayInside && hasActiveShape ? 'Floating shapes carry your source imagery. Color effects stay inside; warps move the cutout.' : 'Keep source content only where the FX stack visibly changes it. Unchanged pixels become transparent.'}</p>
+          <div className="grid grid-cols-3 gap-1" aria-label="Add floating effect">
+            {FLOATING_EFFECTS.map(fx => <button key={fx.id} type="button" disabled={phase !== 'idle'} title={fx.blurb} onClick={() => useStore.getState().addLayer(fx.id)} className="rounded border border-cyan-200/25 px-1 py-2 text-[10px] text-cyan-100 disabled:opacity-40">+ {fx.name}</button>)}
+          </div>
+          <label className="flex items-center gap-2"><input type="checkbox" checked={stayInside} disabled={phase !== 'idle'} onChange={e => setStayInside(e.target.checked)} />Stay inside sticker</label>
+          {stayInside && <label className="flex items-center justify-between">Combine shapes<select aria-label="Combine sticker shapes" value={shapeCombine} disabled={phase !== 'idle'} onChange={e => setShapeCombine(e.target.value as FxShapeOptions['combine'])} className="rounded bg-black text-white"><option value="join">Join</option><option value="overlap">Overlap</option><option value="cut">Cut out</option></select></label>}
+          {selectedShape && selectedShapeDef && <details className="rounded border border-white/10 p-2">
+            <summary className="cursor-pointer">Tune {selectedShapeDef.name}</summary>
+            <p className="my-2 text-[10px] text-white/50">{selectedShapeDef.blurb}</p>
+            {selectedShapeDef.params.map(param => <label key={param.key} className="mt-1 block text-[10px]">{param.label}<input aria-label={`${selectedShapeDef.name} ${param.label}`} type="range" min={param.min} max={param.max} step={param.step ?? 0.005} value={selectedShape.params[param.key] ?? param.default} disabled={phase !== 'idle'} onChange={e => useStore.getState().setParam(selectedShape.id, param.key, Number(e.target.value))} className="block w-full" /></label>)}
+          </details>}
+          {!(stayInside && hasActiveShape) && <label className="block">Change threshold · {Math.round(fxCutoff * 100)}%<input aria-label="FX change threshold" disabled={phase !== 'idle'} type="range" min="0" max="0.5" step="0.005" value={fxCutoff} onChange={e => setFxCutoff(Number(e.target.value))} className="w-full" /></label>}
+          <p className="text-[10px] text-white/40">Black and white are preview backgrounds only. All sticker exports keep transparency. Add a floating shape to keep full-frame color treatments confined. Layer order changes the result.</p>
         </div>}
         {!fxMode && <div className="mt-3 rounded-xl border border-cyan-200/15 bg-cyan-300/[0.035] p-2">
           <div className="mb-1.5 flex items-center justify-between"><span className="font-mono text-[7px] uppercase tracking-[0.14em] text-cyan-100/75">Cut intelligence</span><span className="font-mono text-[6px] uppercase tracking-[0.1em] text-white/35">{isolationLabel}</span></div>

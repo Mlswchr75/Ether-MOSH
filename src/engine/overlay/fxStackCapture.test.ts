@@ -17,3 +17,22 @@ describe('same-frame FX coverage',()=>{
  });
  it('rejects mismatched frame sizes',()=>{expect(()=>keyFxStack(frame([0,0,0,255]),frame([0,0,0,255,1,1,1,255]),frame([0,0,0,255]),0)).toThrow();});
 });
+
+import { configureFxCapture, enableFxCapture, registerFxCapture, renderFxStack } from './fxStackCapture';
+import { vi } from 'vitest';
+describe('sticker capture lifecycle', () => {
+ it('applies pending settings on renderer registration and releases capture on exit', () => {
+  const canvas = document.createElement('canvas');
+  const configure = vi.fn(), enable = vi.fn(), read = vi.fn(() => frame([1,2,3,120]));
+  configureFxCapture(canvas, {stayInside: true, combine: 'cut'});
+  const stop = enableFxCapture(canvas);
+  const unregister = registerFxCapture(canvas, {configure, enable, read});
+  expect(configure).toHaveBeenLastCalledWith({stayInside: true, combine: 'cut'});
+  expect(enable).toHaveBeenLastCalledWith(true);
+  expect(renderFxStack(canvas,1,1,.02).data[3]).toBe(120);
+  configureFxCapture(canvas,{stayInside:false,combine:'join'});
+  expect(configure).toHaveBeenLastCalledWith({stayInside:false,combine:'join'});
+  stop(); expect(enable).toHaveBeenLastCalledWith(false);
+  unregister(); expect(renderFxStack(canvas,1,1,.02).data[3]).toBe(0);
+ });
+});
