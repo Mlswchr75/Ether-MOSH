@@ -1,3 +1,4 @@
+import { FloatingPanelMinimize, isPanelMinimized } from './FloatingPanelMinimize';
 import { MinimizeButton, useMinimized } from "./Minimize";
 import { Mic, MicOff, Circle, Square, Sparkles, Scissors, Snowflake, Camera, Shuffle, Star, Play, Pencil, Trash2, X, Film, Lock, Share2, Compass, Maximize2, Minimize2, SwitchCamera, Eraser, Link2, Upload, Music, Music2, Shuffle as ShuffleIcon, Undo2, Redo2, ChevronDown, MonitorSpeaker, Heart, GripVertical, RotateCcw, SkipBack, SkipForward, Palette, RectangleVertical, RectangleHorizontal, Moon, SlidersHorizontal } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
@@ -487,7 +488,7 @@ function TrackTrigger({ delay }: { delay: number }) {
     // on-screen spot regardless of where this trigger sits on the ring —
     // real DOM containment no longer holds once it's outside wrapRef's tree.
     const close = (e: PointerEvent) => {
-      if (!(e.target as HTMLElement | null)?.closest?.("[data-shuffle-picker]")) setOpen(false);
+      if (!isPanelMinimized("[data-shuffle-picker]") && !(e.target as HTMLElement | null)?.closest?.("[data-shuffle-picker]")) setOpen(false);
     };
     window.addEventListener("pointerdown", close);
     return () => window.removeEventListener("pointerdown", close);
@@ -569,7 +570,7 @@ function TrackTrigger({ delay }: { delay: number }) {
           // library's song list rendered below the visible screen.
           className="fixed left-3 top-14 z-50 w-64 safe-top safe-left"
           onPointerDown={(e) => e.stopPropagation()}
-        >
+        ><FloatingPanelMinimize label="Music library" />
           <div
             className="panel-in-3d max-h-[82dvh] w-full overflow-y-auto rounded-sm border border-[hsl(var(--border-default))] bg-black/85 p-2.5 backdrop-blur-md [scrollbar-width:thin]"
             role="menu"
@@ -1951,7 +1952,7 @@ export function HotTriggers({
   useEffect(() => {
     if (!forgePanelOpen) return;
     const onDown = (e: PointerEvent) => {
-      if ((e.target as HTMLElement | null)?.closest("[data-forge-panel]")) return;
+      if (isPanelMinimized("[data-forge-panel]") || (e.target as HTMLElement | null)?.closest("[data-forge-panel]")) return;
       setForgePanelOpen(false);
     };
     window.addEventListener("pointerdown", onDown, true);
@@ -1961,7 +1962,7 @@ export function HotTriggers({
   useEffect(() => {
     if (!motifPanelOpen) return;
     const onDown = (e: PointerEvent) => {
-      if ((e.target as HTMLElement | null)?.closest("[data-motif-panel]")) return;
+      if (isPanelMinimized("[data-motif-panel]") || (e.target as HTMLElement | null)?.closest("[data-motif-panel]")) return;
       setMotifPanelOpen(false);
     };
     window.addEventListener("pointerdown", onDown, true);
@@ -2006,7 +2007,7 @@ export function HotTriggers({
     if (!pickerOpen) return;
     const onDown = (e: PointerEvent) => {
       const t = e.target as HTMLElement | null;
-      if (t && t.closest("[data-shuffle-picker]")) return;
+      if (isPanelMinimized("[data-shuffle-picker]") || (t && t.closest("[data-shuffle-picker]"))) return;
       setPickerOpen(false);
     };
     window.addEventListener("pointerdown", onDown, true);
@@ -2018,7 +2019,7 @@ export function HotTriggers({
     if (!favOpen) return;
     const onDown = (e: PointerEvent) => {
       const t = e.target as HTMLElement | null;
-      if (t && t.closest("[data-fav-panel]")) return;
+      if (isPanelMinimized("[data-fav-panel]") || (t && t.closest("[data-fav-panel]"))) return;
       setFavOpen(false);
       setRenameId(null);
     };
@@ -2424,7 +2425,7 @@ export function HotTriggers({
           <Palette className="h-4 w-4" strokeWidth={1.5} />
         </HotBtn>
         {forgePanelOpen && createPortal(
-          <div className="fixed left-3 top-14 z-50 safe-top safe-left" data-forge-panel>
+          <div className="fixed left-3 top-14 z-50 safe-top safe-left" data-forge-panel><FloatingPanelMinimize label="Forge controls" />
             <ForgePanel embedded />
           </div>,
           document.body,
@@ -2445,7 +2446,7 @@ export function HotTriggers({
           <Sparkles className="h-4 w-4" strokeWidth={1.5} />
         </HotBtn>
         {motifPanelOpen && createPortal(
-          <div className="fixed left-3 top-14 z-[90] safe-top safe-left" data-motif-panel>
+          <div className="fixed left-3 top-14 z-[90] safe-top safe-left" data-motif-panel><FloatingPanelMinimize label="Motif controls" />
             <MotifMaestroPanel embedded />
           </div>,
           document.body,
@@ -2490,7 +2491,7 @@ export function HotTriggers({
             // circle nearly filling the viewport, and a slot in the lower
             // arc left most of this list rendered below the visible screen.
             className="fixed left-3 top-14 z-40 w-64 max-h-[70vh] overflow-y-auto rounded-md border border-white/10 bg-black/85 p-2 backdrop-blur-md panel-in-3d safe-top safe-left"
-          >
+          ><FloatingPanelMinimize label="Favorites" />
             <div className="flex items-center justify-between px-1 pb-1.5">
               <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-[hsl(var(--accent))]">★ favorites</span>
               <div className="flex items-center gap-2">

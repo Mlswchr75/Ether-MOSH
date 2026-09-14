@@ -75,11 +75,16 @@ export function useProximityIdle(
       if (near) window.clearTimeout(timer); else arm();
     };
 
+    const onRestore = (event: Event) => {
+      if ((event as CustomEvent).detail === ref.current) { setHidden(false); arm(); }
+    };
+    window.addEventListener('mosh:panel-restored', onRestore);
     window.addEventListener("pointermove", onPointer, { passive: true });
     window.addEventListener("pointerdown", onPointer, { passive: true });
     arm();
     return () => {
       window.clearTimeout(timer);
+      window.removeEventListener('mosh:panel-restored', onRestore);
       window.removeEventListener("pointermove", onPointer);
       window.removeEventListener("pointerdown", onPointer);
     };

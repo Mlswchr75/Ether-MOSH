@@ -1,3 +1,4 @@
+import { FloatingPanelMinimize } from './FloatingPanelMinimize';
 import { Eye, EyeOff, Lock, Unlock, Layers3, Crosshair, WandSparkles, Plus, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { BLEND_MODES, type BlendMode } from "@/engine/blend";
 import { PUBLIC_EFFECTS } from "@/engine/effects";
@@ -27,7 +28,7 @@ export function OverlayInspector() {
     patchEntity(entity.id, { compositing: mode });
   };
 
-  return <div className="pointer-events-auto absolute left-3 top-3 z-[90] flex max-w-[calc(100vw-1.5rem)] flex-wrap items-center gap-1 rounded-xl border border-white/15 bg-black/75 p-1.5 shadow-xl backdrop-blur-md">
+  return <div className="pointer-events-auto absolute left-3 top-3 z-[90] flex max-w-[calc(100vw-1.5rem)] flex-wrap items-center gap-1 rounded-xl border border-white/15 bg-black/75 p-1.5 shadow-xl backdrop-blur-md"><FloatingPanelMinimize label="Sticker inspector" />
     <span className="max-w-28 truncate px-1.5 font-mono text-[8px] uppercase tracking-[0.12em] text-white/45" title={entity.asset.name}>{entity.asset.name || "Sticker"}</span>
     <select aria-label="Sticker blend mode" value={entity.blend} onChange={e => patchEntity(entity.id, { blend: e.target.value as BlendMode })} className="rounded-full border border-white/10 bg-black/70 px-2 py-1 font-mono text-[7px] uppercase text-white/65 outline-none" title="Blend mode">{BLEND_MODES.map(mode => <option key={mode} value={mode}>{mode}</option>)}</select>
     <label className="flex items-center gap-1 rounded-full border border-white/10 px-2 py-1 text-white/55" title="Tracking target"><Crosshair size={9} /><select aria-label="Inspector tracking target" value={trackingValue} onChange={e => setTracking(e.target.value as "off" | OverlayTrackingTarget)} className="bg-transparent font-mono text-[7px] uppercase text-inherit outline-none">{TRACK_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>

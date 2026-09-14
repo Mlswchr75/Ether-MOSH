@@ -1,3 +1,4 @@
+import { FloatingPanelMinimize, isPanelMinimized } from './FloatingPanelMinimize';
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Download, Search, Star, Tag, Trash2, WandSparkles, X } from "lucide-react";
 import { toast } from "sonner";
@@ -48,7 +49,7 @@ export function OverlayVault({ showCaptureButton = true }: { showCaptureButton?:
   useEffect(() => {
     if (!open) return;
     const dismiss = (event: PointerEvent) => {
-      if ((event.target as HTMLElement | null)?.closest("[data-sticker-vault-panel], [data-sticker-vault-trigger]")) return;
+      if (isPanelMinimized("[data-sticker-vault-panel]") || (event.target as HTMLElement | null)?.closest("[data-sticker-vault-panel], [data-sticker-vault-trigger]")) return;
       setOpen(false);
     };
     const escape = (event: KeyboardEvent) => { if (event.key === "Escape") setOpen(false); };
@@ -126,7 +127,7 @@ export function OverlayVault({ showCaptureButton = true }: { showCaptureButton?:
       {showCaptureButton && <button type="button" disabled={(!selected && !renderAvailable) || busy} onClick={() => void saveSelected()} className="flex items-center gap-1.5 rounded-full border border-cyan-300/20 bg-black/70 px-2.5 py-2 font-mono text-[8px] uppercase tracking-[0.12em] text-cyan-100 backdrop-blur-md transition hover:border-cyan-300/45 disabled:opacity-25" title={selected ? "Save the selected overlay as a reusable static sticker (K)" : renderAvailable ? "Detect a subject or salient crop in the current visual (K)" : "Wait for a visual source"}><WandSparkles size={11} /> {busy ? "Saving…" : "Make Sticker · K"}</button>}
     </div>
 
-    {open && <div data-sticker-vault-panel className="pointer-events-auto absolute bottom-12 left-1/2 z-[100] w-[min(94vw,38rem)] -translate-x-1/2 rounded-2xl border border-white/15 bg-black/90 p-3 shadow-2xl backdrop-blur-xl">
+    {open && <div data-sticker-vault-panel className="pointer-events-auto absolute bottom-12 left-1/2 z-[100] w-[min(94vw,38rem)] -translate-x-1/2 rounded-2xl border border-white/15 bg-black/90 p-3 shadow-2xl backdrop-blur-xl"><FloatingPanelMinimize label="Sticker Vault" />
       <div className="mb-2 flex items-center justify-between gap-2">
         <div><p className="font-mono text-[9px] uppercase tracking-[0.2em] text-cyan-200">Sticker Vault</p><p className="mt-0.5 font-mono text-[7px] uppercase tracking-[0.12em] text-white/35">persistent reusable overlay library</p></div>
         <button type="button" onClick={() => setOpen(false)} className="rounded-full p-1.5 text-white/45 hover:bg-white/10 hover:text-white"><X size={12} /></button>

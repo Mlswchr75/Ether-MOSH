@@ -1,3 +1,4 @@
+import { FloatingPanelMinimize } from './FloatingPanelMinimize';
 /**
  * The mini timeline for trimming an uploaded clip down to a 5-7s window
  * before it becomes a mosh sticker. Only shown for videos longer than
@@ -98,7 +99,7 @@ export function TrimScrubber({ clip, onConfirm, onCancel }: Props) {
   const widthPct = ((end - start) / duration) * 100;
 
   return (
-    <div className="panel-in-3d w-64 rounded-sm border border-[hsl(var(--border-default))] bg-black/85 p-2.5 backdrop-blur-md">
+    <div className="panel-in-3d w-64 rounded-sm border border-[hsl(var(--border-default))] bg-black/85 p-2.5 backdrop-blur-md"><FloatingPanelMinimize label="Clip trim" />
       <div className="mb-2 flex items-center justify-between font-mono text-[9px] uppercase tracking-[0.16em] text-[hsl(var(--text-secondary))]">
         <span>trim clip</span>
         <span>{(end - start).toFixed(1)}s</span>

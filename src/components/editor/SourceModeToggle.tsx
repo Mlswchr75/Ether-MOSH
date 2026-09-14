@@ -1,3 +1,4 @@
+import { FloatingPanelMinimize } from './FloatingPanelMinimize';
 import { useCallback, useEffect, useRef, useState, type InputHTMLAttributes } from "react";
 import { Upload, Video, Flame, Sparkles, FolderOpen, ChevronUp, ChevronDown, Play, Pause, Shuffle, X } from "lucide-react";
 import { toast } from "sonner";
@@ -254,7 +255,7 @@ export function SourceModeToggle({ hidden = false }: Props) {
     </div>}
 
     {deckOpen && (
-      <div className="pointer-events-auto fixed inset-0 z-[90] flex items-end justify-center bg-black/25 p-3 backdrop-blur-[1px] sm:items-center" onPointerDown={(e) => { if (e.target === e.currentTarget) setDeckOpen(false); }}>
+      <div className="pointer-events-auto fixed inset-0 z-[90] flex items-end justify-center bg-black/25 p-3 backdrop-blur-[1px] sm:items-center" onPointerDown={(e) => { if (e.target === e.currentTarget) setDeckOpen(false); }}><FloatingPanelMinimize label="Photo deck" overlay />
         <section aria-label="Photo deck settings" className="max-h-[78dvh] w-full max-w-sm overflow-hidden rounded-lg border border-white/20 bg-black/90 text-white shadow-2xl backdrop-blur-xl">
           <header className="flex items-center justify-between border-b border-white/10 px-4 py-3">
             <div>

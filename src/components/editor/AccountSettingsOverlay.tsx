@@ -1,3 +1,4 @@
+import { FloatingPanelMinimize } from './FloatingPanelMinimize';
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { X, Sparkles, HelpCircle, EyeOff, Gauge, Glasses, Sliders, Activity } from "lucide-react";
@@ -101,7 +102,7 @@ export function AccountSettingsOverlay({
   if (!open) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Settings">
+    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Settings"><FloatingPanelMinimize label="Settings" overlay />
       <button type="button" className="absolute inset-0 bg-black/70 backdrop-blur-md" aria-label="Close settings" onClick={onClose} />
       <div className="pointer-events-auto relative flex h-[min(88dvh,760px)] w-[min(94vw,880px)] flex-col overflow-hidden rounded-lg border border-white/12 bg-black/85 shadow-[0_0_80px_hsl(var(--accent)/0.25)] backdrop-blur-2xl">
         <header className="flex items-center justify-between border-b border-white/10 px-5 py-4">

@@ -645,7 +645,7 @@ export default function Editor() {
   // Enter/exit perf mode side effects
   const enterPerf = async () => {
     setPerformanceMode(true);
-    await enterFullscreen(shellRef.current);
+    await enterFullscreen(document.documentElement);
   };
   const exitPerf = async () => {
     setPerformanceMode(false);
@@ -1957,7 +1957,7 @@ export default function Editor() {
       data-idle={effectiveIdleStage}
       className={`editor-shell ${!isOverlay ? "tactile-cursor" : ""} bg-background text-foreground ${
         isPerformanceMode
-          ? "fixed inset-0 z-[9999] flex flex-col overflow-hidden"
+          ? "fixed inset-0 z-0 flex flex-col overflow-hidden"
           : "min-h-screen flex flex-col"
       }`}
     >
@@ -2085,15 +2085,9 @@ export default function Editor() {
         {!isOverlay && (
           <HotTriggers
             visualizerRef={canvasContainerRef}
-            /* Performance mode drops the DOM chrome, and a station is always in
-               it — which left `/radio` with no wheel at all, only the hidden XR
-               registry. That is right for a projector feed and wrong for a
-               station, where the wheel is the *only* control surface: the rack
-               is gone, so without it there is no capture, no share, no mic, no
-               way to change how the thing looks. The wheel stays, narrowed to
-               what a station can act on (see RADIO_TRIGGERS), and `&hud=0`
-               still gives a clean capture. */
-            hidden={hideUI || (isPerformanceMode && !radio.config.active)}
+            // Wheels remain available in Performance Mode. Only explicit clean
+            // capture/overlay settings hide them.
+            hidden={hideUI}
             showLegacyLaunchpad={legacyHotTriggers}
             only={radio.config.active ? RADIO_TRIGGERS : undefined}
             isRecording={isRecording}

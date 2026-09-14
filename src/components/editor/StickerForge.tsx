@@ -1,3 +1,4 @@
+import { FloatingPanelMinimize } from './FloatingPanelMinimize';
 import { useMemo, useState } from "react";
 import { SlidersHorizontal, WandSparkles, X } from "lucide-react";
 import { toast } from "sonner";
@@ -96,7 +97,7 @@ export function StickerForge() {
       <button type="button" disabled={disabled} onClick={() => void forge()} title="Immediately animate the selected sticker or current visual as a transparent Lottie" className="flex items-center gap-1.5 px-2.5 py-2 font-mono text-[8px] uppercase tracking-[0.12em] transition hover:bg-violet-400/10 disabled:opacity-25"><WandSparkles size={11}/> {busy ? "Forging…" : "Forge Lottie"}</button>
       <button type="button" onClick={() => setOpen(v => !v)} title="Lottie type and motion settings" aria-label="Lottie settings" className="border-l border-violet-300/20 px-2 transition hover:bg-violet-400/10"><SlidersHorizontal size={11}/></button>
     </div>
-    {open && <div className="absolute bottom-11 left-1/2 z-[120] w-[min(92vw,22rem)] -translate-x-1/2 rounded-2xl border border-violet-300/20 bg-black/95 p-3 shadow-2xl backdrop-blur-xl">
+    {open && <div className="absolute bottom-11 left-1/2 z-[120] w-[min(92vw,22rem)] -translate-x-1/2 rounded-2xl border border-violet-300/20 bg-black/95 p-3 shadow-2xl backdrop-blur-xl"><FloatingPanelMinimize label="Sticker Forge" />
       <div className="flex items-start justify-between gap-2"><div><p className="font-mono text-[9px] uppercase tracking-[0.2em] text-violet-200">Sticker Forge</p><p className="mt-1 font-mono text-[7px] uppercase tracking-[0.1em] text-white/35">transparent animated Lottie output</p></div><button type="button" onClick={() => setOpen(false)} className="rounded-full p-1.5 text-white/45 hover:bg-white/10 hover:text-white"><X size={12}/></button></div>
       <div className="mt-3 grid grid-cols-3 gap-1">{(["auto","universal","vector"] as Mode[]).map(v => <button key={v} type="button" onClick={() => setMode(v)} className={`rounded-full border px-2 py-1.5 font-mono text-[7px] uppercase ${mode===v ? "border-violet-300/45 bg-violet-400/10 text-violet-100" : "border-white/10 text-white/45"}`}>{v}</button>)}</div>
       <p className="mt-2 rounded-lg border border-white/8 bg-white/[0.03] px-2 py-1.5 font-mono text-[7px] uppercase tracking-[0.1em] text-white/40">{recommendationText}</p>

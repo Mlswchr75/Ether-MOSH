@@ -1,3 +1,4 @@
+import { FloatingPanelMinimize } from './FloatingPanelMinimize';
 import { useEffect, useState } from "react";
 import { Shuffle, Clock, Zap } from "lucide-react";
 import { useStore } from "@/store/useStore";
@@ -32,7 +33,7 @@ export function ShufflePanel() {
 
 
   return (
-    <div className="border-b border-[hsl(var(--border-subtle))] px-3 py-3">
+    <div className="border-b border-[hsl(var(--border-subtle))] px-3 py-3"><FloatingPanelMinimize label="Auto-Mosh" />
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <div className={`flex h-7 w-7 items-center justify-center rounded-sm border transition ${isOn ? "border-[hsl(var(--accent))] text-[hsl(var(--accent))] shadow-[0_0_10px_hsl(var(--accent)/0.4)]" : "border-[hsl(var(--border-default))] text-[hsl(var(--text-tertiary))]"}`}>

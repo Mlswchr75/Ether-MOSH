@@ -1,0 +1,6 @@
+[data-floating-panel-minimized="true"] { display: none !important; }
+.mosh-panel-minimize { position: relative; z-index: 2; display: flex; justify-content: flex-end; pointer-events: auto; }
+.mosh-panel-minimize--overlay { position: absolute; top: 1rem; right: 1rem; }
+#mosh-minimized-panels { position: fixed; z-index: 10050; left: max(.75rem, env(safe-area-inset-left)); bottom: max(.75rem, env(safe-area-inset-bottom)); display: flex; gap: .4rem; flex-wrap: wrap; max-width: calc(100vw - 1.5rem); max-height: 25dvh; overflow-y: auto; pointer-events: none; }
+.mosh-panel-restore { pointer-events: auto; border: 1px solid #ffffff55; border-radius: 999px; padding: .6rem .8rem; color: white; background: #100c19f5; font: 11px monospace; box-shadow: 0 3px 18px #0006; }
+.mosh-panel-restore:focus-visible { outline: 2px solid cyan; outline-offset: 2px; }

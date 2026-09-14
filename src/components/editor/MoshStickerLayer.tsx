@@ -1,3 +1,4 @@
+import { FloatingPanelMinimize } from './FloatingPanelMinimize';
 /**
  * The canvas overlay for live mosh stickers — short looping clips placed,
  * transformed and independently mosh'd on top of whatever the main canvas is
@@ -293,7 +294,7 @@ function StickerNode({ sticker, containerRef, selected, onSelect }: NodeProps) {
           data-no-longpress
           onPointerDown={(e) => e.stopPropagation()}
           className="panel-in-3d absolute left-1/2 top-[calc(100%+10px)] z-10 w-52 -translate-x-1/2 rounded-sm border border-[hsl(var(--border-default))] bg-black/85 p-2 backdrop-blur-md"
-        >
+        ><FloatingPanelMinimize label="Sticker effect" />
           <div className="mb-1.5 flex items-center justify-between">
             <select
               value={effectId}
