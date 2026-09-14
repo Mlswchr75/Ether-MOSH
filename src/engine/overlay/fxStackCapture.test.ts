@@ -1,27 +1,19 @@
-import { describe, expect, it } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { keyFxStack } from './fxStackCapture';
-
-const frame = (pixels: number[]) => new ImageData(new Uint8ClampedArray(pixels), pixels.length / 4, 1);
-describe('FX Stack alpha extraction', () => {
-  it('preserves separated lights and the empty space between them without cropping', () => {
-    const input = frame([255, 0, 0, 255, 0, 0, 0, 255, 0, 0, 255, 255]);
-    const result = keyFxStack(input, 'black', 0);
-    expect([result.width, result.height]).toEqual([3, 1]);
-    expect([...result.data].filter((_, i) => i % 4 === 3)).toEqual([255, 0, 255]);
-    expect(input.data[7]).toBe(255);
-  });
-  it('retains partial alpha on trails and unmattes grey to avoid dark fringes', () => {
-    const result = keyFxStack(frame([64, 64, 64, 128]), 'black', 0);
-    expect([...result.data]).toEqual([255, 255, 255, 32]);
-  });
-  it('removes light backgrounds and preserves dark artwork', () => {
-    const result = keyFxStack(frame([255, 255, 255, 255, 0, 0, 0, 255]), 'white', 0);
-    expect(result.data[3]).toBe(0);
-    expect([...result.data.slice(4)]).toEqual([0, 0, 0, 255]);
-  });
-  it('respects the cutoff and never resurrects transparent source pixels', () => {
-    const result = keyFxStack(frame([20, 20, 20, 255, 255, 50, 80, 0]), 'black', .1);
-    expect(result.data[3]).toBe(0);
-    expect(result.data[7]).toBe(0);
-  });
+const frame=(data:number[])=>new ImageData(new Uint8ClampedArray(data),data.length/4,1);
+describe('same-frame FX coverage',()=>{
+ it('removes unchanged content of every color including bright and black pixels',()=>{
+ const source=frame([255,0,80,255,0,0,0,255,255,255,255,255]);
+ expect([...keyFxStack(source,source,source,0).data]).toEqual(Array(12).fill(0));
+ });
+ it('retains changed source content, including effects that become black or white',()=>{
+ const before=frame([80,80,80,255,80,80,80,255,255,0,50,255]);
+ const after=frame([0,0,0,255,255,255,255,255,255,0,50,255]);
+ expect([...keyFxStack(after,before,after,.02).data]).toEqual([0,0,0,255,255,255,255,255,0,0,0,0]);
+ });
+ it('preserves finished colors, existing alpha, and soft change coverage',()=>{
+ const before=frame([100,100,100,255]),after=frame([110,100,100,255]),finished=frame([220,50,20,128]);
+ const out=keyFxStack(finished,before,after,.02);expect([...out.data.slice(0,3)]).toEqual([220,50,20]);expect(out.data[3]).toBeGreaterThan(0);expect(out.data[3]).toBeLessThan(128);
+ });
+ it('rejects mismatched frame sizes',()=>{expect(()=>keyFxStack(frame([0,0,0,255]),frame([0,0,0,255,1,1,1,255]),frame([0,0,0,255]),0)).toThrow();});
 });

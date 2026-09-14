@@ -1,42 +1,39 @@
 export type FxBackdrop = 'black' | 'white';
-
-/** Key the final rendered stack, without segmentation, recropping or hole filling.
- * Existing alpha survives. Unmatting preserves soft light trails over either backdrop.
- */
-export function keyFxStack(frame: ImageData, background: FxBackdrop, cutoff: number): ImageData {
+type Provider = { enable: (active: boolean) => void; read: (width: number, height: number, cutoff: number) => ImageData };
+const providers = new WeakMap<HTMLCanvasElement, Provider>();
+const active = new WeakSet<HTMLCanvasElement>();
+export function registerFxCapture(canvas: HTMLCanvasElement, provider: Provider) {
+  providers.set(canvas, provider); provider.enable(active.has(canvas));
+  return () => { if (providers.get(canvas) === provider) providers.delete(canvas); };
+}
+export function enableFxCapture(canvas: HTMLCanvasElement) {
+  active.add(canvas); providers.get(canvas)?.enable(true);
+  return () => { active.delete(canvas); providers.get(canvas)?.enable(false); };
+}
+/** Testable reference of the shader's coverage rule. Preserve effect RGB, not a color key. */
+export function keyFxStack(frame: ImageData, before: ImageData, after: ImageData, cutoff: number): ImageData {
+  if (frame.width !== before.width || frame.height !== before.height || frame.width !== after.width || frame.height !== after.height) throw Error('FX frames must match');
   const out = new ImageData(new Uint8ClampedArray(frame.data), frame.width, frame.height);
-  const gate = Math.max(0, Math.min(.95, cutoff));
-  for (let i = 0; i < out.data.length; i += 4) {
-    const d = out.data;
-    const signal = background === 'black'
-      ? Math.max(d[i], d[i + 1], d[i + 2]) / 255
-      : 1 - Math.min(d[i], d[i + 1], d[i + 2]) / 255;
-    const alpha = Math.max(0, Math.min(1, (signal - gate) / Math.max(.001, 1 - gate)));
-    d[i + 3] = Math.round(d[i + 3] * alpha);
-    for (let c = 0; c < 3; c++) {
-      d[i + c] = alpha === 0 ? 0 : background === 'black'
-        ? Math.min(255, d[i + c] / alpha)
-        : Math.max(0, 255 - (255 - d[i + c]) / alpha);
-    }
+  const gate = Math.max(0, Math.min(.5, cutoff));
+  for (let i=0;i<out.data.length;i+=4) {
+    const delta = Math.max(...[0,1,2,3].map(c=>Math.abs(before.data[i+c]-after.data[i+c])/255));
+    const t=Math.max(0,Math.min(1,(delta-gate)/.04));
+    out.data[i+3]=Math.round(out.data[i+3]*t*t*(3-2*t));
+    if(!out.data[i+3])out.data[i]=out.data[i+1]=out.data[i+2]=0;
   }
   return out;
 }
-
-export function renderFxStack(source: HTMLCanvasElement, width: number, height: number, key: FxBackdrop, cutoff: number): ImageData {
-  if (source.width < 1 || source.height < 1) throw new Error('Visualizer is resizing; retry capture');
-  const canvas = document.createElement('canvas');
-  canvas.width = width; canvas.height = height;
-  const ctx = canvas.getContext('2d', { willReadFrequently: true });
-  if (!ctx) throw new Error('Canvas unavailable');
-  ctx.drawImage(source, 0, 0, width, height);
-  return keyFxStack(ctx.getImageData(0, 0, width, height), key, cutoff);
+export function renderFxStack(source: HTMLCanvasElement, width: number, height: number, cutoff: number): ImageData {
+  const provider=providers.get(source);
+  if(!provider) return new ImageData(width,height);
+  return provider.read(width,height,cutoff);
 }
-
 export function paintFxFrame(ctx: CanvasRenderingContext2D, frame: ImageData, background?: FxBackdrop) {
-  const canvas = document.createElement('canvas');
-  canvas.width = frame.width; canvas.height = frame.height;
-  canvas.getContext('2d')!.putImageData(frame, 0, 0);
-  ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-  if (background) { ctx.fillStyle = background; ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height); }
-  ctx.drawImage(canvas, 0, 0, ctx.canvas.width, ctx.canvas.height);
+  const canvas=document.createElement('canvas');canvas.width=frame.width;canvas.height=frame.height;
+  canvas.getContext('2d')!.putImageData(frame,0,0);ctx.clearRect(0,0,ctx.canvas.width,ctx.canvas.height);
+  if(background){ctx.fillStyle=background;ctx.fillRect(0,0,ctx.canvas.width,ctx.canvas.height);}
+  ctx.drawImage(canvas,0,0,ctx.canvas.width,ctx.canvas.height);
 }
+export const FX_DIFFERENCE_FRAG = `precision highp float; varying vec2 vUv;
+uniform sampler2D uBefore,uAfter,uColor;uniform float uCutoff;
+void main(){vec4 before=texture2D(uBefore,vUv),after=texture2D(uAfter,vUv),color=texture2D(uColor,vUv);vec4 d=abs(after-before);float change=max(max(d.r,d.g),max(d.b,d.a));float coverage=smoothstep(uCutoff,uCutoff+.04,change);float a=color.a*coverage;gl_FragColor=vec4(a>0.?color.rgb:vec3(0.),a);}`;

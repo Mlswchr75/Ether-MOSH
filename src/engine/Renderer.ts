@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { registerFxCapture, FX_DIFFERENCE_FRAG } from "./overlay/fxStackCapture";
 import { EFFECTS_BY_ID } from "./effects";
 import { AMOUNT_RENDER_BOOST } from "./effectRegistry";
 import {
@@ -44,6 +45,13 @@ export class MoshRenderer {
   private scene = new THREE.Scene();
   private camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
   private quad: THREE.Mesh;
+  private fxCaptureEnabled = false;
+  private fxCaptureReady = false;
+  private unregisterFxCapture?: () => void;
+  private rtFxSource?: THREE.WebGLRenderTarget;
+  private rtFxColor?: THREE.WebGLRenderTarget;
+  private rtFxMask?: THREE.WebGLRenderTarget;
+  private fxMaskMaterial?: THREE.ShaderMaterial;
   private rtA!: THREE.WebGLRenderTarget;
   private rtB!: THREE.WebGLRenderTarget;
   private rtC!: THREE.WebGLRenderTarget;
@@ -131,6 +139,10 @@ export class MoshRenderer {
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
+    this.unregisterFxCapture = registerFxCapture(canvas, {enable: active => {
+      this.fxCaptureEnabled=active;
+      if(!active){this.fxCaptureReady=false;this.rtFxSource?.dispose();this.rtFxSource=undefined;this.rtFxColor?.dispose();this.rtFxColor=undefined;this.rtFxMask?.dispose();this.rtFxMask=undefined;}
+    },read: (width,height,cutoff)=>this.readFxFrame(width,height,cutoff)});
     this.renderer = new THREE.WebGLRenderer({
       canvas,
       antialias: false,
@@ -674,6 +686,7 @@ export class MoshRenderer {
   }
 
   private allocTargets(w: number, h: number) {
+    this.fxCaptureReady = false;
     this.rtA?.dispose();
     this.rtB?.dispose();
     this.rtC?.dispose();
@@ -1056,6 +1069,7 @@ export class MoshRenderer {
   /** Render a frame with the supplied layer stack. `pulse` is 0..1 beat envelope. */
   render(layers: RenderLayer[], pulse = 0) {
     if (!this.sourceTex) {
+      this.fxCaptureReady=false;
       this.renderer.setRenderTarget(this.xrTarget);
       this.renderer.clear();
       return;
@@ -1082,6 +1096,16 @@ export class MoshRenderer {
     this.quad.material = this.sourceFillMaterial;
     this.renderer.setRenderTarget(this.rtA);
     this.renderer.render(this.scene, this.camera);
+
+    // Capture the exact fitted/mirrored source from THIS frame, only in FX Stack mode.
+    // Never compare successive camera frames: motion alone is not an effect.
+    if(this.fxCaptureEnabled){
+      if(!this.rtFxSource || this.rtFxSource.width!==w || this.rtFxSource.height!==h){
+        this.rtFxSource?.dispose();this.rtFxSource=this.rtA.clone();this.rtFxSource.setSize(w,h);
+      }
+      this.blitMaterial.uniforms.uTex.value=this.rtA.texture;this.quad.material=this.blitMaterial;
+      this.renderer.setRenderTarget(this.rtFxSource);this.renderer.render(this.scene,this.camera);
+    }
 
     // Step 1b — update the depth proxy from the fresh source, then stash the
     // source for next frame's motion difference. Both run at half res.
@@ -1265,6 +1289,29 @@ export class MoshRenderer {
     this.quad.material = this.finisherMaterial;
     this.renderer.setRenderTarget(this.xrTarget);
     this.renderer.render(this.scene, this.camera);
+    this.fxCaptureReady=this.fxCaptureEnabled;
+  }
+
+  /** Read the same-frame source/result delta with finished artwork colors and real alpha. */
+  readFxFrame(width: number, height: number, cutoff: number): ImageData {
+    if(!this.fxCaptureEnabled || !this.fxCaptureReady || !this.rtFxSource)return new ImageData(width,height);
+    const previousTarget=this.renderer.getRenderTarget(),previousMaterial=this.quad.material;
+    const previousTexture=this.finisherMaterial.uniforms.uTex.value;
+    try {
+      if(!this.rtFxColor || this.rtFxColor.width!==width || this.rtFxColor.height!==height){
+        this.rtFxColor?.dispose();this.rtFxMask?.dispose();
+        const options={type:THREE.UnsignedByteType,format:THREE.RGBAFormat,depthBuffer:false,stencilBuffer:false};
+        this.rtFxColor=new THREE.WebGLRenderTarget(width,height,options);this.rtFxMask=new THREE.WebGLRenderTarget(width,height,options);
+      }
+      this.finisherMaterial.uniforms.uTex.value=this.rtHistA.texture;this.quad.material=this.finisherMaterial;
+      this.renderer.setRenderTarget(this.rtFxColor);this.renderer.render(this.scene,this.camera);
+      if(!this.fxMaskMaterial)this.fxMaskMaterial=new THREE.ShaderMaterial({vertexShader:PASSTHROUGH_VERT,fragmentShader:FX_DIFFERENCE_FRAG,depthTest:false,depthWrite:false,blending:THREE.NoBlending,uniforms:{uBefore:{value:null},uAfter:{value:null},uColor:{value:null},uCutoff:{value:0}}});
+      const u=this.fxMaskMaterial.uniforms;u.uBefore.value=this.rtFxSource.texture;u.uAfter.value=this.rtHistA.texture;u.uColor.value=this.rtFxColor.texture;u.uCutoff.value=Math.max(0,Math.min(.5,cutoff));
+      this.quad.material=this.fxMaskMaterial;this.renderer.setRenderTarget(this.rtFxMask!);this.renderer.render(this.scene,this.camera);
+      const pixels=new Uint8Array(width*height*4);this.renderer.readRenderTargetPixels(this.rtFxMask!,0,0,width,height,pixels);
+      const topDown=new Uint8ClampedArray(pixels.length);for(let y=0;y<height;y++)topDown.set(pixels.subarray(y*width*4,(y+1)*width*4),(height-y-1)*width*4);
+      return new ImageData(topDown,width,height);
+    } finally {this.finisherMaterial.uniforms.uTex.value=previousTexture;this.quad.material=previousMaterial;this.renderer.setRenderTarget(previousTarget);}
   }
 
   /** Redirect the final composited frame for immersive playback. */
@@ -1329,6 +1376,7 @@ export class MoshRenderer {
   }
 
   dispose() {
+    this.unregisterFxCapture?.();this.rtFxSource?.dispose();this.rtFxColor?.dispose();this.rtFxMask?.dispose();this.fxMaskMaterial?.dispose();
     this._cancelRvfc();
     if (this.warmupHandle != null) window.clearTimeout(this.warmupHandle);
     this.shaderCache.forEach(e => e.material.dispose());
