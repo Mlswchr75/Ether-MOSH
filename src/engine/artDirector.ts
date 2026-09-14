@@ -368,6 +368,12 @@ const CRAFT: Record<string, Craft> = {
   pixelSort:       { role: "form", fidelity: "lofi",      gives: { structure: 0.7 }, cost: 0.5 },
   sliceDrift:      { role: "form", fidelity: "lofi",      gives: { structure: 0.6 }, cost: 0.5 },
   frameSmear:      { role: "form", fidelity: "cinematic", gives: { structure: 0.4 }, cost: 0.5, gpu: 4.6 },
+  // Source-bearing floating shapes restructure a bounded part of the frame.
+  // They are public Geometry effects, so the director needs explicit craft
+  // coverage even though FX Stack sticker capture is their primary surface.
+  ribbonCurrent:   { role: "form", fidelity: "cinematic", gives: { structure: 0.85 }, cost: 0.55, gpu: 1.2 },
+  liquidIslands:   { role: "form", fidelity: "cinematic", gives: { structure: 0.9 }, cost: 0.6, gpu: 1.4 },
+  contourPeel:     { role: "form", fidelity: "lofi",      gives: { structure: 0.9 }, cost: 0.6, gpu: 1.8 },
 
   emboss:           { role: "form", fidelity: "cinematic", gives: { structure: 0.7, contrast: 0.5 }, cost: 0.5, gpu: 2.3 },
   extrude:         { role: "form", fidelity: "cinematic", gives: { structure: 0.85, contrast: 0.4 }, cost: 0.5, gpu: 4.5 },
@@ -619,7 +625,7 @@ export const LOOKS: Look[] = [
   },
   {
     id: "liquidDream", name: "LIQUID DREAM", blurb: "Soft-focus flow, no hard edges.",
-    picks: { grade: ["oilSlick", "chromaPulse", "kuwahara", "acrylicBleed"], form: ["inkFlow", "melt", "liquidWarp", "flowSmear"],
+    picks: { grade: ["oilSlick", "chromaPulse", "kuwahara", "acrylicBleed"], form: ["inkFlow", "melt", "liquidWarp", "flowSmear", "ribbonCurrent", "liquidIslands"],
              accent: ["bufferEcho", "rgbShift", "trailDecay"], finish: ["dreamGlow", "bloom", "auroraVeil", "causticWater", "fog"] },
     suits: { needsContrast: 0.5, density: -0.5, needsStructure: 0.4 }, drive: 0.5,
   },
@@ -655,7 +661,7 @@ export const LOOKS: Look[] = [
   },
   {
     id: "signalDecay", name: "SIGNAL DECAY", blurb: "Tape damage, held together on purpose.",
-    picks: { grade: ["vhsBleed", "posterize", "bitCrush", "noiseTint", "scanlines", "photocopy", "invert"], form: ["pixelSort", "sliceDrift", "displacement", "slitScan"],
+    picks: { grade: ["vhsBleed", "posterize", "bitCrush", "noiseTint", "scanlines", "photocopy", "invert"], form: ["pixelSort", "sliceDrift", "displacement", "slitScan", "contourPeel"],
              accent: ["datamosh", "blockShift", "compressionTears", "staticSnow", "glitchTeleport", "scanlineWarp", "rollingShutter", "syncRoll", "signalDropout", "interlaceComb"], finish: ["filmGrain", "vignette", "fog", "crtPhosphor", "paperGrain"] },
     suits: { density: 0.5, needsRestraint: -0.3, contrast: 0.3 }, drive: 0.75,
   },

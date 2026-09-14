@@ -1238,6 +1238,71 @@ export const NEWS_ARTICLES: NewsArticle[] = [
       { question: "How do I use an anaglyph-style effect accessibly?", answer: "Never encode essential meaning only in red and cyan, keep text and safety information outside the effect, provide a clean alternate, limit uncomfortable disparity, and test delivered motion for general and saturated-red flash risk." },
     ],
   },
+  {
+    slug: "make-the-photocopy-effect-stop-copying-the-evidence",
+    subjectKind: "effect",
+    effectId: "photocopy",
+    effectName: "Photocopy",
+    category: "Color Chaos",
+    title: "Make the Photocopy Effect Stop Copying the Evidence",
+    dek: "A practical toner hearing on local thresholds, exposure, copy-art history, and the office machine currently claiming it can preserve your archive.",
+    description: "Learn how the Ether-MOSH Photocopy effect uses Amount and Exposure for toner-style texture in print, patterns, motion, projection, and copy-art education.",
+    publishedAt: "2026-09-14T11:00:00-07:00",
+    readMinutes: 6,
+    image: "/news/photocopy-toner-hearing.jpg",
+    imageAlt: "Three fictional print technicians inspect a large black-and-off-white photocopy-effect portrait covered with toner-like speckles and smudges",
+    imageCaption: "The fictional copy bureau found strong local contrast, three rulers, and no evidence that the shader had ever met a photoreceptor.",
+    keywords: ["Photocopy effect", "Ether-MOSH Photocopy", "xerography effect", "toner texture", "copy art", "photocopy tutorial", "projection visuals"],
+    tldr: "Ether-MOSH's Photocopy effect converts source luminance into locally thresholded black toner on warm off-white paper, then adds fine fixed grain. Amount blends that result over the source; Exposure shifts the local cutoff, with higher values making more of the frame dark. It is a GPU stylization, not xerography or a preservation copy. Find it under Color Chaos; start at 0.55 Amount and 0.48 Exposure.",
+    satireDisclosure: "The municipal copy bureau, technicians, toner hearing, missing photoreceptor, archive claim, and all quoted officials are fictional. The xerography history, physical copying process, copy-art examples, preservation guidance, Ether-MOSH controls and shader behavior, accessibility cautions, and production advice are factual and sourced.",
+    dispatch: [
+      "At 11:02, the fictional Municipal Bureau of Reproduction summoned a portrait for its seventh consecutive copy. The machine denied everything, produced one warm-gray sheet with excellent cheekbones, and requested immunity from the Exposure slider.",
+      "Chief Inspector Dot Matrix—an invented public servant with a real magnifying loupe—raised Exposure until half the witness became toner. The bureau then labeled the output 'archival,' at which point the Library of Congress guidance entered the room and asked everybody to stop freelancing permanence.",
+    ],
+    explanation: [
+      "Chester Carlson made the first xerographic image in 1938 after searching for a faster way to copy documents. Xerox explains that xerography depends on electrostatic attraction and photoconductivity: a charged photoreceptor is selectively discharged by light, toner adheres to the remaining charge pattern, the image transfers to paper, and heat plus pressure fuse the toner. A dark digital threshold can resemble that result, but resemblance is not the physical process.",
+      "Artists have treated copying as both material and distribution system. MoMA documents Jack Whitten's 1974 experiments with photocopier and telecopier technology, toner powder, and heat-fixed works; its Seth Siegelaub archive also records the 1968 Xerox Book project and the idea of a publication acting as an exhibition venue. Copy texture has art history. It does not need a fake paper jam added to its résumé.",
+      "Ether-MOSH is explicit about the shortcut. The Photocopy shader measures RGB luminance, compares each pixel with a nine-pixel local blur, shifts that cutoff with Exposure, multiplies the resulting dark region by fine spatial noise, and maps it between near-black toner and warm off-white paper. Amount blends the stylization over the original. At Amount 0 the source is untouched; raising Exposure darkens more local tones. The effect does not charge a drum, move toner, fuse paper, or create a preservation facsimile.",
+    ],
+    steps: [
+      "Open MOSH, load a portrait, botanical scan, bold object, architectural detail, camera feed, or Forge composition with clear light-dark structure, then open the FX panel.",
+      "Choose Color Chaos and add Photocopy. Start at Amount 0.55 and Exposure 0.48 so the toner texture reads without erasing every midtone.",
+      "Move Exposure first. Raise it to turn more local tones dark; lower it to protect pale faces, paper texture, and highlight detail. Judge important edges at the final display size.",
+      "Adjust Amount for the blend. Set Amount to 0 for the untouched source, keep captions and safety information outside the effected layer, and avoid rapidly switching between bright and dark states.",
+      "Freeze a strong still or record a restrained loop, then inspect print proofs, 3×3 pattern seams, vector or Lottie simplification, compression, and the actual projector. For preservation work, follow collection-specific capture, paper, adhesion, inspection, and storage standards instead of trusting the look.",
+    ],
+    parameters: [
+      { control: "Amount", purpose: "Blends the source with the black-toner and off-white-paper result", low: "0 is an untouched source", high: "0.75–1 copy texture dominates", sweetSpot: "0.55" },
+      { control: "Exposure", purpose: "Shifts the local luminance cutoff that decides where dark toner appears", low: "0–0.30 protects more light and mid tones", high: "0.70–1 makes more of the frame dark", sweetSpot: "0.48" },
+    ],
+    uses: [
+      { title: "Print + zines", body: "Use a high-contrast still for covers, inserts, posters, or risograph references, then proof at final size. The exported RGB image is artwork—not a toner separation, press profile, or permission slip to skip prepress." },
+      { title: "Pattern + textiles", body: "Photocopy one bold motif before building the repeat, then inspect a 3×3 proof. Fixed speckles can create useful paper grit or expose the tile boundary like an employee who has seen the entire spreadsheet." },
+      { title: "Vector + Lottie", body: "Trace only the largest black shapes into clean paths, simplify nodes, and animate a few threshold changes slowly. Keep real text as text; vectorizing every grain dot turns a small motion file into a municipal infrastructure project." },
+      { title: "Projection + venue", body: "Choose large silhouettes and moderate Exposure because projectors can crush near-black detail. Rehearse on the actual wall or LED processor, protect captions, avoid high-frequency bright-dark cuts, and provide a clean or lower-intensity cue." },
+      { title: "Museum + education", body: "Compare the shader with Xerox's six physical steps, Whitten's toner works, and a documented preservation facsimile workflow. Learners can identify which visual traits survive while the photoreceptor, charge, transfer, heat, paper, adhesion, and archival inspection disappear." },
+    ],
+    quote: "The copy is visually persuasive, materially fictional, and no longer authorized to call itself archival.",
+    quoteAttribution: "Dot Matrix, fictional chief inspector for the Municipal Bureau of Reproduction",
+    downloadHref: "/news/downloads/photocopy-field-card.md",
+    sources: [
+      { label: "Xerox — Chester Carlson and Xerography", href: "https://www.xerox.com/en-us/innovation/insights/chester-carlson-xerography", note: "Primary company history and technical account of Carlson's 1938 invention, photoconductivity, charging, exposure, toner development, transfer, fusing, and cleaning." },
+      { label: "MoMA — Jack Whitten, Broken Spaces #1", href: "https://www.moma.org/collection/works/110295", note: "Museum record of Whitten's 1974 Xerox residency, copier and telecopier experiments, toner materials, heat fixing, and Broken Spaces series." },
+      { label: "MoMA — The Seth Siegelaub Papers", href: "https://www.moma.org/calendar/exhibitions/1327", note: "Museum archive context for the Xerox Book, artists' publications, and the exhibition catalogue used as an exhibition form." },
+      { label: "Library of Congress — Preservation Facsimile", href: "https://www.loc.gov/preservation/care/photocpy.html", note: "Authoritative requirements for durable paper, stable imaging material, toner adhesion, completeness, legibility, accuracy, inspection, identification, and storage." },
+      { label: "W3C — Web Content Accessibility Guidelines 2.2", href: "https://www.w3.org/TR/WCAG22/", note: "Current contrast, images-of-text, and flash criteria relevant to high-contrast transformed media." },
+      { label: "Ether-MOSH Photocopy registry entry", href: "/effects#photocopy", note: "Current public effect, Color Chaos category in the FX panel, Amount and Exposure ranges and defaults, description, and GLSL source." },
+      { label: "Halftone field report", href: "/news/halftone-is-not-a-phase-mom", note: "Related guide to converting continuous tone into discrete print-inspired marks and proofing the result." },
+      { label: "Posterize field report", href: "/news/posterize-the-image-before-the-gradient-files-a-complaint", note: "Related guide to controlled tonal reduction for print, patterns, motion, and projection." },
+    ],
+    relatedEffects: ["halftone", "posterize", "crossHatch", "threshold"],
+    faqs: [
+      { question: "What does the Photocopy effect do in Ether-MOSH?", answer: "It compares each pixel's luminance with a local blurred average, applies an Exposure-shifted threshold and fine spatial noise, maps the result to near-black toner and off-white paper, then blends it with the source using Amount." },
+      { question: "Is the Ether-MOSH Photocopy effect real xerography?", answer: "No. It does not use a charged photoreceptor, electrostatic toner transfer, heat, pressure, or paper. It is a real-time GPU interpretation of the visual result." },
+      { question: "Where is Photocopy, and what settings should I start with?", answer: "Open the FX panel, choose Color Chaos, and add Photocopy. Start at 0.55 Amount and 0.48 Exposure, then move Exposure first to protect important light and midtone detail." },
+      { question: "Can I use the Photocopy effect for archives, print, or projection?", answer: "Use it as creative artwork, not preservation. Proof physical prints, follow institutional standards for archival facsimiles, keep essential text clean, test contrast and flashing in delivered motion, and rehearse on the actual display." },
+    ],
+  },
 ];
 
 export const NEWS_ARTICLES_BY_SLUG = new Map(NEWS_ARTICLES.map((article) => [article.slug, article]));
@@ -1316,5 +1381,9 @@ export const NEWS_LOOK_EXAMPLES_BY_SLUG: Record<string, [NewsLookExample, NewsLo
   "make-the-anaglyph-effect-prove-it-has-depth": [
     { scene: "Side-lit stone portrait", settings: "Amount 0.28 · Depth 0.18", result: "The bright forehead, nose, and shoulder gain crisp red and cyan horizontal rims while the darker eye sockets and background remain comparatively tight and readable." },
     { scene: "Hard-edged geometric sculpture", settings: "Amount 0.55 · Depth 0.38", result: "White faces split into broad opposing color ghosts, midtone edges separate less dramatically, and black negative space keeps the composition from becoming one continuous pair of cardboard glasses." },
+  ],
+  "make-the-photocopy-effect-stop-copying-the-evidence": [
+    { scene: "Window-lit portrait", settings: "Amount 0.55 · Exposure 0.48", result: "Hair, eyes, and clothing folds become solid near-black shapes while skin and wall tones break into speckled off-white paper; the silhouette stays readable and a little original color remains underneath." },
+    { scene: "Botanical scan and torn paper", settings: "Amount 0.82 · Exposure 0.66", result: "Leaf veins, deckled edges, and overlapping paper collapse into dense toner masses with rough local gaps; pale background regions survive as warm paper instead of flat digital white." },
   ],
 };

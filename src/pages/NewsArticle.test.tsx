@@ -66,12 +66,12 @@ describe("NewsArticle", () => {
     expect(screen.getByText("3 core controls")).toBeTruthy();
   });
 
-  it("publishes eighteen unique reports including eleven September effects and two modes", () => {
-    expect(NEWS_ARTICLES).toHaveLength(18);
-    expect(new Set(NEWS_ARTICLES.map(article => article.slug)).size).toBe(18);
+  it("publishes nineteen unique reports including twelve September effects and two modes", () => {
+    expect(NEWS_ARTICLES).toHaveLength(19);
+    expect(new Set(NEWS_ARTICLES.map(article => article.slug)).size).toBe(19);
     expect(NEWS_ARTICLES.find(article => article.effectId === "kaleidoscope")?.steps).toHaveLength(5);
-    expect(NEWS_ARTICLES.filter(article => ["kaleidoscope", "posterize", "duotone", "asciiCollapse", "solarize", "thermal", "rgbShift", "oilSlick", "filmGrain", "singularity", "anaglyph"].includes(article.effectId ?? "")))
-      .toHaveLength(11);
+    expect(NEWS_ARTICLES.filter(article => ["kaleidoscope", "posterize", "duotone", "asciiCollapse", "solarize", "thermal", "rgbShift", "oilSlick", "filmGrain", "singularity", "anaglyph", "photocopy"].includes(article.effectId ?? "")))
+      .toHaveLength(12);
     expect(NEWS_ARTICLES.filter(article => article.subjectKind === "mode").map(article => article.effectName))
       .toEqual(["Forge Mode", "Pattern / Motif Mode"]);
   });
@@ -98,8 +98,8 @@ describe("NewsArticle", () => {
     expect(container.querySelectorAll(".news-look-examples article")).toHaveLength(2);
   });
 
-  it("keeps the ten recent reports answer-first and release-complete", () => {
-    const batch = NEWS_ARTICLES.filter(article => ["posterize", "duotone", "asciiCollapse", "solarize", "thermal", "rgbShift", "oilSlick", "filmGrain", "singularity", "anaglyph"].includes(article.effectId ?? ""));
+  it("keeps the eleven recent reports answer-first and release-complete", () => {
+    const batch = NEWS_ARTICLES.filter(article => ["posterize", "duotone", "asciiCollapse", "solarize", "thermal", "rgbShift", "oilSlick", "filmGrain", "singularity", "anaglyph", "photocopy"].includes(article.effectId ?? ""));
     for (const article of batch) {
       const answerWords = article.tldr.trim().split(/\s+/).length;
       expect(answerWords, `${article.slug} direct answer`).toBeGreaterThanOrEqual(40);
@@ -110,6 +110,18 @@ describe("NewsArticle", () => {
       expect(article.keywords.length, `${article.slug} keywords`).toBeGreaterThanOrEqual(5);
       expect(article.keywords.length, `${article.slug} keywords`).toBeLessThanOrEqual(8);
     }
+  });
+
+  it("renders the Photocopy controls and omits disabled storefront placement", () => {
+    renderArticle("make-the-photocopy-effect-stop-copying-the-evidence");
+
+    expect(screen.getByRole("heading", { name: "Make the Photocopy Effect Stop Copying the Evidence" })).toBeTruthy();
+    expect(screen.getByText("Amount")).toBeTruthy();
+    expect(screen.getByText("Exposure")).toBeTruthy();
+    expect(screen.getAllByText(/charged photoreceptor/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText(/Shameless product placement/i)).toBeNull();
+    expect(screen.getByRole("link", { name: "Download .md" }).getAttribute("href"))
+      .toBe("/news/downloads/photocopy-field-card.md");
   });
 
   it("renders the three new effect controls and distinguishes ASCII-inspired pixels from text", () => {
