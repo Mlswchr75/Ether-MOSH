@@ -1,4 +1,5 @@
 import type { ParamSchema } from './effects';
+import { STICKER_FRIENDLY_EFFECTS } from './stickerFriendlyEffects';
 
 /** Localized source-bearing shapes. Only sticker capture turns coverage into alpha. */
 export const FLOATING_HEADER = /* glsl */ `
@@ -118,4 +119,5 @@ export const FLOATING_EFFECTS: { id: string; name: string; blurb: string; params
       gl_FragColor=floatingResult(base,art,coverage);
     `,
   },
+  ...STICKER_FRIENDLY_EFFECTS,
 ];
