@@ -50,6 +50,10 @@ export class MoshRenderer {
   private fxStayInside = true;
   private fxShapeCombine = 0;
   private fxShapeActive = false;
+  private fxOrganic = true;
+  private fxOrganicSeed = 0;
+  private fxOrganicRoughness = 0.7;
+  private fxRecipeSeed = 0;
   private unregisterFxCapture?: () => void;
   private rtFxSource?: THREE.WebGLRenderTarget;
   private rtFxColor?: THREE.WebGLRenderTarget;
@@ -147,6 +151,9 @@ export class MoshRenderer {
       if(!active){this.fxCaptureReady=false;this.rtFxSource?.dispose();this.rtFxSource=undefined;this.rtFxColor?.dispose();this.rtFxColor=undefined;this.rtFxMask?.dispose();this.rtFxMask=undefined;}
     },configure: options => {
       this.fxStayInside = options.stayInside;
+      this.fxOrganic = options.organic ?? true;
+      this.fxOrganicSeed = Number.isFinite(options.organicSeed) ? options.organicSeed! : 0;
+      this.fxOrganicRoughness = Math.max(0, Math.min(1, options.organicRoughness ?? 0.7));
       this.fxShapeCombine = {join: 0, overlap: 1, cut: 2}[options.combine];
     },read: (width,height,cutoff)=>this.readFxFrame(width,height,cutoff)});
     this.renderer = new THREE.WebGLRenderer({
@@ -1060,6 +1067,9 @@ export class MoshRenderer {
       uShapeStarted: { value: 0 },
       uShapeCombine: { value: 0 },
       uShapeOpacity: { value: 1 },
+      uOrganicShape: { value: 0 },
+      uOrganicSeed: { value: 0 },
+      uOrganicRoughness: { value: 0.7 },
       uTime: { value: 0 },
       uPulse: { value: 0 },
     };
@@ -1158,6 +1168,13 @@ export class MoshRenderer {
     const targets = [this.rtA, this.rtB, this.rtC];
     let read = this.rtA;
     this.fxShapeActive = false;
+    if(this.fxCaptureEnabled) {
+      const enabled=layers.filter(layer=>!layer.hidden && layer.opacity>0 && (layer.params.amount??1)>0);
+      const shapes=enabled.filter(layer=>EFFECTS_BY_ID[layer.effectId]?.stickerShape);
+      const signature=(shapes.length?shapes:enabled).map(layer=>layer.effectId).join('|');
+      let hash=0;for(let i=0;i<signature.length;i++)hash=(hash*31+signature.charCodeAt(i))|0;
+      this.fxRecipeSeed=(hash>>>0)%997/31;
+    }
 
     for (const layer of layers) {
       if (layer.hidden || layer.opacity <= 0) continue;
@@ -1178,6 +1195,9 @@ export class MoshRenderer {
       uni.uShapeStarted.value = this.fxShapeActive ? 1 : 0;
       uni.uShapeCombine.value = this.fxShapeCombine;
       uni.uShapeOpacity.value = layer.opacity;
+      uni.uOrganicShape.value = this.fxCaptureEnabled && this.fxOrganic ? 1 : 0;
+      uni.uOrganicSeed.value = this.fxOrganicSeed + this.fxRecipeSeed;
+      uni.uOrganicRoughness.value = this.fxOrganicRoughness;
       // Last frame's finished output. Black until the first frame lands, so
       // feedback effects fade in rather than flashing garbage.
       uni.uFeedback.value = this.historyPrimed ? this.rtHistA.texture : null;
@@ -1329,8 +1349,10 @@ export class MoshRenderer {
       }
       this.finisherMaterial.uniforms.uTex.value=this.rtHistA.texture;this.quad.material=this.finisherMaterial;
       this.renderer.setRenderTarget(this.rtFxColor);this.renderer.render(this.scene,this.camera);
-      if(!this.fxMaskMaterial)this.fxMaskMaterial=new THREE.ShaderMaterial({vertexShader:PASSTHROUGH_VERT,fragmentShader:FX_DIFFERENCE_FRAG,depthTest:false,depthWrite:false,blending:THREE.NoBlending,uniforms:{uBefore:{value:null},uAfter:{value:null},uColor:{value:null},uCutoff:{value:0},uUseShape:{value:0}}});
+      if(!this.fxMaskMaterial)this.fxMaskMaterial=new THREE.ShaderMaterial({vertexShader:PASSTHROUGH_VERT,fragmentShader:FX_DIFFERENCE_FRAG,depthTest:false,depthWrite:false,blending:THREE.NoBlending,uniforms:{uBefore:{value:null},uAfter:{value:null},uColor:{value:null},uCutoff:{value:0},uUseShape:{value:0},uOrganic:{value:1},uSeed:{value:0},uRoughness:{value:0.7},uOutputSize:{value:new THREE.Vector2(1,1)}}});
       const u=this.fxMaskMaterial.uniforms;u.uBefore.value=this.rtFxSource.texture;u.uAfter.value=this.rtHistA.texture;u.uColor.value=this.rtFxColor.texture;u.uUseShape.value=this.fxShapeActive?1:0;u.uCutoff.value=Math.max(0,Math.min(.5,cutoff));
+      u.uOrganic.value=this.fxOrganic?1:0;u.uSeed.value=this.fxOrganicSeed+this.fxRecipeSeed;
+      u.uRoughness.value=this.fxOrganicRoughness;u.uOutputSize.value.set(width,height);
       this.quad.material=this.fxMaskMaterial;this.renderer.setRenderTarget(this.rtFxMask!);this.renderer.render(this.scene,this.camera);
       const pixels=new Uint8Array(width*height*4);this.renderer.readRenderTargetPixels(this.rtFxMask!,0,0,width,height,pixels);
       const topDown=new Uint8ClampedArray(pixels.length);for(let y=0;y<height;y++)topDown.set(pixels.subarray(y*width*4,(y+1)*width*4),(height-y-1)*width*4);

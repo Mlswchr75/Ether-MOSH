@@ -1,5 +1,5 @@
 export type FxBackdrop = 'black' | 'white';
-export type FxShapeOptions = { stayInside: boolean; combine: 'join' | 'overlap' | 'cut' };
+export type FxShapeOptions = { stayInside: boolean; combine: 'join' | 'overlap' | 'cut'; organic?: boolean; organicSeed?: number; organicRoughness?: number };
 type Provider = { configure?: (options: FxShapeOptions) => void; enable: (active: boolean) => void; read: (width: number, height: number, cutoff: number) => ImageData };
 const providers = new WeakMap<HTMLCanvasElement, Provider>();
 const active = new WeakSet<HTMLCanvasElement>();
@@ -39,6 +39,38 @@ export function paintFxFrame(ctx: CanvasRenderingContext2D, frame: ImageData, ba
   if(background){ctx.fillStyle=background;ctx.fillRect(0,0,ctx.canvas.width,ctx.canvas.height);}
   ctx.drawImage(canvas,0,0,ctx.canvas.width,ctx.canvas.height);
 }
+/** Final sticker-only silhouette. No rectangular feathering or opaque backdrop.
+ * Source-driven low-frequency contours stay stable in time for still sources;
+ * shape interiors and artwork warp together so their edges remain aligned. */
 export const FX_DIFFERENCE_FRAG = `precision highp float; varying vec2 vUv;
-uniform sampler2D uBefore,uAfter,uColor;uniform float uCutoff,uUseShape;
-void main(){vec4 before=texture2D(uBefore,vUv),after=texture2D(uAfter,vUv),color=texture2D(uColor,vUv);vec4 d=abs(after-before);float change=max(max(d.r,d.g),max(d.b,d.a));float coverage=uUseShape>0.5?1.0:smoothstep(uCutoff,uCutoff+.04,change);float a=color.a*coverage;gl_FragColor=vec4(a>0.?color.rgb:vec3(0.),a);}`;
+uniform sampler2D uBefore,uAfter,uColor;
+uniform float uCutoff,uUseShape,uOrganic,uSeed,uRoughness;
+uniform vec2 uOutputSize;
+void main(){
+  vec2 aspect=uOutputSize/max(min(uOutputSize.x,uOutputSize.y),1.0);
+  vec2 p=(vUv-0.5)*aspect;
+  vec2 uv=vUv;
+  float silhouette=1.0;
+  if(uOrganic>0.5){
+    float seed=uSeed;
+    // Bend straight internal edges without adding history or changing the live FX.
+    vec2 bend=vec2(sin(p.y*13.0+seed)+0.5*sin(p.x*19.0-p.y*7.0+seed*0.7),
+                   cos(p.x*11.0-seed)+0.5*sin(p.y*17.0+p.x*8.0+seed*1.3));
+    uv=clamp(vUv+bend*(0.012+0.018*uRoughness)/aspect,0.0,1.0);
+    float angle=atan(p.y,p.x);
+    vec2 direction=vec2(cos(angle),sin(angle));
+    vec3 source=texture2D(uBefore,clamp(0.5+direction*0.23/aspect,0.0,1.0)).rgb;
+    float content=dot(source,vec3(0.299,0.587,0.114));
+    float radius=0.365+(0.018+0.055*uRoughness)*sin(angle*3.0+seed);
+    radius+=(0.012+0.035*uRoughness)*cos(angle*5.0-seed*1.37);
+    radius+=0.026*uRoughness*sin(angle*2.0+seed*0.63)+(content-0.5)*0.045;
+    radius=clamp(radius,0.22,0.455);
+    float feather=0.008+0.007*uRoughness;
+    silhouette=1.0-smoothstep(radius-feather,radius+feather,length(p));
+  }
+  vec4 before=texture2D(uBefore,uv),after=texture2D(uAfter,uv),color=texture2D(uColor,uv);
+  vec4 d=abs(after-before);float change=max(max(d.r,d.g),max(d.b,d.a));
+  float coverage=uUseShape>0.5?1.0:smoothstep(uCutoff,uCutoff+.04,change);
+  float a=color.a*coverage*silhouette;
+  gl_FragColor=vec4(a>0.?color.rgb:vec3(0.),a);
+}`;

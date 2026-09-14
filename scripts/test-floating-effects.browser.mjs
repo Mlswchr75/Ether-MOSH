@@ -103,6 +103,28 @@ try {
       }
       report[id] = { ...s, motionDelta };
     }
+    // A full-frame treatment must become an irregular, inset sticker, not a rectangle.
+    configureFxCapture(canvas, { stayInside: true, combine: 'join', organic: true, organicSeed: 0 });
+    const fullColor = layer('thermal');
+    const originalCut = frame([fullColor]);
+    const perimeter = stats(originalCut);
+    assert(perimeter.visible && perimeter.clear && !perimeter.edge, 'Organic fallback retains canvas boundaries');
+    configureFxCapture(canvas, { stayInside: true, combine: 'join', organic: true, organicSeed: 2.39996 });
+    const variant = frame([fullColor]);
+    assert(difference(originalCut, variant, true) > 10000, 'New silhouette does not change the outline');
+    assert(difference(variant, frame([fullColor]), true) === 0, 'Still-source silhouette flickers');
+    for (const id of ['prismShards', 'pixelConfetti', 'bubbleLenses']) {
+      const shape = layer(id); shape.params.speed = 0;
+      configureFxCapture(canvas, { stayInside: true, combine: 'join', organic: false });
+      const geometric = frame([shape]);
+      configureFxCapture(canvas, { stayInside: true, combine: 'join', organic: true });
+      assert(difference(geometric, frame([shape]), true) > 10000, `${id}: angular silhouette unchanged`);
+    }
+    // Different source content also contributes to the final perimeter.
+    const colorful = frame([fullColor]);
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, 320, 240); renderer.setSourceCanvas(source);
+    assert(difference(colorful, frame([fullColor]), true) > 10000, 'Source content does not influence silhouette');
+    report.organic = { ...perimeter, variants: true, sourceResponsive: true, stillStable: true };
     const combined = ids.map(layer);
     for (const combine of ['join', 'overlap', 'cut']) {
       configureFxCapture(canvas, { stayInside: true, combine });
@@ -111,7 +133,13 @@ try {
       if (combine === 'join') assert(s.visible, 'Joined shapes disappeared');
       report[combine] = s;
     }
-    stop(); renderer.dispose();
+    stop();
+    const normalShape=layer('prismShards'); normalShape.params.speed=0;
+    const normalFrame=()=>{ renderer.render([normalShape]); const c=document.createElement('canvas');c.width=320;c.height=240;const x=c.getContext('2d');x.drawImage(canvas,0,0);return x.getImageData(0,0,320,240); };
+    configureFxCapture(canvas,{stayInside:true,combine:'join',organic:false});const normal=normalFrame();
+    configureFxCapture(canvas,{stayInside:true,combine:'join',organic:true,organicSeed:9});
+    assert(difference(normal,normalFrame())===0,'Organic settings changed normal MOSH rendering');
+    renderer.dispose();
     Object.defineProperty(performance, 'now', { configurable: true, value: realNow });
     document.body.innerHTML = '';
     document.body.style.cssText = 'margin:0;background:#111;color:white;display:grid;grid-template-columns:repeat(3,1fr);gap:8px;font:14px sans-serif';

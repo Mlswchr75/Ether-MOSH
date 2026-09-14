@@ -8,10 +8,19 @@ uniform float uStickerShape;
 uniform float uShapeStarted;
 uniform float uShapeCombine;
 uniform float uShapeOpacity;
+uniform float uOrganicShape;
+uniform float uOrganicSeed;
+uniform float uOrganicRoughness;
+// Smooth asymmetric flakes instead of polygon corners in sticker-only capture.
+float organicFragment(vec2 q, float radius, float seed) {
+  float a=atan(q.y,q.x), k=seed+uOrganicSeed;
+  float r=radius*(0.90+uOrganicRoughness*(0.17*sin(a*3.0+k)+0.11*cos(a*5.0-k*1.7)+0.12*sin(a*2.0+k*0.7)));
+  return length(q*vec2(1.0,1.08+0.16*sin(k)))-r;
+}
 vec4 floatingResult(vec4 base, vec4 artwork, float coverage) {
   float strength = clamp(uAmount, 0.0, 1.0);
   float edge = min(min(vUv.x, 1.0-vUv.x), min(vUv.y, 1.0-vUv.y));
-  float m = clamp(coverage, 0.0, 1.0) * smoothstep(0.025, 0.07, edge) * strength;
+  float m = clamp(coverage, 0.0, 1.0) * (uOrganicShape > 0.5 ? 1.0 : smoothstep(0.025, 0.07, edge)) * strength;
   vec3 color = mix(base.rgb, artwork.rgb, m);
   if (uStickerShape < 0.5) return vec4(color, base.a);
   m *= clamp(uShapeOpacity, 0.0, 1.0) * (uShapeStarted > 0.5 ? texture2D(uShapeSource, vUv).a : artwork.a);

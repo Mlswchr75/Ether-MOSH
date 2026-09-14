@@ -87,6 +87,9 @@ export function StickerCapture() {
   const fxMode = captureStyle === 'fx';
   const [fxCutoff, setFxCutoff] = useState(.02);
   const [stayInside, setStayInside] = useState(true);
+  const [organic, setOrganic] = useState(true);
+  const [organicSeed, setOrganicSeed] = useState(0);
+  const [organicRoughness, setOrganicRoughness] = useState(0.7);
   const [shapeCombine, setShapeCombine] = useState<FxShapeOptions['combine']>('join');
   const stackLayers = useStore(s => s.layers);
   const selectedLayerId = useStore(s => s.selectedLayerId);
@@ -95,8 +98,8 @@ export function StickerCapture() {
   const selectedShape = shapeLayers.find(layer => layer.id === selectedLayerId) ?? shapeLayers.at(-1);
   const selectedShapeDef = FLOATING_EFFECTS.find(fx => fx.id === selectedShape?.effectId);
   useEffect(() => {
-    if (glCanvas) configureFxCapture(glCanvas, { stayInside, combine: shapeCombine });
-  }, [glCanvas, stayInside, shapeCombine]);
+    if (glCanvas) configureFxCapture(glCanvas, { stayInside, combine: shapeCombine, organic, organicSeed, organicRoughness });
+  }, [glCanvas, stayInside, shapeCombine, organic, organicSeed, organicRoughness]);
   useEffect(() => {
     if(stickerMode && fxMode && glCanvas) return enableFxCapture(glCanvas);
   },[stickerMode,fxMode,glCanvas]);
@@ -810,6 +813,14 @@ export function StickerCapture() {
           <p>{stayInside && hasActiveShape ? 'Floating shapes carry your source imagery. Color effects stay inside; warps move the cutout.' : 'Keep source content only where the FX stack visibly changes it. Unchanged pixels become transparent.'}</p>
           <div className="grid grid-cols-3 gap-1" aria-label="Add floating effect">
             {FLOATING_EFFECTS.map(fx => <button key={fx.id} type="button" disabled={phase !== 'idle'} title={fx.blurb} onClick={() => useStore.getState().addLayer(fx.id)} className="rounded border border-cyan-200/25 px-1 py-2 text-[10px] text-cyan-100 disabled:opacity-40">+ {fx.name}</button>)}
+          </div>
+          <div className="rounded border border-cyan-200/20 p-2 space-y-2">
+            <label className="flex items-center gap-2"><input type="checkbox" checked={organic} disabled={phase !== 'idle'} onChange={e => setOrganic(e.target.checked)} />Organic cut</label>
+            {organic && <>
+              <p className="text-[10px] text-white/60">Curved fragments and a source-responsive, asymmetric outline. Keeps canvas edges out of your sticker.</p>
+              <label className="block text-[10px]">Irregularity<input aria-label="Organic irregularity" className="block w-full" type="range" min="0" max="1" step="0.01" value={organicRoughness} disabled={phase !== 'idle'} onChange={e=>setOrganicRoughness(Number(e.target.value))} /></label>
+              <button type="button" disabled={phase !== 'idle'} onClick={()=>setOrganicSeed(seed=>seed+2.39996)} className="rounded border border-white/25 px-2 py-1 text-[10px]">New silhouette</button>
+            </>}
           </div>
           <label className="flex items-center gap-2"><input type="checkbox" checked={stayInside} disabled={phase !== 'idle'} onChange={e => setStayInside(e.target.checked)} />Stay inside sticker</label>
           {stayInside && <label className="flex items-center justify-between">Combine shapes<select aria-label="Combine sticker shapes" value={shapeCombine} disabled={phase !== 'idle'} onChange={e => setShapeCombine(e.target.value as FxShapeOptions['combine'])} className="rounded bg-black text-white"><option value="join">Join</option><option value="overlap">Overlap</option><option value="cut">Cut out</option></select></label>}

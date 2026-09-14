@@ -1,6 +1,8 @@
 # Floating sticker effects
 
-In Sticker Studio, choose **FX Stack**, add a floating effect, and leave **Stay inside sticker** enabled. The same effects are available in the normal effects library for Forge, camera, and uploaded sources.
+In Sticker Studio, choose **FX Stack**, add a floating effect, and leave **Stay inside sticker** enabled. **Organic cut** is enabled by default for FX stickers: it rounds angular fragments, bends straight internal edges, and applies a centered, asymmetric perimeter influenced by source colors and the active shape effects. **Irregularity** adjusts the outline; **New silhouette** chooses another stable variation. Position controls are kept near the center in this mode. Turn Organic cut off to retain geometric shapes. These settings apply to the sticker preview and its PNG/GIF/Lottie exports.
+
+The same effects are available in the normal effects library for Forge, camera, and uploaded sources.
 
 | Effect | Shape and controls |
 | --- | --- |
