@@ -54,6 +54,8 @@ export class MoshRenderer {
   private fxOrganicSeed = 0;
   private fxOrganicRoughness = 0.7;
   private fxRecipeSeed = 0;
+  private fxEvolution = 0;
+  private fxLastTime: number | undefined;
   private unregisterFxCapture?: () => void;
   private rtFxSource?: THREE.WebGLRenderTarget;
   private rtFxColor?: THREE.WebGLRenderTarget;
@@ -1097,6 +1099,17 @@ export class MoshRenderer {
       return;
     }
     const time = (performance.now() - this.startTime) / 1000;
+    const dt = this.fxLastTime === undefined ? 0 : Math.max(0, Math.min(0.1, time - this.fxLastTime));
+    this.fxLastTime = time;
+    if (this.fxCaptureEnabled && this.fxOrganic) {
+      const active = layers.filter(layer => !layer.hidden && layer.opacity > 0
+        && (layer.params.amount ?? 1) > 0 && (layer.params.coverage ?? 1) > 0);
+      const shapes = active.filter(layer => EFFECTS_BY_ID[layer.effectId]?.stickerShape);
+      // Color treatments must not restart a shape whose motion is frozen.
+      const moving = (shapes.length ? shapes : active).some(layer =>
+        (layer.params.speed ?? 1) > 0 && (layer.params.motion ?? 1) > 0);
+      if (moving) this.fxEvolution += dt;
+    }
     const w = this.rtA.width, h = this.rtA.height;
 
     // Force dynamic textures to update every frame. For camera/video, wait until
@@ -1349,9 +1362,10 @@ export class MoshRenderer {
       }
       this.finisherMaterial.uniforms.uTex.value=this.rtHistA.texture;this.quad.material=this.finisherMaterial;
       this.renderer.setRenderTarget(this.rtFxColor);this.renderer.render(this.scene,this.camera);
-      if(!this.fxMaskMaterial)this.fxMaskMaterial=new THREE.ShaderMaterial({vertexShader:PASSTHROUGH_VERT,fragmentShader:FX_DIFFERENCE_FRAG,depthTest:false,depthWrite:false,blending:THREE.NoBlending,uniforms:{uBefore:{value:null},uAfter:{value:null},uColor:{value:null},uCutoff:{value:0},uUseShape:{value:0},uOrganic:{value:1},uSeed:{value:0},uRoughness:{value:0.7},uOutputSize:{value:new THREE.Vector2(1,1)}}});
+      if(!this.fxMaskMaterial)this.fxMaskMaterial=new THREE.ShaderMaterial({vertexShader:PASSTHROUGH_VERT,fragmentShader:FX_DIFFERENCE_FRAG,depthTest:false,depthWrite:false,blending:THREE.NoBlending,uniforms:{uBefore:{value:null},uAfter:{value:null},uColor:{value:null},uCutoff:{value:0},uUseShape:{value:0},uOrganic:{value:1},uSeed:{value:0},uRoughness:{value:0.7},uEvolution:{value:0},uOutputSize:{value:new THREE.Vector2(1,1)}}});
       const u=this.fxMaskMaterial.uniforms;u.uBefore.value=this.rtFxSource.texture;u.uAfter.value=this.rtHistA.texture;u.uColor.value=this.rtFxColor.texture;u.uUseShape.value=this.fxShapeActive?1:0;u.uCutoff.value=Math.max(0,Math.min(.5,cutoff));
       u.uOrganic.value=this.fxOrganic?1:0;u.uSeed.value=this.fxOrganicSeed+this.fxRecipeSeed;
+      u.uEvolution.value=this.fxEvolution;
       u.uRoughness.value=this.fxOrganicRoughness;u.uOutputSize.value.set(width,height);
       this.quad.material=this.fxMaskMaterial;this.renderer.setRenderTarget(this.rtFxMask!);this.renderer.render(this.scene,this.camera);
       const pixels=new Uint8Array(width*height*4);this.renderer.readRenderTargetPixels(this.rtFxMask!,0,0,width,height,pixels);

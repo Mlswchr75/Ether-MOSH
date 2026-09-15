@@ -72,6 +72,9 @@ try {
       const still = { ...shape, params: { ...shape.params, motion: 0 } };
       const frozen = frame([still]); time += 2000;
       assert(difference(frozen, frame([still])) === 0, `${id}: zero motion animates`);
+      const frozenColored = frame([still, layer('thermal')]); time += 2000;
+      assert(difference(frozenColored, frame([still, layer('thermal')]), true) === 0, `${id}: color layer restarts frozen silhouette`);
+      time -= 2000;
       const moving = frame([shape]); time += 2000;
       const motionDelta = difference(moving, frame([shape]));
       assert(motionDelta > 1000, `${id}: no motion`);
